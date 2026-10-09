@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Matris Öğren</title>
+<meta name="description" content="Sonlu elemanlar dersi için adım adım matris hesaplayıcı: matematiksel çözüm, Python kodu ve çıktısı. Telefona ve bilgisayara kurulur, çevrimdışı çalışır.">
+<meta name="theme-color" content="#1e3a8a">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Matris">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" crossorigin="anonymous">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="ust">
+  <div class="marka">Matris Öğren <small id="surum-etiketi"></small></div>
+  <span id="durum" class="durum">Motor yükleniyor…</span>
+  <button id="ayarlar-ac" class="ikon-dugme" type="button" aria-label="Ayarlar" title="Ayarlar">⚙</button>
+</header>
+
+<main>
+  <section id="sayfa-hesap" class="sayfa aktif">
+    <div class="izgara iki">
+      <div class="sol">
+        <div class="kart">
+          <h2>İşlem</h2>
+          <select id="islem" class="girdi" aria-label="İşlem seç"></select>
+          <form id="form" autocomplete="off"></form>
+          <p class="not">Matris girişi: satırları <kbd>;</kbd> ile, elemanları boşlukla ayırın. Örnek: <code>1 2; 3 4</code>.
+            Kesir <code>1/3</code>, ondalık <code>0.5</code>, sembol <code>E*A/L</code> olabilir. Sütun vektörü: <code>3; 5</code>.</p>
+          <div class="dugmeler">
+            <button id="hesapla" class="dugme ana" type="button" disabled>Hesapla</button>
+            <button id="ornek" class="dugme" type="button">Örnek doldur</button>
+            <button id="temizle" class="dugme" type="button">Temizle</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sag">
+        <div id="yukleme" class="kart">
+          <h2>Python motoru hazırlanıyor</h2>
+          <p id="yukleme-metin" class="not">Başlatılıyor…</p>
+          <div class="ilerleme"><div id="yukleme-cubuk"></div></div>
+          <p class="not">İlk açılışta yaklaşık 30 MB indirilir (Python + sympy + numpy); bu bir kez olur.
+            Sonraki açılışlar internet olmadan da çalışır.</p>
+        </div>
+
+        <div id="hata-kart" class="kart gizli">
+          <h2>Hata</h2>
+          <div id="hata-metin" class="hata-kutu"></div>
+        </div>
+
+        <div id="sonuc-kart" class="kart gizli">
+          <h2>Sonuç <span id="sonuc-sure" class="ipucu"></span></h2>
+          <div id="sonuc-latex" class="sonuc-latex"></div>
+          <div id="zincir" class="dugmeler"></div>
+        </div>
+
+        <div id="anlatim-kart" class="kart gizli">
+          <h2>Adım adım çözüm</h2>
+          <div class="gorunum">
+            <label><input type="radio" name="gorunum" value="hepsi" checked> Hepsi</label>
+            <label><input type="radio" name="gorunum" value="adimlar"> Sadece matematik</label>
+            <label><input type="radio" name="gorunum" value="python"> Sadece Python</label>
+          </div>
+          <div id="anlatim" class="anlatim"></div>
+        </div>
+
+        <div id="bos-kart" class="kart">
+          <div class="bos"><div class="buyuk">🧮</div>Bir işlem seçin, matrisleri yazın ve <b>Hesapla</b>'ya basın.<br>
+            Çözüm adım adım, kural kutuları ve Python koduyla birlikte burada görünür.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sayfa-dersler" class="sayfa">
+    <div class="kart">
+      <h2>Dersler</h2>
+      <p class="not">Konu anlatımları (Colab defteriyle aynı içerik). Bir bölümü açıp okuyun; örnekleri Hesapla sekmesinde deneyin.</p>
+      <div id="dersler"><p class="not">Yükleniyor…</p></div>
+    </div>
+  </section>
+
+  <section id="sayfa-yardim" class="sayfa">
+    <div class="kart">
+      <h2>Telefona ve bilgisayara kurma</h2>
+      <div id="kur-dugme-kutu" class="gizli dugmeler"><button id="kur" class="dugme ana" type="button">📲 Uygulama olarak yükle</button></div>
+      <p><b>iPhone / iPad (Safari):</b></p>
+      <ol class="adim-listesi">
+        <li>Bu sayfayı <b>Safari</b> ile açın (Chrome'da "Ana Ekrana Ekle" seçeneği yoktur).</li>
+        <li>Alttaki <b>Paylaş</b> düğmesine (kare + yukarı ok) dokunun.</li>
+        <li><b>Ana Ekrana Ekle</b> → <b>Ekle</b>.</li>
+        <li>Ana ekrandaki <b>Matris</b> simgesine dokunun; uygulama tam ekran açılır ve internet olmadan da çalışır.</li>
+      </ol>
+      <p><b>Windows (Edge veya Chrome):</b></p>
+      <ol class="adim-listesi">
+        <li>Adres çubuğunun sağındaki <b>"Uygulamayı yükle"</b> simgesine tıklayın (ya da menü → Uygulamalar → <b>Bu siteyi uygulama olarak yükle</b>).</li>
+        <li><b>Yükle</b> deyin. Başlat menüsüne ve masaüstüne "Matris Öğren" eklenir; kendi penceresinde açılır.</li>
+      </ol>
+      <p class="not">İlk açılışta Python motoru (≈30 MB) bir kez indirilir ve cihazda saklanır. Yeni sürüm çıkınca "Yenile" uyarısı görünür.</p>
+    </div>
+    <div class="kart">
+      <h2>Nasıl kullanılır</h2>
+      <ul class="adim-listesi">
+        <li>Matris: satırlar <code>;</code> ile ayrılır, elemanlar boşlukla: <code>1 2; 3 4</code> → 2×2 matris. <code>3; 5</code> → sütun vektörü.</li>
+        <li>Elemanlar kesir (<code>1/3</code>), ondalık (<code>0.5</code>) ya da sembol (<code>E*A/L</code>, <code>k</code>, <code>P</code>) olabilir. Hesap kesin (kesirli/sembolik) yapılır.</li>
+        <li><b>Sonucu taşı</b> düğmesiyle bir işlemin sonucunu bir sonraki işleme aktarabilirsiniz (örneğin önce çarpın, sonra tersini alın).</li>
+        <li>Çözümdeki <b>🐍 Python ile</b> bölümü aynı hesabın numpy/sympy koduyla yapılışını ve gerçek çıktısını gösterir; kodu Colab'a kopyalayıp çalıştırabilirsiniz.</li>
+        <li>Ayarlar (⚙): ondalık gösterim, basamak sayısı, kural kutuları, Python bölümü, açık/koyu tema.</li>
+      </ul>
+    </div>
+    <div class="kart">
+      <h2>Fonksiyonlar</h2>
+      <div id="yardim-fonksiyonlar" class="anlatim"><p class="not">Motor hazır olunca listelenir.</p></div>
+    </div>
+    <div class="kart">
+      <h2>Hakkında</h2>
+      <p class="not" id="hakkinda">Matris Öğren — sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Hesap motoru: matris_ogren.py
+        (sympy ile kesin hesap), tarayıcıda Pyodide üzerinde çalışır; girdiğiniz veriler cihazdan dışarı çıkmaz.</p>
+    </div>
+  </section>
+</main>
+
+<nav class="alt-nav" aria-label="Bölümler">
+  <button type="button" data-sayfa="hesap" class="aktif"><span class="sim">🧮</span>Hesapla</button>
+  <button type="button" data-sayfa="dersler"><span class="sim">📖</span>Dersler</button>
+  <button type="button" data-sayfa="yardim"><span class="sim">❔</span>Yardım</button>
+</nav>
+
+<dialog id="ayarlar">
+  <h2>Ayarlar</h2>
+  <div class="ayar-satir"><label for="ayar-ondalik">Sonuçları ondalık göster</label><input id="ayar-ondalik" type="checkbox"></div>
+  <div class="ayar-satir"><label for="ayar-basamak">Anlamlı basamak</label><input id="ayar-basamak" type="number" min="1" max="12" class="girdi"></div>
+  <div class="ayar-satir"><label for="ayar-kural">📘 Kural kutularını göster</label><input id="ayar-kural" type="checkbox"></div>
+  <div class="ayar-satir"><label for="ayar-python">🐍 Python bölümünü göster</label><input id="ayar-python" type="checkbox"></div>
+  <div class="ayar-satir"><label for="ayar-eleman">Eleman eleman anlatım sınırı</label><input id="ayar-eleman" type="number" min="0" max="400" class="girdi"></div>
+  <div class="ayar-satir"><label for="ayar-tema">Tema</label>
+    <select id="ayar-tema" class="girdi" style="width:auto"><option value="otomatik">Otomatik</option><option value="acik">Açık</option><option value="koyu">Koyu</option></select></div>
+  <p id="ayar-surum" class="not"></p>
+  <div class="dugmeler">
+    <button id="ayar-kapat" class="dugme ana" type="button">Tamam</button>
+    <button id="motor-yenile" class="dugme" type="button">Motoru yeniden başlat</button>
+    <button id="onbellek-sil" class="dugme" type="button">Önbelleği sil ve yenile</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast gizli" role="status"><span id="toast-metin"></span><button id="toast-dugme" type="button" class="gizli"></button></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.umd.js" crossorigin="anonymous" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" crossorigin="anonymous" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
