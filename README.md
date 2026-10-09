@@ -10,6 +10,8 @@ Sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Her işlemi 
 
 **Windows / Mac (Edge veya Chrome):** adres çubuğunun sağındaki **"Uygulamayı yükle"** simgesine tıklayın. Başlat menüsüne ve masaüstüne eklenir, kendi penceresinde açılır.
 
+**Bilgisayarda, internet sitesi olmadan:** `Baslat_Bilgisayar.cmd` dosyasına çift tıklayın; uygulama kendi penceresinde açılır (arkada küçültülmüş bir sunucu penceresi kalır, kapatılırsa uygulama durur).
+
 İlk açılışta Python motoru (≈30 MB) bir kez indirilir; sonraki açılışlar internet olmadan da çalışır.
 
 ## İşlemler
