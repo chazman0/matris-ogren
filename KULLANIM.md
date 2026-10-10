@@ -293,14 +293,15 @@ tersine yöneliktir, yani mesnet düğüm 1'i yüke zıt yönde tutar. Serbest S
 | `A (2x3) · B (2x2) tanımsız: A'nın sütun sayısı (3) B'nin satır sayısına (2) eşit olmalı.` | Çarpımda iç boyutlar uymuyor | Sırayı değiştir (B·A?) ya da matrisi kontrol et; uyarı kutusu da aynı şeyi anlatır |
 | `A kare değil (2x3); bu işlem yalnız kare matrisler için tanımlıdır.` | Determinant/ters/özdeğer kare olmayan matrise istendi | Kare matris ver |
 | `A tekil (det = 0); tersi yoktur.` | Satırlar/sütunlar doğrusal bağımlı (örn. `1 2; 2 4`) | Tersi yoktur; FEM'de bu genellikle **mesnet uygulanmamış** K demektir → `sinir_kosulu` kullan |
-| `Sistem tutarsız: çözüm yok.` | A x = b'de `0 = c` çelişkisi çıktı | Girdiyi kontrol et; sistem gerçekten çözümsüz olabilir. FEM'de 9e'de `sabit` boşsa (mesnet yok) ve yükler dengede değilse bu hata çıkar: mesnet ekle (SD sabitle) |
+| `Sistem tutarsız: çözüm yok.` | A x = b'de `0 = c` çelişkisi çıktı | Girdiyi kontrol et; sistem gerçekten çözümsüz olabilir (mesnetsiz bir K'yı `coz` ile çözmeye çalıştıysan `sinir_kosulu` kullan) |
+| `Yetersiz mesnet: indirgenmiş K_s matrisi tekil (rank 1 < 2); ...` ya da `Hiç mesnet verilmedi (sabit = []): K matrisi tekil ...` | `sinir_kosulu`'nda tutulu SD'ler yapıyı yerinde tutmaya yetmiyor; yapı rijit cisim gibi hareket edebilir (mesaj kaç bağımsız rijit cisim hareketinin kaldığını söyler) | Daha fazla SD sabitle (örn. `sabit=[1]`); yükler dengede olsa bile mesnetsiz yapıda yer değiştirmeler tek değildir |
 | ⚠️ *sonsuz çözüm* uyarısı ve `{(1 - 2*x2, x2)}` gibi genel çözüm | Pivot sayısı bilinmeyen sayısından az (K tekil) | FEM'de sınır koşullarını uygula; aksi halde genel çözüm doğru cevaptır |
 | `A 2 satırlı ama b 3 elemanlı; satır sayıları eşit olmalı.` | Sağ taraf vektörü eksik/fazla | b'nin eleman sayısı = A'nın satır sayısı |
 | `Cramer yöntemi burada yalnız 1×1–3×3 kare sistemler için gösterilir.` | 4×4 ve üstünde Cramer istendi | `yontem="gauss"` kullan |
 | `Eleman anlaşılamadı: 'E A/L' ...` ya da matris yanlış kuruldu | Sembolik ifadede boşluk | `E*A/L` yaz (çarpma işaretiyle, boşluksuz) |
 | `Geçersiz karakter içeren eleman: '$'` | İzin verilmeyen karakter | Yalnız sayı, harf, `+ - * / ^ ( ) . , ;` kullan |
 | `Eleman 1: serbestlik numaraları 1..3 arasında olmalı.` | `birlestir`'de SD numarası aralık dışı | SD numaraları 1'den başlar ve `n_serbestlik`'i aşamaz |
-| `Tüm serbestlikler sabit; çözülecek bilinmeyen yok.` | `sinir_kosulu`'nda hepsi sabitlendi | En az bir SD serbest kalmalı |
+| `Tüm serbestlik dereceleri (SD) sabit; çözülecek bilinmeyen yok.` | `sinir_kosulu`'nda hepsi sabitlendi | En az bir SD serbest kalmalı |
 | `Bilinmeyen ayar: ...` / `goster='...' geçersiz` | Ayar adı ya da mod yanlış yazıldı | Geçerli adlar: `ondalik basamak en_fazla_eleman python kural goster`; modlar: `hepsi adimlar python sonuc yok` |
 | Çıktı kesir olarak geliyor, ondalık istiyorum | Varsayılan kesin gösterim | `mo.ayarla(ondalik=True, basamak=4)` |
 | Hücre uzun süre "çalışıyor" ya da "Bağlantı kesildi" | Colab oturumu kapandı (uzun süre kullanılmayınca olur) | **Çalışma zamanı → Oturumu yeniden başlat** (Runtime → Restart session), sonra **Kurulum**'u tekrar çalıştır |

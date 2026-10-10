@@ -195,9 +195,8 @@ def _calistir(islem: str, g: dict):
         try:
             sabit = _sayi_listesi(g.get("sabit", ""))
         except ValueError:
-            raise mo.MatrisHatasi("Sabit serbestlikler tam sayı olmalı (örnek: 1 4).") from None
-        if not sabit:
-            raise mo.MatrisHatasi("En az bir sabit serbestlik girin (örnek: 1).")
+            raise mo.MatrisHatasi("Tutulu (sabit) serbestlik dereceleri (SD) tam sayı olmalı (örnek: 1 4).") from None
+        # Boş bırakılırsa motor mesnetsiz durumu kendisi değerlendirir (K tekilse öğretici hata verir).
         kw = {}
         if not _bos(g.get("bilinmeyen")):
             kw["bilinmeyen"] = str(g["bilinmeyen"]).strip()

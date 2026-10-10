@@ -90,7 +90,7 @@ __all__ = [
 # Not: `son_anlatim` modül değişkeni (mo.son_anlatim) durur; ancak `from matris_ogren import *`
 # onu o anki değerinin bir KOPYASI olarak (None) alırdı. Güncel değer için `son_anlatim_al()`.
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 # ============================================================================
@@ -1903,69 +1903,179 @@ def birlestir(elemanlar, n_serbestlik: int, *, goster=None, ad: str = "K") -> So
     return _bitir(K, anl, ad, goster, kd, ck)
 
 
+def _tam_sayi_mi(s):
+    """s tam sayı gibi mi (3, np.int64(3), sp.Integer(3), 3.0, "3")? Öyleyse int, değilse None.
+
+    bool, kesirli sayı (2.5) ve sayı olmayan metin tam sayı sayılmaz (``int(2.5)`` sessizce 2 yapardı)."""
+    if isinstance(s, bool) or (np is not None and isinstance(s, np.bool_)):
+        return None
+    try:
+        f = float(s)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return int(f) if f.is_integer() else None
+
+
+def _sabit_oku(sabit, n: int) -> list[int]:
+    """Tutulu (sabit) SD numaralarını (1'den başlayan) sıralı, tekrarsız ``int`` listesine çevirir.
+
+    Kabul edilen biçimler: liste / küme / range / numpy dizisi, tek tam sayı ya da "1, 3" metni."""
+    if sabit is None:
+        ogeler: list = []
+    elif isinstance(sabit, str):
+        ogeler = [p for p in re.split(r"[\s,;]+", sabit.strip().strip("[]()")) if p]
+    elif np is not None and isinstance(sabit, np.ndarray):
+        ogeler = sabit.ravel().tolist()
+    else:
+        try:
+            ogeler = list(sabit)
+        except TypeError:       # tek sayı
+            ogeler = [sabit]
+    bulunan: set[int] = set()
+    for s in ogeler:
+        t = _tam_sayi_mi(s)
+        if t is None:
+            raise MatrisHatasi(f"Tutulu (sabit) SD numaraları tam sayı olmalı (örn. [1, 3]); geçersiz değer: {s!r}")
+        if t < 1 or t > n:
+            raise MatrisHatasi(f"Tutulu (sabit) SD numaraları 1..{n} arasında olmalı (verilen: {t}).")
+        bulunan.add(t)
+    return sorted(bulunan)
+
+
+def _yetersiz_mesnet_mesaji(Ks, kad: str, sabit, tutarsiz: bool) -> str:
+    """K_s tekil çıktığında (mesnet yetersiz) öğretici hata metni."""
+    m = Ks.rows
+    try:
+        rk = Ks.rank(iszerofunc=_sifir)
+    except Exception:  # noqa: BLE001
+        rk = None
+    rank_s = f" (rank {rk} < {m})" if rk is not None else ""
+    kalan = f" ({m - rk} bağımsız rijit cisim hareketi kalıyor)" if rk is not None else ""
+    if sabit:
+        bas = (f"Yetersiz mesnet: indirgenmiş {kad}_s matrisi tekil{rank_s}; tutulu SD'ler yapıyı yerinde tutmaya "
+               f"yetmiyor, yapı rijit cisim gibi hareket edebilir{kalan}.")
+    else:
+        bas = (f"Hiç mesnet verilmedi (sabit = []): {kad} matrisi tekil{rank_s}; yapı rijit cisim gibi "
+               f"hareket edebilir{kalan}.")
+    if tutarsiz:
+        orta = " Yükler bu hareketi dengelemiyor: sistemin çözümü yok."
+    else:
+        orta = " Yükler dengede olsa bile yer değiştirmeler tek değil (rijit cisim hareketi kadar belirsiz)."
+    son = " Daha fazla SD sabitleyin" + (" (örn. sabit=[1])." if not sabit else ".")
+    return bas + orta + son
+
+
 def sinir_kosulu(K, F, sabit, *, goster=None, adlar=("K", "F"), bilinmeyen: str = "u") -> Sonuc:
-    """Sınır koşullarını uygula ve çöz: sabit serbestliklerin satır/sütunları silinir, indirgenmiş K_s u_s = F_s çözülür,
-    tüm u ve mesnet tepkileri R = K u − F bulunur. sabit = [1, 4] gibi 1'den başlayan serbestlik numaraları."""
+    """Sınır koşullarını uygula ve çöz: tutulu (sabit) serbestlik derecelerinin (SD) satır ve sütunları silinir,
+    indirgenmiş K_s u_s = F_s çözülür; sonra tüm u ve mesnet tepkileri R = K u − F bulunur.
+    sabit = [1, 4] gibi 1'den başlayan SD numaralarıdır (liste, tek sayı ya da "1, 4" metni).
+    Mesnet yetersizse (K_s tekil: yapı rijit cisim gibi hareket edebilir) MatrisHatasi verir."""
     MK, MF = matris(K), matris(F)
-    kad, fad = adlar
-    if MF.rows == 1 and MF.cols == MK.rows:
-        MF = MF.T
+    kad, fad = _adlar(2, adlar or ("K", "F"))
+    bil = _ad_dogrula(bilinmeyen, "Bilinmeyen adı")
+    if bil in (kad, fad):
+        raise MatrisHatasi(f"Bilinmeyen adı ({bil}) matris adlarından ({kad}, {fad}) farklı olmalı.")
+    _kare_kontrol(MK, kad)
     n = MK.rows
+    if MF.rows == 1 and MF.cols == n:
+        MF = MF.T
     if MF.rows != n or MF.cols != 1:
-        raise MatrisHatasi(f"F, {n} elemanlı bir sütun vektörü olmalı.")
-    sabit = sorted({int(s) for s in sabit})
-    if any(s < 1 or s > n for s in sabit):
-        raise MatrisHatasi(f"Sabit serbestlik numaraları 1..{n} arasında olmalı.")
+        raise MatrisHatasi(f"{fad}, {n} elemanlı bir sütun vektörü olmalı.")
+    sabit = _sabit_oku(sabit, n)
     serbest = [i for i in range(1, n + 1) if i not in sabit]
     if not serbest:
-        raise MatrisHatasi("Tüm serbestlikler sabit; çözülecek bilinmeyen yok.")
+        raise MatrisHatasi("Tüm serbestlik dereceleri (SD) sabit; çözülecek bilinmeyen yok.")
+    rad = _harf_sec("R", {kad, fad, bil})
+    idx = [i - 1 for i in serbest]
+    Bk, Bf, Bu, Br = B(kad), B(fad), B(bil), B(rad)
+    Bks, Bfs, Bus = B(f"{kad}_s"), B(f"{fad}_s"), B(f"{bil}_s")
+    xl = bil.replace("_", r"\_")
+
     anl = Anlatim()
-    anl.baslik("Sınır koşulları ve çözüm: $\\mathbf{K}\\mathbf{u}=\\mathbf{F}$")
+    anl.baslik(r"Sınır koşulları ve çözüm: $\mathbf{K}\mathbf{u}=\mathbf{F}$")
     anl.kural(
-        r"Mesnetlenmemiş sistemde $\mathbf{K}$ tekildir; **sabit (bilinen, genelde 0) serbestliklerin satır ve sütunları silinir**. "
-        r"Kalan indirgenmiş sistem $\mathbf{K}_s\mathbf{u}_s = \mathbf{F}_s$ çözülür. Sonra tüm yer değiştirme vektörü kurulur ve "
-        r"**mesnet tepkileri** $\mathbf{R} = \mathbf{K}\mathbf{u} - \mathbf{F}$ ile bulunur (sabit serbestliklerde sıfırdan farklıdır)."
+        r"Mesnetlenmemiş sistemde $\mathbf{K}$ tekildir: yapı rijit cisim gibi hareket edebilir, tek çözüm yoktur. "
+        r"Mesnet, bazı serbestlik derecelerinin (SD) yer değiştirmesini bilinen bir değere (genelde 0) bağlar; "
+        r"**tutulu SD'lerin satır ve sütunları silinir** (bu yalnız bilinen değer 0 iken geçerlidir; sıfırdan farklı "
+        r"bir yer değiştirmede, örneğin mesnet çökmesinde, silinen sütunların katkısı sağ taraftan çıkarılmalıdır). "
+        r"Kalan indirgenmiş sistem $\mathbf{K}_s\mathbf{u}_s = \mathbf{F}_s$ çözülür, sonra tüm $\mathbf{u}$ "
+        r"vektörü kurulur (tutulu SD'lere 0 yazılır)."
+        "\n\n"
+        r"**Mesnet tepkileri** $\mathbf{R} = \mathbf{K}\mathbf{u} - \mathbf{F}$ ile bulunur: serbest SD'lerde $R_i = 0$ "
+        r"çıkmalıdır (sağlama); tutulu SD'lerdeki değerler tepkilerdir. "
+        r"$R_i$, global eksenin pozitif yönünde pozitiftir; negatif değer hata değildir, mesnedin kuvveti "
+        r"eksenin ters yönünde uyguladığını gösterir."
     )
-    anl.mat(rf"{B(kad)} = {LM(MK)},\qquad {B(fad)} = {LM(MF)}")
-    anl.metin(f"Sabit serbestlikler: {sabit} (yer değiştirme = 0). Serbest kalanlar: {serbest}.")
-    Ks = MK.extract([i - 1 for i in serbest], [i - 1 for i in serbest])
-    Fs = MF.extract([i - 1 for i in serbest], [0])
-    anl.metin("İndirgenmiş sistem (sabit satır ve sütunlar silindi):")
-    anl.mat(rf"{B(kad)}_s = {LM(Ks)},\qquad {B(fad)}_s = {LM(Fs)}")
-    alt = coz(Ks, Fs, adlar=(f"{kad}_s", f"{fad}_s"), goster="yok", bilinmeyen=bilinmeyen)
-    # alt çözümün adımlarını (başlık ve kural hariç) bu anlatıma aktar
-    for blok in alt.anlatim.bloklar:
-        tur, icerik, etiket = blok
-        if etiket == "kural" or etiket == "python":
-            continue
-        if tur == "md" and icerik.startswith("###"):
-            continue
-        anl.bloklar.append(blok)
-    us = alt.deger
+    anl.mat(rf"{Bk} = {LM(MK)},\qquad {Bf} = {LM(MF)}")
+    anl.metin(f"Tutulu (sabit) serbestlik dereceleri (SD): {sabit} (yer değiştirme = 0). Serbest SD'ler: {serbest}.")
+    Ks = MK.extract(idx, idx)
+    Fs = MF.extract(idx, [0])
+    bilinmeyenler = ", ".join(rf"{xl}_{{{i}}}" for i in serbest)
+    anl.metin("İndirgenmiş sistem (tutulu SD'lerin satır ve sütunları silindi). "
+              f"Bilinmeyenler, silinmeyen SD'lerin yer değiştirmeleridir: ${Bus} = [{bilinmeyenler}]^T$.")
+    anl.mat(rf"{Bks} = {LM(Ks)},\qquad {Bfs} = {LM(Fs)}")
+    try:
+        X, _ = _coz_anlat(anl, Ks, Fs, f"{kad}_s", f"{fad}_s", bil, "gauss", goster=goster,
+                          indisler=serbest, vektor_etiketi=Bus, ara=True)
+    except _TutarsizSistem as e:
+        raise MatrisHatasi(_yetersiz_mesnet_mesaji(Ks, kad, sabit, tutarsiz=True)) from e
+    if X is None:   # K_s tekil, sonsuz çözüm
+        anl.goster(goster)
+        raise MatrisHatasi(_yetersiz_mesnet_mesaji(Ks, kad, sabit, tutarsiz=False))
+
     u = sp.zeros(n, 1)
-    for idx, i in enumerate(serbest):
-        u[i - 1, 0] = us[idx, 0]
-    anl.metin("Tüm yer değiştirme vektörü (sabit serbestliklere 0 yazılır):")
-    anl.mat(rf"\mathbf{{{bilinmeyen}}} = {LM(u)}")
+    for j, i in enumerate(serbest):
+        u[i - 1, 0] = X[j, 0]
+    anl.metin("Tüm yer değiştirme vektörü (tutulu SD'lere 0 yazılır):")
+    anl.mat(rf"{Bu} = {LM(u)}")
     R = _sade(MK * u - MF)
-    anl.metin("Mesnet tepkileri $\\mathbf{R} = \\mathbf{K}\\mathbf{u} - \\mathbf{F}$ (sabit serbestliklerdeki değerler tepkidir):")
-    anl.mat(rf"\mathbf{{R}} = {LM(MK)}{LM(u)} - {LM(MF)} = {LM(R)}")
-    anl.sonuc(rf"\mathbf{{{bilinmeyen}}} = {LM(u)},\qquad \mathbf{{R}} = {LM(R)}")
+    _tutarlilik(R.extract(idx, [0]), sp.zeros(len(idx), 1), "sinir_kosulu")
+    anl.metin(
+        rf"**Mesnet tepkileri.** Her SD'de denge ${Bk}{Bu} = {Bf} + {Br}$ olmalıdır "
+        rf"(${Br}$: mesnedin yapıya uyguladığı kuvvet; serbest SD'lerde 0). "
+        rf"Buradan ${Br} = {Bk}{Bu} - {Bf}$:"
+    )
+    anl.mat(rf"{Br} = {LM(MK)}{LM(u)} - {LM(MF)} = {LM(R)}")
+    if sabit:
+        anl.metin(f"**Sağlama:** serbest SD'lerde ({serbest}) tepki 0 çıktı ✔ (yük iç kuvvetlerle dengelenmiş); "
+                  f"sıfırdan farklı değerler yalnız tutulu SD'lerde ({sabit}) görünür.")
+        # Tüm sütun toplamları 0 ise (ör. aynı doğrultudaki çubuk zinciri) toplam denge de sağlanır
+        if all(_sifir(sum(MK[:, j], sp.Integer(0))) for j in range(n)):
+            sR, sF = _sade(sum(R, sp.Integer(0))), _sade(sum(MF, sp.Integer(0)))
+            if _sifir(sR + sF):
+                anl.metin(f"**Denge denetimi:** ${Bk}$ matrisinin her sütununun toplamı sıfırdır (tüm SD'lerin birlikte "
+                          "ötelenmesi iç kuvvet doğurmaz); bu yüzden dış yüklerle tepkilerin toplamı sıfır olmalıdır:")
+                anl.mat(rf"\sum R_i + \sum F_i = {L(sR)} + {Lp(sF)} = 0")
+    else:
+        anl.metin("Hiçbir SD tutulmadı; tüm tepkiler sıfırdır (yapı yalnız kendi yaylarıyla dengededir).")
+    anl.sonuc(rf"{Bu} = {LM(u)},\qquad {Br} = {LM(R)}")
+
+    # Üretilen Python kodu (adlar kullanıcı sembolleriyle çakışmaz)
+    kn = _KodAdlari(MK, MF)
+    kK, kF, ku, kR = kn.al(kad), kn.al(fad), kn.al(bil), kn.al(rad)
+    kser, kKs, kFs, kus = kn.al("serbest"), kn.al("Ks"), kn.al("Fs"), kn.al("us")
     semb = _sembolik_mi(MK, MF)
     kod = _kod_baslangic(semb, MK, MF)
+    sd_satiri = f"{kser} = {idx}  # serbest SD'ler; Python 0'dan saydığı için numara − 1"
     if semb:
-        kod += [_sp_kodu(kad, MK), _sp_kodu(fad, MF), f"serbest = {[i-1 for i in serbest]}  # Python 0'dan sayar",
-                f"Ks = {kad}.extract(serbest, serbest)", f"Fs = {fad}.extract(serbest, [0])",
-                "us = sp.simplify(Ks.LUsolve(Fs))", f"u = sp.zeros({n}, 1)",
-                "for i, d in enumerate(serbest): u[d] = us[i]", f"R = sp.simplify({kad}*u - {fad})",
-                "sp.pprint(u)", "sp.pprint(R)"]
+        ki, kdof = kn.al("i"), kn.al("d")
+        kod += [_sp_kodu(kK, MK), _sp_kodu(kF, MF), sd_satiri,
+                f"{kKs} = {kK}.extract({kser}, {kser})", f"{kFs} = {kF}.extract({kser}, [0])",
+                f"{kus} = sp.simplify({kKs}.LUsolve({kFs}))", f"{ku} = sp.zeros({n}, 1)",
+                f"for {ki}, {kdof} in enumerate({kser}): {ku}[{kdof}] = {kus}[{ki}]",
+                f"{kR} = sp.simplify({kK}*{ku} - {kF})",
+                f"print('{bil} ='); sp.pprint({ku})", f"print('{rad} ='); sp.pprint({kR})"]
     else:
-        kod += [_np_kodu(kad, MK), _np_kodu(fad, MF), f"serbest = {[i-1 for i in serbest]}  # Python 0'dan sayar",
-                f"Ks = {kad}[np.ix_(serbest, serbest)]", f"Fs = {fad}[serbest]",
-                "us = np.linalg.solve(Ks, Fs)", f"u = np.zeros(({n}, 1))", "u[serbest] = us",
-                f"R = {kad} @ u - {fad}", "print('u ='); print(u)", "print('R ='); print(R)"]
+        kes = kn.al("esik")
+        kod += [_np_kodu(kK, MK), _np_kodu(kF, MF), sd_satiri,
+                f"{kKs} = {kK}[np.ix_({kser}, {kser})]", f"{kFs} = {kF}[{kser}]",
+                f"{kus} = np.linalg.solve({kKs}, {kFs})", f"{ku} = np.zeros(({n}, 1))", f"{ku}[{kser}] = {kus}",
+                f"{kR} = {kK} @ {ku} - {kF}",
+                f"{kes} = 1e-9 * max(1.0, np.abs({kF}).max())   # yuvarlama artığı eşiği",
+                f"{kR} = np.where(np.abs({kR}) < {kes}, 0.0, {kR})   # '-0.' görünmesin",
+                f"print('{bil} ='); print({ku})", f"print('{rad} ='); print({kR})"]
     kd, ck = _python_bolumu(anl, kod)
-    return _bitir(u, anl, bilinmeyen, goster, kd, ck)
+    return _bitir(u, anl, bil, goster, kd, ck)
 
 
 # ============================================================================

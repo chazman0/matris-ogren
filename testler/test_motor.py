@@ -832,7 +832,7 @@ def test_sinir_kosulu_iki_cubuk():
     md = r.anlatim.markdown()
     assert "Mesnet tepkileri" in md and "İndirgenmiş sistem" in md
     assert "-1000" in md                       # R_1 = -1000 (mesnet tepkisi)
-    assert "Sabit serbestlikler: [1]" in md
+    assert "Tutulu (sabit) serbestlik dereceleri (SD): [1]" in md
     assert "R =" in r.python_ciktisi and "-1000" in r.python_ciktisi
     assert "[Hata" not in r.python_ciktisi
     # K u − F sabit serbestlikte tepki verir, serbestlerde sıfırdır
@@ -854,7 +854,7 @@ def test_sinir_kosulu_iki_mesnet():
     assert r.deger == sp.Matrix([0, sp.Rational(3000, 30000), 0])
     R = K_IKI_CUBUK * r.deger - sp.Matrix([0, 3000, 0])
     assert R == sp.Matrix([-2000, 0, -1000])
-    assert "Sabit serbestlikler: [1, 3]" in r.anlatim.markdown()
+    assert "Tutulu (sabit) serbestlik dereceleri (SD): [1, 3]" in r.anlatim.markdown()
 
 
 def test_sinir_kosulu_sembolik():

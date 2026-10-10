@@ -3,7 +3,7 @@
    CDN önbelleği (Pyodide, sympy/numpy tekerlekleri, KaTeX, marked) ayrı tutulur; sürümler değişmedikçe kalır. */
 "use strict";
 
-const SURUM = "570b75ecc6";
+const SURUM = "35a5479c05";
 const PYODIDE_SURUM = "314.0.7";
 const KATEX_SURUM = "0.19.0";
 const MARKED_SURUM = "18.1.0";

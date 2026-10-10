@@ -58,7 +58,7 @@
       ornek: { elemanlar: [{ k: "k -k; -k k", dof: "1 2" }, { k: "k -k; -k k", dof: "2 3" }], n: "3" } },
     { id: "sinir_kosulu", grup: "Sonlu elemanlar", ad: "Sınır koşulu uygula ve çöz",
       alanlar: [{ ad: "K", tur: "matris", etiket: "K (global rijitlik matrisi)" }, { ad: "F", tur: "matris", etiket: "F (yük vektörü)" },
-        { ad: "sabit", tur: "metin", etiket: "Sabit (mesnetli) serbestlikler, örn. 1 3" },
+        { ad: "sabit", tur: "metin", etiket: "Tutulu (mesnetli) serbestlik dereceleri, örn. 1 3" },
         { ad: "bilinmeyen", tur: "metin", etiket: "Bilinmeyen adı", deger: "u" }],
       ornek: { K: "2 -1 0; -1 2 -1; 0 -1 1", F: "0; 0; 10", sabit: "1", bilinmeyen: "u" } },
   ];
