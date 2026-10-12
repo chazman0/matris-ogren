@@ -81,10 +81,19 @@
   </section>
 
   <section id="sayfa-dersler" class="sayfa">
-    <div class="kart">
+    <div class="kart" id="ders-liste-kart">
       <h2>Dersler</h2>
-      <p class="not">Konu anlatımları (Colab defteriyle aynı içerik). Bir bölümü açıp okuyun; örnekleri Hesapla sekmesinde deneyin.</p>
+      <p class="not" id="ders-giris">Konu anlatımları: şekiller, oynayabileceğin çizimler ve adım adım çözümlü örnekler. Bir dersi seç; ilerlemen hatırlanır.</p>
       <div id="dersler"><p class="not">Yükleniyor…</p></div>
+    </div>
+    <div class="kart ders-sayfa gizli" id="ders-kart"></div>
+  </section>
+
+  <section id="sayfa-se" class="sayfa" aria-labelledby="se-baslik">
+    <div class="kart" id="se-kart">
+      <h2 id="se-baslik">Sonlu eleman çözümleyici</h2>
+      <p class="not">Hazır bir örnek seç ya da modeli düzenle; düğümleri, elemanları, mesnetleri ve yükleri gir. Birimler kN ve m.</p>
+      <div id="se-kok"><p class="not">Yükleniyor…</p></div>
     </div>
   </section>
 
@@ -131,6 +140,7 @@
 <nav class="alt-nav" aria-label="Bölümler">
   <button type="button" data-sayfa="hesap" class="aktif"><span class="sim">🧮</span>Hesapla</button>
   <button type="button" data-sayfa="dersler"><span class="sim">📖</span>Dersler</button>
+  <button type="button" data-sayfa="se"><span class="sim">🏗️</span>Sonlu eleman</button>
   <button type="button" data-sayfa="yardim"><span class="sim">❔</span>Yardım</button>
 </nav>
 
@@ -140,6 +150,7 @@
   <div class="ayar-satir"><label for="ayar-basamak">Anlamlı basamak</label><input id="ayar-basamak" type="number" min="1" max="12" class="girdi"></div>
   <div class="ayar-satir"><label for="ayar-kural">📘 Kural kutularını göster</label><input id="ayar-kural" type="checkbox"></div>
   <div class="ayar-satir"><label for="ayar-python">🐍 Python bölümünü göster</label><input id="ayar-python" type="checkbox"></div>
+  <div class="ayar-satir"><label for="ayar-sema">🧭 Ok şemaları (adım adım oklu görsel)</label><input id="ayar-sema" type="checkbox"></div>
   <div class="ayar-satir"><label for="ayar-eleman">Eleman eleman anlatım sınırı</label><input id="ayar-eleman" type="number" min="0" max="400" class="girdi"></div>
   <div class="ayar-satir"><label for="ayar-tema">Tema</label>
     <select id="ayar-tema" class="girdi" style="width:auto"><option value="otomatik">Otomatik</option><option value="acik">Açık</option><option value="koyu">Koyu</option></select></div>
@@ -155,6 +166,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.umd.js" crossorigin="anonymous" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" crossorigin="anonymous" defer></script>
+<script src="etkilesim.js" defer></script>
+<script src="etkilesim_matris.js" defer></script>
+<script src="etkilesim_se.js" defer></script>
 <script src="app.js" defer></script>
+<script src="se.js" defer></script>
 </body>
 </html>

@@ -71,7 +71,7 @@ def anlatim_metni(r: "mo.Sonuc", etiket: str | None = None) -> str:
     (Python çıktısındaki numpy ondalıkları gösterim testlerini yanıltmasın diye kullanılır.)"""
     parcalar = []
     for tur, icerik, et in r.anlatim.bloklar:
-        if tur == "kod" or (etiket is not None and et != etiket):
+        if tur in ("kod", "sema") or (etiket is not None and et != etiket):
             continue
         parcalar.append(str(icerik))
     return "\n".join(parcalar)
@@ -1140,8 +1140,8 @@ def test_anlatim_blok_yapisi():
     r = mo.coz("2 1; 1 3", "3; 5")
     bloklar = r.anlatim.bloklar
     assert bloklar and all(isinstance(b, tuple) and len(b) == 3 for b in bloklar)
-    assert {b[0] for b in bloklar} <= {"md", "math", "kod"}
-    assert {b[2] for b in bloklar} == {"kural", "adim", "sonuc", "python"}
+    assert {b[0] for b in bloklar} <= {"md", "math", "kod", "sema"}
+    assert {b[2] for b in bloklar} == {"kural", "adim", "sonuc", "python", "sema"}
     assert bloklar[0][0] == "md" and bloklar[0][1].startswith("### ")
     kod_bloklari = [b for b in bloklar if b[0] == "kod"]
     assert len(kod_bloklari) == 1
@@ -1154,6 +1154,248 @@ def test_anlatim_blok_yapisi():
 def test_latex_skaler_ve_matris():
     assert mo.determinant("4 7; 2 6").latex() == "10"
     assert mo.coz("2 1; 1 3", "3; 5").latex() == r"\begin{bmatrix} \frac{4}{5} \\ \frac{7}{5} \end{bmatrix}"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Ok şeması (sema): işlem sırasını matris üstünde ok/kutu ile gösteren statik SVG kareleri
+# ---------------------------------------------------------------------------------------------------------------
+import xml.etree.ElementTree as ET  # noqa: E402
+
+
+def sema_bloklari(r: "mo.Sonuc") -> list:
+    return [b for b in r.anlatim.bloklar if b[0] == "sema"]
+
+
+def sema_kareleri(r: "mo.Sonuc") -> list[dict]:
+    return [k for b in sema_bloklari(r) for k in b[1]["kareler"]]
+
+
+def sema_ornekleri() -> dict:
+    """Şemanın çıktığı başlıca işlemler (2×2 ve 3×3 örnekleri, eliminasyon, birleştirme, mesnet)."""
+    k = sp.Matrix([[1, -1], [-1, 1]])
+    K3 = sp.Matrix([[10, -10, 0], [-10, 30, -20], [0, -20, 20]])
+    return {
+        "carp": mo.carp("1 2; 3 4", "5 6; 7 8"),
+        "carp3": mo.carp(M3, M3),
+        "topla": mo.topla("1 2; 3 4", "5 6; 7 8"),
+        "skaler": mo.skaler(3, "1 2; 3 4"),
+        "transpoz": mo.transpoz("1 2 3; 4 5 6"),
+        "iz": mo.iz(M3),
+        "det2": mo.determinant("1 2; 3 4"),
+        "det3": mo.determinant(M3),
+        "coz": mo.coz("0 2 1; 1 1 1; 2 1 3", "4; 6; 11"),
+        "ters": mo.ters("0 2 1; 1 1 1; 2 1 3"),
+        "det4": mo.determinant(M4),
+        "birlestir": mo.birlestir([(10 * k, [1, 2]), (20 * k, [2, 3])], 3),
+        "sinir": mo.sinir_kosulu(K3, "0; 0; 5", [1]),
+        "sinir_ortada": mo.sinir_kosulu(K3, "0; 0; 5", [2]),
+    }
+
+
+def test_sema_blok_sekli_ve_konumu():
+    r = mo.carp("1 2; 3 4", "5 6; 7 8")
+    bloklar = sema_bloklari(r)
+    assert len(bloklar) == 1
+    tur, icerik, etiket = bloklar[0]
+    assert (tur, etiket) == ("sema", "sema")
+    assert set(icerik) == {"baslik", "kareler"}
+    assert all(set(k) == {"baslik", "svg"} for k in icerik["kareler"])
+    assert len(icerik["kareler"]) == 4  # 2×2 çarpımda her çıktı hücresi için bir kare
+    # sıra: önce görsel, açıklama sonra; 0. blok her zaman "### " başlığıdır
+    indeks = r.anlatim.bloklar.index(bloklar[0])
+    assert indeks >= 1 and r.anlatim.bloklar[0][0] == "md"
+
+
+def test_sema_kare_sayilari():
+    ornek = sema_ornekleri()
+    kare = {ad: len(sema_kareleri(r)) for ad, r in ornek.items()}
+    assert kare["carp"] == 4 and kare["carp3"] == 9
+    assert kare["topla"] == 4 and kare["skaler"] == 4
+    assert kare["transpoz"] == 2 and kare["iz"] == 3
+    assert kare["det2"] == 3 and kare["det3"] == 4
+    assert kare["birlestir"] == 2
+    assert all(n <= mo._SEMA_EN_KARE for n in kare.values())
+
+
+def test_sema_tum_svg_ayristirilir_ve_sozlesmeye_uyar():
+    for ad, r in sema_ornekleri().items():
+        assert sema_bloklari(r), ad
+        for blok in sema_bloklari(r):
+            assert not re.search(r"\d", blok[1]["baslik"]), (ad, blok[1]["baslik"])  # başlıkta rakam yok
+            for k in blok[1]["kareler"]:
+                kok = ET.fromstring(k["svg"])  # iyi biçimli XML
+                assert kok.tag.endswith("svg") and kok.get("viewBox") and kok.get("width") and kok.get("height")
+                svg = k["svg"]
+                assert "<script" not in svg and "<marker" not in svg
+                # var() renkleri yalnız style niteliğinde (iOS Safari sunum niteliğindeki var()'ı tanımaz)
+                assert 'fill="var(' not in svg and 'stroke="var(' not in svg, ad
+                assert not re.search(r'(fill|stroke)="[^"]*var\(', svg), ad
+                for sinif in re.findall(r'class="([^"]+)"', svg):
+                    parcalar = sinif.split()
+                    assert re.fullmatch(r"g[0-7]", parcalar[-1]) or parcalar[0] in ("sil-cizgi",), (ad, sinif)
+
+
+def test_sema_renkler_style_icinde():
+    r = mo.carp("1 2; 3 4", "5 6; 7 8")
+    svg = sema_kareleri(r)[0]["svg"]
+    assert 'class="vurgu g' in svg and 'class="ok g' in svg and 'class="ok-uc g' in svg
+    assert 'pathLength="1"' in svg
+    assert re.search(r'style="fill:var\(--sema-a-bg,rgba\(59,130,246,\.14\)\);stroke:var\(--sema-a,#3b82f6\)"', svg)
+    assert "--sema-b-bg" in svg and "--sema-c-bg" in svg
+
+
+def test_sema_kapaliyken_blok_yok():
+    mo.ayarla(sema=False)
+    for r in (mo.carp("1 2; 3 4", "5 6; 7 8"), mo.coz("2 1; 1 3", "3; 5"), mo.sinir_kosulu(K_IKI_CUBUK, "0; 0; 5", [1]),
+              mo.birlestir([(sp.Matrix([[1, -1], [-1, 1]]), [1, 2])], 2)):
+        assert not sema_bloklari(r)
+        assert "sema" not in {b[2] for b in r.anlatim.bloklar}
+
+
+def test_sema_goster_modlari(capsys, monkeypatch):
+    monkeypatch.setattr(mo, "_IPYTHON", False)
+    r = mo.carp("1 2; 3 4", "5 6; 7 8")
+    r.anlatim.goster("sonuc")
+    assert "Ok şeması" not in capsys.readouterr().out
+    r.anlatim.goster("python")
+    assert "Ok şeması" not in capsys.readouterr().out
+    r.anlatim.goster("adimlar")
+    cikti = capsys.readouterr().out
+    assert "Ok şeması" in cikti and "<svg" not in cikti
+    mo.ayarla(sema=False)
+    r.anlatim.goster("hepsi")
+    assert "Ok şeması" not in capsys.readouterr().out
+
+
+def test_sema_markdown_notu_rakamsiz():
+    r = mo.carp("1 2; 3 4", "5 6; 7 8")
+    md = r.anlatim.markdown()
+    notlar = [s for s in md.splitlines() if "Ok şeması" in s]
+    assert len(notlar) == 1 and not re.search(r"\d", notlar[0]) and "<svg" not in md
+
+
+def test_sema_sembolik_girdi_kacirilir_ve_okunur():
+    r = mo.carp("E*A/L 0; 0 1", "1; 2")
+    kareler = sema_kareleri(r)
+    assert kareler
+    for k in kareler:
+        ET.fromstring(k["svg"])
+    svg = kareler[0]["svg"]
+    assert "A·E/L" in svg and "*" not in re.sub(r"<[^>]+>", "", svg)  # sympy sırası A·E/L; "*" yerine orta nokta
+    # kullanıcı metni XML'de kaçışlıdır: "<" ve "&" yalın biçimde görünmez, SVG yine iyi biçimlidir
+    S = mo._Sema()
+    p = S.panel(sp.Matrix([[1, 2], [3, 4]]))
+    S.etiket("a<b & c", p, "ust")
+    svg = S.svg('x "<y>" & z')
+    ET.fromstring(svg)
+    assert "&lt;" in svg and "&amp;" in svg and "a<b" not in svg
+
+
+def test_sema_eliminasyon_ve_geri_koyma_altyazilari():
+    r = mo.coz("0 2 1; 1 1 1; 2 1 3", "4; 6; 11")
+    b = {x[1]["baslik"]: x[1]["kareler"] for x in sema_bloklari(r)}
+    assert set(b) == {"Gauss eliminasyonu: satır işlemleri", "Geri yerine koyma: sondan başa"}
+    el = [k["baslik"] for k in b["Gauss eliminasyonu: satır işlemleri"]]
+    assert len(el) == 3
+    assert el[0].startswith("R₁ ↔ R₂") and el[1].startswith("R₃ ← R₃ − 2·R₁")
+    assert el[2].startswith("R₃ ← R₃ + (1/2)·R₂") and "sütun sıfırlanır" in el[2]
+    geri = [k["baslik"] for k in b["Geri yerine koyma: sondan başa"]]
+    assert geri == ["x₃ = 1/(3/2) = 2/3", "x₂ = (4 − 1·(2/3))/2 = 5/3", "x₁ = 6 − 1·(5/3) − 1·(2/3) = 11/3"]
+    # görsel açıklamadan önce gelir
+    metin_i = [i for i, x in enumerate(r.anlatim.bloklar) if x[0] == "md" and "Geri yerine koyma" in x[1]]
+    sema_i = [i for i, x in enumerate(r.anlatim.bloklar) if x[0] == "sema" and "Geri" in x[1]["baslik"]]
+    assert sema_i and metin_i and sema_i[0] < metin_i[0]
+
+
+def test_sema_gauss_jordan_ve_determinant_eliminasyon():
+    r = mo.ters("0 2 1; 1 1 1; 2 1 3")
+    bl = sema_bloklari(r)
+    assert [x[1]["baslik"] for x in bl] == ["Gauss–Jordan: satır işlemleri"]
+    assert len(bl[0][1]["kareler"]) >= 6
+    d = mo.determinant(M4)
+    assert [x[1]["baslik"] for x in sema_bloklari(d)] == ["Gauss eliminasyonu: satır işlemleri"]
+
+
+def test_sema_birlestir_eleman_kutulari():
+    k = sp.Matrix([[1, -1], [-1, 1]])
+    r = mo.birlestir([(10 * k, [1, 2]), (20 * k, [2, 3])], 3)
+    bl = sema_bloklari(r)
+    assert len(bl) == 1 and bl[0][1]["baslik"] == "Elemanlar global matrise eklenir"
+    k1, k2 = bl[0][1]["kareler"]
+    assert k1["baslik"].startswith("k⁽¹⁾: serbestlik 1, 2")
+    assert k2["baslik"].startswith("k⁽²⁾: serbestlik 2, 3") and "ortak K₂₂ = 10 + 20 = 30" in k2["baslik"]
+    assert ">+<" in k2["svg"] and 'class="rozet g' in k2["svg"]  # ortak hücrede "+" rozeti
+    assert ">+<" not in k1["svg"]
+    assert "k⁽¹⁾" in k2["svg"] and "k⁽²⁾" in k2["svg"]  # alt gösterge ve eleman etiketleri
+    # K içinde eleman başına kutular: önceki eleman çerçeve, şimdiki dolgu (a ve b ailesi)
+    assert "--sema-a," in k2["svg"] and "--sema-b-bg" in k2["svg"]
+    # kopuk serbestlik numaraları da çizilir
+    r2 = mo.birlestir([(10 * k, [1, 3]), (20 * k, [2, 3])], 3)
+    assert len(sema_kareleri(r2)) == 2
+    for kare in sema_kareleri(r2):
+        ET.fromstring(kare["svg"])
+
+
+def test_sema_sinir_kosulu_bolum_etiketleri():
+    # tutulu SD sonda değilse önce yeniden sıralama karesi
+    r = mo.sinir_kosulu(sp.Matrix([[10, -10, 0], [-10, 30, -20], [0, -20, 20]]), "0; 0; 5", [2])
+    bl = {x[1]["baslik"]: x[1]["kareler"] for x in sema_bloklari(r)}
+    bolum = bl["Mesnetler: serbest ve tutulu bölümler"]
+    assert len(bolum) == 3
+    assert bolum[0]["baslik"] == "Sıralama: serbest ₁,₃ | mesnet ₂"
+    assert "serbest" in bolum[0]["svg"] and "mesnet" in bolum[0]["svg"]
+    assert bolum[1]["baslik"].startswith("Bölümleme (f = serbest, s = mesnet)")
+    for ad in ("ff", "fs", "sf", "ss"):
+        assert f">{ad}<" in bolum[1]["svg"]  # K_ff, K_fs, K_sf, K_ss blokları (alt simge)
+    assert "bolme-ad" in bolum[1]["svg"] and 'class="bolme g' in bolum[1]["svg"]
+    assert bolum[1]["svg"].count("--sema-sil") >= 1 and "--sema-c-bg" in bolum[1]["svg"]
+    assert bolum[2]["baslik"].startswith("İndirgenmiş sistem")
+    # mesnet sondaysa sıralama karesi yok
+    r2 = mo.sinir_kosulu(sp.Matrix([[10, -10, 0], [-10, 30, -20], [0, -20, 20]]), "0; 0; 5", [3])
+    bolum2 = [x for x in sema_bloklari(r2) if x[1]["baslik"].startswith("Mesnetler")][0][1]["kareler"]
+    assert len(bolum2) == 2 and bolum2[0]["baslik"].startswith("Bölümleme")
+    # tepki karesi
+    tepki = [x for x in sema_bloklari(r) if x[1]["baslik"] == "Mesnet tepkileri"][0][1]["kareler"]
+    assert len(tepki) == 1 and ">tepki<" in tepki[0]["svg"]
+    assert tepki[0]["baslik"].startswith("R = K·u − F")
+    # mesnet yoksa (hata) ve hiç mesnet çizilmeyen akış: tutulu SD verilince blok sayısı
+    assert len(sema_bloklari(r)) >= 3
+
+
+def test_sema_yardim_metninde():
+    assert "sema=False" in mo.YARDIM_METNI
+
+
+def test_sema_sinif_yardimcilari_bolme_ve_etiket():
+    S = mo._Sema()
+    p = S.panel(sp.Matrix([[10, -10, 0], [-10, 30, -20], [0, -20, 20]]))
+    S.bolme(p, [1], [1], ["K_ff", "K_fs", "K_sf", "K_ss"], ["c", "b", "b", "sil"])
+    S.etiket("serbest", aile="c", hiza="start", adres=(p, 0, None, "R", 6, 0))
+    S.etiket("u_f", p, "ust", aile="c", kalin=True)
+    svg = S.svg("deneme")
+    ET.fromstring(svg)
+    assert svg.count('class="bolme g') == 2  # bir yatay, bir dikey kesikli ayraç
+    assert svg.count('class="bolme-ad g') == 4
+    assert 'text-anchor="start"' in svg and ">serbest<" in svg
+    assert ">ff<" in svg and ">f<" in svg  # "_" sonrası alt simge
+    assert not re.search(r'(fill|stroke)="[^"]*var\(', svg)
+    # parantez="|" determinant çubukları
+    D = mo._Sema()
+    D.panel(sp.Matrix([[1, 2], [3, 4]]), parantez="|")
+    ET.fromstring(D.svg("det"))
+    # geçersiz bölme indeksi (son satır/sütundan sonra ayraç olmaz) çizim üretmez
+    T = mo._Sema()
+    q = T.panel(sp.Matrix([[1, 2], [3, 4]]))
+    T.bolme(q, [1], [1])
+    assert 'class="bolme g' not in T.svg("x")
+
+
+def test_sema_kare_siniri():
+    A = sp.Matrix(7, 7, lambda i, j: i + j + 1)
+    r = mo.carp(A, A)  # 7×7: panel sınırı (6 satır) aşıldı → şema üretilmez
+    assert not sema_bloklari(r)
+    r = mo.carp(M4, M4)  # 4×4: 16 kare
+    assert len(sema_kareleri(r)) == 16
 
 
 def test_yardim_ve_birim_sifir(capsys, monkeypatch):

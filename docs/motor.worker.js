@@ -30,9 +30,13 @@ async function hazirla() {
   bildir("durum", { metin: "sympy ve numpy yükleniyor…", oran: 45 });
   await pyodide.loadPackage(["sympy", "numpy"], { messageCallback: function () {}, errorCallback: function () {} });
   bildir("durum", { metin: "matris_ogren hazırlanıyor…", oran: 85 });
-  const dosyalar = await Promise.all([dosyaAl("matris_ogren.py"), dosyaAl("web_kopru.py")]);
+  // sonlu_eleman.py isteğe bağlıdır (eski kurulumlarda yok): alınamazsa motor onsuz çalışır, ders örnekleri "se" adını bulamaz.
+  const dosyalar = await Promise.all([
+    dosyaAl("matris_ogren.py"), dosyaAl("web_kopru.py"), dosyaAl("sonlu_eleman.py").catch(function () { return null; }),
+  ]);
   pyodide.FS.writeFile("/home/pyodide/matris_ogren.py", dosyalar[0], { encoding: "utf8" });
   pyodide.FS.writeFile("/home/pyodide/web_kopru.py", dosyalar[1], { encoding: "utf8" });
+  if (dosyalar[2] !== null) pyodide.FS.writeFile("/home/pyodide/sonlu_eleman.py", dosyalar[2], { encoding: "utf8" });
   pyodide.runPython("import sys\nif '/home/pyodide' not in sys.path:\n    sys.path.insert(0, '/home/pyodide')");
   kopru = pyodide.pyimport("web_kopru");
   const surum = JSON.parse(kopru.surum_json());

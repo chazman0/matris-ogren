@@ -18,11 +18,25 @@ Sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Her işlemi 
 
 Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
 
+## Dersler
+
+16 ders iki bölümdedir. **Matris** bölümü (1–8): matris nedir, toplama, çarpım, transpoz, determinant, ters, doğrusal sistemler, özdeğer. **Sonlu eleman** bölümü (11–18): yay sistemleri, çubuk, kafes ve dönüşüm, birleştirme, sınır koşulları ve tepkiler, kiriş, düzlem çerçeve, serbest titreşim.
+
+Her derste renkli matris kutuları ve oklu şekiller, sürükleyerek oynanan etkileşimli çizimler, ipucu ve cevabı açılan çözümlü örnekler (çoğu tek tıkla çalıştırılır ve sonucu denetlenir) ve sınırsız üretilen alıştırmalar vardır.
+
+## Sonlu eleman çözücü
+
+Uygulamadaki **Sonlu eleman** sayfasında hazır bir model seçilir ya da düğüm, eleman, mesnet ve yük tabloları doldurulur. Yay, çubuk, kafes, kiriş ve düzlem çerçeve modelleri çözülür; şekil değiştirmiş biçim, N/V/M diyagramları, mesnet tepkileri, denge denetimi ve adım adım anlatım gösterilir.
+
 ## Dosyalar
 
 | Dosya | İçerik |
 |---|---|
 | `matris_ogren.py` | Hesap motoru (sympy). Colab'da ve uygulamanın içinde aynı dosya çalışır. |
+| `sonlu_eleman.py` | Model sözlüğünden sonlu eleman çözümü (`se_coz`) ve hazır örnek modeller. |
+| `dersler/` | Markdown dersler; yazım kuralları `dersler/BICIM.md`'de. |
+| `ders_derle.py` | Dersleri denetler (`--denetle`) ve `docs/dersler.json`'a derler. |
+| `PLAN_SONLU_ELEMANLAR.md` | Matristen sonlu eleman uygulamasına geçiş planı. |
 | `Matris_Ogren.ipynb` | Google Colab defteri: konu anlatımı + çalıştırılabilir örnekler. |
 | `KULLANIM.md` | Motorun fonksiyon fonksiyon kullanım kılavuzu. |
 | `docs/` | Yüklenebilir web uygulaması (PWA); motor tarayıcıda Pyodide ile çalışır. |

@@ -7,8 +7,8 @@ matris_ogren.py modülünü base64+zlib olarak defterin kurulum hücresine göme
 Matris_Ogren.ipynb dosyasını baştan kurar.
 
 Çalıştırma (proje klasöründen, Windows PowerShell):
-  Set-Location "C:\\Users\\Tunay Gülden\\Desktop\\matris_ogren"
-  & "C:\\Users\\Tunay Gülden\\.local\\bin\\uv.exe" run --python 3.13 --with nbformat python defter_yap.py
+  Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"
+  & "$env:USERPROFILE\\.local\\bin\\uv.exe" run --python 3.13 --with nbformat python defter_yap.py
 
 Modül (matris_ogren.py) değişince bu betiği yeniden çalıştırmak yeterlidir;
 defter her seferinde sıfırdan üretilir (yeniden çalıştırılabilir).

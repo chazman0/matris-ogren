@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import re
 import shutil
@@ -31,6 +32,43 @@ def motor_kopyala() -> int:
     hedef = DOCS / "matris_ogren.py"
     shutil.copyfile(kaynak, hedef)
     return hedef.stat().st_size
+
+
+def se_kopyala() -> str:
+    """Sonlu eleman motoru (varsa) docs\\ altına kopyalanır; uygulama bunu Pyodide'a ek modül olarak yükler."""
+    kaynak = KOK / "sonlu_eleman.py"
+    if not kaynak.exists():
+        return "yok (atlandı)"
+    shutil.copyfile(kaynak, DOCS / "sonlu_eleman.py")
+    return f"{(DOCS / 'sonlu_eleman.py').stat().st_size:,} bayt"
+
+
+def ders_derle_yukle():
+    """ders_derle.py'yi dosya yoluyla yükler (python -I altında da çalışır); yoksa None."""
+    yol = KOK / "ders_derle.py"
+    if not yol.exists():
+        return None
+    ozellik = importlib.util.spec_from_file_location("ders_derle", yol)
+    modul = importlib.util.module_from_spec(ozellik)
+    sys.modules["ders_derle"] = modul  # dataclass/tip çözümlemesi için
+    ozellik.loader.exec_module(modul)
+    return modul
+
+
+def zengin_dersler_yaz() -> int:
+    """dersler/*.md → docs/dersler.json (zengin ders biçimi). Ders yoksa ya da derleme hatası varsa 0 döner."""
+    try:
+        modul = ders_derle_yukle()
+        if modul is None:
+            return 0
+        dersler = modul.derle()
+    except Exception as e:  # DersHatasi dahil: eski defter çıkarımına düş, hatayı göster
+        print(f"⚠️ ders_derle: {type(e).__name__}: {e}")
+        return 0
+    if not dersler:
+        return 0
+    modul.json_yaz(dersler)
+    return len(dersler)
 
 
 def dersler_cikar() -> int:
@@ -104,7 +142,12 @@ def main() -> None:
     if not DOCS.exists():
         raise SystemExit(f"docs klasörü yok: {DOCS}")
     print(f"motor kopyalandı: {motor_kopyala():,} bayt")
-    print(f"dersler.json: {dersler_cikar()} bölüm")
+    zengin = zengin_dersler_yaz()
+    if zengin:
+        print(f"dersler.json: {zengin} zengin ders (dersler/*.md)")
+    else:
+        print(f"dersler.json: {dersler_cikar()} bölüm (defter)")
+    print(f"sonlu_eleman.py: {se_kopyala()}")
     print(f"ikonlar: {ikonlar()}")
     print(f"sürüm damgası: {surum_damgala()}")
     print("✅ docs hazır")

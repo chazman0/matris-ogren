@@ -54,7 +54,7 @@ yani `E*A/L` gibi sembolik rijitlik matrisleriyle de çalışabilirsin — derst
 ### Yol A — Dosya yükleyerek (en hızlısı)
 
 1. [colab.research.google.com](https://colab.research.google.com) → **Dosya → Not defteri yükle** (File → Upload notebook).
-2. Bilgisayarından `C:\Users\Tunay Gülden\Desktop\matris_ogren\Matris_Ogren.ipynb` dosyasını seç.
+2. Bilgisayarından `%USERPROFILE%\Desktop\matris_ogren\Matris_Ogren.ipynb` dosyasını seç.
 3. Açılınca "Bu not defteri Google tarafından yazılmadı" uyarısı çıkabilir → **Yine de çalıştır**.
 
 Not: Bu yolla yüklenen defterde yaptığın değişiklikler kalıcı değildir. Saklamak istersen
@@ -73,9 +73,9 @@ Not: Bu yolla yüklenen defterde yaptığın değişiklikler kalıcı değildir.
 Bilgisayarında [colab-mcp](https://github.com/googlecolab/colab-mcp) kurulu ve Claude Code'a kayıtlı:
 
 - Kurulum yapıldı: `uv tool install --python 3.13 git+https://github.com/googlecolab/colab-mcp`
-  → `C:\Users\Tunay Gülden\.local\bin\colab-mcp.exe`
+  → `$env:USERPROFILE\.local\bin\colab-mcp.exe`
 - Claude Code'a kullanıcı kapsamında (tüm projelerde geçerli) kaydedildi:
-  `claude mcp add --scope user colab-mcp -- "C:\Users\Tunay Gülden\.local\bin\colab-mcp.exe"`
+  `claude mcp add --scope user colab-mcp -- "$env:USERPROFILE\.local\bin\colab-mcp.exe"`
 - **Claude Code yeniden başlatıldıktan sonra** kullanılabilir.
 
 Kullanım:
@@ -262,6 +262,19 @@ yer değiştirme vektörü ve **mesnet tepkileri** R = K u − F görülür. R�
 tersine yöneliktir, yani mesnet düğüm 1'i yüke zıt yönde tutar. Serbest SD'lerde R = 0 çıkması çözümün sağlamasıdır.
 Önce sembolik (`"E","A","L"`) sonra sayısal yapmak kavramı oturtur.
 
+Bütün zinciri tek çağrıda kurmak için `sonlu_eleman.py` modülü vardır. Model bir sözlüktür: düğümler, elemanlar,
+mesnetler (`ux`, `uy`, `rz`) ve yükler (`Fx`, `Fy`). Hazır modeller `se.ornek_model(ad)` ile gelir:
+
+```python
+import sonlu_eleman as se
+r = se.se_coz(se.ornek_model("cerceve-portal"))   # yer değiştirmeler r.deger
+r.veri["tepkiler"]                                 # mesnet tepkileri
+r.veri["elemanlar"][0]["diyagram"]["M"]            # eleman 1'in moment diyagramı
+```
+
+Web uygulamasında aynı çözücü **Sonlu eleman** sayfasında çalışır; 11–18 numaralı dersler (yay, çubuk, kafes,
+birleştirme, sınır koşulu, kiriş, çerçeve, titreşim) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır.
+
 ---
 
 ## 4. Derste kullanım önerileri
@@ -312,7 +325,7 @@ tersine yöneliktir, yani mesnet düğüm 1'i yüke zıt yönde tutar. Serbest S
 
 ## 6. Geliştirici notu
 
-Klasör: `C:\Users\Tunay Gülden\Desktop\matris_ogren`
+Klasör: `$env:USERPROFILE\Desktop\matris_ogren`
 
 | Dosya | Görev |
 |---|---|
@@ -326,8 +339,8 @@ Yerel Python 3.12'de sympy/IPython/nbformat yok; **her zaman uv reçetesi** kull
 (PowerShell 5.1: `&&` yok, `;` kullan; yolda boşluk var, çift tırnak şart):
 
 ```powershell
-Set-Location "C:\Users\Tunay Gülden\Desktop\matris_ogren"
-$uv = "C:\Users\Tunay Gülden\.local\bin\uv.exe"
+Set-Location "$env:USERPROFILE\Desktop\matris_ogren"
+$uv = "$env:USERPROFILE\.local\bin\uv.exe"
 
 # Hızlı kontrol
 & $uv run --python 3.13 --with sympy --with numpy python -c "import matris_ogren as mo; mo.ayarla(goster='sonuc'); print(mo.carp('1 2; 3 4','5 6; 7 8').deger)"

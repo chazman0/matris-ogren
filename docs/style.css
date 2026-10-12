@@ -18,6 +18,16 @@
   --golge: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 14px rgba(15, 23, 42, .06);
   --yuvarlak: 14px;
   --nav-yukseklik: 60px;
+  /* Ok şeması renkleri (motorun SVG'si bu değişkenleri yedek renkle birlikte kullanır) */
+  --sema-a: #2563eb;
+  --sema-a-bg: rgba(37, 99, 235, .12);
+  --sema-b: #d97706;
+  --sema-b-bg: rgba(217, 119, 6, .14);
+  --sema-c: #059669;
+  --sema-c-bg: rgba(5, 150, 105, .13);
+  --sema-sil: #dc2626;
+  --sema-sil-bg: rgba(220, 38, 38, .11);
+  --sema-cizgi: #64748b;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="acik"]) {
@@ -37,6 +47,15 @@
     --kod-arka: #050a16;
     --kod-metin: #dbe4f3;
     --golge: 0 1px 2px rgba(0, 0, 0, .4);
+    --sema-a: #60a5fa;
+    --sema-a-bg: rgba(96, 165, 250, .22);
+    --sema-b: #fbbf24;
+    --sema-b-bg: rgba(251, 191, 36, .22);
+    --sema-c: #34d399;
+    --sema-c-bg: rgba(52, 211, 153, .22);
+    --sema-sil: #f87171;
+    --sema-sil-bg: rgba(248, 113, 113, .22);
+    --sema-cizgi: #94a3b8;
   }
 }
 :root[data-tema="koyu"] {
@@ -56,6 +75,15 @@
   --kod-arka: #050a16;
   --kod-metin: #dbe4f3;
   --golge: 0 1px 2px rgba(0, 0, 0, .4);
+  --sema-a: #60a5fa;
+  --sema-a-bg: rgba(96, 165, 250, .22);
+  --sema-b: #fbbf24;
+  --sema-b-bg: rgba(251, 191, 36, .22);
+  --sema-c: #34d399;
+  --sema-c-bg: rgba(52, 211, 153, .22);
+  --sema-sil: #f87171;
+  --sema-sil-bg: rgba(248, 113, 113, .22);
+  --sema-cizgi: #94a3b8;
 }
 
 * { box-sizing: border-box; }
@@ -168,10 +196,139 @@ details.katlanir > summary { cursor: pointer; font-weight: 600; list-style: none
 details.katlanir > summary::before { content: "▸"; transition: transform .15s; color: var(--soluk); }
 details.katlanir[open] > summary::before { transform: rotate(90deg); }
 
-/* Dersler */
-.ders { margin-bottom: 10px; }
-.ders summary { padding: 6px 0; }
-.ders .icerik { padding: 6px 0 4px; }
+/* Dersler: liste (bölümlere göre gruplu bağlantı kartları) ve ders sayfası (md, kutu, şekil, etkileşim, örnek).
+   Yalnız mevcut değişkenler kullanılır; koyu tema değişkenlerden gelir. Sayfa yana taşmaz: geniş formül/matris/SVG kendi kutusunda kayar. */
+#sayfa-dersler, .ders-sayfa, .ders-govde { min-width: 0; }
+.ders-grup { margin-top: 18px; }
+.ders-grup-baslik { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--soluk); }
+.ders-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ders-satir, .ders-devam {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--metin);
+  background: var(--arka); border: 1px solid var(--cizgi); border-radius: 12px;
+  transition: border-color .15s, background-color .15s;
+}
+.ders-satir:hover, .ders-devam:hover { border-color: var(--ana); background: var(--ana-acik); }
+.ders-satir:focus-visible, .ders-devam:focus-visible, .ders-gez:focus-visible, .ders-geri:focus-visible { outline: 2px solid var(--ana); outline-offset: 2px; }
+.ders-no {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 34px; padding: 0 6px;
+  border-radius: 10px; background: var(--ana-acik); color: var(--ana); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;
+}
+.ders-satir-metin { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.ders-satir-baslik { font-size: 15.5px; line-height: 1.3; }
+.ders-satir-ozet { font-size: 13.5px; color: var(--soluk); line-height: 1.4; }
+.ders-sure { flex: none; font-size: 12.5px; color: var(--soluk); white-space: nowrap; }
+.ders-devam { margin-bottom: 4px; flex-direction: column; align-items: flex-start; gap: 2px; background: var(--ana-acik); border-color: transparent; }
+.ders-devam span { font-size: 12.5px; color: var(--ana); font-weight: 600; }
+.ders-devam b { font-size: 15.5px; }
+
+.ders-yol { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 14px; margin-bottom: 10px; }
+.ders-geri { font-weight: 600; text-decoration: none; padding: 6px 0; }
+.ders-geri:hover { text-decoration: underline; }
+.ders-yol-bolum { color: var(--soluk); font-size: 13px; }
+.ders-ust { margin-bottom: 8px; }
+.ders-no-etiket { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--ana); }
+.ders-ust h2 { margin: 0 0 6px; font-size: 24px; line-height: 1.25; overflow-wrap: anywhere; }
+.ders-ust h2:focus { outline: none; }
+.ders-ozet { margin: 0; color: var(--soluk); font-size: 15.5px; line-height: 1.5; }
+.ders-govde { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.ders-govde > * { margin: 0; min-width: 0; }
+
+/* Düz anlatım parçası (md): çözüm anlatımıyla aynı biçem, ders için biraz rahat okuma */
+.ders-md { overflow-wrap: anywhere; line-height: 1.65; }
+.ders-md > :first-child { margin-top: 0; }
+.ders-md > :last-child { margin-bottom: 0; }
+.ders-md h3 { margin: 22px 0 6px; font-size: 19px; }
+.ders-md h4 { margin: 16px 0 4px; font-size: 16.5px; }
+.ders-md p { overflow-x: auto; }
+.ders-md ul, .ders-md ol { padding-left: 22px; }
+.ders-md li { margin: 3px 0; }
+.ders-md .katex-display { overflow-x: auto; overflow-y: hidden; padding: 6px 0; margin: 10px 0; }
+.ders-md table { border-collapse: collapse; margin: 8px 0; display: block; overflow-x: auto; max-width: 100%; }
+.ders-md td, .ders-md th { border: 1px solid var(--cizgi); padding: 4px 8px; }
+.ders-md code { background: var(--ana-acik); padding: 1px 5px; border-radius: 5px; font-size: .92em; }
+.ders-md pre { background: var(--kod-arka); color: var(--kod-metin); padding: 10px 12px; border-radius: 10px; overflow-x: auto; }
+.ders-md pre code { background: none; padding: 0; color: inherit; }
+
+/* Kutular: Not, Dikkat, İpucu, Tanım, Özet, Sık yapılan hata, Mühendislikte. Her çeşit tek bir vurgu rengi (--k) taşır. */
+.ders-kutu {
+  --k: var(--ana);
+  padding: 10px 14px 12px; border: 1px solid var(--cizgi); border-left: 4px solid var(--k); border-radius: 4px 12px 12px 4px;
+  background: var(--ana-acik);
+}
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .ders-kutu { background: color-mix(in srgb, var(--k) 9%, var(--kart)); }
+}
+.kutu-uyari { --k: var(--uyari-cizgi); }
+.kutu-ipucu { --k: var(--vurgu); }
+.kutu-ozet { --k: var(--vurgu); }
+.kutu-hata { --k: var(--hata-cizgi); }
+.kutu-muhendislik { --k: var(--sema-b); }
+.ders-kutu-baslik { margin-bottom: 4px; font-size: 12.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--k); }
+.ders-kutu-govde > :first-child { margin-top: 0; }
+.ders-kutu-govde > :last-child { margin-bottom: 0; }
+.ders-kutu-govde p { margin: 6px 0; }
+
+/* Şekil */
+.ders-sekil { padding: 12px; background: var(--arka); border: 1px solid var(--cizgi); border-radius: 12px; }
+.ders-sekil-svg { overflow-x: auto; overflow-y: hidden; text-align: center; color: var(--metin); }
+.ders-sekil-svg svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.ders-sekil figcaption { margin-top: 8px; font-size: 13.5px; color: var(--soluk); text-align: center; line-height: 1.45; }
+
+/* Etkileşim ve alıştırma: çizimin kendisi Etkilesim kitaplığından gelir (docs/etkilesim.js) */
+.ders-etkilesim { padding: 12px; background: var(--arka); border: 1px solid var(--cizgi); border-radius: 12px; }
+.ders-etk-ust { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 8px; }
+.ders-etk-baslik { margin: 0; font-size: 15px; line-height: 1.3; }
+.ders-etk-alan { min-width: 0; max-width: 100%; overflow-x: auto; }
+.ders-yakinda { margin: 0; padding: 14px 10px; text-align: center; font-size: 13.5px; color: var(--soluk); }
+.ders-alistirma { border-style: dashed; }
+.ders-rozet {
+  display: inline-block; padding: 1px 9px; border-radius: 999px; background: var(--ana-acik); color: var(--ana);
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+}
+
+/* Örnek kartı */
+.ders-ornek { padding: 14px; background: var(--kart); border: 1px solid var(--cizgi); border-radius: var(--yuvarlak); box-shadow: var(--golge); }
+.ders-ornek-baslik { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 8px; font-size: 16px; line-height: 1.3; }
+.ders-ornek-soru { overflow-wrap: anywhere; line-height: 1.6; }
+.ders-ornek-soru > :first-child { margin-top: 0; }
+.ders-ornek-soru > :last-child { margin-bottom: 0; }
+.ders-ornek-soru .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.ders-ornek .ders-sekil { margin-top: 10px; }
+.ders-ornek-dugmeler { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ders-ornek-dugmeler .dugme { min-height: 40px; }
+.ders-ornek-dugmeler .dugme[aria-expanded="true"] { background: var(--ana-acik); border-color: var(--ana); color: var(--ana); }
+.ders-panel { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--cizgi); background: var(--arka); min-width: 0; }
+.ders-panel-etiket { display: block; margin-bottom: 4px; font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--soluk); }
+.ders-panel-icerik { min-width: 0; line-height: 1.6; }
+.ders-panel-icerik > :first-child { margin-top: 0; }
+.ders-panel-icerik > :last-child { margin-bottom: 0; }
+.ders-ipucu { border-color: var(--vurgu); }
+.ders-cevap { border-color: var(--ana); }
+.ders-yorum { border-style: dashed; }
+.ders-cozum { padding: 10px; }
+.ders-bekle { margin: 0; }
+
+/* Önceki / sonraki ders */
+.ders-gezinti { display: flex; gap: 10px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--cizgi); }
+.ders-gez {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; text-decoration: none; color: var(--metin);
+  background: var(--arka); border: 1px solid var(--cizgi); border-radius: 12px; overflow-wrap: anywhere;
+}
+.ders-gez:hover { border-color: var(--ana); background: var(--ana-acik); }
+.ders-gez small { color: var(--soluk); font-size: 12.5px; }
+.ders-gez b { font-size: 14.5px; line-height: 1.3; }
+.ders-gez.next { text-align: right; }
+.ders-gez.bos { visibility: hidden; border: 0; padding: 0; }
+@media (max-width: 520px) {
+  .ders-ust h2 { font-size: 21px; }
+  .ders-satir { padding: 10px 12px; gap: 10px; }
+  .ders-gezinti { flex-direction: column; }
+  .ders-gez.next { text-align: left; }
+  .ders-gez.bos { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ders-satir, .ders-devam, .ders-gez { transition: none; }
+}
 
 /* Alt gezinme */
 .alt-nav {
@@ -211,3 +368,248 @@ dialog h2 { margin: 0 0 8px; font-size: 18px; }
 .adim-listesi { padding-left: 20px; margin: 6px 0; }
 .adim-listesi li { margin: 4px 0; }
 kbd { background: var(--ana-acik); border-radius: 5px; padding: 1px 6px; font-size: .9em; }
+
+/* Ok şeması: matris üstünde oklarla işlem sırasını adım adım gösteren kart.
+   SVG'nin kendisi motordan gelir; burada kart, kontroller ve ok animasyonları vardır.
+   Taban durum "tam çizilmiş"tir: animasyon yalnızca başlangıç karesini geriye doldurur (backwards),
+   böylece animasyon çalışmadığında ya da azaltılmış harekette her şey eksiksiz görünür. */
+.sema {
+  margin: 14px 0; padding: 12px 14px 12px;
+  background: var(--kart); border: 1px solid var(--cizgi); border-radius: var(--yuvarlak);
+  box-shadow: var(--golge);
+}
+.anlatim .sema:first-child { margin-top: 0; }
+.sema:focus-visible { outline: 2px solid var(--ana); outline-offset: 2px; }
+.sema-ust { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.sema-baslik { min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.sema-sayac {
+  flex: none; padding: 2px 10px; border-radius: 999px; background: var(--ana-acik); color: var(--ana);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.sema-sahne {
+  overflow-x: auto; overflow-y: hidden; padding: 12px 8px;
+  background: var(--arka); border: 1px solid var(--cizgi); border-radius: 10px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin; scrollbar-color: var(--cizgi) transparent;
+}
+/* Sığmayan şemada kenarlarda yumuşak gölge = "yana kaydırılabilir" ipucu (kaydırdıkça kendiliğinden belirir/kaybolur) */
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .sema-sahne {
+    --sema-golge: color-mix(in srgb, var(--soluk) 38%, transparent);
+    background:
+      linear-gradient(to right, var(--arka) 30%, transparent) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--arka) 30%, transparent) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--sema-golge), transparent) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, var(--sema-golge), transparent) right center / 12px 100% no-repeat scroll,
+      var(--arka);
+  }
+}
+.sema-sahne svg {
+  display: block; width: 100%; height: auto; margin: 0 auto; color: var(--metin);
+  max-width: min(100%, calc(var(--sema-w, 960) * 1.15px)) !important;   /* motorun satır içi max-width:100% değerini ezer; geniş ekranda gereğinden fazla büyümesin */
+  min-width: calc(var(--sema-w, 0) * .7px);                  /* çok dar ekranda yazı ezilmesin: yalnız bu alan yana kayar */
+}
+.sema svg text { font-variant-numeric: tabular-nums; }
+.sema-aciklama { margin: 10px 2px 0; min-height: 2.9em; font-size: 15px; line-height: 1.45; }
+.sema-metin { display: block; animation: sema-belir .35s ease-out backwards; }
+
+/* Adım noktaları: 24 px'lik dokunma alanı, 8 px'lik görünür nokta; geçerli adım uzun hap */
+.sema-noktalar { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.sema-nokta {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: 8px; background: none; cursor: pointer; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.sema-nokta::before {
+  content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--cizgi);
+  background: color-mix(in srgb, var(--soluk) 45%, transparent);
+  transition: width .22s ease, background-color .22s ease;
+}
+.sema-nokta.gecmis::before { background: var(--ana); opacity: .5; }
+.sema-nokta.aktif::before { width: 20px; background: var(--ana); opacity: 1; }
+.sema-nokta:focus-visible { outline: 2px solid var(--ana); outline-offset: -2px; }
+.sema-noktalar.cok .sema-nokta { width: 16px; }
+.sema-noktalar.cok .sema-nokta.aktif::before { width: 14px; }
+
+/* Denetim düğmeleri (.dugme.kucuk yeniden kullanılır) */
+.sema-kontrol { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.sema-kontrol .dugme {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+  min-height: 40px; touch-action: manipulation;
+}
+.sema-kontrol .dugme:disabled, .sema-kontrol .dugme[aria-disabled="true"] { opacity: .4; cursor: default; }
+.sema-kontrol .sema-adim { width: 44px; padding-left: 0; padding-right: 0; }
+.sema-kontrol .sema-oynat { min-width: 104px; }               /* Oynat / Duraklat / Tekrar aynı genişlikte (en uzunu "Duraklat" ≈ 102 px): satır oynamasın */
+.sema-kontrol .sema-izgara-dugme { margin-left: auto; }
+@media (max-width: 520px) {
+  /* Telefon: sahne kartın iç boşluğuna 6 px taşar; 2×2 gibi küçük şemalar kaydırmadan sığar */
+  .sema-sahne { margin: 0 -6px; padding: 12px 2px; }
+  /* Telefon: ◀ Oynat ▶ tek satırda, "Tümünü göster" sığmazsa alt satırda tam genişlikte */
+  .sema-kontrol .sema-oynat { flex: 1 1 0; }
+  .sema-kontrol .sema-izgara-dugme { flex: 1 1 140px; margin-left: 0; }
+}
+@media (pointer: coarse) {
+  .sema-kontrol .dugme { min-height: 44px; }
+}
+.sema-ikon { width: 16px; height: 16px; flex: none; }
+/* Yalnız ekran okuyucunun okuduğu metin (ör. açıklamanın başındaki "Adım 2 / 5: ") */
+.sema-oku {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* "Tümünü göster": bütün adımlar küçük kartlar halinde, son (tam çizilmiş) hâliyle */
+.sema-izgara { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.sema-hucre { min-width: 0; padding: 8px 8px 10px; background: var(--arka); border: 1px solid var(--cizgi); border-radius: 10px; }
+.sema-hucre svg { display: block; width: 100%; height: auto; margin: 0 auto; color: var(--metin); }
+.sema-hucre-baslik { margin: 6px 2px 0; font-size: 13.5px; line-height: 1.4; }
+.sema-hucre-baslik b { margin-right: 4px; color: var(--ana); font-variant-numeric: tabular-nums; }
+
+/* Ok animasyonları. g0–g7: aynı karedeki okların sırayla (gecikmeli) çizilmesi için kademe sınıfları. */
+.sema .g0 { --d: 0s; }
+.sema .g1 { --d: .28s; }
+.sema .g2 { --d: .56s; }
+.sema .g3 { --d: .84s; }
+.sema .g4 { --d: 1.12s; }
+.sema .g5 { --d: 1.4s; }
+.sema .g6 { --d: 1.68s; }
+.sema .g7 { --d: 1.96s; }
+.sema .vurgu {
+  transform-box: fill-box; transform-origin: center;
+  animation: sema-vurgu .4s ease-out backwards; animation-delay: var(--d, 0s);
+}
+.sema .ok[pathLength] {
+  stroke-dasharray: 1; stroke-dashoffset: 0; stroke-linecap: butt;
+  animation: sema-ciz .6s cubic-bezier(.4, 0, .2, 1) backwards; animation-delay: calc(var(--d, 0s) + .15s);
+}
+.sema .ok:not([pathLength]) { animation: sema-belir .3s ease-out backwards; animation-delay: calc(var(--d, 0s) + .15s); }
+.sema .ok-uc { animation: sema-belir .25s ease-out backwards; animation-delay: calc(var(--d, 0s) + .6s); }
+.sema :is(.g1, .g2, .g3, .g4, .g5, .g6, .g7):not(.ok, .ok-uc, .vurgu) {
+  animation: sema-belir .3s ease-out backwards; animation-delay: var(--d, 0s);
+}
+@keyframes sema-ciz { from { stroke-dashoffset: 1; } }
+@keyframes sema-belir { from { opacity: 0; } }
+@keyframes sema-vurgu { from { opacity: 0; transform: scale(.94); } }
+.sema-izgara *, .sema-izgara *::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .sema *, .sema *::before { animation: none !important; transition: none !important; }
+}
+
+/* Sonlu eleman sayfası (#se): tablolar, şekiller (SVG), sonuç tabloları. Yalnız mevcut değişkenler kullanılır; koyu tema değişkenlerden gelir. */
+#sayfa-se, #se-kok, .se-bolum, .se-sekil { min-width: 0; }
+.se-secimler { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+@media (min-width: 700px) {
+  .se-secimler { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; }
+  .se-secimler label.alan { grid-row: 1; }
+  .se-secimler select { grid-row: 2; }
+  .se-secimler label.alan:nth-of-type(2) { grid-column: 2; }
+  .se-secimler #se-tip { grid-column: 2; }
+}
+.se-aciklama { margin: 10px 0 0; font-size: 14px; line-height: 1.45; color: var(--metin); }
+.se-lejant { margin-top: 2px; }
+.se-bolum { margin: 16px 0 0; }
+.se-bolum h3 { margin: 0; font-size: 15.5px; }
+.se-bolum-ust { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.se-ipucu { margin: 0 0 8px; }
+.se-duzen { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cizgi); }
+.se-json { margin-top: 16px; }
+.se-json textarea { margin-top: 8px; }
+.se-hata-liste { margin: 6px 0 0; padding-left: 20px; }
+.se-hata-liste li { margin: 3px 0; }
+.se-hata-metin { overflow-wrap: anywhere; }
+.se-bos { padding: 18px 0; text-align: center; }
+
+/* Şekil kutusu: 1 birim = 1 px çizilen SVG kapsayıcıya sığar, yana taşmaz */
+.se-sekil {
+  margin: 10px 0 0; background: var(--arka); border: 1px solid var(--cizgi); border-radius: 10px;
+  overflow: hidden; color: var(--metin);
+}
+.se-svg { display: block; width: 100%; height: auto; max-width: 100%; }
+.se-svg text { font-family: inherit; fill: var(--metin); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.se-svg .se-etiket { font-size: 12px; font-weight: 600; paint-order: stroke; stroke: var(--arka); stroke-width: 3px; stroke-linejoin: round; }
+.se-svg .se-no { font-size: 13px; font-weight: 700; fill: var(--ana); paint-order: stroke; stroke: var(--arka); stroke-width: 3.5px; stroke-linejoin: round; }
+.se-svg .se-eno { font-size: 11.5px; font-weight: 600; fill: var(--soluk); paint-order: stroke; stroke: var(--arka); stroke-width: 3px; }
+.se-svg .se-yuk-t { fill: var(--sema-sil); }
+.se-eleman { fill: none; stroke: var(--metin); stroke-width: 4; stroke-linecap: round; }
+.se-eleman.se-kafes { stroke-width: 2.6; }
+.se-eleman.se-yay { stroke-width: 2.2; stroke-linejoin: round; }
+.se-dugum { fill: var(--kart); stroke: var(--metin); stroke-width: 2; }
+.se-dugum-d { stroke: var(--ana); fill: var(--kart); }
+.se-yuk-c { fill: none; stroke: var(--sema-sil); stroke-width: 2.2; stroke-linecap: round; }
+.se-yuk-o { fill: var(--sema-sil); stroke: none; }
+.se-mes-c { fill: none; stroke: var(--metin); stroke-width: 2.4; stroke-linecap: round; }
+.se-mes-t { fill: none; stroke: var(--soluk); stroke-width: 1.4; stroke-linecap: round; }
+.se-mes-f { fill: var(--kart); stroke: var(--metin); stroke-width: 2; stroke-linejoin: round; }
+.se-soluk { opacity: .55; }
+.se-asil { fill: none; stroke: var(--soluk); stroke-width: 2; stroke-dasharray: 5 4; opacity: .7; stroke-linecap: round; }
+.se-def { fill: none; stroke: var(--ana); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.se-kilavuz { fill: none; stroke: var(--soluk); stroke-width: 1; stroke-dasharray: 3 3; }
+.se-dgm { stroke-width: 1.8; stroke-linejoin: round; }
+.se-dN { fill: var(--sema-b-bg); stroke: var(--sema-b); }
+.se-dV { fill: var(--sema-c-bg); stroke: var(--sema-c); }
+.se-dM { fill: var(--sema-a-bg); stroke: var(--sema-a); }
+
+/* Düzenleme tabloları */
+.se-tablo { width: 100%; border-collapse: collapse; }
+.se-tablo th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--soluk); padding: 0 6px 4px 0; white-space: nowrap; }
+.se-tablo td { padding: 3px 6px 3px 0; vertical-align: middle; }
+.se-g {
+  width: 100%; min-width: 0; min-height: 38px; padding: 6px 8px; border: 1px solid var(--cizgi); border-radius: 8px;
+  background: var(--arka); color: var(--metin); font: inherit; font-size: 16px; outline: none;
+}
+.se-g:focus { border-color: var(--ana); box-shadow: 0 0 0 3px var(--ana-acik); }
+.se-onay { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; cursor: pointer; font-size: 14px; }
+.se-onay input { width: 20px; height: 20px; accent-color: var(--ana); }
+.se-onay span { display: none; }
+.se-sil-h { width: 40px; text-align: right; }
+.se-sil {
+  width: 36px; height: 36px; padding: 0; border: 1px solid var(--cizgi); border-radius: 8px; background: var(--kart);
+  color: var(--soluk); cursor: pointer; font-size: 14px; line-height: 1;
+}
+.se-sil:hover { color: var(--sema-sil); border-color: var(--sema-sil); }
+.se-sil:focus-visible, .se-seg-d:focus-visible, .se-olcek input:focus-visible { outline: 2px solid var(--ana); outline-offset: 2px; }
+
+/* Telefon: her satır kendi küçük kartı; sütun başlıkları hücre etiketi olur, yana kaydırma yok */
+@media (max-width: 560px) {
+  .se-tablo, .se-tablo tbody, .se-tablo tr, .se-tablo td { display: block; }
+  .se-tablo thead { display: none; }
+  .se-tablo tr {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 8px; padding: 8px 10px; margin-top: 8px;
+    border: 1px solid var(--cizgi); border-radius: 10px;
+  }
+  .se-tablo td { flex: 1 1 78px; min-width: 0; padding: 0; }
+  .se-tablo td::before { content: attr(data-e); display: block; font-size: 11.5px; font-weight: 600; color: var(--soluk); margin-bottom: 2px; }
+  .se-tablo td.se-sil-h { flex: 0 0 auto; width: auto; margin-left: auto; }
+  .se-tablo td.se-sil-h::before { content: none; }
+  .se-onay span { display: inline; }
+  .se-sekil { margin-left: -6px; margin-right: -6px; border-radius: 8px; }
+}
+
+/* Sonuç bölümü */
+.se-ozet { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+.se-rozet { padding: 2px 10px; border-radius: 999px; background: var(--ana-acik); color: var(--ana); font-size: 12.5px; font-weight: 600; }
+.se-eski { margin-top: 14px; padding: 8px 12px; border-radius: 10px; background: var(--uyari-arka); border: 1px solid var(--uyari-cizgi); font-size: 14px; }
+.se-olcek { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.se-olcek label { font-size: 14px; font-weight: 600; }
+.se-olcek input[type="range"] { flex: 1 1 auto; min-width: 0; height: 32px; accent-color: var(--ana); }
+.se-olcek-d { flex: none; min-width: 6.5em; text-align: right; font-size: 13.5px; font-variant-numeric: tabular-nums; color: var(--soluk); }
+.se-seg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.se-seg-d {
+  flex: 1 1 130px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--cizgi); border-radius: 10px;
+  background: var(--kart); color: var(--metin); cursor: pointer; font: inherit; font-size: 14px; font-weight: 600;
+}
+.se-seg-d[aria-pressed="true"] { background: var(--ana); border-color: var(--ana); color: #fff; }
+.se-seg-d:disabled { opacity: .4; cursor: default; }
+.se-tablo-kutu { overflow-x: auto; margin-top: 8px; max-width: 100%; }
+.se-sonuc-tablo { width: 100%; border-collapse: collapse; font-size: 14px; }
+.se-sonuc-tablo th, .se-sonuc-tablo td { padding: 5px 8px; border-bottom: 1px solid var(--cizgi); text-align: left; vertical-align: top; }
+.se-sonuc-tablo thead th { font-size: 12.5px; color: var(--soluk); }
+@media (max-width: 560px) { .se-sonuc-tablo th, .se-sonuc-tablo td { padding: 5px 4px; font-size: 13px; } .se-sonuc-tablo td.sayi { white-space: normal; } }
+.se-sonuc-tablo tbody th { font-weight: 600; white-space: nowrap; }
+.se-sonuc-tablo td.sayi { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.se-sonuc-tablo td { overflow-wrap: anywhere; }
+.se-denge { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 14px; overflow-wrap: anywhere; }
+.se-denge.tamam { background: var(--sema-c-bg); border: 1px solid var(--sema-c); }
+.se-denge.sorun { background: var(--hata-arka); border: 1px solid var(--hata-cizgi); }
+.se-anlatim-kutu { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--cizgi); }
+.se-anlatim { margin-top: 10px; min-width: 0; }

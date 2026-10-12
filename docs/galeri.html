@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1e3a8a">
+<title>Etkileşim Galerisi · Matris Öğren</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" crossorigin="anonymous">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--arka); color: var(--metin); margin: 0; }
+  .galeri { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  .galeri-ust { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+  .galeri-ust h1 { font-size: 1.25rem; margin: 0; flex: 1 1 auto; }
+  .galeri-ust a { color: var(--ana); }
+  .galeri-not { color: var(--soluk); font-size: .9rem; margin: 0 0 12px; }
+  #ozet { font-size: .9rem; color: var(--soluk); margin: 0 0 12px; }
+  .galeri-izgara { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
+  .galeri-kart { background: var(--kart); border: 1px solid var(--cizgi); border-radius: 14px; padding: 14px; min-width: 0; }
+  .galeri-kart h2 { font-size: 1rem; margin: 0 0 2px; }
+  .galeri-kart .galeri-ad { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--soluk); }
+  .galeri-kart .galeri-aciklama { font-size: .88rem; color: var(--soluk); margin: 6px 0 10px; }
+  .galeri-kart[data-durum="hata"] { border-color: var(--sema-sil, #dc2626); }
+  .galeri-kart[data-durum="yok"] { border-style: dashed; }
+  .galeri-liste { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: .88rem; }
+  #hatalar { background: var(--sema-sil-bg, rgba(220, 38, 38, .1)); border: 1px solid var(--sema-sil, #dc2626); }
+  #eksik { background: var(--ana-acik); border: 1px solid var(--cizgi); }
+  #hatalar:empty, #eksik:empty { display: none; }
+  .galeri-liste li { margin: 2px 0 2px 18px; }
+</style>
+<script>
+  /* Etkileşim dosyaları yüklenirken çıkan hatalar da yakalansın diye en başta. */
+  (function () {
+    var hatalar = window.__galeriHatalar = [];
+    var eksik = window.__galeriEksik = [];
+    function ekle(liste, kimlik, metin) {
+      liste.push(metin);
+      var kutu = document.getElementById(kimlik);
+      if (kutu) {
+        var li = document.createElement("li");
+        li.textContent = metin;
+        kutu.appendChild(li);
+      }
+    }
+    window.addEventListener("error", function (o) {
+      var h = o.target;
+      if (h && h !== window && (h.src || h.href)) {
+        ekle(eksik, "eksik", "Yüklenemedi: " + (h.src || h.href));
+        return;
+      }
+      ekle(hatalar, "hatalar", (o.message || "Hata") + (o.filename ? " (" + o.filename.split("/").pop() + ":" + o.lineno + ")" : ""));
+    }, true);
+    window.addEventListener("unhandledrejection", function (o) {
+      var r = o.reason;
+      ekle(hatalar, "hatalar", "Reddedilen söz: " + (r && r.message ? r.message : String(r)));
+    });
+  })();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" crossorigin="anonymous" defer></script>
+<script src="etkilesim.js" defer></script>
+<script src="etkilesim_matris.js" defer></script>
+<script src="etkilesim_se.js" defer></script>
+</head>
+<body>
+<main class="galeri">
+  <div class="galeri-ust">
+    <h1>Etkileşim Galerisi</h1>
+    <button type="button" id="tema-dugme" class="kx-dugme">Koyu tema</button>
+    <a href="./">Uygulamaya dön</a>
+  </div>
+  <p class="galeri-not">Derslerdeki etkileşimli çizimler ve alıştırmalar burada tek tek denenir.
+    Adres sonuna <code>?ad=carpim-gezgini</code> yazarak birini, <code>?onek=alistirma:</code> ile bir grubu seçebilirsin;
+    <code>?tohum=1</code> soruları sabitler, <code>?tema=koyu</code> koyu temayı açar.</p>
+  <p id="ozet" aria-live="polite">Yükleniyor…</p>
+  <ul id="hatalar" class="galeri-liste" aria-label="Hatalar"></ul>
+  <ul id="eksik" class="galeri-liste" aria-label="Eksik dosyalar"></ul>
+  <div id="galeri" class="galeri-izgara"></div>
+</main>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var q = new URLSearchParams(location.search);
+    var kok = document.documentElement;
+    var temaDugme = document.getElementById("tema-dugme");
+    var ozet = document.getElementById("ozet");
+    var izgara = document.getElementById("galeri");
+
+    function koyuMu() {
+      if (kok.dataset.tema) return kok.dataset.tema === "koyu";
+      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    }
+    function temaYaz() { temaDugme.textContent = koyuMu() ? "Açık tema" : "Koyu tema"; }
+    var tema = q.get("tema");
+    if (tema === "koyu" || tema === "acik") kok.dataset.tema = tema;
+    temaYaz();
+    temaDugme.addEventListener("click", function () {
+      kok.dataset.tema = koyuMu() ? "acik" : "koyu";
+      temaYaz();
+    });
+
+    /* Başta yakalanan hatalar listeye işlensin. */
+    [["hatalar", window.__galeriHatalar], ["eksik", window.__galeriEksik]].forEach(function (c) {
+      var kutu = document.getElementById(c[0]);
+      (c[1] || []).forEach(function (m) {
+        var li = document.createElement("li");
+        li.textContent = m;
+        kutu.appendChild(li);
+      });
+    });
+
+    var E = window.Etkilesim;
+    if (!E) {
+      ozet.dataset.toplam = "0";
+      ozet.dataset.hazir = "0";
+      ozet.dataset.hata = "1";
+      ozet.dataset.yok = "0";
+      ozet.dataset.bitti = "1";
+      ozet.textContent = "etkilesim.js yüklenemedi; galeri boş.";
+      return;
+    }
+
+    var adlar;
+    if (q.get("ad")) {
+      adlar = q.get("ad").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    } else {
+      adlar = E.liste(q.get("onek") || undefined);
+      /* Önce çizimler, sonra alıştırmalar; kayıt sırası korunur. */
+      adlar = adlar.filter(function (a) { return a.indexOf("alistirma:") !== 0; })
+        .concat(adlar.filter(function (a) { return a.indexOf("alistirma:") === 0; }));
+    }
+
+    var tohum = q.get("tohum");
+    var say = { hazir: 0, hata: 0, yok: 0 };
+    adlar.forEach(function (ad) {
+      var b = E.bilgi(ad);
+      var kart = document.createElement("section");
+      kart.className = "galeri-kart";
+      kart.id = "kart-" + ad.replace(/[^a-z0-9-]+/gi, "-");
+      var h2 = document.createElement("h2");
+      h2.textContent = (b && b.baslik) || ad;
+      var kod = document.createElement("div");
+      kod.className = "galeri-ad";
+      kod.textContent = ad;
+      kart.appendChild(h2);
+      kart.appendChild(kod);
+      if (b && b.aciklama) {
+        var p = document.createElement("p");
+        p.className = "galeri-aciklama";
+        p.textContent = b.aciklama;
+        kart.appendChild(p);
+      }
+      var alan = document.createElement("div");
+      kart.appendChild(alan);
+      izgara.appendChild(kart);
+
+      var param = b ? b.varsayilan : {};
+      if (tohum !== null && tohum !== "") param.tohum = Number(tohum) || 1;
+      try {
+        E.kur(alan, ad, param);
+      } catch (h) {
+        alan.dataset.durum = "hata";
+        alan.textContent = "Kurulamadı: " + (h && h.message ? h.message : h);
+      }
+      var durum = alan.dataset.durum || "hata";
+      kart.dataset.durum = durum;
+      say[durum] = (say[durum] || 0) + 1;
+    });
+
+    ozet.dataset.toplam = String(adlar.length);
+    ozet.dataset.hazir = String(say.hazir);
+    ozet.dataset.hata = String(say.hata);
+    ozet.dataset.yok = String(say.yok);
+    ozet.dataset.bitti = "1";
+    ozet.textContent = adlar.length
+      ? adlar.length + " etkileşim: " + say.hazir + " hazır, " + say.hata + " hatalı, " + say.yok + " bu sürümde yok."
+      : "Kayıtlı etkileşim yok (etkileşim dosyaları henüz yazılmamış olabilir).";
+  });
+</script>
+</body>
+</html>
