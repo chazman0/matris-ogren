@@ -387,7 +387,16 @@ def _sifir(x) -> bool:
         return x == 0
     if x.is_number:
         return _sifir_sayi(x)
-    s = sp.simplify(x)
+    # hızlı yol: sembollere rastgele kesirli değer koyunca sıfırdan farklıysa ifade sıfır değildir
+    with contextlib.suppress(Exception):   # değer koyma başarısızsa (tanımsız nokta vb.) kesin yola geçilir
+        degerler = {sm: sp.Rational(7 + 3 * i, 5 + 2 * i) for i, sm in enumerate(sorted(x.free_symbols, key=str))}
+        v = x.subs(degerler).evalf(30)
+        if v.is_number and v.is_finite and abs(v) > sp.Float("1e-20"):
+            return False
+    s = sp.cancel(x)
+    if s == 0:
+        return True
+    s = sp.simplify(s)
     return s == 0 or s.is_zero is True
 
 
@@ -412,14 +421,35 @@ def _sade(M):
     sembolsüz irrasyonel sayılara (kök içeren) radsimp uygulanır."""
     if isinstance(M, sp.MatrixBase):
         if M.free_symbols:
-            return M.applyfunc(sp.simplify)
+            return M.applyfunc(_sade_sembolik)
         if all(e.is_Rational for e in M):
             return M
         return M.applyfunc(_sade_sayi)
     M = sp.sympify(M)
     if M.free_symbols:
-        return sp.simplify(M)
+        return _sade_sembolik(M)
     return M if M.is_Rational else _sade_sayi(M)
+
+
+SADE_ESIK = 60   # count_ops bu eşiğin altındaysa simplify denenir; üstünde cancel ile yetinilir
+
+
+@functools.lru_cache(maxsize=4096)
+def _sade_sembolik(x):
+    """Harfli ifadeyi sadeleştirir: önce cancel (pay/payda, polinom halkasında; hızlı ve kanonik), sonra yalnız
+    küçük ifadelerde simplify (daha okunaklı biçim; büyük ifadelerde dakikalarca sürebilir)."""
+    if not x.free_symbols:
+        return _sade(x)
+    try:
+        y = sp.cancel(x)
+    except Exception:  # noqa: BLE001  pragma: no cover
+        y = x
+    if sp.count_ops(y) <= SADE_ESIK:
+        with contextlib.suppress(Exception):   # simplify nadiren hata verir; verirse cancel sonucu kalır
+            z = sp.simplify(y)
+            if sp.count_ops(z) <= sp.count_ops(y):
+                y = z
+    return y
 
 
 def _esit(X, Y) -> bool:
@@ -2958,7 +2988,7 @@ def birlestir(elemanlar, n_serbestlik: int, *, goster=None, ad: str = "K") -> So
         for e, (k, dof) in enumerate(kmatrisler, start=1):
             kod += [_sp_kodu(f"k{e}", k), f"dof{e} = {[d-1 for d in dof]}  # Python 0'dan sayar",
                     f"for a, I in enumerate(dof{e}):", f"    for b, J in enumerate(dof{e}):", f"        K[I, J] += k{e}[a, b]"]
-        kod += ["sp.pprint(sp.simplify(K))"]
+        kod += ["sp.pprint(K.applyfunc(sp.cancel))"]
     else:
         kod += [f"K = np.zeros(({n_serbestlik}, {n_serbestlik}))"]
         for e, (k, dof) in enumerate(kmatrisler, start=1):
@@ -3129,12 +3159,13 @@ def sinir_kosulu(K, F, sabit, *, goster=None, adlar=("K", "F"), bilinmeyen: str 
     kod = _kod_baslangic(semb, MK, MF)
     sd_satiri = f"{kser} = {idx}  # serbest SD'ler; Python 0'dan saydığı için numara − 1"
     if semb:
-        ki, kdof = kn.al("i"), kn.al("d")
+        ki, kdof, kt = kn.al("i"), kn.al("d"), kn.al("t")
         kod += [_sp_kodu(kK, MK), _sp_kodu(kF, MF), sd_satiri,
                 f"{kKs} = {kK}.extract({kser}, {kser})", f"{kFs} = {kF}.extract({kser}, [0])",
-                f"{kus} = sp.simplify({kKs}.LUsolve({kFs}))", f"{ku} = sp.zeros({n}, 1)",
+                f"({kus},) = sp.linsolve(({kKs}, {kFs}))   # polinom halkasında Gauss; LUsolve+simplify köklü/harfli girdide şişer",
+                f"{kus} = sp.Matrix([sp.cancel({kt}) for {kt} in {kus}])", f"{ku} = sp.zeros({n}, 1)",
                 f"for {ki}, {kdof} in enumerate({kser}): {ku}[{kdof}] = {kus}[{ki}]",
-                f"{kR} = sp.simplify({kK}*{ku} - {kF})",
+                f"{kR} = ({kK}*{ku} - {kF}).applyfunc(sp.cancel)",
                 f"print('{bil} ='); sp.pprint({ku})", f"print('{rad} ='); sp.pprint({kR})"]
     else:
         kes = kn.al("esik")

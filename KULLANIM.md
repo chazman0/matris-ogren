@@ -288,8 +288,13 @@ m["elemanlar"][1]["zemin"] = 25000                                      # Winkle
 r = se.se_coz(m)
 r.veri["yaylar"]        # yay kuvvetleri −k·u
 r.veri["cokmeler"]      # verilen yer değiştirmeler
-r.veri["elemanlar"][1]["zemin_kuvvetleri"]   # zeminin düğümlere aktarılmış kuvvetleri
+r.veri["elemanlar"][1]["zemin_kuvvetleri"]   # zeminin düğümlere aktarılmış (global) kuvvetleri
 ```
+
+Düzlemdeki `M` ile uzaydaki `Mz`, düzlemdeki `kr` ile uzaydaki `krz` aynı bileşendir; ikisi de kabul edilir (ikisi
+birden verilirse toplanır). Harfli (sembolik) girdide çözüm `linsolve` + `cancel` ile yapılır; indirgenmiş sistem
+büyükse (çok sembol, köklü doğrultu kosinüsleri) anlatımda adım adım Gauss yok etme yerine indirgenmiş sistem ve
+çözümü gösterilir.
 
 Hazır örnekler: `kiris-elastik-zemin`, `cerceve-iki-katli`, `cerceve-elastik-mesnet`, `cerceve-mesnet-cokmesi`,
 `cerceve-temel-kirisi` (kolon–kiriş–temel), `kafes3b-tripod`, `kafes3b-kule`, `cerceve3b-konsol-L`, `cerceve3b-izgara`,

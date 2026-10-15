@@ -124,7 +124,8 @@
     m.elemanlar.forEach(function (el, k) {
       const a = d[tamSayi(el.i)], b = d[tamSayi(el.j)];
       if (a && b && a !== b && (a.x !== b.x || a.y !== b.y || a.z !== b.z)) {
-        e.push({ no: tamSayi(el.no) != null ? tamSayi(el.no) : k + 1, a: a, b: b, zemin: tp.zemin && !bos(el.zemin) && sayiOku(el.zemin) !== 0 });
+        const zemin = tp.zemin && !bos(el.zemin) && sayiOku(el.zemin) !== 0 ? str(el.zemin).trim() : null;
+        e.push({ no: tamSayi(el.no) != null ? tamSayi(el.no) : k + 1, a: a, b: b, zemin: zemin });
       }
     });
     return { d: d, e: e };
@@ -280,7 +281,7 @@
     return '<path class="se-yuk-c" d="' + yol + '"/>' + okBasi(son[0] + teg[0] * 4, son[1] + teg[1] * 4, teg[0], teg[1], "se-yuk-o") +
       metinSvg(px, py - r - 7 - (kayma || 0), etiket, "se-etiket se-yuk-t", "middle");
   }
-  function yayiliOku(a, b, n, q, etiket) {
+  function yayiliOku(a, b, n, q, etiket, birim) {
     // a, b: ekran noktaları; n: yükün pozitif yönü (ekran birim vektörü); q > 0 n yönünde
     const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
     const fx = n[0] * q.isaret, fy = n[1] * q.isaret;   // kuvvet yönü
@@ -294,7 +295,7 @@
       const px = a[0] + dx * t, py = a[1] + dy * t;
       s += '<path class="se-yuk-c" d="M' + pt(px - fx * h, py - fy * h) + " L" + pt(px - fx * 2, py - fy * 2) + '"/>' + okBasi(px, py, fx, fy, "se-yuk-o");
     }
-    const etq = etiket + " = " + (q.isaret < 0 ? "−" : "") + q.etiket, yar = 3.3 * etq.length;
+    const etq = etiket + " = " + (q.isaret < 0 ? "−" : "") + q.etiket + (birim ? " " + birim : ""), yar = 3.3 * etq.length;
     const mx = Math.max(4 + yar, Math.min(cizimGenislik - 4 - yar, (bas[0] + son[0]) / 2 - fx * 8)), my = (bas[1] + son[1]) / 2 - fy * 8;
     s += metinSvg(mx, my + (Math.abs(fy) > 0.5 ? (fy > 0 ? -1 : 11) : 4), etq, "se-etiket se-yuk-t", "middle");
     return s;
@@ -321,7 +322,7 @@
       }
       return '<path class="se-yay-c" d="' + d + '"/>' + metinSvg(px + 16, py + 22, et, "se-etiket se-yay-t", "start");
     }
-    let w = anahtar === "kx" ? [1, 0] : anahtar === "ky" ? [0, 1] : yon3(tip, [0, 0, 1]);
+    let w = anahtar === "kx" ? yon3(tip, [1, 0, 0]) : anahtar === "ky" ? yon3(tip, [0, -1, 0]) : yon3(tip, [0, 0, 1]);
     if (komsu.some(function (m) { return w[0] * m[0] + w[1] * m[1] > 0.6; })) w = [-w[0], -w[1]];
     const uc = [px + w[0] * 42, py + w[1] * 42], p = [-w[1], w[0]];
     let s = '<path class="se-yay-c" d="' + zikzak([px + w[0] * 5, py + w[1] * 5], uc, 6) + '"/>';
@@ -370,9 +371,8 @@
     let s = eksenTakimi(tip, T);
     // zemin
     g.e.forEach(function (e) {
-      if (!e.zemin) return;
-      const el = S.elemanlar.filter(function (x) { return tamSayi(x.no) === e.no; })[0];
-      s += zeminCiz(N[e.a.no], N[e.b.no], yerelYon(e, 1), "kₛ = " + fmt(sayiOku(el.zemin) != null ? sayiOku(el.zemin) : el.zemin));
+      if (e.zemin == null) return;
+      s += zeminCiz(N[e.a.no], N[e.b.no], yerelYon(e, 1), "kₛ = " + (sayiOku(e.zemin) != null ? fmt(sayiOku(e.zemin)) : e.zemin) + " " + b.f + "/" + b.l + "²");
     });
     // elemanlar
     g.e.forEach(function (e) {
@@ -391,8 +391,8 @@
         const e = g.e.filter(function (x) { return x.no === eno; })[0];
         if (!e) return;
         const q = yukOku(y.q), qz = tp.qz ? yukOku(y.qz) : null;
-        if (q) s += yayiliOku(N[e.a.no], N[e.b.no], yerelYon(e, 1), q, "q");
-        if (qz) s += yayiliOku(N[e.a.no], N[e.b.no], yerelYon(e, 2), qz, "qz");
+        if (q) s += yayiliOku(N[e.a.no], N[e.b.no], yerelYon(e, 1), q, "q", b.f + "/" + b.l);
+        if (qz) s += yayiliOku(N[e.a.no], N[e.b.no], yerelYon(e, 2), qz, "qz", b.f + "/" + b.l);
       });
     }
     // mesnetler
@@ -413,8 +413,9 @@
         if (!v) return;
         const et = k + " = " + (v.isaret < 0 ? "−" : "") + v.etiket;
         if (k.charAt(0) === "r") { s += momentOku(p[0], p[1], v.isaret, et); return; }
-        const w = k === "ux" ? [1, 0] : k === "uy" ? [0, 1] : yon3(tip, [0, 0, 1]);
-        s += kuvvetOku(p[0] + w[0] * v.isaret * 44, p[1] - w[1] * v.isaret * 44, w[0] * v.isaret, -w[1] * v.isaret, et, "se-cok-c", "se-cok-o", "se-yay-t");
+        const w = k === "ux" ? yon3(tip, [1, 0, 0]) : k === "uy" ? yon3(tip, [0, 1, 0]) : yon3(tip, [0, 0, 1]);
+        // yer değiştirme oku düğümden hareket yönüne gider; biraz uzun tutulur ki etiketi düğüm numarasına değmesin
+        s += kuvvetOku(p[0] + w[0] * v.isaret * 60, p[1] + w[1] * v.isaret * 60, w[0] * v.isaret, w[1] * v.isaret, et, "se-cok-c", "se-cok-o", "se-yay-t");
       });
     });
     // düğüm yükleri
@@ -429,7 +430,7 @@
           const et = (tp.yuk.length > 3 ? k + " = " : "") + v.etiket + " " + b.f + "·" + b.l;
           s += momentOku(p[0], p[1], v.isaret, et, kayma); kayma += 13; return;
         }
-        const w = k === "Fx" ? [1, 0] : k === "Fy" ? [0, -1] : yon3(tip, [0, 0, 1]);
+        const w = k === "Fx" ? yon3(tip, [1, 0, 0]) : k === "Fy" ? yon3(tip, [0, 1, 0]) : yon3(tip, [0, 0, 1]);
         s += kuvvetOku(p[0], p[1], w[0] * v.isaret, w[1] * v.isaret, (tp.yuk.length > 3 ? k + " = " : "") + v.etiket + " " + b.f);
       });
     });
@@ -727,14 +728,17 @@
     dz(m.mesnetler).forEach(function (x) { x = x || {}; s.mesnetler.push({ dugum: str(x.dugum), ux: !!x.ux, uy: !!x.uy, uz: !!x.uz, rx: !!x.rx, ry: !!x.ry, rz: !!x.rz }); });
     dz(m.yukler).forEach(function (y) {
       y = y || {};
-      const M = y.M != null ? y.M : (tip !== "cerceve3b" ? y.Mz : undefined), Mz = y.Mz != null ? y.Mz : (tip === "cerceve3b" ? y.M : undefined);
-      s.yukler.push({ dugum: str(y.dugum), Fx: str(y.Fx), Fy: str(y.Fy), Fz: str(y.Fz), M: str(M), Mx: str(y.Mx), My: str(y.My), Mz: str(Mz) });
+      // motor gibi: "M" ile "Mz" aynı bileşendir; ikisi de verilmişse toplanır (sayısal değilse "+" ile birleştirilir)
+      const mz = birlesikDeger(y.M, y.Mz);
+      s.yukler.push({ dugum: str(y.dugum), Fx: str(y.Fx), Fy: str(y.Fy), Fz: str(y.Fz), M: tip === "cerceve3b" ? "" : mz, Mx: str(y.Mx), My: str(y.My), Mz: tip === "cerceve3b" ? mz : "" });
     });
     dz(m.yayili).forEach(function (y) { y = y || {}; s.yayili.push({ eleman: str(y.eleman), q: str(y.q), qz: str(y.qz) }); });
     dz(m.yaylar).forEach(function (y) {
       y = y || {};
       const o = { dugum: str(y.dugum) };
       Object.keys(YAY_ETIKET).forEach(function (k) { o[k] = str(y[k]); });
+      const kr = birlesikDeger(y.kr, y.krz);   // "kr" ile "krz" aynı dönme yayıdır
+      if (tip === "cerceve3b") { o.krz = kr; o.kr = ""; } else { o.kr = kr; o.krz = ""; }
       s.yaylar.push(o);
     });
     dz(m.cokmeler).forEach(function (c) {
@@ -744,6 +748,15 @@
       s.cokmeler.push(o);
     });
     return s;
+  }
+  function birlesikDeger(a, b) {
+    // aynı bileşenin iki adı (M/Mz, kr/krz): biri boşsa öteki; ikisi de doluysa toplam
+    const sa = str(a).trim(), sb = str(b).trim();
+    if (!sa) return sb;
+    if (!sb) return sa;
+    const na = sayiOku(sa), nb = sayiOku(sb);
+    if (na != null && nb != null) return String(na + nb);
+    return "(" + sa + ")+(" + sb + ")";
   }
   function sayiyaDondur(t) {
     const n = sayiOku(t);
@@ -1013,6 +1026,15 @@
     if (!tp.q) S.yayili = [];
     if (!tp.qz) S.yayili.forEach(function (y) { y.qz = ""; });
     S.mesnetler.forEach(function (m) { if (tip === "kiris" && !m.uy && m.ux) m.uy = true; });
+    // düzlemdeki M / kr ile uzaydaki Mz / krz aynı bileşendir: tür değişince taşınır
+    S.yukler.forEach(function (y) {
+      if (tp.yuk.indexOf("Mz") >= 0) { if (bos(y.Mz) && !bos(y.M)) y.Mz = y.M; y.M = ""; }
+      else if (tp.yuk.indexOf("M") >= 0) { if (bos(y.M) && !bos(y.Mz)) y.M = y.Mz; y.Mz = ""; }
+    });
+    S.yaylar.forEach(function (y) {
+      if (tp.yay.indexOf("krz") >= 0) { if (bos(y.krz) && !bos(y.kr)) y.krz = y.kr; y.kr = ""; }
+      else if (tp.yay.indexOf("kr") >= 0) { if (bos(y.kr) && !bos(y.krz)) y.kr = y.krz; y.krz = ""; }
+    });
     sonucuTemizle();
     modeliGoster();
   }

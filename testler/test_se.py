@@ -18,6 +18,7 @@ import io
 import json
 import re
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -139,8 +140,10 @@ def referans(m):
     n = d * len(sira)
     K = np.zeros((n, n))
     F = np.zeros(n)
-    qlar = {y["eleman"]: float(y["q"]) for y in m.get("yayili", [])}
-    qzlar = {y["eleman"]: float(y.get("qz", 0) or 0) for y in m.get("yayili", [])}
+    qlar, qzlar = defaultdict(float), defaultdict(float)
+    for y in m.get("yayili", []):          # aynı elemana birden çok yayılı yük verilmişse toplanır
+        qlar[y["eleman"]] += float(y.get("q", 0) or 0)
+        qzlar[y["eleman"]] += float(y.get("qz", 0) or 0)
     eleman_verisi = []
     for e in m["elemanlar"]:
         a, b = (sira[v] for v in e["dugumler"])
@@ -1098,3 +1101,319 @@ def test_tip_takma_adlari():
     m["yukler"] = [{"dugum": 2, "Fx": 20, "Mz": 5}]       # düzlemde Mz, M ile aynı
     m["yayili"] = []
     assert se.se_coz(m).veri["F"][5] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# Kapsam: qz, Mx/My, 3B yaylar ve çökmeler, ters yönlü elemanlar, eğik elemanda zemin
+# ---------------------------------------------------------------------------
+def _oz3b():
+    return {"E": "200e6", "G": "80e6", "A": "0.01", "Iy": "1e-4", "Iz": "2e-4", "J": "3e-4"}
+
+
+def _referansla_karsilastir(m, rtol=1e-8):
+    """Motor çözümünü bağımsız referansla karşılaştırır: u, F, tepkiler, eleman uç kuvvetleri."""
+    r = se.se_coz(m)
+    v = r.veri
+    u, Rt, uc, K, F = referans(m)
+    assert yakin(v["u"], u, rtol=rtol, atol=1e-12)
+    assert yakin(v["F"], F, rtol=1e-9, atol=1e-9)
+    assert yakin(v["K"], K, rtol=1e-9, atol=1e-9)
+    d = _D[m["tip"]]
+    sira = {dg["no"]: i for i, dg in enumerate(m["dugumler"])}
+    for t in v["tepkiler"]:
+        i = sira[t["dugum"]]
+        for ad, j in _YUK[m["tip"]].items():
+            ms = next((x for x in m.get("mesnetler", []) if x["dugum"] == t["dugum"]), {})
+            ck = next((x for x in m.get("cokmeler", []) if x["dugum"] == t["dugum"]), {})
+            bayrak = _MESNET[m["tip"]][j]
+            if ms.get(bayrak) or ck.get(bayrak) is not None:
+                assert t[ad] == pytest.approx(Rt[d * i + j], rel=1e-7, abs=1e-7), (t["dugum"], ad)
+    for e, (f, N) in zip(v["elemanlar"], uc):
+        if m["tip"] in ("kiris", "cerceve", "cerceve3b"):
+            assert yakin(e["uc_kuvvetleri"], f, rtol=1e-7, atol=1e-7), e["no"]
+        if m["tip"] != "kiris":
+            assert e["N"] == pytest.approx(N, rel=1e-7, abs=1e-8), e["no"]
+    return r
+
+
+def test_cerceve3b_qz_ve_Mx_My_referansla():
+    """Yerel z′ yönünde yayılı yük (qz) ve Mx, My düğüm momentleri: motor ile bağımsız referans aynı sonucu verir."""
+    m = {"tip": "cerceve3b", "dugumler": [{"no": 1, "x": 0, "y": 0, "z": 0}, {"no": 2, "x": 4, "y": 0, "z": 0},
+                                          {"no": 3, "x": 4, "y": 0, "z": 3}],
+         "elemanlar": [dict(no=1, dugumler=[1, 2], **_oz3b()), dict(no=2, dugumler=[2, 3], **_oz3b())],
+         "mesnetler": [{"dugum": 1, "ux": True, "uy": True, "uz": True, "rx": True, "ry": True, "rz": True}],
+         "yukler": [{"dugum": 3, "Fz": -5, "Mx": 2, "My": -3}],
+         "yayili": [{"eleman": 1, "q": -4, "qz": 6}, {"eleman": 2, "qz": -2}]}
+    r = _referansla_karsilastir(m)
+    v = r.veri
+    # qz'nin eşdeğer düğüm yükü: eleman 1 (x boyunca, z′ = Z): her uca qz·L/2 = 12 kN z yönünde;
+    # eleman 2 (Z boyunca, y′ = Y, z′ = Z × Y = −X): qz = −2 → her uca 3 kN +x yönünde
+    assert v["F"][2] == pytest.approx(12.0) and v["F"][8] == pytest.approx(12.0)
+    assert v["F"][6] == pytest.approx(3.0) and v["F"][12] == pytest.approx(3.0)
+    # düğüm momentleri F'de yerindedir; My'ye eleman 2'nin qz ankastrelik momenti de eklenir (qz·L²/12 = −1.5)
+    assert v["F"][15] == pytest.approx(2.0) and v["F"][16] == pytest.approx(-3.0 - 1.5)
+    # ankastre tepkisi dengeyi kapatır: ΣFz = 0, ΣFx = 0
+    t = {x["dugum"]: x for x in v["tepkiler"]}
+    assert t[1]["Fz"] == pytest.approx(-(-5 + 6 * 4)) and t[1]["Fx"] == pytest.approx(-6.0)
+    assert "qz" in anlatim_metni(r) or "q_z" in anlatim_metni(r)
+
+
+def test_cerceve3b_yaylar_ve_cokme_referansla():
+    """Uzayda altı bileşenli yaylar ve uz / rx çökmesi: referansla aynı; yay kuvvetleri −k·u."""
+    m = {"tip": "cerceve3b", "dugumler": [{"no": 1, "x": 0, "y": 0, "z": 0}, {"no": 2, "x": 0, "y": 3, "z": 0},
+                                          {"no": 3, "x": 4, "y": 3, "z": 0}, {"no": 4, "x": 4, "y": 0, "z": 0}],
+         "elemanlar": [dict(no=1, dugumler=[1, 2], **_oz3b()), dict(no=2, dugumler=[2, 3], **_oz3b()),
+                       dict(no=3, dugumler=[3, 4], **_oz3b())],
+         "mesnetler": [{"dugum": 1, "ux": True, "uy": True, "uz": True, "rx": True, "ry": True, "rz": True}],
+         "yaylar": [{"dugum": 4, "kx": 5000, "ky": 8000, "kz": 3000, "krx": 400, "kry": 500, "krz": 600}],
+         "cokmeler": [{"dugum": 4, "uz": "-0.02", "rx": "0.001"}],
+         "yukler": [{"dugum": 3, "Fz": -10, "Fx": 4}]}
+    r = _referansla_karsilastir(m)
+    v = r.veri
+    assert v["mod"] == "sayisal"
+    assert {(c["dugum"], c["deger"]) for c in v["cokmeler"]} == {(4, -0.02), (4, 0.001)}
+    assert v["u"][20] == pytest.approx(-0.02) and v["u"][21] == pytest.approx(0.001)
+    yay = {(y["dugum"], y["bilesen"]): y for y in v["yaylar"]}
+    assert set(yay) == {(4, "Fx"), (4, "Fy"), (4, "Fz"), (4, "Mx"), (4, "My"), (4, "Mz")}
+    assert yay[(4, "Fx")]["kuvvet"] == pytest.approx(-5000 * v["u"][18])
+    assert yay[(4, "Mz")]["kuvvet"] == pytest.approx(-600 * v["u"][23])
+    # tutulan (çöken) bileşenlerde yay kuvveti çökme ile hesaplanır
+    assert yay[(4, "Fz")]["kuvvet"] == pytest.approx(3000 * 0.02)
+
+
+@pytest.mark.parametrize("ad", ["cerceve3b-konsol-L", "cerceve3b-izgara", "kafes3b-kule", "cerceve-iki-katli"])
+def test_ters_yonlu_elemanlar_sonucu_degistirmez(ad):
+    """Elemanların i–j sırası tersine çevrilince (−x, −y, −z yönünde elemanlar) u ve tepkiler değişmez;
+    N aynı kalır; kiriş/çerçevede uç kuvvetleri yer değiştirir."""
+    r0 = coz(ad)
+    m = se.ornek_model(ad)
+    xyz = {dg["no"]: (float(dg.get("x", 0)), float(dg.get("y", 0)), float(dg.get("z", 0))) for dg in m["dugumler"]}
+    dusey = {}
+    for e in m["elemanlar"]:
+        a, b = xyz[e["dugumler"][0]], xyz[e["dugumler"][1]]
+        dusey[e["no"]] = abs(a[0] - b[0]) < 1e-12 and abs(a[2] - b[2]) < 1e-12
+        e["dugumler"] = list(reversed(e["dugumler"]))
+    # yayılı yük yerel eksende verilir: eleman tersinince düzlemde y′ ters döner (q işaret değiştirir);
+    # uzayda y′ düşey düzlemde yukarı kalır, z′ ters döner (qz işaret değiştirir); düşey uzay elemanında tersi
+    for y in m.get("yayili", []):
+        if m["tip"] == "cerceve3b":
+            if dusey[y["eleman"]]:
+                y["q"] = -float(y.get("q", 0) or 0)
+            else:
+                y["qz"] = -float(y.get("qz", 0) or 0)
+        else:
+            y["q"] = -float(y.get("q", 0) or 0)
+    r1 = se.se_coz(m)
+    assert yakin(r1.veri["u"], r0.veri["u"], rtol=1e-8, atol=1e-13)
+    t0 = {x["dugum"]: x for x in r0.veri["tepkiler"]}
+    for t in r1.veri["tepkiler"]:
+        for k, val in t.items():
+            if k != "dugum":
+                assert val == pytest.approx(t0[t["dugum"]][k], rel=1e-7, abs=1e-7), (t["dugum"], k)
+    d = _D[m["tip"]]
+    for e0, e1 in zip(r0.veri["elemanlar"], r1.veri["elemanlar"]):
+        assert e1["N"] == pytest.approx(e0["N"], rel=1e-7, abs=1e-7)
+        if m["tip"] in ("cerceve", "cerceve3b"):
+            f0, f1 = np.array(e0["uc_kuvvetleri"]), np.array(e1["uc_kuvvetleri"])
+            if m["tip"] == "cerceve3b":
+                # ters eleman: x′ ve z′ işaret değiştirir, y′ aynı (düşey düzlemde yukarı) -> yerel bileşenler
+                # (fx, fy, fz, mx, my, mz)_j' = (−fx, fy, −fz, −mx, my, −mz)_i ve tersi; düşey elemanda z′ = Z
+                # sabit kalır, y′ ters döner
+                isaret = np.array(([-1, -1, 1, -1, -1, 1] if dusey[e0["no"]] else [-1, 1, -1, -1, 1, -1]) * 2)
+                assert yakin(f1, isaret * np.concatenate([f0[d:], f0[:d]]), rtol=1e-7, atol=1e-7), e0["no"]
+            else:
+                # düzlemde: x′ ters, y′ ters, z′ (dönme) aynı
+                isaret = np.array([-1, -1, 1] * 2)
+                assert yakin(f1, isaret * np.concatenate([f0[d:], f0[:d]]), rtol=1e-7, atol=1e-7), e0["no"]
+
+
+def test_egik_cerceve_elemaninda_zemin_referansla():
+    """Eğik bir çerçeve elemanına Winkler zemini: yatak matrisi yerel y′ bileşenlerine eklenir (referansla aynı)."""
+    m = {"tip": "cerceve", "dugumler": [{"no": 1, "x": 0, "y": 0}, {"no": 2, "x": 4, "y": 3}, {"no": 3, "x": 8, "y": 3}],
+         "elemanlar": [{"no": 1, "dugumler": [1, 2], "E": "3e7", "A": "0.2", "I": "6e-3", "zemin": "20000"},
+                       {"no": 2, "dugumler": [2, 3], "E": "3e7", "A": "0.2", "I": "6e-3", "zemin": "20000"}],
+         "mesnetler": [{"dugum": 1, "ux": True, "uy": True}],
+         "yukler": [{"dugum": 3, "Fy": -50}], "yayili": [{"eleman": 1, "q": -10}]}
+    r = _referansla_karsilastir(m)
+    v = r.veri
+    u = np.array(v["u"])
+    # zemin uç kuvvetleri (yerelde −K_w·d_y′, globale çevrilmiş) referansla aynı; toplamı + mesnet tepkisi = dış yük
+    toplam = np.zeros(3)
+    for e in v["elemanlar"]:
+        me = next(x for x in m["elemanlar"] if x["no"] == e["no"])
+        a, b = (next(i for i, dg in enumerate(m["dugumler"]) if dg["no"] == n) for n in me["dugumler"])
+        dx, dy = (m["dugumler"][b][k] - m["dugumler"][a][k] for k in ("x", "y"))
+        L = np.hypot(dx, dy); c, s_ = dx / L, dy / L
+        t3 = np.array([[c, s_, 0.0], [-s_, c, 0.0], [0.0, 0.0, 1.0]])
+        T = np.block([[t3, np.zeros((3, 3))], [np.zeros((3, 3)), t3]])
+        dofs = [3 * a, 3 * a + 1, 3 * a + 2, 3 * b, 3 * b + 1, 3 * b + 2]
+        dy_ = T @ u[dofs]
+        fz = np.zeros(6)
+        fz[[1, 2, 4, 5]] = -_winkler_k(float(me["zemin"]), L) @ dy_[[1, 2, 4, 5]]
+        fg = T.T @ fz                                   # dışa verilen zemin kuvvetleri global eksendedir
+        assert yakin(e["zemin_kuvvetleri"], fg, rtol=1e-7, atol=1e-7), e["no"]
+        toplam += fg[:3] + fg[3:]
+    # q eleman eksenine diktir (y′ = (−0.6, 0.8)); q = −10 üzerinden toplam 50 kN: (+30, −40) global bileşen
+    t = v["tepkiler"][0]
+    assert t["Fy"] + toplam[1] == pytest.approx(50 + 40, rel=1e-7)
+    assert t["Fx"] + toplam[0] == pytest.approx(-30, rel=1e-7)
+    assert abs(v["denge"]["Fy"]) < 1e-6 and abs(v["denge"]["M"]) < 1e-6
+
+
+def test_ayni_elemana_iki_yayili_yuk_toplanir():
+    m = se.ornek_model("kiris-basit-yayili")
+    q = m["yayili"][0]["q"]
+    m["yayili"] = [{"eleman": 1, "q": q}, {"eleman": 1, "q": "-5"}]
+    r = se.se_coz(m)
+    m2 = se.ornek_model("kiris-basit-yayili")
+    m2["yayili"] = [{"eleman": 1, "q": str(float(q) - 5)}]
+    assert yakin(r.veri["F"], se.se_coz(m2).veri["F"], rtol=1e-12, atol=1e-12)
+    u, Rt, uc, K, F = referans(m)
+    assert yakin(r.veri["u"], u, rtol=1e-9, atol=1e-14)
+
+
+# ---------------------------------------------------------------------------
+# Düzeltilen hataların gerileme (regresyon) testleri
+# ---------------------------------------------------------------------------
+def test_cokme_tum_serbestlikler_tutulu():
+    """Her iki ucu ankastre kiriş, bir uç Δ çöker: serbest SD yok; V = 12EIΔ/L³, M = 6EIΔ/L²."""
+    m = {"tip": "kiris", "dugumler": [{"no": 1, "x": 0}, {"no": 2, "x": 4}],
+         "elemanlar": [{"no": 1, "dugumler": [1, 2], "E": "200e6", "I": "2e-5"}],      # EI = 4000
+         "mesnetler": [{"dugum": 1, "uy": True, "rz": True}, {"dugum": 2, "uy": True, "rz": True}],
+         "cokmeler": [{"dugum": 2, "uy": "-0.01"}], "yukler": []}
+    r = se.se_coz(m)
+    v = r.veri
+    assert list(r.deger) == [0, 0, R(-1, 100), 0] and v["sd_sayisi"] == 4
+    t = {x["dugum"]: x for x in v["tepkiler"]}
+    assert t[1]["Fy"] == pytest.approx(12 * 4000 * 0.01 / 64) and t[2]["Fy"] == pytest.approx(-7.5)
+    assert t[1]["M"] == pytest.approx(6 * 4000 * 0.01 / 16) and t[2]["M"] == pytest.approx(15.0)
+    assert r.python_kodu.strip() and "Traceback" not in r.python_ciktisi
+    assert "Mesnet çökmesi" in anlatim_metni(r)
+
+
+def test_sayisal_modda_cokme_kalinti_denetimi_gecer():
+    """SD > eşik (sayısal mod) ve mesnet çökmesi: K_fs·u_s terimi kalıntı denetiminde hesaba katılır."""
+    m = se.ornek_model("cerceve-iki-katli")
+    m["cokmeler"] = [{"dugum": 4, "uy": "-0.02", "rz": "0.002"}]
+    r = _referansla_karsilastir(m)
+    assert r.veri["mod"] == "sayisal" and r.veri["sd_sayisi"] > se.SD_ESIK
+    assert r.veri["u"][10] == pytest.approx(-0.02) and r.veri["u"][11] == pytest.approx(0.002)
+
+
+def test_cok_rijit_yay_mekanizma_sayilmaz():
+    """Çok rijit yaylar (k ≫ EA/L) K'nın ölçeğini şişirir; gerçek modlar sıfır sanılmamalı."""
+    m = se.ornek_model("kafes-iki-cubuk")
+    m["mesnetler"] = []
+    m["yaylar"] = [{"dugum": d, "kx": "1e13", "ky": "1e13"} for d in (1, 2)]
+    r = se.se_coz(m)
+    assert r.veri["tepkiler"] == [] and len(r.veri["yaylar"]) == 4
+    # yaylar çok rijit: sonuç ankastre (mesnetli) çözüme yaklaşır
+    r0 = coz("kafes-iki-cubuk")
+    assert yakin(r.veri["u"], r0.veri["u"], rtol=1e-5, atol=1e-9)
+    # gerçek bir mekanizma rijit yaylara rağmen yakalanır: yalnız bir düğüm tutulu
+    m["yaylar"] = [{"dugum": 1, "kx": "1e13", "ky": "1e13"}]
+    with pytest.raises(mo.MatrisHatasi, match="mekanizma"):
+        se.se_coz(m)
+
+
+def test_betikte_d_sembolu_catismaz():
+    """Kullanıcı 'd' adlı bir sembol kullanırsa üretilen betikteki SD değişkeniyle çakışmamalı."""
+    m = se.ornek_model("kafes-iki-cubuk")
+    m["elemanlar"][0]["A"] = "d"
+    m["yukler"] = [{"dugum": 2, "Fy": "-P"}]
+    r = se.se_coz(m)
+    assert r.veri["mod"] == "kesin"
+    ns: dict = {"__name__": "betik"}
+    with contextlib.redirect_stdout(io.StringIO()):
+        exec(compile(r.python_kodu, "<betik>", "exec"), ns)
+    assert len(ns["u"]) == r.veri["sd_sayisi"]
+    for x, y in zip(ns["u"], r.deger):
+        assert sp.simplify(sp.sympify(x) - y) == 0
+
+
+@pytest.mark.parametrize("ad,degistir", [
+    ("cerceve3b-egik-sembolik", lambda m: m["elemanlar"][0].update(E="E", G="G")),
+    ("kiris-zemin-sembolik", None),
+    ("kafes-yay-sembolik", None),
+])
+def test_sembolik_zor_modeller_hizli(ad, degistir):
+    """Köklü/sembolik ifadeler LUsolve+simplify ile takılırdı; linsolve+cancel ile saniyeler içinde biter."""
+    if ad == "cerceve3b-egik-sembolik":
+        m = {"tip": "cerceve3b", "dugumler": [{"no": 1, "x": 0, "y": 0, "z": 0}, {"no": 2, "x": 3, "y": 2, "z": 1}],
+             "elemanlar": [dict(no=1, dugumler=[1, 2], **_oz3b())],
+             "mesnetler": [{"dugum": 1, "ux": True, "uy": True, "uz": True, "rx": True, "ry": True, "rz": True}],
+             "yukler": [{"dugum": 2, "Fy": "-P", "Mx": "M0"}]}
+        degistir(m)
+    elif ad == "kiris-zemin-sembolik":
+        m = {"tip": "kiris", "dugumler": [{"no": 1, "x": 0}, {"no": 2, "x": 2}, {"no": 3, "x": 4}],
+             "elemanlar": [{"no": 1, "dugumler": [1, 2], "E": "E", "I": "I", "zemin": "k"},
+                           {"no": 2, "dugumler": [2, 3], "E": "E", "I": "I", "zemin": "k"}],
+             "mesnetler": [], "yukler": [{"dugum": 2, "Fy": "-P"}]}
+    else:
+        m = se.ornek_model("kafes-uc-cubuk")
+        for e in m["elemanlar"]:
+            e.update(E="E", A="A")
+        m["mesnetler"] = m["mesnetler"][:2]      # düğüm 3'ün mesnedi yerine yaylar
+        m["yaylar"] = [{"dugum": 3, "kx": "k", "ky": "k"}]
+    t0 = time.perf_counter()
+    r = se.se_coz(m)
+    assert time.perf_counter() - t0 < 8.0, ad
+    assert r.veri["mod"] == "kesin" and r.python_ciktisi and "Traceback" not in r.python_ciktisi
+    # sembolik çözüm sayısal değerle tutarlı: sembolleri sayıya koyup referansla karşılaştır
+    degerler = {"E": 2e8, "G": 8e7, "I": 1e-4, "L": 2.0, "k": 5000.0, "P": 10.0, "M0": 3.0, "A": 0.01}
+    semboller = {a: sp.Symbol(a) for a in degerler}        # "E" ve "I" sympy sabitleri (e, i) değil, harf olmalı
+    say = lambda s: sp.sympify(str(s), locals=semboller).subs({semboller[a]: b for a, b in degerler.items()})
+    m_say = copy.deepcopy(m)
+    for dg in m_say["dugumler"]:
+        for k in ("x", "y", "z"):
+            if k in dg:
+                dg[k] = float(say(dg[k]))
+    for e in m_say["elemanlar"]:
+        for k in ("E", "G", "A", "I", "Iy", "Iz", "J", "zemin"):
+            if k in e:
+                e[k] = float(say(e[k]))
+    for y in m_say["yukler"]:
+        for k, v in list(y.items()):
+            if k != "dugum":
+                y[k] = float(say(v))
+    for y in m_say.get("yaylar", []):
+        for k, v in list(y.items()):
+            if k != "dugum":
+                y[k] = float(say(v))
+    u_ref = referans(m_say)[0]
+    u_semb = [float(sp.N(say(x), 30)) for x in r.deger]
+    assert yakin(u_semb, u_ref, rtol=1e-7, atol=1e-12), ad
+
+
+def test_z_uyarisi_duzlem_modelde():
+    m = se.ornek_model("kafes-iki-cubuk")
+    m["dugumler"][1]["z"] = 2
+    r = se.se_coz(m)
+    metin = anlatim_metni(r)
+    assert "z yoksayıldı" in metin and "kafes3b" in metin
+    assert yakin(r.veri["u"], coz("kafes-iki-cubuk").veri["u"], rtol=1e-12, atol=1e-15)
+
+
+def test_cokme_u_takma_adi_cubukta():
+    m = se.ornek_model("cubuk-kademeli")
+    m["cokmeler"] = [{"dugum": m["dugumler"][0]["no"], "u": "0.001"}]
+    r = se.se_coz(m)
+    assert r.veri["cokmeler"][0]["deger"] == 0.001
+    m["cokmeler"] = [{"dugum": m["dugumler"][0]["no"], "ux": "0.001"}]
+    assert yakin(se.se_coz(m).veri["u"], r.veri["u"], rtol=1e-12, atol=1e-15)
+
+
+def test_kr_krz_takma_adlari():
+    """Düzlemde 'krz', uzayda 'kr' da kabul edilir (M/Mz gibi)."""
+    m = se.ornek_model("cerceve-elastik-mesnet")
+    for y in m["yaylar"]:
+        if "kr" in y:
+            y["krz"] = y.pop("kr")
+    assert yakin(se.se_coz(m).veri["u"], coz("cerceve-elastik-mesnet").veri["u"], rtol=1e-12, atol=1e-15)
+    m3 = se.ornek_model("cerceve3b-konsol-L")
+    m3["mesnetler"][0]["rz"] = False
+    m3["yaylar"] = [{"dugum": 1, "kr": 5000}]
+    r3 = se.se_coz(m3)
+    assert r3.veri["yaylar"][0]["bilesen"] == "Mz" and r3.veri["yaylar"][0]["k"] == 5000
+    m3["yaylar"] = [{"dugum": 1, "krz": 5000}]
+    assert yakin(se.se_coz(m3).veri["u"], r3.veri["u"], rtol=1e-12, atol=1e-15)
