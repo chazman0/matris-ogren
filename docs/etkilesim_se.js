@@ -15,6 +15,8 @@
  *   modal-titresim kat kütleleri, det(K - w^2 M) = 0, mod şekilleri
  *   uzay-kafes-cubuk uzay kafes çubuğu: φ, ψ açılarıyla cx, cy, cz; 6x6 global matriste c·cᵀ deseni (ton = |değer|)
  *   uzay-cerceve-k   12x12 uzay çerçeve elemanı: eksenel, iki eğilme ve burulma parselleri; λ ile global dönüşüm
+ *   elastik-mesnet iki ucu yaya oturan kiriş: K köşegenine +k (yeşil hücreler), yay kuvvetleri -k·u, mekanizma uyarısı
+ *   winkler-kiris  Winkler zeminine oturan kiriş: tutarlı zemin matrisi, çökme ve zemin basıncı, β ve Hetényi karşılaştırması
  *
  * ALIŞTIRMALAR (BICIM.md 7): alistirma:cubuk-k, kafes-k, birlestir, sinir-kosulu, yay-seri
  *
@@ -186,6 +188,17 @@
       [6 * L * a, 4 * L * L * a, -6 * L * a, 2 * L * L * a],
       [-12 * a, -6 * L * a, 12 * a, -6 * L * a],
       [6 * L * a, 2 * L * L * a, -6 * L * a, 4 * L * L * a]
+    ];
+  }
+
+  /* Winkler zemini: Hermite kiriş elemanının tutarlı zemin matrisi ∫ k_s Nᵀ N dx = (k_s L/420)[...] (v1, θ1, v2, θ2) */
+  function winklerK(ks, L) {
+    const a = ks * L / 420;
+    return [
+      [156 * a, 22 * L * a, 54 * a, -13 * L * a],
+      [22 * L * a, 4 * L * L * a, 13 * L * a, -3 * L * L * a],
+      [54 * a, 13 * L * a, 156 * a, -22 * L * a],
+      [-13 * L * a, -3 * L * L * a, -22 * L * a, 4 * L * L * a]
     ];
   }
 
@@ -2064,6 +2077,276 @@
     baslik: "Uzay çerçeve elemanı: 12x12 rijitlik matrisi",
     aciklama: "Eksenel, iki eğilme ve burulma parsellerini renkli gör; yön açılarıyla λ ve global matrisin nasıl karıştığını izle.",
     varsayilan: { E: 2e8, G: 8e7, A: 0.01, Iy: 1e-4, Iz: 2e-4, J: 2e-4, L: 4, fi: 30, psi: 20 }
+  });
+
+  /* ================================================================== 12. elastik-mesnet */
+
+  function sarmalYolu(cx, cy, r0, r1, tur) { // dönme yayı: küçük sarmal
+    const n = Math.max(8, Math.round(20 * tur)), pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, a = t * tur * 2 * Math.PI, r = r0 + (r1 - r0) * t;
+      pts.push(r2(cx + r * Math.cos(a)) + " " + r2(cy - r * Math.sin(a)));
+    }
+    return "M" + pts.join(" L");
+  }
+  function zeminCizgisi(g, x0, x1, y, aile) { // zemin çizgisi ve taramalar
+    g.appendChild(cizgi(x0, y, x1, y, { renk: aile || "metin", kal: 1.6 }));
+    for (let x = x0 + 6; x <= x1; x += 9) g.appendChild(cizgi(x, y, x - 6, y + 7, { renk: aile || "metin", kal: 1 }));
+  }
+  const yuv3 = x => String(+(+x).toPrecision(3));
+
+  E.kaydet("elastik-mesnet", function (kok, p) {
+    const kap = cerceveKur(kok);
+    const Em = sayiP(p.E, 2e8, 1, 1e12), I = sayiP(p.I, 2e-5, 1e-10, 1);
+    let L = sayiP(p.L, 4, 1, 20), P = sayiP(p.P, 10, 0, 1e4);
+    let k1 = sayiP(p.k1, 1000, 0, 1e9), k2 = sayiP(p.k2, 1000, 0, 1e9), kr = sayiP(p.kr, 0, 0, 1e9);
+    const kMax = guzel(Math.max(20000, 2 * k1, 2 * k2, 2 * kr));
+    const W = 400, H = 232, X0 = 56, LP = 288, Yb = 92, Yz = 190, AMP = 40;
+    const sd = sv(W, H, "İki ucu düşey yaya oturan kiriş: çökme, yay kuvvetleri ve dönme yayı");
+    const sm = sv(380, 250, "Birleştirilmiş 6x6 rijitlik matrisi; yaylar köşegene eklenir");
+    const dyn = svg("g");
+    sd.appendChild(dyn);
+    const formul = formulKutu();
+    const uyari = el("p", { class: "ks-uyari", style: { display: "none" } });
+    const SDAD = ["v1", "θ1", "v2", "θ2", "v3", "θ3"];
+    let slP, sl1, sl2, slr, slL;
+
+    function hesap() {
+      const EI = Em * I, l = L / 2, ke = kirisK(EI, l);
+      const Kb = birlestirK(6, [{ K: ke, dof: [0, 1, 2, 3] }, { K: ke, dof: [2, 3, 4, 5] }]);
+      const K = Kb.map(r => r.slice());
+      K[0][0] += k1; K[4][4] += k2; K[1][1] += kr;
+      return { EI, l, Kb, K, u: coz(K, [0, 0, -P, 0, 0, 0]) };
+    }
+
+    function ciz() {
+      const h = hesap(), l = h.l, u = h.u || [0, 0, 0, 0, 0, 0];
+      const vx = x => { // çökme v(x), x ∈ [0, L]
+        const e = x < l ? 0 : 1, xi = kenet((x - e * l) / l, 0, 1), nn = hermite(xi, l), d = u.slice(2 * e, 2 * e + 4);
+        return nn[0] * d[0] + nn[1] * d[1] + nn[2] * d[2] + nn[3] * d[3];
+      };
+      let vm = 0;
+      for (let i = 0; i <= 40; i++) vm = Math.max(vm, Math.abs(vx(L * i / 40)));
+      const sc = vm > 1e-15 ? AMP / vm : 0;
+      const px = x => X0 + x / L * LP, py = x => Yb - sc * vx(x);
+      bos(dyn);
+      dyn.appendChild(cizgi(X0, Yb, X0 + LP, Yb, { renk: "soluk", kal: 1.2, kesik: true }));
+      zeminCizgisi(dyn, X0 - 26, X0 + 26, Yz, "metin");
+      zeminCizgisi(dyn, X0 + LP - 26, X0 + LP + 26, Yz, "metin");
+      const y1 = py(0), y3 = py(L);
+      [[X0, y1, k1, "k_sol"], [X0 + LP, y3, k2, "k_sağ"]].forEach(o => {
+        if (o[2] > 0) dyn.appendChild(yol(yayYolu(o[0], o[1] + 6, o[0], Yz, 6, 7), { renk: "c", kal: 2.6 }));
+        else dyn.appendChild(cizgi(o[0], o[1] + 6, o[0], Yz, { renk: "soluk", kal: 1, kesik: "2 4" }));
+        dyn.appendChild(yaziH(o[0], Yz + 18, o[3] + " = " + yuv3(o[2]), { renk: o[2] > 0 ? "c" : "soluk", boyut: 10.5, kalin: true }));
+      });
+      if (kr > 0) {
+        dyn.appendChild(yol(sarmalYolu(X0, y1, 3, 15, 1.75), { renk: "c", kal: 2 }));
+        dyn.appendChild(yaziH(X0 + 6, y1 - 26, "k_r = " + yuv3(kr), { renk: "c", boyut: 10.5, kalin: true, hiza: "sol" }));
+      }
+      dyn.appendChild(yol(egriYol(t => [px(t * L), py(t * L)], 80), { renk: "metin", kal: 3.6 }));
+      [0, L / 2, L].forEach((x, i) => {
+        dyn.appendChild(daire(px(x), py(x), 5, { dolguHam: "var(--kart,#fff)", renk: "metin", kal: 1.8 }));
+        dyn.appendChild(yaziH(px(x) + (i === 2 ? 14 : i === 0 ? -14 : 0), py(x) + (i === 1 ? 17 : -15), String(i + 1), { boyut: 11, kalin: true, renk: "soluk" }));
+      });
+      const xm = px(L / 2), ym = py(L / 2);
+      if (P > 0) {
+        dyn.appendChild(ok(xm, ym - 58, xm, ym - 8, { renk: "sil", kalinlik: 3, bas: 10 }));
+        dyn.appendChild(yaziH(xm + 10, ym - 46, "P = " + kisa(P) + " kN", { renk: "sil", boyut: 11, kalin: true, hiza: "sol" }));
+      }
+      const F1 = -k1 * u[0], F3 = -k2 * u[4], M1 = -kr * u[1];
+      const fm = Math.max(Math.abs(F1), Math.abs(F3), 1e-12);
+      [[X0, y1, F1, 1], [X0 + LP, y3, F3, -1]].forEach(o => {
+        if (Math.abs(o[2]) < 1e-9) return;
+        const len = 14 + 26 * Math.min(1, Math.abs(o[2]) / fm), xa = o[0] + o[3] * 20;
+        const yb = o[1] + 58, yu = o[2] > 0 ? yb - len : yb + len; // ok düğümün altında kalır, eğriyi kesmez
+        dyn.appendChild(ok(xa, yb, xa, yu, { renk: "c", kalinlik: 2.6, bas: 8 }));
+        dyn.appendChild(yaziH(xa + o[3] * 8, (yb + yu) / 2, "F = " + kisa(o[2]) + " kN", { renk: "c", boyut: 10.5, kalin: true, hiza: o[3] > 0 ? "sol" : "sag" }));
+      });
+      dyn.appendChild(yaziH(X0 + LP, Yb - 10, "L = " + kisa(L) + " m", { renk: "soluk", boyut: 10.5, hiza: "sag" }));
+
+      /* K matrisi: eleman parselleri a, b; yayın düştüğü köşegen hücreler c */
+      const yay = [k1 > 0, kr > 0, false, false, k2 > 0, false];
+      const T = tablo(6, 6, {
+        x: 34, y: 26, w: 46, h: 28, boyut: 10,
+        metin: (i, j) => kisa(h.K[i][j]),
+        aile: (i, j) => {
+          const lst = [];
+          if (i <= 3 && j <= 3) lst.push("a");
+          if (i >= 2 && j >= 2) lst.push("b");
+          if (i === j && yay[i]) lst.push("c");
+          return lst;
+        },
+        soluk: (i, j) => Math.abs(h.K[i][j]) < 1e-9,
+        ust: SDAD, sol: SDAD
+      });
+      bos(sm);
+      sm.appendChild(T.g);
+      yay.forEach((y, i) => { if (y) T.kutu(i, i, i, i, "c", { kal: 2.8 }); });
+      const yl = 26 + T.yukseklik + 18;
+      [["a", "eleman 1", 34], ["b", "eleman 2", 124], ["c", "yay: +k", 214]].forEach(o => {
+        sm.appendChild(dikdortgen(o[2], yl - 7, 14, 14, { rx: 3, dolgu: o[0], renk: o[0], kal: 1.2 }));
+        sm.appendChild(yazi(o[2] + 20, yl, o[1], { hiza: "sol", boyut: 11, renk: "soluk" }));
+      });
+      svBoyut(sm, 34 + T.genislik + 6, yl + 14);
+
+      const mm = x => kat(x * 1000, 2);
+      let tx = "\\begin{aligned}\\kutuc{K_{11}}&=" + kisa(h.Kb[0][0]) + "+k_{\\text{sol}}=" + kisa(h.K[0][0]) + ",\\quad \\kutuc{K_{55}}=" + kisa(h.Kb[4][4]) + "+k_{\\text{sağ}}=" + kisa(h.K[4][4]) + "\\\\" +
+        (kr > 0 ? "\\kutuc{K_{22}}&=" + kisa(h.Kb[1][1]) + "+k_r=" + kisa(h.K[1][1]) + "\\\\" : "");
+      if (h.u) {
+        tx += "\\kc{F_{y1}}&=-k_{\\text{sol}}\\,v_1=" + kisa(F1) + "\\ \\text{kN},\\quad \\kc{F_{y3}}=-k_{\\text{sağ}}\\,v_3=" + kisa(F3) + "\\ \\text{kN}\\\\" +
+          (kr > 0 ? "\\kc{M_1}&=-k_r\\,\\theta_1=" + kisa(M1) + "\\ \\text{kN·m}\\\\" : "") +
+          "v_1&=" + mm(u[0]) + "\\ \\text{mm},\\quad v_2=" + mm(u[2]) + "\\ \\text{mm},\\quad v_3=" + mm(u[4]) + "\\ \\text{mm}\\end{aligned}";
+        uyari.style.display = "none";
+      } else {
+        tx += "\\mathbf K&\\ \\text{tekil: rijit hareket engellenmemiş, çözüm yok}\\end{aligned}";
+        uyari.textContent = "Mekanizma: yaylar yapının bütün rijit hareketlerini tutmuyor; K tekil. İki düşey yay ya da bir düşey yay ile bir dönme yayı gerekir.";
+        uyari.style.display = "";
+      }
+      texYaz(formul, tx);
+    }
+
+    slP = sl("$P$", 0, guzel(Math.max(50, 2 * P)), 0.5, P, "kN", v => { P = v; ciz(); });
+    sl1 = sl("$k_{\\text{sol}}$", 0, kMax, 100, k1, "kN/m", v => { k1 = v; ciz(); }, yuv3);
+    sl2 = sl("$k_{\\text{sağ}}$", 0, kMax, 100, k2, "kN/m", v => { k2 = v; ciz(); }, yuv3);
+    slr = sl("$k_r$ (sol uçta dönme yayı)", 0, kMax, 100, kr, "kN·m/rad", v => { kr = v; ciz(); }, yuv3);
+    slL = sl("$L$", 1, Math.max(12, Math.ceil(L * 2)), 0.5, L, "m", v => { L = v; ciz(); });
+    function ayarla(nP, nk1, nk2, nkr) {
+      P = nP; k1 = nk1; k2 = nk2; kr = nkr;
+      slP.ayarla(P, true); sl1.ayarla(k1, true); sl2.ayarla(k2, true); slr.ayarla(kr, true);
+      ciz();
+    }
+    kap.appendChild(el("div", { class: "ks-iki" }, kart(sd), kart(sm)));
+    kap.appendChild(dugmeSatiri(
+      dugme("Örnek 1 değerleri", () => ayarla(10, 1000, 1000, 0), { baslik: "P = 10 kN, k = 1000 kN/m, dönme yayı yok" }),
+      dugme("Yaylar çok rijit", () => ayarla(P, kMax, kMax, kMax), { baslik: "k → büyük: ankastre mesnede yaklaşır" }),
+      dugme("Sol yayı kaldır", () => ayarla(P, 0, k2, kr), { baslik: "k_sol = 0: dönme yayı da yoksa mekanizma" })));
+    kap.appendChild(el("div", { class: "ks-ayar" }, slP.kok, sl1.kok, sl2.kok, slr.kok, slL.kok));
+    kap.appendChild(uyari);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ks-not" }, "Yaylar yeşil zikzak, dönme yayı sarmaldır. Her yay K'nın yalnız kendi köşegen hücresine eklenir (yeşil çerçeveli hücreler); yeni serbestlik doğmaz. " +
+      "Yay kuvveti −k·u yukarı yeşil oklarla çizilir. Çökme ölçeği abartılıdır."));
+    ciz();
+  }, {
+    baslik: "Elastik mesnet: yaylar K'nın köşegenine eklenir",
+    aciklama: "İki ucu yaya oturan kirişte yay rijitliklerini değiştir; köşegene eklenen k, yay kuvvetleri ve çökme canlı güncellenir.",
+    varsayilan: { L: 4, P: 10, k1: 1000, k2: 1000, kr: 0 }
+  });
+
+  /* ================================================================== 13. winkler-kiris */
+
+  E.kaydet("winkler-kiris", function (kok, p) {
+    const kap = cerceveKur(kok);
+    let ks = sayiP(p.ks, 20000, 100, 1e6);
+    let EI = sayiP(p.EI, sayiP(p.E, 3e7, 1, 1e12) * sayiP(p.I, 0.0072, 1e-10, 10), 1000, 1e8);
+    let L = sayiP(p.L, 8, 1, 40), P = sayiP(p.P, 500, 0, 1e5);
+    let n = Math.round(sayiP(p.n, 8, 4, 16));
+    if (n % 2) n += 1;
+    n = kenet(n, 4, 16);
+    const W = 400, H = 312, X0 = 40, LP = 320, Yb = 64, Yz = 150, Yp = 252, AMP = 38, APR = 46, NS = 120;
+    const sd = sv(W, H, "Winkler zeminine oturan kiriş: çökme, zemin yayları ve zemin basıncı");
+    const dyn = svg("g");
+    sd.appendChild(dyn);
+    const formul = formulKutu();
+    const durum = el("p", { class: "ks-bilgi" });
+    let slK, slEI, slL, slP, slN;
+
+    function hesap() {
+      const l = L / n, N = 2 * (n + 1);
+      const ke = topla2(kirisK(EI, l), winklerK(ks, l));
+      const ele = [];
+      for (let e = 0; e < n; e++) ele.push({ K: ke, dof: [2 * e, 2 * e + 1, 2 * e + 2, 2 * e + 3] });
+      const K = birlestirK(N, ele);
+      const F = new Array(N).fill(0);
+      F[n] = -P; // orta düğüm n/2 → çökme serbestliği 2·(n/2) = n
+      const u = coz(K, F) || new Array(N).fill(0);
+      const Mn = new Array(n + 1).fill(0); // düğüm momentleri: uç kuvvetlerinden (M_i = −f_2, M_j = f_4)
+      for (let e = 0; e < n; e++) {
+        const d = u.slice(2 * e, 2 * e + 4), f = ke.map(r => r[0] * d[0] + r[1] * d[1] + r[2] * d[2] + r[3] * d[3]);
+        Mn[e] = -f[1]; Mn[e + 1] = f[3];
+      }
+      return { l, u, Mn };
+    }
+
+    function ciz() {
+      const h = hesap(), l = h.l, u = h.u;
+      const vx = x => {
+        const e = Math.min(n - 1, Math.max(0, Math.floor(x / l))), xi = kenet((x - e * l) / l, 0, 1), nn = hermite(xi, l), d = u.slice(2 * e, 2 * e + 4);
+        return nn[0] * d[0] + nn[1] * d[1] + nn[2] * d[2] + nn[3] * d[3];
+      };
+      const vs = [];
+      let vm = 0;
+      for (let i = 0; i <= NS; i++) { const v = vx(L * i / NS); vs.push(v); vm = Math.max(vm, Math.abs(v)); }
+      const sc = vm > 1e-15 ? AMP / vm : 0;
+      const px = x => X0 + x / L * LP, pyv = v => Yb - sc * v;
+      bos(dyn);
+      dyn.appendChild(cizgi(X0, Yb, X0 + LP, Yb, { renk: "soluk", kal: 1.2, kesik: true }));
+      zeminCizgisi(dyn, X0 - 14, X0 + LP + 14, Yz, "metin");
+      const ny = 13;
+      for (let i = 0; i < ny; i++) {
+        const x = L * (i + 0.5) / ny, X = px(x);
+        dyn.appendChild(yol(yayYolu(X, pyv(vx(x)) + 4, X, Yz, 5, 5), { renk: "c", kal: 1.6, opak: 0.8 }));
+      }
+      dyn.appendChild(yol(egriYol(t => [px(t * L), pyv(vx(t * L))], NS), { renk: "metin", kal: 3.4 }));
+      for (let i = 0; i <= n; i++) dyn.appendChild(daire(px(i * l), pyv(u[2 * i]), 3.2, { dolgu: "a", dolguHam: renk("a") }));
+      const xm = px(L / 2), ym = pyv(u[n]);
+      if (P > 0) {
+        dyn.appendChild(ok(xm, ym - 54, xm, ym - 7, { renk: "b", kalinlik: 3, bas: 10 }));
+        dyn.appendChild(yaziH(xm + 10, ym - 42, "P = " + kisa(P) + " kN", { renk: "b", boyut: 11, kalin: true, hiza: "sol" }));
+      }
+      dyn.appendChild(yaziH(X0 + LP, Yz + 20, "L = " + kisa(L) + " m, " + n + " eleman", { renk: "soluk", boyut: 10.5, hiza: "sag" }));
+      dyn.appendChild(yaziH(X0, Yz + 20, "k_s = " + yuv3(ks) + " kN/m²", { renk: "c", boyut: 10.5, hiza: "sol", kalin: true }));
+
+      /* zemin basıncı p = −k_s v (yukarı pozitif) */
+      const pm = ks * vm, ps = pm > 1e-12 ? APR / pm : 0;
+      dyn.appendChild(yazi(X0, Yp - APR - 22, "p(x) = −k_s v(x)  [kN/m]: zemin basıncı", { renk: "soluk", boyut: 10.5, hiza: "sol", kalin: true }));
+      dyn.appendChild(cizgi(X0, Yp, X0 + LP, Yp, { renk: "soluk", kal: 1.2 }));
+      const pts = vs.map((v, i) => r2(px(L * i / NS)) + " " + r2(Yp + ps * ks * v));
+      dyn.appendChild(yol("M" + X0 + " " + Yp + " L" + pts.join(" L") + " L" + (X0 + LP) + " " + Yp + " Z", { dolgu: "c", renk: "c", kal: 1.6 }));
+      dyn.appendChild(yaziH(xm + 12, Yp - ps * pm + 4, "p_maks = " + kisa(pm) + " kN/m", { renk: "c", boyut: 10.5, kalin: true, hiza: "sol" }));
+      let top = 0; // Simpson: ∫ p dx
+      for (let i = 0; i <= NS; i++) top += (i === 0 || i === NS ? 1 : (i % 2 ? 4 : 2)) * (-ks * vs[i]);
+      top *= (L / NS) / 3;
+
+      const beta = Math.pow(ks / (4 * EI), 0.25), bL = beta * L, bl = beta * l;
+      const wmax = -u[n], wH = P * beta / (2 * ks);
+      const Mmax = Math.max.apply(null, h.Mn.map(Math.abs)), MH = P / (4 * beta);
+      const rejim = bL < Math.PI / 4 ? "kısa: rijit kiriş gibi" : bL < Math.PI ? "orta uzunlukta" : "uzun: sonsuz kiriş gibi";
+      const fark = (a, b) => b > 1e-15 ? (a - b) / b * 100 : NaN;
+      const yz = x => isFinite(x) ? (x >= 0 ? "+" : "") + kat(x, 1) + "\\%" : "-";
+      texYaz(formul, "\\begin{aligned}\\beta&=\\left(\\tfrac{k_s}{4EI}\\right)^{1/4}=" + kat(beta, 3) + "\\ \\text{m}^{-1},\\quad \\beta L=" + kat(bL, 2) + "\\ (\\text{" + rejim + "})\\\\" +
+        "\\beta\\,l_e&=" + kat(bl, 2) + (bl <= 0.5 ? "\\ \\checkmark\\ (\\text{ağ yeterli})" : "\\ (\\text{kaba ağ: } 0.5\\text{'in üstünde})") + "\\\\" +
+        "\\kutuc{w_{maks}}&=" + kat(wmax * 1000, 2) + "\\ \\text{mm}\\ (\\text{SE}),\\quad \\tfrac{P\\beta}{2k_s}=" + kat(wH * 1000, 2) + "\\ \\text{mm}\\ (\\text{Hetényi}),\\quad \\text{fark } " + yz(fark(wmax, wH)) + "\\\\" +
+        "\\kutub{M_{maks}}&=" + kisa(Mmax) + "\\ \\text{kN·m},\\quad \\tfrac{P}{4\\beta}=" + kisa(MH) + "\\ \\text{kN·m},\\quad \\text{fark } " + yz(fark(Mmax, MH)) + "\\end{aligned}");
+      durum.textContent = "Zemin kuvvetlerinin toplamı ∫p dx ≈ " + kisa(top) + " kN = P: mesnet yok, yükü zemin taşır. Kiriş rijit olsaydı w = P/(k_s L) = " +
+        kat(P / (ks * L) * 1000, 2) + " mm olurdu; " + (bL < Math.PI / 4 ? "βL < π/4: kiriş gerçekten rijit gibi." : bL < Math.PI ? "π/4 < βL < π: ne rijit ne sonsuz, formüller yaklaşık." : "βL > π: uçlar yükü hissetmez, Hetényi formülü tutar.");
+    }
+
+    const logSl = (etiket, alt, ust, deger, birim, f) => sl(etiket, alt, ust, 0.05, Math.log10(deger), birim, v => f(Math.pow(10, v)), v => yuv3(Math.pow(10, v)));
+    slK = logSl("$k_s$", 2, 6, ks, "kN/m²", v => { ks = v; ciz(); });
+    slEI = logSl("$EI$", 3, 8, EI, "kN·m²", v => { EI = v; ciz(); });
+    slL = sl("$L$", 1, 40, 1, L, "m", v => { L = v; ciz(); });
+    slP = sl("$P$ (ortada)", 10, guzel(Math.max(1000, 2 * P)), 10, P, "kN", v => { P = v; ciz(); });
+    slN = sl("eleman sayısı $n$", 4, 16, 2, n, "", v => { n = Math.round(v); if (n % 2) n += 1; n = kenet(n, 4, 16); ciz(); }, v => String(Math.round(v)));
+    function ayarla(nks, nEI, nL, nP, nn) {
+      ks = nks; EI = nEI; L = nL; P = nP; n = nn;
+      slK.ayarla(Math.log10(ks), true); slEI.ayarla(Math.log10(EI), true); slL.ayarla(L, true); slP.ayarla(P, true); slN.ayarla(n, true);
+      ciz();
+    }
+    kap.appendChild(kart(sd));
+    kap.appendChild(dugmeSatiri(
+      dugme("Temel kirişi (örnek 6)", () => ayarla(20000, 216000, 8, 500, 8), { baslik: "k_s = 20000, EI = 216000, L = 8 m, P = 500 kN, 8 eleman" }),
+      dugme("Uzun kiriş (βL = 20)", () => ayarla(1000, 4000, 40, 10, 16), { baslik: "k_s = 1000, EI = 4000, L = 40 m, P = 10 kN" })));
+    kap.appendChild(el("div", { class: "ks-ayar" }, slK.kok, slEI.kok, slL.kok, slP.kok, slN.kok));
+    kap.appendChild(durum);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ks-not" }, "Her elemanda kiriş matrisine (k_s l/420)[…] tutarlı zemin matrisi eklenir; mesnet yoktur, K'yı zemin tutar. " +
+      "Yeşil yaylar çökmeyle sıkışır; alttaki diyagram zemin basıncıdır. βl_e büyüdükçe (kaba ağ) sonlu eleman sonucu Hetényi'den uzaklaşır; " +
+      "kısa kirişte (βL < π/4) ise uzaklaşma ağdan değil, formülün sonsuz kiriş varsayımından gelir."));
+    ciz();
+  }, {
+    baslik: "Winkler zeminine oturan kiriş",
+    aciklama: "Yatak katsayısı, EI, boy ve eleman sayısını değiştir; çökme, zemin basıncı, β ve Hetényi karşılaştırması canlı güncellenir.",
+    varsayilan: { ks: 20000, EI: 216000, L: 8, P: 500, n: 8 }
   });
 
   /* ================================================================== alıştırmalar */

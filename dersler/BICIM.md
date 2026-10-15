@@ -11,7 +11,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 ## 1. Dosya adı ve sıra
 
 - Ad: `NN-kisa-ad.md`. `NN` iki basamaklı ders numarasıdır ve benzersizdir.
-- `01`–`08` matris bölümü, `11`–`19` sonlu elemanlar bölümüdür. Sıra numaradan gelir.
+- `01`–`08` matris bölümü, `11`–`20` sonlu elemanlar bölümüdür. Sıra numaradan gelir.
 - Kodlama UTF-8. Satır sonu LF ya da CRLF olabilir.
 
 | No | Dosya | Konu |
@@ -33,6 +33,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 | 17 | `17-cerceve.md` | 6×6 çerçeve elemanı, dönüşüm, N, V, M diyagramları |
 | 18 | `18-titresim.md` | kütle matrisi, serbest titreşim, modlar, OMA bağlantısı |
 | 19 | `19-uzay-yapilar.md` | uzay kafes $c_x, c_y, c_z$ ve 6×6; uzay çerçeve 12×12, $\boldsymbol\lambda$ ve yerel eksen kuralı, burulma, kiriş ızgarası |
+| 20 | `20-temel-sistemleri.md` | elastik mesnet $K_{ii}\mathrel{+}=k$, Winkler zemini $(k_sL/420)[\ldots]$ ve $\beta$, mesnet çökmesi $K_{ff}u_f=F_f-K_{fs}u_s$, kolon–kiriş–temel sistemi |
 
 ## 2. Ön bilgi
 
@@ -249,6 +250,8 @@ Parametreler isteğe bağlıdır; verilmeyenler varsayılanı alır. Her çizim 
 | `modal-titresim` | `m`: [..], `k`: [..] | Kat kütleleri ve yaylar; $\det(K-\omega^2M)=0$, $\omega$, $f$, $T$; mod şekli animasyonu; OMA ile ölçülen modlarla bağlantı notu |
 | `uzay-kafes-cubuk` | `E`, `A`, `L`, `fi`, `psi` | Aksonometrik çubuk; yatay açı $\varphi$ ve düşey açı $\psi$ kaydırıcıları ya da uç sürükleme; $c_x$, $c_y$, $c_z$ bileşenleri renkli; 6×6 global matris $c_xc_y$ deseniyle, hücre tonu değerin büyüklüğüyle; katsayı ya da kN/m görünümü; hazır doğrultular |
 | `uzay-cerceve-k` | `E`, `G`, `A`, `Iy`, `Iz`, `J`, `L`, `fi`, `psi`, `gorunum`: `yerel`\|`global` | 12×12 uzay çerçeve elemanı dört renkli parsel: eksenel (mavi), eğilme $x'y'$ (turuncu), eğilme $x'z'$ (yeşil), burulma (kırmızı); yerel ve global seçici; iki yön açısından $\boldsymbol\lambda$ (düşey elemanda $z'=Z$); eleman ve yerel eksenleri aksonometrik çizim |
+| `elastik-mesnet` | `E`, `I`, `L`, `P`, `k1`, `k2`, `kr` | İki ucu düşey yaya oturan iki elemanlı kiriş: yaylar zikzak, sol uçtaki dönme yayı sarmal; elastik eğri ve yay kuvvetleri $-k\,u$ oklarla; 6×6 $K$'da eleman parselleri mavi ve turuncu, yayın düştüğü köşegen hücreler yeşil kutulu; $K_{ii}\mathrel{+}=k$ formülü canlı; yay kaldırılınca mekanizma uyarısı |
+| `winkler-kiris` | `ks`, `EI` (ya da `E`, `I`), `L`, `P`, `n`: 4–16 | Winkler zeminine oturan kiriş, tutarlı zemin matrisi $(k_sl/420)[\ldots]$ ile çözülür; zemin yayları çökmeyle sıkışır, zemin basıncı $p=-k_sv$ diyagramı; $\beta$, $\beta L$ (kısa, orta, uzun) ve $\beta l_e$ ağ denetimi; $w_{\max}$ ve $M_{\max}$, Hetényi'nin $P\beta/2k_s$ ve $P/4\beta$ değerleriyle yüzde farkla karşılaştırılır |
 
 ## 7. Alıştırma kataloğu
 

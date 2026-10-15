@@ -20,7 +20,7 @@ Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinan
 
 ## Dersler
 
-16 ders iki bölümdedir. **Matris** bölümü (1–8): matris nedir, toplama, çarpım, transpoz, determinant, ters, doğrusal sistemler, özdeğer. **Sonlu eleman** bölümü (11–18): yay sistemleri, çubuk, kafes ve dönüşüm, birleştirme, sınır koşulları ve tepkiler, kiriş, düzlem çerçeve, serbest titreşim.
+18 ders iki bölümdedir. **Matris** bölümü (1–8): matris nedir, toplama, çarpım, transpoz, determinant, ters, doğrusal sistemler, özdeğer. **Sonlu eleman** bölümü (11–20): yay sistemleri, çubuk, kafes ve dönüşüm, birleştirme, sınır koşulları ve tepkiler, kiriş, düzlem çerçeve, serbest titreşim, uzay kafes ve uzay çerçeve (3 boyutlu yapılar), temel sistemleri (elastik mesnet, Winkler zemini, mesnet çökmesi).
 
 Her derste renkli matris kutuları ve oklu şekiller, sürükleyerek oynanan etkileşimli çizimler, ipucu ve cevabı açılan çözümlü örnekler (çoğu tek tıkla çalıştırılır ve sonucu denetlenir) ve sınırsız üretilen alıştırmalar vardır.
 

@@ -296,8 +296,8 @@ Hazır örnekler: `kiris-elastik-zemin`, `cerceve-iki-katli`, `cerceve-elastik-m
 `cerceve3b-portal`.
 
 Web uygulamasında aynı çözücü **Sonlu eleman** sayfasında çalışır (3B modeller için bakış açısı kaydırıcıları, yay /
-çökme tabloları ve altı diyagram düğmesi vardır); 11–18 numaralı dersler (yay, çubuk, kafes, birleştirme, sınır koşulu,
-kiriş, çerçeve, titreşim) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır.
+çökme tabloları ve altı diyagram düğmesi vardır); 11–20 numaralı dersler (yay, çubuk, kafes, birleştirme, sınır koşulu,
+kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır.
 
 ---
 
