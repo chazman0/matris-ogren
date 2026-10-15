@@ -11,7 +11,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 ## 1. Dosya adı ve sıra
 
 - Ad: `NN-kisa-ad.md`. `NN` iki basamaklı ders numarasıdır ve benzersizdir.
-- `01`–`08` matris bölümü, `11`–`18` sonlu elemanlar bölümüdür. Sıra numaradan gelir.
+- `01`–`08` matris bölümü, `11`–`20` sonlu elemanlar bölümüdür. Sıra numaradan gelir.
 - Kodlama UTF-8. Satır sonu LF ya da CRLF olabilir.
 
 | No | Dosya | Konu |
@@ -32,6 +32,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 | 16 | `16-kiris-eleman.md` | Hermite şekil fonksiyonları, 4×4 kiriş matrisi, eşdeğer düğüm yükleri |
 | 17 | `17-cerceve.md` | 6×6 çerçeve elemanı, dönüşüm, N, V, M diyagramları |
 | 18 | `18-titresim.md` | kütle matrisi, serbest titreşim, modlar, OMA bağlantısı |
+| 20 | `20-temel-sistemleri.md` | elastik mesnet $K_{ii}\mathrel{+}=k$, Winkler zemini $(k_sL/420)[\ldots]$ ve $\beta$, mesnet çökmesi $K_{ff}u_f=F_f-K_{fs}u_s$, kolon–kiriş–temel sistemi |
 
 ## 2. Ön bilgi
 
@@ -246,6 +247,8 @@ Parametreler isteğe bağlıdır; verilmeyenler varsayılanı alır. Her çizim 
 | `kiris-nvm` | `L`, `P`, `a`, `q`, `mesnet`: `basit`\|`konsol`\|`ankastre-mafsalli` | Kesme ve moment diyagramları; yük konumu sürüklenir; en büyük değerler |
 | `cerceve-k` | `E`, `A`, `I`, `L`, `aci` | 6×6 eleman matrisi; eksenel terimler mavi, eğilme terimleri turuncu parsel; açı ile dönüşüm |
 | `modal-titresim` | `m`: [..], `k`: [..] | Kat kütleleri ve yaylar; $\det(K-\omega^2M)=0$, $\omega$, $f$, $T$; mod şekli animasyonu; OMA ile ölçülen modlarla bağlantı notu |
+| `elastik-mesnet` | `E`, `I`, `L`, `P`, `k1`, `k2`, `kr` | İki ucu düşey yaya oturan iki elemanlı kiriş: yaylar zikzak, sol uçtaki dönme yayı sarmal; elastik eğri ve yay kuvvetleri $-k\,u$ oklarla; 6×6 $K$'da eleman parselleri mavi ve turuncu, yayın düştüğü köşegen hücreler yeşil kutulu; $K_{ii}\mathrel{+}=k$ formülü canlı; yay kaldırılınca mekanizma uyarısı |
+| `winkler-kiris` | `ks`, `EI` (ya da `E`, `I`), `L`, `P`, `n`: 4–16 | Winkler zeminine oturan kiriş, tutarlı zemin matrisi $(k_sl/420)[\ldots]$ ile çözülür; zemin yayları çökmeyle sıkışır, zemin basıncı $p=-k_sv$ diyagramı; $\beta$, $\beta L$ (kısa, orta, uzun) ve $\beta l_e$ ağ denetimi; $w_{\max}$ ve $M_{\max}$, Hetényi'nin $P\beta/2k_s$ ve $P/4\beta$ değerleriyle yüzde farkla karşılaştırılır |
 
 ## 7. Alıştırma kataloğu
 

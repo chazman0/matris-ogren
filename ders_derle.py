@@ -42,6 +42,8 @@ ETKILESIMLER = {
     "kiris-nvm": "Kesme ve moment diyagramı",
     "cerceve-k": "Çerçeve eleman matrisi",
     "modal-titresim": "Titreşim modları",
+    "elastik-mesnet": "Elastik mesnetli kiriş",
+    "winkler-kiris": "Winkler zeminine oturan kiriş",
 }
 ALISTIRMALAR = {
     "boyut": "Boyut ve indis",
@@ -63,7 +65,8 @@ ALISTIRMALAR = {
 # Alıştırmalar kayıtta "alistirma:<ad>" adını taşır.
 SE_GRUBU = frozenset({
     "yay-sistemi", "cubuk-sekil", "kafes-aci", "dof-haritasi", "kiris-sekil", "esdeger-yuk", "kiris-nvm",
-    "cerceve-k", "modal-titresim", "cubuk-k", "kafes-k", "birlestir", "sinir-kosulu", "yay-seri",
+    "cerceve-k", "modal-titresim", "elastik-mesnet", "winkler-kiris",
+    "cubuk-k", "kafes-k", "birlestir", "sinir-kosulu", "yay-seri",
 })
 
 KUTULAR = {
