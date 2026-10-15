@@ -32,7 +32,8 @@ def test_ornekler_listesi(kopru):
     y = iste(kopru, "se_ornekler")
     assert y["hata"] is None
     assert [o["ad"] for o in y["ornekler"]] == ADLAR
-    assert len(ADLAR) == 10
+    assert len(ADLAR) == 20
+    assert {o["tip"] for o in y["ornekler"]} == {"yay", "cubuk", "kafes", "kiris", "cerceve", "kafes3b", "cerceve3b"}
     for o in y["ornekler"]:
         assert o["baslik"] and o["tip"] and "aciklama" in o
 
@@ -68,8 +69,12 @@ def test_her_ornek_cozulur(kopru, ad):
     for e in v["elemanlar"]:
         d = e["diyagram"]
         assert len(d["x"]) == len(d["N"]) == len(d["V"]) == len(d["M"]) >= 2
-    assert v["tepkiler"]
-    assert set(v["denge"]) >= {"Fx", "Fy", "M"}
+    assert v["tepkiler"] or v["yaylar"] or any(e["zemin"] for e in v["elemanlar"])
+    if v["boyut"] == 3:
+        assert set(v["denge"]) == {"Fx", "Fy", "Fz", "Mx", "My", "Mz"}
+        assert all("yon" in e for e in v["elemanlar"])
+    else:
+        assert set(v["denge"]) == {"Fx", "Fy", "M"}
     assert all(abs(x) < 1e-6 for x in v["denge"].values())
 
 

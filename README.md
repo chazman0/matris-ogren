@@ -16,17 +16,19 @@ Sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Her işlemi 
 
 ## İşlemler
 
-Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
+Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm; Sonlu eleman sayfasında 2B ve 3B yapıların tam çözümü. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
 
 ## Dersler
 
-16 ders iki bölümdedir. **Matris** bölümü (1–8): matris nedir, toplama, çarpım, transpoz, determinant, ters, doğrusal sistemler, özdeğer. **Sonlu eleman** bölümü (11–18): yay sistemleri, çubuk, kafes ve dönüşüm, birleştirme, sınır koşulları ve tepkiler, kiriş, düzlem çerçeve, serbest titreşim.
+18 ders iki bölümdedir. **Matris** bölümü (1–8): matris nedir, toplama, çarpım, transpoz, determinant, ters, doğrusal sistemler, özdeğer. **Sonlu eleman** bölümü (11–20): yay sistemleri, çubuk, kafes ve dönüşüm, birleştirme, sınır koşulları ve tepkiler, kiriş, düzlem çerçeve, serbest titreşim, uzay kafes ve uzay çerçeve (3 boyutlu yapılar), temel sistemleri (elastik mesnet, Winkler zemini, mesnet çökmesi).
 
 Her derste renkli matris kutuları ve oklu şekiller, sürükleyerek oynanan etkileşimli çizimler, ipucu ve cevabı açılan çözümlü örnekler (çoğu tek tıkla çalıştırılır ve sonucu denetlenir) ve sınırsız üretilen alıştırmalar vardır.
 
 ## Sonlu eleman çözücü
 
-Uygulamadaki **Sonlu eleman** sayfasında hazır bir model seçilir ya da düğüm, eleman, mesnet ve yük tabloları doldurulur. Yay, çubuk, kafes, kiriş ve düzlem çerçeve modelleri çözülür; şekil değiştirmiş biçim, N/V/M diyagramları, mesnet tepkileri, denge denetimi ve adım adım anlatım gösterilir.
+Uygulamadaki **Sonlu eleman** sayfasında hazır bir model seçilir ya da düğüm, eleman, mesnet ve yük tabloları doldurulur. Yay, çubuk, düzlem kafes, kiriş, düzlem çerçeve, **uzay kafes** ve **uzay çerçeve** (burulma ve iki eksende eğilme) modelleri çözülür; şekil değiştirmiş biçim, N/V/M (uzay çerçevede ayrıca Vz, My, T) diyagramları, mesnet tepkileri, denge denetimi ve adım adım anlatım gösterilir. 3 boyutlu modeller aksonometrik izdüşümle çizilir ve bakış açısı kaydırıcıyla çevrilir.
+
+**Kolon–kiriş–temel sistemleri:** elastik mesnetler (temel altındaki zemini temsil eden kx, ky, kr yayları), Winkler zeminine oturan sürekli temel kirişi (eleman başına yatak katsayısı `zemin`, zemin basıncı diyagramı) ve mesnet çökmesi (verilen yer değiştirme, K_ff·u_f = F_f − K_fs·u_s) modellenir. Hazır örnekler arasında iki katlı çerçeve, zemin yaylarına oturan portal, sürekli temel kirişli çerçeve, farklı oturan temel, elastik zemindeki temel kirişi, tripod ve kule uzay kafesleri, L konsol, kiriş ızgarası ve kutu uzay çerçeve vardır.
 
 ## Dosyalar
 
