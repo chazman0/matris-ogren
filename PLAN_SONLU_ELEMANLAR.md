@@ -278,11 +278,11 @@ Yeni köprü işlemleri: `se_coz` (model alır; anlatım blokları ve çizim ver
 |---|---|---|---|
 | Faz 0 | paket bölünmesi, şema, birimler, Kurallar sayfası | ~1 hafta | şema ve birimler Faz 1 ile geldi; paket bölünmesi ertelendi |
 | Faz 1 | 2B kafes hattı; yay, çubuk, kiriş ve 2B çerçevenin statik çekirdeği | ~2 hafta | tamamlandı: İP1–İP4 bitti, 11–18 dersleri ve Sonlu eleman sayfası yayında |
-| Faz 2 | kiriş ve 2B çerçeve tamamlanır: mafsal, mesnet çökmesi, sıcaklık, rijit uç | ~3 hafta | sırada |
+| Faz 2 | kiriş ve 2B çerçeve tamamlanır: mafsal, mesnet çökmesi, sıcaklık, rijit uç | ~3 hafta | kısmen (15.10.2026): mesnet çökmesi, elastik mesnet (yay) ve Winkler zemini (temel kirişi) bitti; mafsal, sıcaklık ve rijit uç sırada |
 | Faz 3 | dinamik katman: kütle matrisi, modal analiz, mod animasyonu, Rayleigh, MAC | ~2 hafta | sırada; titreşim modları Faz 1'de ders düzeyinde tanıtılır |
 | Faz 4 | CST ve Q4, Gauss integrasyonu, patch testi, gerilme konturları | ~3 hafta | — |
 | Faz 5 | Q8, yakınsama, kemer makro-modeli, duyarlılık | ~2 hafta | — |
-| Faz 6+ | isteğe bağlı: 3B, plak ve kabuk (kavramsal), model güncelleme | — | — |
+| Faz 6+ | isteğe bağlı: 3B, plak ve kabuk (kavramsal), model güncelleme | — | 3B öne alındı ve bitti (15.10.2026): uzay kafes ve uzay çerçeve (İP5); plak/kabuk ve model güncelleme — |
 
 ### 9.13 Faz 1 iş paketleri
 
@@ -292,6 +292,7 @@ Yeni köprü işlemleri: `se_coz` (model alır; anlatım blokları ve çizim ver
 | İP2 Dersler 2.0 | ders biçimi ve derleyicisi, etkileşimli çizimler, çözümlü örnekler, alıştırmalar, 16 ders | `dersler/`, `ders_derle.py`, `docs/etkilesim*.js`, `testler/test_dersler.py` | bitti: 16 ders, 138 çözümlü örnek, 33 etkileşimli çizim, 38 alıştırma |
 | İP3 Sonlu eleman motoru | `se_coz(model)`: yay, çubuk, kafes, kiriş, çerçeve; adım adım anlatım, model ve sonuç şemaları, numpy kodu, hazır modeller | `sonlu_eleman.py`, `testler/test_se.py` | bitti |
 | İP4 Sonlu eleman sayfası | model düzenleyici, hazır modeller, sonuç diyagramları | `docs/se.js`, `docs/app.js`, `docs/index.html`, `docs/style.css` | bitti |
+| İP5 3B yapılar ve temel sistemleri (15.10.2026) | `kafes3b` (3 SD/düğüm, doğrultu kosinüsleri) ve `cerceve3b` (6 SD/düğüm, 12×12: eksenel, burulma, iki eksende eğilme; Kassimali yerel eksen kuralı, λ ve T = diag(λ,λ,λ,λ); Vz, My, T diyagramları; aksonometrik şemalar); `yaylar` (elastik mesnet, köşegen), `zemin` (tutarlı Winkler matrisi (k_s L/420)[…], zemin basıncı diyagramı), `cokmeler` (K_ff u_f = F_f − K_fs u_s; enerjide ½uᵀR); 10 yeni hazır model; web sayfasında z sütunu, 3B izdüşüm ve bakış kaydırıcıları, yay/çökme tabloları, altı diyagram düğmesi | `sonlu_eleman.py`, `docs/se.js`, `docs/style.css`, `testler/test_se.py` | bitti: kapalı form testleri (tripod dengesi, L konsol PL³/3EI + PL²L₁/GJ, Hetényi sonsuz kiriş, 3EIΔ/L³ çökme, yaylı kiriş), 2B–3B tutarlılık, bağımsız referans çözücü |
 
 ### 9.14 Faz 1 bitiş ölçütü
 
