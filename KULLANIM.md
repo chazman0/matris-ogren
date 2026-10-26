@@ -304,6 +304,40 @@ Web uygulamasında aynı çözücü **Sonlu eleman** sayfasında çalışır (3B
 çökme tabloları ve altı diyagram düğmesi vardır); 11–20 numaralı dersler (yay, çubuk, kafes, birleştirme, sınır koşulu,
 kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır.
 
+### 3.9 Bina analizi ve yük akışı (yapi.py)
+
+`yapi.py` bir binayı aks–kat sistemiyle tanımlar, TS 498:2021 yüklerini kurar, döşeme yükünü TS 500 md. 11.4.3'teki
+45° kuralıyla kirişlere dağıtır (kısa kenara üçgen, uzun kenara trapez; gerçek şekil parçalı doğrusal yük olarak
+motora gider), binayı `cerceve3b` ağına çevirip G ve Q durumlarını tek seferde çözer (`se.coz_coklu`), 1,4G + 1,6Q ve
+G + Q kombinasyonlarını süperpozisyonla toplar ve yük akışını (kiriş → kolon → temel → zemin) tablo, şema ve beş sayılık
+korunum sağlamasıyla anlatır. Kütüphane değerleri (`yapi_veri.py`: beton, donatı, çelik, IPE/HEA/HEB, TS 498 Çizelge 6
+hareketli yükler, birim ağırlıklar, duvar ve kaplama takımları, Çizelge 7 azaltma, TS 500/ÇYTHYE/TBDY kombinasyon listeleri)
+her kayıtta `kaynak` ve `dogrulandi` taşır.
+
+```python
+import yapi
+b = yapi.bina_sablon("betonarme-2kat-3x2")          # 5 şablon: yapi.bina_sablonlar()
+r = yapi.bina_coz(b)                                # 11 adımlı anlatım + bağımsız numpy betiği
+v = r.veri
+v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden üçgen/trapez pay (tepe, q_eM, q_eV, toplam kN)
+v["akis"]["kolonlar"]                               # kat kat N (FE) ve yük alanı (tributary) karşılaştırması, fark %
+v["akis"]["temeller"]                               # N, M_X, M_Y, σ_max/min, e/B, D/C
+v["akis"]["korunum"]["G"]                           # döşeme + duvar + öz = Σ kolon taban N = Σ temel tepkisi
+v["sonuclar"]["1.4G+1.6Q"]["elemanlar"][0]["M"]     # kombinasyon diyagramları; v["zarf"] en büyük / en küçük
+yapi.yuk_yolu(b, v, {"tur": "doseme", "no": 1, "durum": "G+Q"})   # tek nesneden zemine adım adım zincir
+```
+
+Bina modeli bir sözlüktür (`tur: "bina"`): `akslar` (X harfli, Y sayılı; konum m), `katlar` (0 = temel, kotlar),
+`malzemeler` (`{"kutuphane": "C30/37"}` ya da `"S275"`), `kesitler` (`dikdortgen` b/h m ya da `profil` "IPE 300"),
+`kolonlar` (`aks`, `kat`, `kesit`, `yon` x/y: güçlü eksenin çalıştığı doğrultu), `kirisler` (`bas`/`son` aynı aks çizgisinde;
+komşu olmayan akslar arasında verilirse ara kesişimlerde bölünür), `dosemeler` (tek hücrelik panel, `kullanim` TS 498 sınıfı
+ya da `q`, `g_ek` kaplama), `duvarlar`, `ek_yukler`, `temeller` (B, L, q_em, `mesnet`: ankastre / mafsal / elastik). Bina
+koordinatı X sağa, Y derinlik, Z yukarı; motor dönüşümü (`x_m = X, y_m = Z, z_m = −Y`) tek yerde yapılır ve sonuçlar
+bina koordinatında döner. Sınırlar: 12×12 aks, 12 kat, 1500 SD; hatalar öğreticidir (yüzen döşeme, kolonsuz kat, bilinmeyen
+kesit, model çok büyük…). Dilim 1'de yalnız G ve Q çözülür; S, W, E içeren kombinasyonlar listede `uygulandi: false` olarak
+kalır. `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü bunları yanıtın
+`ozet.uyarilar` alanına yazar. Köprü işlemleri: `bina_coz`, `bina_kutuphane`, `bina_sablonlar`, `bina_sablon`, `bina_yuk_yolu`.
+
 ---
 
 ## 4. Derste kullanım önerileri

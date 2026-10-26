@@ -24,6 +24,15 @@ Sonlu eleman işlemleri (sonlu_eleman.py):
                  yay, cubuk, kafes, kiris, cerceve, kafes3b, cerceve3b; isteğe bağlı yaylar, cokmeler ve eleman zemin'i.
   "se_ornekler": → {"ornekler": [{ad, baslik, tip, aciklama}], "hata": null}
   "se_ornek":    girdi {"ad": "kafes-iki-cubuk"} → {"ad", "model": {...}, "hata": null}
+
+Bina işlemleri (yapi.py + yapi_veri.py):
+  "bina_coz":       girdi {"bina": {...} | "JSON metni"} → {"ad": "bina", "bloklar", "veri" (yapi.bina_coz şeması: bina, ag,
+                    yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model), "sonuc_metin", "zincir": false, "hata"}
+  "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
+                    "sablonlar", "dogrulanmamis", ..., "hata": null}
+  "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}
+  "bina_sablon":    girdi {"ad": "betonarme-2kat-3x2"} → {"ad", "bina": {...}, "hata": null}
+  "bina_yuk_yolu":  girdi {"bina", "veri", "hedef": {"tur": "doseme"|"kiris"|"kolon", "no", "durum"}} → {"adimlar": [...], "hata": null}
 """
 from __future__ import annotations
 
@@ -250,6 +259,14 @@ def _se_modulu():
         return None
 
 
+def _yapi_modulu():
+    """yapi.py (bina analizi) varsa (tembel) içe aktarır; yoksa None. sonlu_eleman.py'ye bağımlıdır."""
+    try:
+        return importlib.import_module("yapi")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
@@ -267,6 +284,9 @@ def _kod_calistir(kod: str):
     se = _se_modulu()
     if se is not None:
         ad_alani["se"] = se
+    yapi = _yapi_modulu()
+    if yapi is not None:
+        ad_alani["yapi"] = yapi
     exec(compile(agac, "<ornek>", "exec"), ad_alani)
     return eval(compile(ast.Expression(son.value), "<ornek>", "eval"), ad_alani)
 
@@ -370,6 +390,62 @@ def _se_islem(islem: str, girdi: dict) -> dict:
     return {"ad": ad, "model": se.ornek_model(ad), "hata": None}
 
 
+# ---------------------------------------------------------------------------
+# bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu")
+# ---------------------------------------------------------------------------
+BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu"}
+BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
+
+
+def _yapi_zorunlu():
+    yapi = _yapi_modulu()
+    if yapi is None:
+        raise mo.MatrisHatasi("Bina modülü (yapi.py / yapi_veri.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    return yapi
+
+
+def _bina_girdisi(girdi: dict):
+    bina = girdi.get("bina")
+    if bina is None or (isinstance(bina, str) and not bina.strip()):
+        raise mo.MatrisHatasi("Bina modeli boş: akslar, katlar, kolon/kiriş/döşeme tanımlayın ya da bir şablon seçin.")
+    if isinstance(bina, str) and len(bina) > BINA_EN_FAZLA:
+        raise mo.MatrisHatasi(f"Bina metni çok uzun ({len(bina)} karakter; en fazla {BINA_EN_FAZLA}).")
+    return bina
+
+
+def _bina_coz_yaniti(girdi: dict) -> dict:
+    yapi = _yapi_zorunlu()
+    r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
+    veri = _sonlu_sayilar(r.veri)
+    veri["ozet"]["uyarilar"] = list(veri["ozet"].get("uyarilar") or []) + [
+        f"Doğrulanmamış kütüphane kaydı: {k}" for k in yapi.dogrulanmamis_kayitlar()]
+    return {
+        "ad": "bina", "bloklar": _bloklar(r.anlatim),
+        "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
+        "sonuc_metin": f"{veri['ozet']['sd_sayisi']} SD, {veri['ozet']['kombinasyon_sayisi']} kombinasyon; "
+                       f"G = {veri['ozet']['toplam_G']} kN, Q = {veri['ozet']['toplam_Q']} kN",
+        "zincir": False, "hata": None, "veri": veri,
+    }
+
+
+def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_coz":
+        return _bina_coz_yaniti(girdi)
+    yapi = _yapi_zorunlu()
+    if islem == "bina_kutuphane":
+        return dict(_sonlu_sayilar(yapi.kutuphane()), hata=None)
+    if islem == "bina_sablonlar":
+        return {"sablonlar": yapi.bina_sablonlar(), "hata": None}
+    if islem == "bina_sablon":
+        ad = str(girdi.get("ad", "")).strip()
+        return {"ad": ad, "bina": yapi.bina_sablon(ad), "hata": None}
+    veri = girdi.get("veri")
+    if not isinstance(veri, dict):
+        raise mo.MatrisHatasi("Yük yolu için önce binayı çözün; 'veri' alanı bina_coz yanıtının 'veri' sözlüğü olmalı.")
+    yol = yapi.yuk_yolu(_bina_girdisi(girdi), veri, girdi.get("hedef") or {})
+    return dict(_sonlu_sayilar(yol), hata=None)
+
+
 def calistir(istek_json: str) -> str:
     try:
         istek = json.loads(istek_json)
@@ -389,6 +465,8 @@ def calistir(istek_json: str) -> str:
             return json.dumps(_ders_calistir(istek.get("girdi") or {}), ensure_ascii=False)
         if islem in SE_ISLEMLER:
             return json.dumps(_se_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
+        if islem in BINA_ISLEMLER:
+            return json.dumps(_bina_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
         if islem not in ISLEMLER:
             raise mo.MatrisHatasi(f"Bilinmeyen işlem: {islem!r}")
         if islem == "yardim":
