@@ -1339,10 +1339,20 @@
     hashYonlendir();
     motoruBaslat();
   }
-  // Ek sayfa betikleri (se.js: sonlu eleman sayfası) için ortak, küçük ve dondurulmuş yüzey: motor isteği, anlatım çizici, yardımcılar.
+  // Bina sayfası (bina.js) bir sonlu eleman modelini (örn. G durumu) Sonlu eleman sayfasına aktarıp açar.
+  // se.js kendini window.MatrisSE.modelYukle ile kaydeder; sayfa yüklenmemişse Türkçe hata fırlatılır.
+  function seModelYukle(model) {
+    if (!window.MatrisSE || typeof window.MatrisSE.modelYukle !== "function") throw new Error("Sonlu eleman sayfası yüklenmedi.");
+    window.MatrisSE.modelYukle(model);
+    sayfaGoster("se");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast("Model Sonlu eleman sayfasına aktarıldı.");
+  }
+  // Ek sayfa betikleri (se.js: sonlu eleman sayfası, bina.js: bina sayfası) için ortak, küçük ve dondurulmuş yüzey:
+  // motor isteği, anlatım çizici, yardımcılar, sayfa geçişi ve sonlu eleman sayfasına model aktarımı.
   window.MatrisApp = Object.freeze({
     motorIstegi: motorIstegi, anlatimDersCiz: anlatimDersCiz, semaOlaylariBagla: semaOlaylariBagla,
-    kacis: kacis, katexHtml: katexHtml, toast: toast, sayfaGoster: sayfaGoster,
+    kacis: kacis, katexHtml: katexHtml, toast: toast, sayfaGoster: sayfaGoster, seModelYukle: seModelYukle,
   });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", baslat); else baslat();
 })();

@@ -40,6 +40,7 @@
   let diyagramTuru = "M";
   let olcekYuzde = 100;
   let ornekler = [];
+  let bekleyenModel = null;      // bina sayfasından sayfa kurulmadan önce aktarılan model
   const bakis = { fi: -32, psi: 22 };   // 3B bakış: Y etrafında dönme ve yukarıdan eğim (derece)
   const ref = {};
 
@@ -1240,6 +1241,8 @@
     iskeletKur();
     olaylariBagla();
     modeliGoster();
+    let aktarildi = false;
+    if (bekleyenModel) { try { S = modelYukle(bekleyenModel); modeliGoster(); aktarildi = true; } catch (e) { /* bozuk model: varsayılan kalır */ } bekleyenModel = null; }
     ref.aciklama.textContent = "Örnekler motordan yükleniyor…";
     A.motorIstegi({ islem: "se_ornekler", girdi: {} }).then(function (y) {
       if (y.hata) { hataGoster(ref.hata, [y.hata]); return; }
@@ -1254,6 +1257,7 @@
       if (acik) h += "</optgroup>";
       ref.ornek.innerHTML = h;
       const ilk = ornekler.filter(function (o) { return o.ad === "kiris-basit-yayili"; })[0] || ornekler[0];
+      if (aktarildi) { ref.ornek.value = ""; ref.aciklama.textContent = (S.baslik ? S.baslik + ". " : "") + S.aciklama; return; }
       if (ilk) { ref.ornek.value = ilk.ad; return ornekYukle(ilk.ad); }
     }).catch(function (e) {
       hataGoster(ref.hata, ["Sonlu eleman motoru yüklenemedi: " + (e && e.message ? e.message : e)]);
@@ -1272,5 +1276,15 @@
       bekleyen = requestAnimationFrame(cizimleriYenile);
     }).observe(kok);
   }
+  // Bina sayfası (bina.js, app.js seModelYukle) için küçük kanca: bir modeli bu sayfaya yükler.
+  window.MatrisSE = Object.freeze({
+    modelYukle: function (m) {
+      if (!basladi || !ref.tip) { bekleyenModel = m; return; }
+      S = modelYukle(m);
+      sonucuTemizle();
+      ref.ornek.value = "";
+      modeliGoster();
+    },
+  });
   acilis();
 })();
