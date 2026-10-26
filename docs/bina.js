@@ -129,7 +129,7 @@
     if (!k) return null;
     if (k.tip === "profil") {
       const p = profilBul(k.profil) || { h: 300, b: 150, A: 50, Iy: 8000, Iz: 600, g: 40 };
-      return { tip: "profil", ad: ad, profil: k.profil, b: p.b / 1000, h: p.h / 1000, A: p.A / 1e4, Iy: p.Iz / 1e8, Iz: p.Iy / 1e8, J: 1e-7, g: p.g / 100, malzeme: k.malzeme, celik: true };
+      return { tip: "profil", ad: ad, profil: k.profil, b: p.b / 1000, h: p.h / 1000, A: p.A / 1e4, Iy: p.Iz / 1e8, Iz: p.Iy / 1e8, J: (p.It || 10) / 1e8, g: p.g / 100, malzeme: k.malzeme, celik: true };
     }
     const b = +k.b || 0.3, h = +k.h || 0.5;
     return { tip: "dikdortgen", ad: ad, b: b, h: h, A: b * h, Iy: h * b * b * b / 12, Iz: b * h * h * h / 12, J: Jdik(b, h), Wpl: b * h * h / 4, malzeme: k.malzeme, celik: false };
@@ -1087,12 +1087,41 @@
       binayiAyarla(y.bina, "Şablon yüklendi: " + (y.bina.baslik || ad));
     }, yerel);
   }
+  // Motorun "bina_kutuphane" yanıtını (malzemeler/kullanım/duvar/kaplama sözlükleri; §6) arayüzün liste biçimine çevirir.
+  function kutuphaneNormalize(y) {
+    const k = Object.assign({}, YERLESIK_KUTUPHANE);
+    const ml = y.malzemeler || {};
+    if (Array.isArray(ml.beton) || Array.isArray(ml.celik) || Array.isArray(ml.donati)) k.malzemeler = ml;
+    else {
+      const b = [], c = [], d = [];
+      Object.keys(ml).forEach(function (ad) {
+        const m = ml[ad] || {}, o = { ad: ad, dogrulandi: m.dogrulandi, kaynak: m.kaynak };
+        if (m.tur === "celik") { Object.assign(o, { Fy: m.Fy, Fu: m.Fu, E: m.E_MPa, G: m.G_MPa, gamma: m.gamma }); c.push(o); }
+        else if (m.tur === "donati") { Object.assign(o, { fyk: m.fyk, Es: m.E_MPa }); d.push(o); }
+        else { Object.assign(o, { fck: m.fck, Ec: m.E_MPa, gamma: m.gamma, fctk: m.fctk }); b.push(o); }
+      });
+      k.malzemeler = { beton: b, celik: c, donati: d };
+    }
+    k.kesit_katalogu = Object.assign({}, YERLESIK_KUTUPHANE.kesit_katalogu, y.kesit_katalogu || {});
+    const sozlukListe = function (v, cevir) {
+      if (Array.isArray(v)) return v;
+      if (v && typeof v === "object") return Object.keys(v).map(function (ad) { return cevir(ad, v[ad] || {}); });
+      return null;
+    };
+    k.kullanim_siniflari = sozlukListe(y.kullanim_siniflari, function (ad, x) { return { ad: ad, etiket: x.ad || ad, q: x.deger, kaynak: x.kaynak, dogrulandi: x.dogrulandi, azaltma_grubu: x.azaltma_grubu }; }) || k.kullanim_siniflari;
+    k.duvarlar = sozlukListe(y.duvarlar, function (ad, x) { return { ad: ad, etiket: x.ad || ad, w: x.deger, kaynak: x.kaynak, dogrulandi: x.dogrulandi }; }) || k.duvarlar;
+    k.kaplamalar = sozlukListe(y.kaplamalar, function (ad, x) { return { ad: ad, etiket: x.ad || ad, g: x.deger, kaynak: x.kaynak, dogrulandi: x.dogrulandi }; }) || k.kaplamalar;
+    if (Array.isArray(y.kombinasyon_kumeleri)) k.kombinasyon_kumeleri = y.kombinasyon_kumeleri;
+    if (Array.isArray(y.sablonlar) && y.sablonlar.length) k.sablonlar = y.sablonlar;
+    k.dogrulanmamis = Array.isArray(y.dogrulanmamis) ? y.dogrulanmamis : [];
+    k.sinirlar = y.sinirlar || null;
+    return k;
+  }
   function kutuphaneyiAl() {
     return A.motorIstegi({ islem: "bina_kutuphane", girdi: {} }).then(function (y) {
       if (!y || y.hata) return;
-      KUT = Object.assign({}, YERLESIK_KUTUPHANE, y);
-      if (!KUT.kesit_katalogu || !KUT.kesit_katalogu.profil_ozellikleri) KUT.kesit_katalogu = Object.assign({}, YERLESIK_KUTUPHANE.kesit_katalogu, KUT.kesit_katalogu || {});
-      if (Array.isArray(y.sablonlar) && y.sablonlar.length) { sablonlar = y.sablonlar; sablonListesi(); }
+      KUT = kutuphaneNormalize(y);
+      if (Array.isArray(KUT.sablonlar) && KUT.sablonlar.length) { sablonlar = KUT.sablonlar; sablonListesi(); }
       if (B) panelCiz();
     }, function () { /* motor yok: yerleşik kütüphane */ });
   }
@@ -1166,6 +1195,15 @@
     const d = D.akisDurum;
     const g = +objG || 0, q = +objQ || 0;
     return d === "G" ? g : d === "Q" ? q : g + q;
+  }
+  // Kiriş yük dökümü: motorda G/Q alt alanları kN toplamdır (kN/m değerleri kN_m'de); burada kN/m'ye çevrilir.
+  function kirisKNm(yk, durum) {
+    const L = yk.L || 1, G = yk.G || {}, Q = yk.Q || {};
+    const g = { doseme: (G.doseme || 0) / L, duvar: (G.duvar || 0) / L, oz: (G.oz || 0) / L, ek: (G.ek || 0) / L, toplam: (G.toplam_kN || 0) / L };
+    const q = { doseme: (Q.doseme || 0) / L, duvar: 0, oz: 0, ek: (Q.ek || 0) / L, toplam: (Q.toplam_kN || 0) / L };
+    if (durum === "G") return g;
+    if (durum === "Q") return q;
+    const o = {}; Object.keys(g).forEach(function (k) { o[k] = g[k] + q[k]; }); return o;
   }
   function kolonAdres(no) { const c = nesneBul("kolon", no) || (V() && V().bina.kolonlar.filter(function (x) { return x.no === no; })[0]); return c ? "S-" + adres(c.aks) + "/k" + c.kat : "S" + no; }
   function kirisAdres(no) { const k = nesneBul("kiris", no) || (V() && V().bina.kirisler.filter(function (x) { return x.no === no; })[0]); return k ? "K-" + adres(k.bas) + "→" + adres(k.son) + "/k" + k.kat : "K" + no; }
@@ -1270,7 +1308,7 @@
       const X1 = aksX(k.bas[0]), Y1 = aksY(k.bas[1]), X2 = aksX(k.son[0]), Y2 = aksY(k.son[1]), Z = katKot(k.kat);
       sahne.ekle(1e9, C.cizgi(P(X1, Y1, Z), P(X2, Y2, Z), "b3-akis-kiris"), 2);
       if (D.akisHedef.tur === "kiris") {
-        const q = akisDeger(yk.G.doseme + yk.G.duvar + yk.G.oz + yk.G.ek, yk.Q.doseme + yk.Q.ek);
+        const q = kirisKNm(yk, D.akisDurum).toplam;
         const m = P((X1 + X2) / 2, (Y1 + Y2) / 2, Z - 0.6);
         sahne.ekle(1e9, etiketKutu(m[0], m[1], "q = " + f2(q) + " kN/m · " + f1(akisDeger(yk.G.toplam_kN, yk.Q.toplam_kN)) + " kN", "b3-akis-et"), 2);
         formulHedef(m, "kiris:" + kno);
@@ -1346,9 +1384,9 @@
     } else if (tur === "kiris") {
       const yk = v.yukler.kirisler.filter(function (x) { return x.no === +p[1]; })[0];
       if (!yk) return;
-      const q = akisDeger(yk.G.doseme + yk.G.duvar + yk.G.oz + yk.G.ek, yk.Q.doseme + yk.Q.ek), L = yk.L;
+      const kg = kirisKNm(yk, "G"), kq = kirisKNm(yk, "Q"), q = kirisKNm(yk, D.akisDurum).toplam, L = yk.L;
       baslik = kirisAdres(yk.no) + " — yük dökümü ve el hesabı";
-      tex = "q = q_{d} + q_{duvar} + q_{öz} + q_{ek} = " + [yk.G.doseme, yk.G.duvar, yk.G.oz, yk.G.ek].map(function (x) { return f2(D.akisDurum === "Q" ? 0 : x).replace(",", "{,}"); }).join(" + ") + (D.akisDurum !== "G" ? " + " + f2(yk.Q.doseme + yk.Q.ek).replace(",", "{,}") + "\\,(Q)" : "") + " = " + f2(q).replace(",", "{,}") + "\\ \\text{kN/m}";
+      tex = "q = q_{d} + q_{duvar} + q_{öz} + q_{ek} = " + [kg.doseme, kg.duvar, kg.oz, kg.ek].map(function (x) { return f2(D.akisDurum === "Q" ? 0 : x).replace(",", "{,}"); }).join(" + ") + (D.akisDurum !== "G" ? " + " + f2(kq.doseme + kq.ek).replace(",", "{,}") + "\\,(Q)" : "") + " = " + f2(q).replace(",", "{,}") + "\\ \\text{kN/m}";
       tex += "\\\\ R \\approx \\frac{qL}{2} = " + f1(q * L / 2).replace(",", "{,}") + "\\ \\text{kN},\\quad M_{orta} \\approx \\frac{qL^2}{8} = " + f1(q * L * L / 8).replace(",", "{,}") + "\\ \\text{kN·m}";
       const e = agEleman("kiris", yk.no)[0], ks = e && durumKisa(D.akisDurum), es = ks && elSonuc(ks, e.no);
       if (es) not = "FE (bu durum): M_maks = " + f1(enBuyuk(es.M)) + " kN·m, V_maks = " + f1(enBuyuk(es.V)) + " kN. Basit kiriş değeri ile fark süreklilik ve uç ankastreliğinden gelir.";
@@ -1420,7 +1458,7 @@
     const sutun = function (id) {
       if (id.charAt(0) === "D") return 0;
       if (id.charAt(0) === "K") return 1;
-      if (id.charAt(0) === "S") { const m = /\/k(\d+)/.exec(id); return 2 + (m ? ust - (+m[1]) : 0); }
+      if (id.charAt(0) === "S" || id.charAt(0) === "N") { const m = /\/k(\d+)/.exec(id); return 2 + (m ? ust - (+m[1]) : 0); }
       if (id.charAt(0) === "T") return 2 + ust;
       return 3 + ust;
     };
@@ -1458,7 +1496,7 @@
     });
     Object.keys(dugum).forEach(function (id) {
       const n = dugum[id];
-      const ad = id.charAt(0) === "D" ? "D" + id.slice(1) : id.charAt(0) === "K" ? "K" + id.slice(1) : id.charAt(0) === "S" ? "S" + id.slice(1).replace(/\/k\d+/, "") : id.indexOf("T-") === 0 ? id.slice(2) : id;
+      const ad = id.charAt(0) === "S" ? "S" + id.slice(1).replace(/\/k\d+/, "") : id.indexOf("T-") === 0 ? id.slice(2) : id.indexOf("N-") === 0 ? id.slice(2).replace(/\/k\d+/, "") : id;
       svg += '<g class="bn-sankey-dugum' + (secim === id ? " aktif" : "") + '" data-sankey="' + kacis(id) + '" tabindex="0" role="button" aria-label="' + kacis(id + " " + f1(n.akis) + " kN") + '"><rect x="' + r1(n.x) + '" y="' + r1(n.y) + '" width="' + gw + '" height="' + r1(n.h) + '" rx="2"/>' +
         metinSvg(n.s === 0 ? n.x - 4 : n.x + gw + 4, n.y + n.h / 2 + 4, ad + " " + f1(n.akis), "bn-sankey-t", n.s === 0 ? "end" : "start") + "</g>";
     });
@@ -1679,9 +1717,9 @@
       s += '<path class="se-asil" d="M' + pt(pl, y0) + " L" + pt(pl + L * sx, y0) + '"/><path class="se-dgm ' + sinif + '" d="' + yol + '"/>' + metinSvg(4, y0 + 4, baslik, "se-eno", "start") + metinSvg(W - 4, y0 - 30, fmt(enBuyuk(vs), 3), "se-etiket", "end");
     };
     if (yk) {
-      const q = yk.G.doseme + yk.G.duvar + yk.G.oz + yk.G.ek;
+      const q = kirisKNm(yk, "G").toplam, qq = kirisKNm(yk, "Q").toplam;
       for (let i = 0; i <= 8; i++) { const x = pl + L * sx * i / 8; s += '<path class="se-yuk-c" d="M' + pt(x, 18) + " L" + pt(x, 40) + '"/>' + C.okBasi(x, 42, 0, 1, "se-yuk-o", 7); }
-      s += '<path class="se-yuk-c" d="M' + pt(pl, 18) + " L" + pt(pl + L * sx, 18) + '"/>' + metinSvg(W / 2, 12, "q_G = " + f2(q) + " kN/m" + (yk.Q.doseme + yk.Q.ek ? ", q_Q = " + f2(yk.Q.doseme + yk.Q.ek) + " kN/m" : ""), "se-etiket se-yuk-t", "middle");
+      s += '<path class="se-yuk-c" d="M' + pt(pl, 18) + " L" + pt(pl + L * sx, 18) + '"/>' + metinSvg(W / 2, 12, "q_G = " + f2(q) + " kN/m" + (qq ? ", q_Q = " + f2(qq) + " kN/m" : ""), "se-etiket se-yuk-t", "middle");
     }
     s += '<path class="se-eleman" d="M' + pt(pl, 46) + " L" + pt(pl + L * sx, 46) + '"/>' + metinSvg(pl, 62, "0", "se-eno", "middle") + metinSvg(pl + L * sx, 62, "L = " + f2(L) + " m", "se-eno", "middle");
     dgm(110, es.V, DIYAGRAM.V, "se-dV", "V (kN)");
@@ -1701,8 +1739,8 @@
       const dn = ks.denge || {}, tamam = ["FX", "FY", "FZ", "MX", "MY", "MZ"].every(function (k) { return dn[k] == null || Math.abs(dn[k]) < 1e-4; });
       h += '<p class="se-denge ' + (tamam ? "tamam" : "sorun") + '"><strong>Denge ' + (tamam ? "sağlandı" : "sağlanmadı") + ":</strong> " + ["FX", "FY", "FZ", "MX", "MY", "MZ"].map(function (k) { return "Σ" + k + " = " + fmt(dn[k], 3); }).join(", ") + "</p>";
     }
-    h += "<h4>Kiriş yük dökümü (kN/m; toplam kN)</h4>" + tabloH(["Kiriş", "L", "G döşeme", "G duvar", "G öz", "G ek", "ΣG (kN)", "Q döşeme", "Q ek", "ΣQ (kN)", "R_G≈qL/2", "M_G≈qL²/8"], (v.yukler.kirisler || []).map(function (k) {
-      return [kirisAdres(k.no), f2(k.L), f2(k.G.doseme), f2(k.G.duvar), f2(k.G.oz), f2(k.G.ek), f1(k.G.toplam_kN), f2(k.Q.doseme), f2(k.Q.ek), f1(k.Q.toplam_kN), f1(k.el_hesabi.R_G), f1(k.el_hesabi.M_G)];
+    h += "<h4>Kiriş yük dökümü (kN toplam; q = Σ/L kN/m)</h4>" + tabloH(["Kiriş", "L (m)", "G döşeme", "G duvar", "G öz", "G ek", "ΣG (kN)", "q_G (kN/m)", "Q döşeme", "Q ek", "ΣQ (kN)", "q_Q (kN/m)", "R_G≈qL/2", "M_G≈qL²/8"], (v.yukler.kirisler || []).map(function (k) {
+      return [kirisAdres(k.no), f2(k.L), f1(k.G.doseme), f1(k.G.duvar), f1(k.G.oz), f1(k.G.ek), f1(k.G.toplam_kN), f2(kirisKNm(k, "G").toplam), f1(k.Q.doseme), f1(k.Q.ek), f1(k.Q.toplam_kN), f2(kirisKNm(k, "Q").toplam), f1(k.el_hesabi.R_G), f1(k.el_hesabi.M_G)];
     }));
     h += "<h4>Döşeme payları (TS 500 11.4.3)</h4>" + tabloH(["Döşeme", "lx×ly", "m", "Tip", "g / q", "Kiriş", "Kenar", "Şekil", "Tepe G", "Tepe Q", "q_eM G", "q_eV G", "Toplam G", "Toplam Q"], [].concat.apply([], (v.yukler.dosemeler || []).map(function (d) {
       return d.paylar.map(function (p, i) { return [i ? "" : dosemeAdres(d.no), i ? "" : f2(d.lx) + "×" + f2(d.ly), i ? "" : f2(d.m), i ? "" : d.tip, i ? "" : f2(d.g) + " / " + f2(d.q), kirisAdres(p.kiris_no), p.kenar, p.sekil, f2(p.tepe_g), f2(p.tepe_q), f2(p.q_eM_g), f2(p.q_eV_g), f1(p.toplam_G), f1(p.toplam_Q)]; });
@@ -1736,7 +1774,29 @@
     const v = V();
     if (!v || !v.fe_model) { A.toast("Yanıtta fe_model yok."); return; }
     if (typeof A.seModelYukle !== "function") { A.toast("Sonlu eleman sayfası bağlantısı bu sürümde yok."); return; }
-    try { A.seModelYukle(kopya(v.fe_model)); } catch (e) { A.toast("Model aktarılamadı: " + (e && e.message ? e.message : e)); }
+    const m = kopya(v.fe_model);
+    let parcali = 0;
+    if (Array.isArray(m.yayili)) {
+      // se.js yalnız q/qz okur: parçalı doğrusal kayıtlar (q1→q2, [x1, x2]) aynı elemanın düzgün yüküne toplamı koruyarak eklenir
+      const L = {};
+      (m.elemanlar || []).forEach(function (e) {
+        const a = (m.dugumler || []).filter(function (d) { return d.no === e.dugumler[0]; })[0], b = (m.dugumler || []).filter(function (d) { return d.no === e.dugumler[1]; })[0];
+        if (a && b) L[e.no] = Math.hypot((b.x || 0) - (a.x || 0), (b.y || 0) - (a.y || 0), (b.z || 0) - (a.z || 0)) || 1;
+      });
+      const top = {};
+      m.yayili.forEach(function (y) {
+        if (y.q1 != null || y.q2 != null) { parcali++; const q1 = +y.q1 || 0, q2 = +y.q2 || 0, x1 = +y.x1 || 0, x2 = y.x2 != null ? +y.x2 : (L[y.eleman] || 0); top[y.eleman] = (top[y.eleman] || 0) + (q1 + q2) / 2 * (x2 - x1); }
+      });
+      m.yayili = m.yayili.filter(function (y) { return y.q1 == null && y.q2 == null; });
+      Object.keys(top).forEach(function (no) {
+        const kayit = m.yayili.filter(function (y) { return String(y.eleman) === String(no); })[0];
+        const ek = top[no] / (L[no] || 1);
+        if (kayit) kayit.q = (+kayit.q || 0) + ek; else m.yayili.push({ eleman: +no, q: ek });
+      });
+      m.yayili.forEach(function (y) { if (typeof y.q === "number") y.q = Math.round(y.q * 1e6) / 1e6; });
+    }
+    try { A.seModelYukle(m); if (parcali) A.toast(parcali + " parçalı yük Sonlu eleman sayfası için toplamı koruyan eşdeğer düzgün yüke çevrildi."); }
+    catch (e) { A.toast("Model aktarılamadı: " + (e && e.message ? e.message : e)); }
   }
 
   // ---------- Olaylar ----------
