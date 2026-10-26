@@ -417,7 +417,7 @@
   function sahneBoyutla() {
     const kap = ref.sahneKutu;
     const w = Math.max(260, Math.floor(kap.clientWidth) || 600);
-    const h = window.innerWidth < 700 ? w : Math.max(320, Math.min(540, Math.round(w * 0.6)));
+    const h = window.innerWidth < 700 ? w : Math.max(520, Math.min(760, Math.round(window.innerHeight * 0.55)));
     cizimW = w; cizimH = h;
     if (!kamera) kamera = new C.Kamera(w, h); else kamera.boyut(w, h);
     ref.svg.setAttribute("width", w); ref.svg.setAttribute("height", h);
@@ -432,13 +432,16 @@
     return D.tumKatlar ? B.katlar.filter(function (k) { return k.no >= 1; }).map(function (k) { return k.no; }) : [D.kat];
   }
   function secildiMi(tur, no) { return D.secim.some(function (s) { return s.tur === tur && s.no === no; }); }
+  let sonSinir = "";
   function sahneCiz() {
     const svg = ref.svg;
     if (!svg || !B) return;
     const b = kamera.bakis, W = cizimW, H = cizimH, sn = sinir();
+    const snK = JSON.stringify(sn);
+    if (snK !== sonSinir) { sonSinir = snK; kamera.sifirla(); }      // bina sınırları değişti: yeniden sığdır
     const pts = [];
-    [sn.x0 - 1.2, sn.x1 + 0.6].forEach(function (X) { [sn.y0 - 1.2, sn.y1 + 0.6].forEach(function (Y) { [sn.z0, sn.z1 + 0.8].forEach(function (Z) { pts.push(C.izdusum(X, Y, Z, b)); }); }); });
-    const T = C.donusum(pts, W, H, { pl: 30, pu: 24, pa: 28 });
+    [sn.x0 - 1.4, sn.x1 + 1.4].forEach(function (X) { [sn.y0 - 1.2, sn.y1 + 0.6].forEach(function (Y) { [sn.z0, sn.z1 + 0.3].forEach(function (Z) { pts.push(C.izdusum(X, Y, Z, b)); }); }); });
+    const T = C.donusum(pts, W, H, { pl: 40, pu: 44, pa: 40 });
     const P = function (X, Y, Z) { const q = C.izdusum(X, Y, Z, b); return [T.x(q[0]), T.y(q[1])]; };
     const sahne = new C.Sahne();
     const s = kamera.pxOlcek(svg) || 1;     // 1 ekran px = s viewBox birimi
@@ -1243,8 +1246,9 @@
   }
   function akisVurguCiz(sahne, P, b, s) {
     const v = V(), vb = v.bina, z = akisZinciri(D.akisHedef);
-    const formulHedef = function (p, key) { hedefler.unshift({ tur: "daire", x: p[0], y: p[1], r: 20 * s, kind: "formul", key: key }); };
-    const durumEk = D.akisDurum === "G" ? "" : D.akisDurum === "Q" ? " (Q)" : " (G+Q)";
+    const formulHedef = function (p, key, r) { hedefler.unshift({ tur: "daire", x: p[0], y: p[1], r: (r || 20) * s, kind: "formul", key: key }); };
+    const etk = [];
+    const etiket = function (x, y, t, key, hiza) { etk.push({ x: x, y: y, t: t, key: key, hiza: hiza || "middle" }); };
     // döşemeler: turuncu + 45° çizgiler
     z.dosemeler.forEach(function (no) {
       const d = vb.dosemeler.filter(function (x) { return x.no === no; })[0], yd = v.yukler.dosemeler.filter(function (x) { return x.no === no; })[0];
@@ -1268,9 +1272,8 @@
       }
       sahne.ekle(1e9, cz, 2);
       const m = P((X1 + X2) / 2, (Y1 + Y2) / 2, Z);
-      const et = (D.akisDurum === "Q" ? "q = " + f2(yd.q) : D.akisDurum === "G" ? "g = " + f2(yd.g) : "g+q = " + f2(yd.g + yd.q)) + " kN/m²";
-      sahne.ekle(1e9, etiketKutu(m[0], m[1] + 14, et, "b3-akis-et"), 2);
-      formulHedef([m[0], m[1] + 10], "doseme:" + no);
+      const et = D.akisDurum === "Q" ? "q=" + f1(yd.q) : D.akisDurum === "G" ? "g=" + f1(yd.g) : "g+q=" + f1(yd.g + yd.q);
+      etiket(m[0], m[1] + 16, et, "doseme:" + no);
     });
     // kiriş yük şekilleri (paylar) ve kiriş toplamı
     let tepeMaks = 0;
@@ -1298,8 +1301,7 @@
       const ekr = prof.map(function (q) { return P(X1 + ux * q[0], Y1 + uy * q[0], Z + q[1]); });
       sahne.ekle(1e9, C.cokgen(ekr, "b3-akis-yuk"), 2);
       const m = P(X1 + ux * L / 2, Y1 + uy * L / 2, Z + hw);
-      sahne.ekle(1e9, etiketKutu(m[0], m[1] - 8, (o.p.sekil === "ucgen" ? "▲ " : o.p.sekil === "trapez" ? "▬ " : "▭ ") + f2(o.w) + " kN/m", "b3-akis-et"), 2);
-      formulHedef([m[0], m[1] - 12], "pay:" + o.d.no + ":" + o.p.kiris_no);
+      etiket(m[0], m[1] - 10, (o.p.sekil === "ucgen" ? "▲" : o.p.sekil === "trapez" ? "▬" : "▭") + "w=" + f1(o.w), "pay:" + o.d.no + ":" + o.p.kiris_no);
     });
     // kiriş toplam yükü (hedef kiriş ise) ve uç kuvvetleri → kolon okları
     z.kirisler.forEach(function (kno) {
@@ -1310,8 +1312,7 @@
       if (D.akisHedef.tur === "kiris") {
         const q = kirisKNm(yk, D.akisDurum).toplam;
         const m = P((X1 + X2) / 2, (Y1 + Y2) / 2, Z - 0.6);
-        sahne.ekle(1e9, etiketKutu(m[0], m[1], "q = " + f2(q) + " kN/m · " + f1(akisDeger(yk.G.toplam_kN, yk.Q.toplam_kN)) + " kN", "b3-akis-et"), 2);
-        formulHedef(m, "kiris:" + kno);
+        etiket(m[0], m[1] + 4, "q=" + f1(q) + " · " + f1(akisDeger(yk.G.toplam_kN, yk.Q.toplam_kN)) + " kN", "kiris:" + kno);
       }
       [k.bas, k.son].forEach(function (a) {
         const c = vb.kolonlar.filter(function (x) { return aksEsit(x.aks, a) && x.kat === k.kat; })[0];
@@ -1319,8 +1320,7 @@
         const X = aksX(a[0]), Y = aksY(a[1]), R = ucKuvveti(kno, c.no);
         const p0 = P(X, Y, Z + 0.9), p1 = P(X, Y, Z + 0.15);
         sahne.ekle(1e9, C.ok(p0, p1, "b3-akis-ok-c", "b3-akis-ok-o", "", ""), 2);
-        sahne.ekle(1e9, etiketKutu(p0[0], p0[1] - 8, f1(R) + " kN", "b3-akis-et"), 2);
-        formulHedef([p0[0], p0[1] - 10], "uc:" + kno + ":" + c.no);
+        etiket(p0[0] + 10, p0[1] - 6, "R=" + f1(R), "uc:" + kno + ":" + c.no, "start");
       });
     });
     // kolon şeridi: kümülatif N
@@ -1330,8 +1330,7 @@
       const X = aksX(c.aks[0]), Y = aksY(c.aks[1]), z0 = katKot(c.kat - 1), z1 = katKot(c.kat);
       sahne.ekle(1e9, C.ok(P(X, Y, z1 - 0.3), P(X, Y, z0 + 0.35), "b3-akis-kolon", "b3-akis-ok-o", "", ""), 2);
       const m = P(X, Y, (z0 + z1) / 2);
-      sahne.ekle(1e9, etiketKutu(m[0] + 14, m[1], "N = " + f1(akisDeger(ak.N_kum_G, ak.N_kum_Q)) + " kN", "b3-akis-et", "start"), 2);
-      formulHedef([m[0] + 30, m[1]], "kolon:" + cno);
+      etiket(m[0] + 14, m[1] + 4, "N=" + f1(akisDeger(ak.N_kum_G, ak.N_kum_Q)), "kolon:" + cno, "start");
     });
     // temeller
     z.temeller.forEach(function (cno) {
@@ -1343,12 +1342,33 @@
       const pts = [P(X - t.B / 2, Y, zt), P(X + t.B / 2, Y, zt), P(X + t.B / 2, Y, zt - hs * t.sigma_max / sm), P(X - t.B / 2, Y, zt - hs * Math.max(0, t.sigma_min) / sm)];
       sahne.ekle(1e9, C.cokgen(pts, "b3-akis-temel"), 2);
       const m = P(X, Y, zt - hs - 0.35);
-      sahne.ekle(1e9, etiketKutu(m[0], m[1] + 4, "σ = " + f1(t.sigma_max) + " kN/m² · D/C " + f2(t.DC), "b3-akis-et"), 2);
-      formulHedef(m, "temel:" + cno);
+      etiket(m[0], m[1] + 8, "σ=" + f1(t.sigma_max) + " · D/C " + f2(t.DC), "temel:" + cno);
+    });
+    // etiketler: önce kutu ölçüleri, sonra basit çarpışma önleme (çakışanlar dikey açılır), sonra sahneye ve vuruş listesine
+    etiketYerlestir(etk).forEach(function (e) {
+      sahne.ekle(1e9, etiketKutu(e.x, e.y, e.t, "b3-akis-et", e.hiza), 2);
+      formulHedef([e.hiza === "start" ? e.x + e.w / 2 - 5 : e.x, e.y - 4], e.key, Math.max(14, e.w / 2));
     });
   }
+  function etiketYerlestir(etk) {
+    const h = 17;
+    etk.forEach(function (e) { e.w = 6.0 * e.t.length + 10; });
+    const kutu = function (e) { return { x0: e.hiza === "start" ? e.x - 5 : e.x - e.w / 2, y0: e.y - 12, x1: (e.hiza === "start" ? e.x - 5 : e.x - e.w / 2) + e.w, y1: e.y - 12 + h }; };
+    etk.sort(function (a, b) { return a.y - b.y || a.x - b.x; });
+    for (let tur = 0; tur < 3; tur++) {
+      let degisti = false;
+      for (let i = 0; i < etk.length; i++) {
+        for (let j = 0; j < i; j++) {
+          const a = kutu(etk[j]), b = kutu(etk[i]);
+          if (b.x0 < a.x1 - 1 && b.x1 > a.x0 + 1 && b.y0 < a.y1 - 1 && b.y1 > a.y0 + 1) { etk[i].y += a.y1 - b.y0 + 2; degisti = true; }
+        }
+      }
+      if (!degisti) break;
+    }
+    return etk;
+  }
   function etiketKutu(x, y, t, sinif, hiza) {
-    const w = 6.4 * t.length + 10, h = 18, ax = hiza === "start" ? x - 5 : x - w / 2;
+    const w = 6.0 * t.length + 10, h = 17, ax = hiza === "start" ? x - 5 : x - w / 2;
     return '<g class="b3-etiket-kutu ' + sinif + '"><rect x="' + r1(ax) + '" y="' + r1(y - 13) + '" width="' + r1(w) + '" height="' + h + '" rx="5"/>' + metinSvg(hiza === "start" ? x : x, y, t, "b3-etiket-t", hiza || "middle") + "</g>";
   }
   // C.dortgen T yerine P (X,Y,Z→ekran) kullanan sürüm (akış vurgusu için)
@@ -1467,21 +1487,40 @@
       [e.kaynak, e.hedef].forEach(function (id) { dugum[id] = dugum[id] || { id: id, s: sutun(id), giren: 0, cikan: 0 }; });
       dugum[e.kaynak].cikan += e.kN; dugum[e.hedef].giren += e.kN;
     });
+    const katBul = function (id) {
+      // D{no}, K{no} → bina kat numarası (kat kat gruplama); S/N düğümlerinde /k<kat>
+      const m = /\/k(\d+)/.exec(id);
+      if (m) return +m[1];
+      const no = parseInt(id.slice(1), 10), liste = id.charAt(0) === "D" ? v.bina.dosemeler : id.charAt(0) === "K" ? v.bina.kirisler : null;
+      const n = liste && liste.filter(function (x) { return x.no === no; })[0];
+      return n ? n.kat : 0;
+    };
     const sutunlar = [];
-    Object.keys(dugum).forEach(function (id) { const n = dugum[id]; n.akis = Math.max(n.giren, n.cikan); (sutunlar[n.s] = sutunlar[n.s] || []).push(n); });
-    const nS = sutunlar.length, H = 360, bosluk = 6, pl = 58, pr = 70, gw = 14;
-    let maksToplam = 0;
-    sutunlar.forEach(function (l) { if (!l) return; l.sort(function (a, b) { return a.id.localeCompare(b.id, "tr", { numeric: true }); }); const t = l.reduce(function (s, n) { return s + n.akis; }, 0) ; maksToplam = Math.max(maksToplam, t + 0); });
-    const olcek = (H - 40 - bosluk * 8) / (maksToplam || 1);
+    Object.keys(dugum).forEach(function (id) { const n = dugum[id]; n.akis = Math.max(n.giren, n.cikan); n.kat = katBul(id); (sutunlar[n.s] = sutunlar[n.s] || []).push(n); });
+    const enCok = sutunlar.reduce(function (m, l) { return Math.max(m, l ? l.length : 0); }, 0);
+    const nS = sutunlar.length, bosluk = enCok > 24 ? 3 : 6, katBoslugu = 12, pl = 58, pr = 70, gw = 14;
+    const H = Math.max(360, Math.min(960, enCok * (enCok > 24 ? 12 : 16) + 80));
+    const cokKiris = (v.bina.kirisler || []).length >= 40;
+    let maksToplam = 0, maksBosluk = 0;
+    sutunlar.forEach(function (l) {
+      if (!l) return;
+      l.sort(function (a, b) { return b.kat - a.kat || a.id.localeCompare(b.id, "tr", { numeric: true }); });
+      const t = l.reduce(function (s, n) { return s + n.akis; }, 0);
+      let katSayisi = 0; l.forEach(function (n, i) { if (i && n.kat !== l[i - 1].kat) katSayisi++; });
+      maksToplam = Math.max(maksToplam, t); maksBosluk = Math.max(maksBosluk, bosluk * (l.length - 1) + katBoslugu * katSayisi);
+    });
+    const olcek = (H - 40 - maksBosluk) / (maksToplam || 1);
     const sx = function (s) { return pl + (nS > 1 ? s * (W - pl - pr) / (nS - 1) : 0); };
     let svg = "";
     sutunlar.forEach(function (l, s) {
       if (!l) return;
-      const toplamH = l.reduce(function (t, n) { return t + n.akis * olcek; }, 0) + bosluk * (l.length - 1);
+      let toplamH = 0;
+      l.forEach(function (n, i) { toplamH += Math.max(2, n.akis * olcek) + (i ? bosluk + (n.kat !== l[i - 1].kat ? katBoslugu : 0) : 0); });
       let y = 20 + (H - 40 - toplamH) / 2;
-      l.forEach(function (n) { n.x = sx(s); n.y = y; n.h = Math.max(2, n.akis * olcek); n.gy = n.y; n.cy = n.y; y += n.h + bosluk; });
+      l.forEach(function (n, i) { if (i && n.kat !== l[i - 1].kat) y += katBoslugu; n.x = sx(s); n.y = y; n.h = Math.max(2, n.akis * olcek); n.gy = n.y; n.cy = n.y; y += n.h + bosluk; });
     });
     const basliklar = ["Döşemeler", "Kirişler"]; for (let k = ust; k >= 1; k--) basliklar.push("Kolon k" + k); basliklar.push("Temeller", "Zemin");
+    if (cokKiris) svg += metinSvg(W / 2, H - 6, "Kiriş ve döşeme etiketleri için bir düğüme dokunun.", "bn-sankey-not", "middle");
     basliklar.forEach(function (bsl, s) { if (sutunlar[s]) svg += metinSvg(sx(s) + gw / 2, 12, bsl, "bn-sankey-bsl", "middle"); });
     const secim = D.sankeySecim;
     kenarlar.sort(function (a, b) { return a.kaynak.localeCompare(b.kaynak, "tr", { numeric: true }); });
@@ -1494,11 +1533,15 @@
       const ilgili = !secim || e.kaynak === secim || e.hedef === secim;
       svg += '<path class="bn-sankey-bant' + (secim ? (ilgili ? " aktif" : " soluk") : "") + '" d="' + d + '"><title>' + kacis(e.kaynak + " → " + e.hedef + ": " + f1(e.kN) + " kN") + "</title></path>";
     });
+    const bagli = {};
+    if (secim) kenarlar.forEach(function (e) { if (e.kaynak === secim) bagli[e.hedef] = 1; if (e.hedef === secim) bagli[e.kaynak] = 1; });
     Object.keys(dugum).forEach(function (id) {
       const n = dugum[id];
       const ad = id.charAt(0) === "S" ? "S" + id.slice(1).replace(/\/k\d+/, "") : id.indexOf("T-") === 0 ? id.slice(2) : id.indexOf("N-") === 0 ? id.slice(2).replace(/\/k\d+/, "") : id;
-      svg += '<g class="bn-sankey-dugum' + (secim === id ? " aktif" : "") + '" data-sankey="' + kacis(id) + '" tabindex="0" role="button" aria-label="' + kacis(id + " " + f1(n.akis) + " kN") + '"><rect x="' + r1(n.x) + '" y="' + r1(n.y) + '" width="' + gw + '" height="' + r1(n.h) + '" rx="2"/>' +
-        metinSvg(n.s === 0 ? n.x - 4 : n.x + gw + 4, n.y + n.h / 2 + 4, ad + " " + f1(n.akis), "bn-sankey-t", n.s === 0 ? "end" : "start") + "</g>";
+      // 40+ kirişli binada döşeme/kiriş etiketleri yalnız seçili düğüm ve komşuları için gösterilir
+      const etiketGoster = !(cokKiris && (id.charAt(0) === "D" || id.charAt(0) === "K")) || secim === id || bagli[id];
+      svg += '<g class="bn-sankey-dugum' + (secim === id ? " aktif" : "") + '" data-sankey="' + kacis(id) + '" tabindex="0" role="button" aria-label="' + kacis(id + " " + f1(n.akis) + " kN") + '"><rect x="' + r1(n.x) + '" y="' + r1(n.y) + '" width="' + gw + '" height="' + r1(n.h) + '" rx="2"><title>' + kacis(ad + " " + f1(n.akis) + " kN") + "</title></rect>" +
+        (etiketGoster ? metinSvg(n.s === 0 ? n.x - 4 : n.x + gw + 4, n.y + n.h / 2 + 3.5, ad + " " + f1(n.akis), "bn-sankey-t", n.s === 0 ? "end" : "start") : "") + "</g>";
     });
     return '<svg class="se-svg bn-sankey-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Yük akışı şeması (' + kacis(D.akisDurum) + ')">' + svg + "</svg>";
   }
@@ -1805,7 +1848,7 @@
       const t = e.target.closest("button, [data-sankey]");
       if (!t || !kok.contains(t)) return;
       const ds = t.dataset;
-      if (ds.kat != null) { D.kat = +ds.kat; D.kirisBas = null; yenile(); return; }
+      if (ds.kat != null) { D.kat = +ds.kat; D.kirisBas = null; kamera.sifirla(); yenile(); return; }
       if (t.id === "bn-kat-ekle") { document.getElementById("bn-kat-menu").classList.toggle("gizli"); return; }
       if (ds.katIslem) { document.getElementById("bn-kat-menu").classList.add("gizli"); if (ds.katIslem === "sil") katSil(ustKat()); else katEkle(ds.katIslem === "kopyala"); return; }
       if (ds.gorunum) {
