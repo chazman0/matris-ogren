@@ -20,7 +20,8 @@ Hata durumunda: {"hata": "...", "hata_turu": "girdi" | "ic", "iz": "..."}
 
 Sonlu eleman işlemleri (sonlu_eleman.py):
   "se_coz":      girdi {"model": {...} | "JSON metni"} → yukarıdaki yanıt biçimi + "veri" (Sonuc.veri: düğümler, elemanlar,
-                 diyagramlar, tepkiler, denge ...); "zincir" her zaman false.
+                 diyagramlar, tepkiler, yaylar, çökmeler, denge, boyut ...); "zincir" her zaman false. Model türleri:
+                 yay, cubuk, kafes, kiris, cerceve, kafes3b, cerceve3b; isteğe bağlı yaylar, cokmeler ve eleman zemin'i.
   "se_ornekler": → {"ornekler": [{ad, baslik, tip, aciklama}], "hata": null}
   "se_ornek":    girdi {"ad": "kafes-iki-cubuk"} → {"ad", "model": {...}, "hata": null}
 """

@@ -548,6 +548,19 @@ kbd { background: var(--ana-acik); border-radius: 5px; padding: 1px 6px; font-si
 .se-dN { fill: var(--sema-b-bg); stroke: var(--sema-b); }
 .se-dV { fill: var(--sema-c-bg); stroke: var(--sema-c); }
 .se-dM { fill: var(--sema-a-bg); stroke: var(--sema-a); }
+/* yaylar (elastik mesnet), Winkler zemini, mesnet çökmesi ve 3B eksen takımı */
+.se-yay-c { fill: none; stroke: var(--sema-c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.se-svg .se-yay-t { fill: var(--sema-c); }
+.se-cok-c { fill: none; stroke: var(--sema-c); stroke-width: 2.2; stroke-dasharray: 5 3; stroke-linecap: round; }
+.se-cok-o { fill: var(--sema-c); stroke: none; }
+.se-eksen { fill: none; stroke: var(--soluk); stroke-width: 1.4; stroke-linecap: round; }
+.se-eksen-o { fill: var(--soluk); stroke: none; }
+.se-svg .se-eksen-t { font-size: 11px; font-weight: 600; fill: var(--soluk); }
+.se-bakis { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 10px 0 0; font-size: 13.5px; }
+.se-bakis label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.se-bakis input[type="range"] { width: 130px; height: 30px; accent-color: var(--ana); }
+.se-bakis .not { margin: 0; font-variant-numeric: tabular-nums; }
+.se-bolum h4 { margin: 12px 0 0; font-size: 14px; color: var(--soluk); }
 
 /* Düzenleme tabloları */
 .se-tablo { width: 100%; border-collapse: collapse; }
