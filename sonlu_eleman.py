@@ -10,7 +10,8 @@ Kullanım::
     r.anlatim        # adım adım anlatım (matris_ogren.Anlatim): md / math / sema / kod blokları
     r.python_kodu, r.python_ciktisi
 
-Genel işlevler: ``se_coz(model, *, goster=None)``, ``ornek_model(ad)``, ``ornek_listesi()``,
+Genel işlevler: ``se_coz(model, *, goster=None, anlat=True)``, ``coz_coklu(model, durumlar, *, diyagram_nokta=11)``
+(çok yük durumu, anlatımsız; aşağıya bakın), ``ornek_model(ad)``, ``ornek_listesi()``,
 ``ORNEK_MODELLER`` (yalnız sabit değerlerden oluşan sözlük).
 
 Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ...; koordinatlar sayı olmalıdır)::
@@ -22,9 +23,11 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
                     "G": "80e6", "Iy": "1e-4", "Iz": "1e-4", "J": "2e-4", "zemin": "20000"}],
      "mesnetler": [{"dugum": 1, "ux": true, "uy": true, "rz": false}],
      "yukler":    [{"dugum": 3, "Fx": 0, "Fy": -10, "M": 0}],
-     "yayili":    [{"eleman": 1, "q": -12, "qz": 0}],
+     "yayili":    [{"eleman": 1, "q": -12, "qz": 0},
+                   {"eleman": 2, "q1": 0, "q2": -12, "x1": 0, "x2": 4, "qz1": 0, "qz2": 0}],
      "yaylar":    [{"dugum": 1, "kx": 0, "ky": "50000", "kr": "20000"}],
-     "cokmeler":  [{"dugum": 4, "uy": "-0.01"}]}
+     "cokmeler":  [{"dugum": 4, "uy": "-0.01"}],
+     "hesap":     "sayisal"}      # isteğe bağlı: SD ≤ 12 olsa da numpy (ondalık) kipini zorlar
 
 * Düğüm başına SD: yay/çubuk 1 (u), kafes 2 (u, v), kiriş 2 (v, θ), çerçeve 3 (u, v, θ),
   uzay kafes (kafes3b) 3 (u, v, w), uzay çerçeve (cerceve3b) 6 (u, v, w, θx, θy, θz).
@@ -39,9 +42,14 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
   kafes3b ux, uy, uz; cerceve3b ux, uy, uz, rx, ry, rz. Eksik bayrak = serbest.
   Yükler: yay/çubuk Fx; kafes Fx, Fy; kiriş Fy, M; çerçeve Fx, Fy, M; kafes3b Fx, Fy, Fz;
   cerceve3b Fx, Fy, Fz, Mx, My, Mz.
-* ``yayili``: eleman yerel y yönünde düzgün yayılı yük q (yerel y = eleman ekseninin 90° saat yönünün tersi;
+* ``yayili``: eleman yerel y yönünde yayılı yük (yerel y = eleman ekseninin 90° saat yönünün tersi;
   kiriş ve çerçeve için; + = yerel y yönü). Yatay, soldan sağa giden elemanda q < 0 aşağı doğrudur.
-  Uzay çerçevede q yerel y, ``qz`` yerel z yönündedir.
+  Uzay çerçevede q yerel y, ``qz`` yerel z yönündedir. İki kayıt biçimi: düzgün ``q`` (bütün açıklık) ya da
+  **parçalı doğrusal** ``q1, q2, x1, x2``: yük x1'de q1, x2'de q2 değerini alır ve arada doğrusal değişir
+  (üçgen, trapez ya da kısmi açıklık); x1, x2 elemanın ilk düğümünden eleman ekseni boyunca ölçülür, sayı olmalıdır
+  ve 0 ≤ x1 < x2 ≤ L (x1 verilmezse 0, x2 verilmezse L). Uzay çerçevede z′ için ``qz1, qz2`` (aynı x1, x2).
+  Aynı elemana birden çok kayıt üst üste toplanır. Eşdeğer düğüm yükleri her parça için 3 noktalı Gauss–Legendre ile
+  (Hermite kübik × doğrusal yük 4. derece: kesin) alınır; V ve M diyagramları parça başına kapalı formdur.
 * ``yaylar`` (elastik mesnet / zemin yayı): düğüme bağlı öteleme ve dönme yayları; anahtarlar mesnet bayraklarının
   yay karşılığıdır (kx, ky, kz, kr; 3B çerçevede krx, kry, krz). Rijitlik K'nın köşegenine eklenir.
 * ``cokmeler`` (mesnet çökmesi / verilen yer değiştirme): ilgili SD tutulu sayılır ve değeri sıfır yerine verilen
@@ -52,7 +60,12 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
   elemanlarda bu kural 2B çerçeveyle aynı yerel eksenleri verir.
 
 Hesap modu: toplam SD ≤ 12 ise "kesin" (sympy, kesirli/sembolik; E, A, P ... harf olabilir),
-daha büyükse "sayisal" (numpy, ondalık; harfli girdi öğretici hata verir).
+daha büyükse "sayisal" (numpy, ondalık; harfli girdi öğretici hata verir). ``"hesap": "sayisal"`` anahtarı küçük
+modelde de sayısal kipi zorlar. Eleman kayıtlarındaki bilinmeyen alanlar (``kaynak``, ``yardimci`` ...) yok sayılır.
+
+``coz_coklu(model, durumlar)``: aynı modeli birden çok yük durumu için çözer; modeldeki ``yukler``/``yayili``
+yoksayılır, her durum ``{"yukler": [...], "yayili": [...]}`` biçimindedir; K bir kez kurulur, bütün sağ taraflar tek
+``np.linalg.solve`` ile çözülür; dönüş ``{ad: kisa}`` (anlatımsız, motor koordinatında; ayrıntı işlevin belgesinde).
 
 ``Sonuc.veri`` sözlüğünün anahtarları (sayılar JSON'a uygun ``float``; sembolik çözümde sayı yerine ifade metni)::
 
@@ -63,6 +76,7 @@ daha büyükse "sayisal" (numpy, ondalık; harfli girdi öğretici hata verir).
                 N (çekme +), durum ("çekme" | "basınç" | "sıfır" | "eğilme"), zemin (k_s ya da None),
                 zemin_kuvvetleri (zeminin düğümlere aktarılmış global kuvvetleri, 4 ya da 6 bileşen; zemin yoksa None),
                 yon [cx, cy, cz] ve lam [[...]] (yalnız 3B: doğrultu kosinüsleri ve yerel eksen matrisi),
+                yayili [{q1, q2, x1, x2}] (kiriş/çerçeve: yerel y′ yük parçaları; cerceve3b'de ayrıca yayili_z),
                 diyagram {x [yerel konum], N, V, M [aynı uzunlukta listeler]; cerceve3b'de ayrıca Vz, My, T}}],
     tepkiler  [{dugum, Fx, Fy, M}] (3B'de {dugum, Fx, Fy, Fz, Mx, My, Mz}),   # yalnız mesnetli düğümler
     yaylar    [{dugum, sd (etiket), bilesen (Fx|Fy|Fz|M|Mx|My|Mz), k, kuvvet}],  # yay kuvvetleri (yayın yapıya uyguladığı)
@@ -892,8 +906,128 @@ def _izdusum(x, y, z, fi=None, psi=None):
     return u, v
 
 
-def _model_oku(model):
-    """Sözlük ya da JSON metnini doğrulayıp hesaplanabilir bir model nesnesine (SimpleNamespace) çevirir."""
+def _eleman_boyu_sayi(M, e):
+    """Elemanın boyu (ondalık): yayılı yük sınırlarının (x1, x2) doğrulanması için."""
+    a, b = M.dugumler[e.ia], M.dugumler[e.ib]
+    if M.tip in ("yay", "cubuk", "kiris"):
+        return abs(float(b.x - a.x))
+    return math.sqrt(float(b.x - a.x) ** 2 + float(b.y - a.y) ** 2 + float(b.z - a.z) ** 2)
+
+
+def _bos(v):
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def _yayili_parca_oku(y, eno, L, anahtar_q1, anahtar_q2, duzgun_q, uzunluk):
+    """Bir yayılı yük kaydından (q1, q2, x1, x2) parçasını okur; x2 verilmemişse eleman boyu L alınır (None döner,
+    _hazirla'da doldurulur).
+
+    q1/q2 verilmemişse düzgün yük ``duzgun_q`` kullanılır; yalnız biri verilmişse düzgün sayılır. x1, x2 eleman yerel
+    ekseninde ilk düğümden ölçülür ve sayı olmalıdır: 0 ≤ x1 < x2 ≤ L. Yük sıfırsa None döner."""
+    ham1, ham2 = y.get(anahtar_q1), y.get(anahtar_q2)
+    if _bos(ham1) and _bos(ham2):
+        if duzgun_q is None:
+            return None
+        q1 = q2 = duzgun_q
+    else:
+        q1 = None if _bos(ham1) else _say(ham1, f"Eleman {eno}: yayılı yük {anahtar_q1}")
+        q2 = None if _bos(ham2) else _say(ham2, f"Eleman {eno}: yayılı yük {anahtar_q2}")
+        q1 = q2 if q1 is None else q1
+        q2 = q1 if q2 is None else q2
+    x1 = _koord(y.get("x1", 0), f"Eleman {eno}: yayılı yük başlangıcı x1")
+    x2 = None if _bos(y.get("x2")) else _koord(y.get("x2"), f"Eleman {eno}: yayılı yük bitişi x2")
+    f1, f2 = float(x1), (L if x2 is None else float(x2))
+    tol = 1e-9 * max(L, 1.0)
+    if f1 < -tol or f1 > L + tol or f2 < -tol or f2 > L + tol:
+        raise MatrisHatasi(f"Eleman {eno}: yayılı yük sınırları eleman üzerinde olmalı: 0 ≤ x1, x2 ≤ L = {L:g} {uzunluk} "
+                           f"(girilen x1 = {f1:g}, x2 = {f2:g}). x1 ve x2 elemanın ilk düğümünden, eleman ekseni "
+                           "boyunca ölçülür; eleman dışına taşan yükü komşu elemana ayrı bir kayıtla verin.")
+    if f2 - f1 <= tol:
+        raise MatrisHatasi(f"Eleman {eno}: yayılı yükte x1 < x2 olmalı (girilen x1 = {f1:g}, x2 = {f2:g}). "
+                           "Sıfır ya da negatif uzunluktaki parçanın bileşkesi yoktur; sınırları düzeltin "
+                           "(x2 verilmezse eleman sonu L alınır).")
+    if q1 == 0 and q2 == 0:
+        return None
+    return (q1, q2, x1, x2)
+
+
+def _yukleri_oku(M, model):
+    """Model (ya da bir yük durumu) sözlüğündeki 'yukler' ve 'yayili' kayıtlarını okur.
+
+    M'de tip, d, dn, en, dugumler, elemanlar, uzunluk bulunmalıdır. Dönüş: (yuk, yayili, yayili_z, sembolik):
+    ``yuk[i][j]`` düğüm yük bileşenleri; ``yayili[e]`` / ``yayili_z[e]`` elemanın yerel y′ / z′ yönündeki parçalı
+    doğrusal yük parçaları ``[(q1, q2, x1, x2), ...]`` (x2 None ise eleman sonu L). Bir kayıt ya düzgün (q, qz) ya da
+    parçalı doğrusal (q1, q2, x1, x2; qz1, qz2) olabilir; aynı elemana birden çok kayıt üst üste toplanır.
+    ``se_coz`` ve ``coz_coklu`` aynı yardımcıyı kullanır."""
+    tip, d, dn, en = M.tip, M.d, M.dn, M.en
+    if not isinstance(model, dict):
+        raise MatrisHatasi('Yük durumu bir sözlük olmalı: {"yukler": [{"dugum": 3, "Fy": -10}], '
+                           '"yayili": [{"eleman": 1, "q": -12}]}.')
+    semb = False
+    yuk = [[sp.Integer(0)] * d for _ in M.dugumler]
+    gecerli = _BILESEN[tip]
+    # "M" ↔ "Mz" birbirinin yerine kabul edilir (düzlemde moment z eksenindedir)
+    takma = {"M": "Mz", "Mz": "M"}
+    for y in model.get("yukler") or []:
+        if not isinstance(y, dict):
+            raise MatrisHatasi('Her yük bir sözlük olmalı: {"dugum": 3, "Fy": -10}.')
+        dno = _tam(y.get("dugum"), "Yükün 'dugum' değeri")
+        if dno not in dn:
+            raise MatrisHatasi(f"Yük tanımsız bir düğümde: düğüm {dno}. Tanımlı düğümler: {sorted(dn)}.")
+        for anahtar in _TUM_BILESEN:
+            ham = y.get(anahtar)
+            if ham is None and tip in ("yay", "cubuk") and anahtar == "Fx":
+                ham = y.get("F")
+            if ham is None:
+                continue
+            hedef = anahtar if anahtar in gecerli else takma.get(anahtar)
+            if hedef not in gecerli:
+                if _say(ham, f"Düğüm {dno}: {anahtar}") != 0:
+                    raise MatrisHatasi(f"Düğüm {dno}: {anahtar} yükü bu model türünde ({_TIP_AD[tip]}) etkisizdir; "
+                                       f"bu türde geçerli yükler: {', '.join(gecerli)}.")
+                continue
+            v = _say(ham, f"Düğüm {dno}: {anahtar} yükü")
+            if v.free_symbols:
+                semb = True
+            yuk[dn[dno]][gecerli.index(hedef)] += v
+
+    # --- yayılı yükler: düzgün (q, qz) ya da parçalı doğrusal (q1, q2, x1, x2; qz1, qz2) ---
+    yayili = [[] for _ in M.elemanlar]
+    yayili_z = [[] for _ in M.elemanlar]
+    for y in model.get("yayili") or []:
+        if not isinstance(y, dict):
+            raise MatrisHatasi('Her yayılı yük bir sözlük olmalı: {"eleman": 1, "q": -12} (düzgün) ya da '
+                               '{"eleman": 1, "q1": 0, "q2": -12, "x1": 0, "x2": 4} (parçalı doğrusal).')
+        if tip not in _EGILME:
+            raise MatrisHatasi("Yayılı yük (yayili) yalnız kiriş ve çerçeve modelinde kullanılabilir; "
+                               f"{_TIP_AD[tip]} yalnız düğüm yükü taşır.")
+        eno = _tam(y.get("eleman"), "Yayılı yükün 'eleman' değeri")
+        if eno not in en:
+            raise MatrisHatasi(f"Yayılı yük tanımsız bir elemanda: eleman {eno}. Tanımlı elemanlar: {sorted(en)}.")
+        e = M.elemanlar[en[eno]]
+        L = _eleman_boyu_sayi(M, e)
+        q = _say(y.get("q"), f"Eleman {eno}: yayılı yük q")
+        parca = _yayili_parca_oku(y, eno, L, "q1", "q2", q, M.uzunluk)
+        if parca is not None:
+            if parca[0].free_symbols or parca[1].free_symbols:
+                semb = True
+            yayili[e.idx].append(parca)
+        if any(not _bos(y.get(a)) for a in ("qz", "qz1", "qz2")):
+            vz = _say(y.get("qz"), f"Eleman {eno}: yayılı yük qz")
+            parca_z = _yayili_parca_oku(y, eno, L, "qz1", "qz2", vz, M.uzunluk)
+            if tip != "cerceve3b":
+                if parca_z is not None:
+                    raise MatrisHatasi(f"Eleman {eno}: qz (yerel z yönünde yayılı yük) yalnız uzay çerçevede (cerceve3b) "
+                                       "kullanılabilir; düzlem modelde yayılı yük yalnız yerel y yönündedir (q).")
+            elif parca_z is not None:
+                if parca_z[0].free_symbols or parca_z[1].free_symbols:
+                    semb = True
+                yayili_z[e.idx].append(parca_z)
+    return yuk, yayili, yayili_z, semb
+
+
+def _model_sozluk(model):
+    """Model girdisini (sözlük ya da JSON metni) sözlüğe çevirir."""
     if isinstance(model, str):
         try:
             model = json.loads(model)
@@ -902,6 +1036,13 @@ def _model_oku(model):
     if not isinstance(model, dict):
         raise MatrisHatasi('Model bir sözlük (ya da JSON metni) olmalı: {"tip": "kafes", "dugumler": [...], '
                            '"elemanlar": [...], "mesnetler": [...], "yukler": [...]}.')
+    return model
+
+
+def _model_oku(model):
+    """Sözlük ya da JSON metnini doğrulayıp hesaplanabilir bir model nesnesine (SimpleNamespace) çevirir.
+    Bilinmeyen anahtarlar (eleman kayıtlarındaki ``kaynak``, ``yardimci`` gibi) yok sayılır."""
+    model = _model_sozluk(model)
     tip = str(model.get("tip", "")).strip().lower().translate(_TR_SADE).replace("-", "").replace("_", "")
     if tip == "cerceve3d":
         tip = "cerceve3b"
@@ -1030,60 +1171,10 @@ def _model_oku(model):
             if _bayrak(deger):
                 mesnet[dn[dno]][k] = True
 
-    # --- yükler ---
-    yuk = [[sp.Integer(0)] * d for _ in dugumler]
-    gecerli = _BILESEN[tip]
-    # "M" ↔ "Mz" birbirinin yerine kabul edilir (düzlemde moment z eksenindedir)
-    takma = {"M": "Mz", "Mz": "M"}
-    for y in model.get("yukler") or []:
-        if not isinstance(y, dict):
-            raise MatrisHatasi('Her yük bir sözlük olmalı: {"dugum": 3, "Fy": -10}.')
-        dno = _tam(y.get("dugum"), "Yükün 'dugum' değeri")
-        if dno not in dn:
-            raise MatrisHatasi(f"Yük tanımsız bir düğümde: düğüm {dno}. Tanımlı düğümler: {sorted(dn)}.")
-        for anahtar in _TUM_BILESEN:
-            ham = y.get(anahtar)
-            if ham is None and tip in ("yay", "cubuk") and anahtar == "Fx":
-                ham = y.get("F")
-            if ham is None:
-                continue
-            hedef = anahtar if anahtar in gecerli else takma.get(anahtar)
-            if hedef not in gecerli:
-                if _say(ham, f"Düğüm {dno}: {anahtar}") != 0:
-                    raise MatrisHatasi(f"Düğüm {dno}: {anahtar} yükü bu model türünde ({_TIP_AD[tip]}) etkisizdir; "
-                                       f"bu türde geçerli yükler: {', '.join(gecerli)}.")
-                continue
-            v = _say(ham, f"Düğüm {dno}: {anahtar} yükü")
-            if v.free_symbols:
-                semb = True
-            yuk[dn[dno]][gecerli.index(hedef)] += v
-
-    # --- yayılı yükler ---
-    q = [sp.Integer(0)] * len(elemanlar)
-    qz = [sp.Integer(0)] * len(elemanlar)
-    for y in model.get("yayili") or []:
-        if not isinstance(y, dict):
-            raise MatrisHatasi('Her yayılı yük bir sözlük olmalı: {"eleman": 1, "q": -12}.')
-        if tip not in _EGILME:
-            raise MatrisHatasi("Yayılı yük (yayili) yalnız kiriş ve çerçeve modelinde kullanılabilir; "
-                               f"{_TIP_AD[tip]} yalnız düğüm yükü taşır.")
-        eno = _tam(y.get("eleman"), "Yayılı yükün 'eleman' değeri")
-        if eno not in en:
-            raise MatrisHatasi(f"Yayılı yük tanımsız bir elemanda: eleman {eno}. Tanımlı elemanlar: {sorted(en)}.")
-        v = _say(y.get("q"), f"Eleman {eno}: yayılı yük q")
-        if v.free_symbols:
-            semb = True
-        q[en[eno]] += v
-        if y.get("qz") is not None and str(y.get("qz")).strip() != "":
-            vz = _say(y.get("qz"), f"Eleman {eno}: yayılı yük qz")
-            if tip != "cerceve3b":
-                if vz != 0:
-                    raise MatrisHatasi(f"Eleman {eno}: qz (yerel z yönünde yayılı yük) yalnız uzay çerçevede (cerceve3b) "
-                                       "kullanılabilir; düzlem modelde yayılı yük yalnız yerel y yönündedir (q).")
-            else:
-                if vz.free_symbols:
-                    semb = True
-                qz[en[eno]] += vz
+    # --- yükler ve yayılı yükler (coz_coklu de aynı yardımcıyı kullanır) ---
+    M = SimpleNamespace(tip=tip, d=d, uc=uc, dugumler=dugumler, dn=dn, elemanlar=elemanlar, en=en, uzunluk=uzunluk)
+    yuk, yayili, yayili_z, semb_yuk = _yukleri_oku(M, model)
+    semb = semb or semb_yuk
 
     # --- elastik mesnetler (yaylar) ---
     yay = [[sp.Integer(0)] * d for _ in dugumler]
@@ -1139,11 +1230,10 @@ def _model_oku(model):
             if v != 0:
                 cokme[d * dn[dno] + k] = v
 
-    M = SimpleNamespace(
-        tip=tip, d=d, uc=uc, baslik=str(model.get("baslik") or f"{_TIP_AD[tip].capitalize()} modeli"),
-        kuvvet=kuvvet, uzunluk=uzunluk, dugumler=dugumler, dn=dn, elemanlar=elemanlar, en=en,
-        mesnet=mesnet, yuk=yuk, q=q, qz=qz, yay=yay, cokme=cokme, n=d * len(dugumler), sembolik=semb, uyarilar=[],
-    )
+    M.baslik = str(model.get("baslik") or f"{_TIP_AD[tip].capitalize()} modeli")
+    M.kuvvet, M.uzunluk = kuvvet, uzunluk
+    M.mesnet, M.yuk, M.yayili, M.yayili_z, M.yay, M.cokme = mesnet, yuk, yayili, yayili_z, yay, cokme
+    M.n, M.sembolik, M.uyarilar = d * len(dugumler), semb, []
     M.sd_et, M.sd_tex = _sd_etiketleri(tip, dugumler)
     M.yay_var = any(v != 0 for satir in yay for v in satir)
     M.zemin_var = any(e.zemin is not None for e in elemanlar)
@@ -1152,8 +1242,15 @@ def _model_oku(model):
             f"Düğüm {', '.join(str(n) for n in z_yoksayilan)} için z koordinatı verildi ama {_TIP_AD[tip]} düzlem "
             "modelidir: z yoksayıldı. Uzay geometri için 'kafes3b' ya da 'cerceve3b' türünü seçin.")
 
-    # --- hesap modu ---
-    if M.n > SD_ESIK:
+    # --- hesap modu ("hesap": "sayisal" anahtarı küçük modelde de numpy modunu zorlar) ---
+    hesap = str(model.get("hesap") or "").strip().lower().translate(_TR_SADE)
+    if hesap and hesap not in ("sayisal", "kesin", "otomatik"):
+        raise MatrisHatasi(f"Bilinmeyen 'hesap' değeri: {model.get('hesap')!r}. Seçenekler: \"sayisal\" (numpy), "
+                           f"\"kesin\" (sympy; en çok {SD_ESIK} SD) ya da boş (otomatik).")
+    if hesap == "sayisal" and semb:
+        raise MatrisHatasi("\"hesap\": \"sayisal\" ile harfli (sembolik) girdi bir arada olamaz: E, A, P gibi harfleri "
+                           "sayıyla değiştirin ya da 'hesap' anahtarını kaldırın.")
+    if M.n > SD_ESIK or hesap == "sayisal":
         if semb:
             raise MatrisHatasi(
                 f"Harfli (sembolik) girdi en çok {SD_ESIK} serbestlik derecesinde (SD) çözülür; bu model {M.n} SD içeriyor. "
@@ -1193,9 +1290,119 @@ def _floata_cevir(M):
                 setattr(e, p, float(v))
     M.yuk = [[float(v) for v in satir] for satir in M.yuk]
     M.yay = [[float(v) for v in satir] for satir in M.yay]
-    M.q = [float(v) for v in M.q]
-    M.qz = [float(v) for v in M.qz]
+    M.yayili = _parcalari_floata_cevir(M.yayili)
+    M.yayili_z = _parcalari_floata_cevir(M.yayili_z)
     M.cokme = {k: float(v) for k, v in M.cokme.items()}
+
+
+def _parcalari_floata_cevir(yayili):
+    return [[tuple(None if v is None else float(v) for v in p) for p in liste] for liste in yayili]
+
+
+# ============================================================================
+# Parçalı doğrusal yayılı yük: eşdeğer düğüm yükleri (3 noktalı Gauss–Legendre) ve kapalı form integraller
+# ============================================================================
+_GAUSS3_SAYI = ((-math.sqrt(0.6), 5.0 / 9.0), (0.0, 8.0 / 9.0), (math.sqrt(0.6), 5.0 / 9.0))
+_GAUSS3_KESIN = ((-sp.sqrt(sp.Rational(3, 5)), sp.Rational(5, 9)), (sp.Integer(0), sp.Rational(8, 9)),
+                 (sp.sqrt(sp.Rational(3, 5)), sp.Rational(5, 9)))
+
+
+def _hermite_N(x, L):
+    """Hermite kübik şekil fonksiyonları (N1, N2, N3, N4) ↔ (v_i, θ_i, v_j, θ_j)."""
+    xi = x / L
+    return (1 - 3 * xi ** 2 + 2 * xi ** 3, L * (xi - 2 * xi ** 2 + xi ** 3),
+            3 * xi ** 2 - 2 * xi ** 3, L * (-xi ** 2 + xi ** 3))
+
+
+def _feq_parcali(L, parcalar, sayisal=True):
+    """Parçalı doğrusal yayılı yükün eşdeğer düğüm yükleri [f_v,i, m_i, f_v,j, m_j] = Σ ∫_{x1}^{x2} Nᵀ q(x) dx.
+
+    Her parça (q1, q2, x1, x2) için q(x) = q1 + (q2 − q1)(x − x1)/(x2 − x1); Hermite kübik × doğrusal = 4. dereceden
+    polinom olduğundan 3 noktalı Gauss–Legendre (5. dereceye kadar kesin) integrali tam verir. Kesin kipte Gauss
+    düğümleri √(3/5) içerir; sp.expand ile köklü terimler birbirini götürür ve sonuç kesirli polinomdur."""
+    gauss = _GAUSS3_SAYI if sayisal else _GAUSS3_KESIN
+    f = [0.0, 0.0, 0.0, 0.0] if sayisal else [sp.Integer(0)] * 4
+    for q1, q2, x1, x2 in parcalar:
+        h = (x2 - x1) / 2
+        for g, w in gauss:
+            x = x1 + h * (1 + g)
+            q = q1 + (q2 - q1) * (x - x1) / (x2 - x1)
+            N = _hermite_N(x, L)
+            f = [fa + w * h * q * Na for fa, Na in zip(f, N)]
+    if not sayisal:
+        f = [sp.expand(v) for v in f]
+    return f
+
+
+def _yuk_bileskesi(q1, q2, x1, x2):
+    """Bir parçanın bileşkesi W = ∫ q dx ve ilk düğüme göre statik momenti S = ∫ q·x dx (eleman ekseni boyunca)."""
+    D = x2 - x1
+    W = (q1 + q2) * D / 2
+    S = q1 * x1 * D + q1 * D ** 2 / 2 + (q2 - q1) * (x1 * D / 2 + D ** 2 / 3)
+    return W, S
+
+
+def _yuk_integralleri(parcalar, x, sifir=0.0):
+    """Q(x) = ∫₀ˣ q(s) ds ve MQ(x) = ∫₀ˣ (x − s) q(s) ds: kesme ve moment diyagramının yayılı yük katkısı (kapalı form).
+    x ve parça sınırları sayıdır; q1, q2 sayı ya da sembolik olabilir."""
+    Q, MQ = sifir, sifir
+    xf = float(x)
+    for q1, q2, x1, x2 in parcalar:
+        D = x2 - x1
+        k = (q2 - q1) / D
+        if xf <= float(x1) + 1e-12 * max(1.0, abs(float(x1))):
+            continue
+        if xf < float(x2):
+            t = x - x1
+            Q = Q + q1 * t + k * t ** 2 / 2
+            MQ = MQ + q1 * t ** 2 / 2 + k * t ** 3 / 6
+        else:
+            W, S = _yuk_bileskesi(q1, q2, x1, x2)
+            Q = Q + W
+            MQ = MQ + W * x - S
+    return Q, MQ
+
+
+def _q_aralik(parcalar, xa, xb):
+    """[xa, xb] aralığını bütünüyle örten parçaların uçlardaki değer toplamı (q(xa), q(xb)); aralık parça sınırı içermez."""
+    qa = qb = 0
+    tol = 1e-9 * max(1.0, abs(float(xb)))
+    for q1, q2, x1, x2 in parcalar:
+        if float(x1) <= float(xa) + tol and float(x2) >= float(xb) - tol:
+            k = (q2 - q1) / (x2 - x1)
+            qa = qa + q1 + k * (xa - x1)
+            qb = qb + q1 + k * (xb - x1)
+    return qa, qb
+
+
+def _duzgun_mu(e):
+    """Elemanın yayılı yükü tek bir düzgün, bütün açıklığa yayılı parçadan mı oluşuyor? (q, qz) ya da None döner."""
+    def tek(parcalar):
+        if not parcalar:
+            return 0
+        if len(parcalar) == 1:
+            q1, q2, x1, x2 = parcalar[0]
+            if q1 == q2 and float(x1) == 0.0 and abs(float(x2) - float(e.L)) <= 1e-9 * max(1.0, float(e.L)):
+                return q1
+        return None
+    q, qz = tek(e.parcalar), tek(e.parcalar_z)
+    if q is None or qz is None:
+        return None
+    return q, qz
+
+
+def _parca_metin(parcalar, L):
+    """Yük tablosu hücresi: düzgün bütün açıklık için 'q', yoksa 'q1→q2 [x1, x2]' (parçalar ; ile)."""
+    if not parcalar:
+        return "0"
+    hucre = []
+    for q1, q2, x1, x2 in parcalar:
+        tam = float(x1) == 0.0 and abs(float(x2) - float(L)) <= 1e-9 * max(1.0, float(L))
+        if q1 == q2 and tam:
+            hucre.append(_metin(q1))
+        else:
+            hucre.append(f"{_metin(q1)}→{_metin(q2)} [{_metin(x1)}, {_metin(x2)}]")
+    return "; ".join(hucre)
 
 
 
@@ -1397,23 +1604,7 @@ def _hazirla(M):
             kl_toplam = kl if e.kz_yerel is None else _sade(kl_toplam)
         e.k_yerel, e.k_toplam, e.ke = kl, kl_toplam, ke
         e.dofs = [d * e.ia + j for j in range(d)] + [d * e.ib + j for j in range(d)]
-        q, qz = M.q[e.idx], M.qz[e.idx]
-        e.q, e.qz = q, qz
-        e.feq_yerel = e.feq = None
-        if tip in _EGILME and (q != 0 or qz != 0):
-            if tip == "kiris":
-                fy = _vek(M, [q * L / 2, q * L ** 2 / 12, q * L / 2, -q * L ** 2 / 12])
-                fg = fy
-            elif tip == "cerceve":
-                fy = _vek(M, [0, q * L / 2, q * L ** 2 / 12, 0, q * L / 2, -q * L ** 2 / 12])
-                fg = e.T.T @ fy
-            else:
-                fy = _vek(M, [0, q * L / 2, qz * L / 2, 0, -qz * L ** 2 / 12, q * L ** 2 / 12,
-                              0, q * L / 2, qz * L / 2, 0, qz * L ** 2 / 12, -q * L ** 2 / 12])
-                fg = e.T.T @ fy
-            if not say:
-                fy, fg = _sade(fy), _sade(fg)
-            e.feq_yerel, e.feq = fy, fg
+        _eleman_yuku(M, e, M.yayili[e.idx], M.yayili_z[e.idx])
 
     n = M.n
     K = _sifir_mat(M, n)
@@ -1430,6 +1621,42 @@ def _hazirla(M):
                 M.yay_sd[d * i + j] = v
                 K[d * i + j, d * i + j] += v
     M.K = K if say else _sade(K)
+    _F_kur(M)
+    M.sabit = [d * i + j for i, fl in enumerate(M.mesnet) for j, f in enumerate(fl) if f]
+    ks = set(M.sabit)
+    M.serbest = [i for i in range(n) if i not in ks]
+    _mekanizma_kontrol(M)
+
+
+def _eleman_yuku(M, e, parcalar, parcalar_z):
+    """Elemanın yayılı yük parçalarını (x2 = None → L) yerleştirir ve eşdeğer düğüm yüklerini kurar
+    (e.parcalar, e.parcalar_z, e.feq_yerel, e.feq). coz_coklu her yük durumu için yeniden çağırır."""
+    tip, say, L = M.tip, M.sayisal, e.L
+    doldur = lambda p: [(q1, q2, x1, (L if x2 is None else x2)) for q1, q2, x1, x2 in p]  # noqa: E731
+    e.parcalar = doldur(parcalar) if tip in _EGILME else []
+    e.parcalar_z = doldur(parcalar_z) if tip == "cerceve3b" else []
+    e.feq_yerel = e.feq = None
+    if not (e.parcalar or e.parcalar_z):
+        return
+    fy4 = _feq_parcali(L, e.parcalar, say)
+    if tip == "kiris":
+        fy = _vek(M, fy4)
+        fg = fy
+    elif tip == "cerceve":
+        fy = _vek(M, [0, fy4[0], fy4[1], 0, fy4[2], fy4[3]])
+        fg = e.T.T @ fy
+    else:
+        fz4 = _feq_parcali(L, e.parcalar_z, say)    # z′ yönü: θ_y = −w′ olduğundan moment satırları ters işaretli
+        fy = _vek(M, [0, fy4[0], fz4[0], 0, -fz4[1], fy4[1], 0, fy4[2], fz4[2], 0, -fz4[3], fy4[3]])
+        fg = e.T.T @ fy
+    if not say:
+        fy, fg = _sade(fy), _sade(fg)
+    e.feq_yerel, e.feq = fy, fg
+
+
+def _F_kur(M):
+    """Yük vektörü: düğüm yükleri (M.F_dugum) + elemanların eşdeğer düğüm yükleri → M.F."""
+    d, n, say = M.d, M.n, M.sayisal
     Fd = _sifir_vek(M, n)
     for i, satir in enumerate(M.yuk):
         for j, v in enumerate(satir):
@@ -1440,10 +1667,6 @@ def _hazirla(M):
             for a_, I_ in enumerate(e.dofs):
                 F[I_] += e.feq[a_]
     M.F_dugum, M.F = Fd, (F if say else _sade(F))
-    M.sabit = [d * i + j for i, fl in enumerate(M.mesnet) for j, f in enumerate(fl) if f]
-    ks = set(M.sabit)
-    M.serbest = [i for i in range(n) if i not in ks]
-    _mekanizma_kontrol(M)
 
 
 def _sifir_ozdeger_sayisi(Ks, esik=1e-10):
@@ -1653,19 +1876,20 @@ def _denge_hesapla(M):
         v = _bilesen_vektoru(M, i, kaynak)
         ekle(dg.x - x0, dg.y - y0, dg.z - z0, v["Fx"], v["Fy"], v["Fz"], v["Mx"], v["My"], v["Mz"])
     for e in M.elemanlar:
-        a, b = M.dugumler[e.ia], M.dugumler[e.ib]
-        xm, ym, zm = (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2
-        if e.q != 0:
-            W = e.q * e.L
-            if tip == "cerceve3b":
-                yy = e.lam[1]
-                ekle(xm - x0, ym - y0, zm - z0, yy[0] * W, yy[1] * W, yy[2] * W)
-            else:
-                ekle(xm - x0, ym - y0, 0, -e.s * W, e.c * W, 0)
-        if tip == "cerceve3b" and e.qz != 0:
-            W = e.qz * e.L
-            zz = e.lam[2]
-            ekle(xm - x0, ym - y0, zm - z0, zz[0] * W, zz[1] * W, zz[2] * W)
+        # yayılı yük parçası: bileşke W ilk düğüme (a) uygulanır, eksen boyunca dağılımın statik momenti S ise
+        # x̂ × ŷ (= ẑ) ya da x̂ × ẑ (= −ŷ) yönünde kuvvet çifti olarak eklenir (W = 0 olan antisimetrik yükte de doğru)
+        a = M.dugumler[e.ia]
+        if tip == "cerceve3b":
+            xh, yonler = e.lam[0], ((e.parcalar, e.lam[1]), (e.parcalar_z, e.lam[2]))
+        else:
+            xh, yonler = (e.c, e.s, 0), ((e.parcalar, (-e.s, e.c, 0)),)
+        for parcalar, yon in yonler:
+            for q1, q2, x1, x2 in parcalar:
+                W, S = _yuk_bileskesi(q1, q2, x1, x2)
+                cx = xh[1] * yon[2] - xh[2] * yon[1]
+                cy = xh[2] * yon[0] - xh[0] * yon[2]
+                cz = xh[0] * yon[1] - xh[1] * yon[0]
+                ekle(a.x - x0, a.y - y0, a.z - z0, yon[0] * W, yon[1] * W, yon[2] * W, S * cx, S * cy, S * cz)
     if not M.sayisal:
         top = {k: _sade(v) for k, v in top.items()}
     if M.uc:
@@ -2038,13 +2262,62 @@ def _kisa(v):
 
 
 # --- diyagram verisi ---------------------------------------------------------
+def _istasyonlar(M, e, adet):
+    """Eleman boyunca diyagram istasyonları: adet + 1 eşit aralıklı nokta ve yayılı yük parça sınırları (x1, x2)."""
+    L = e.L
+    xs = [float(L) * i / adet for i in range(adet + 1)] if M.sayisal else [L * sp.Rational(i, adet) for i in range(adet + 1)]
+    Lf = float(L)
+    tol = 1e-9 * max(1.0, Lf)
+    for parcalar in (e.parcalar, e.parcalar_z):
+        for q1, q2, x1, x2 in parcalar:
+            for xb in (x1, x2):
+                fb = float(xb)
+                if tol < fb < Lf - tol and all(abs(fb - float(x)) > tol for x in xs):
+                    xs.append(xb)
+    return sorted(xs, key=float)
+
+
+def _kesme_sifirlari(M, e, f1, xs):
+    """Yayılı yüklü elemanda V(x) = 0 olan iç noktalar (M ekstremumları). Ardışık istasyonlar arasında q doğrusal
+    olduğundan V(xa + t) = V(xa) + q_a t + (q_b − q_a) t²/(2Δ) karesel denklemi çözülür; düzgün parçada t = −V(xa)/q_a.
+    Kesin kipte kökler tam (gerekirse köklü) ifadedir. Sembolik (harfli) yükte ekstremum aranmaz."""
+    kokler = []
+    say = M.sayisal
+    for xa, xb in zip(xs[:-1], xs[1:]):
+        Va = f1 + _yuk_integralleri(e.parcalar, xa, _sifir_degeri(M))[0]
+        qa, qb = _q_aralik(e.parcalar, xa, xb)
+        D = xb - xa
+        gVa, gqa, gqb, gD = _gercek(Va), _gercek(qa), _gercek(qb), float(D)
+        if gVa is None or gqa is None or gqb is None:
+            continue
+        tol = 1e-9 * max(1.0, gD)
+        adaylar = []
+        if abs(gqb - gqa) <= 1e-12 * max(abs(gqa), abs(gqb), 1e-300):
+            if gqa != 0:
+                adaylar.append(-Va / qa)
+        else:
+            k = (qb - qa) / D
+            disk = qa * qa - 2 * k * Va
+            gdisk = float(disk)
+            if gdisk >= 0:
+                kok = math.sqrt(gdisk) if say else sp.sqrt(disk)
+                adaylar += [(-qa + kok) / k, (-qa - kok) / k]
+        for t in adaylar:
+            gt = float(t)
+            if tol < gt < gD - tol:
+                x = xa + t
+                kokler.append(x if say else _sade(x))
+    return kokler
+
+
 def _diyagram_hazirla(M, adet=20):
     """Her eleman için boyunca x, N, V, M dizileri (yapı işaret kuralı) ve uç/ekstremum değerleri.
 
-    N çekme +; V(x) = f1 + q·x; M(x) = −m1 + f1·x + q·x²/2 (alt lif çekme +, yani 'sagging' +).
-    Winkler zeminli elemanda zemin basıncı p(x) = −k_s v(x) (v: Hermite çökme) de kesite girer:
-    V(x) += ∫₀ˣ p dξ, M(x) += ∫₀ˣ (x−ξ) p dξ. Uzay çerçevede ayrıca Vz(x) = fz1 + qz·x,
-    My(x) = my1 + fz1·x + qz·x²/2 (−z lifi çekme +) ve burulma T = −mx1 sabittir."""
+    N çekme +; V(x) = f1 + Q(x); M(x) = −m1 + f1·x + MQ(x) (alt lif çekme +, yani 'sagging' +) ile
+    Q(x) = ∫₀ˣ q ds, MQ(x) = ∫₀ˣ (x − s) q(s) ds parçalı doğrusal yük için kapalı formdur (düzgün q'da q·x ve q·x²/2).
+    İstasyonlara parça sınırları ve V = 0 noktaları eklenir. Winkler zeminli elemanda zemin basıncı p(x) = −k_s v(x)
+    (v: Hermite çökme) de kesite girer: V(x) += ∫₀ˣ p dξ, M(x) += ∫₀ˣ (x−ξ) p dξ. Uzay çerçevede ayrıca
+    Vz(x) = fz1 + Qz(x), My(x) = my1 + fz1·x + MQz(x) (−z lifi çekme +) ve burulma T = −mx1 sabittir."""
     tip, say = M.tip, M.sayisal
     for e in M.elemanlar:
         L = e.L
@@ -2061,17 +2334,16 @@ def _diyagram_hazirla(M, adet=20):
             else:
                 f1, m1, f2, m2, N = e.f[1], e.f[5], e.f[7], e.f[11], -e.f[0]
                 v1 = t1 = v2 = t2 = z0
-            q = e.q
-            xs = [float(L) * i / adet for i in range(adet + 1)] if say else [L * sp.Rational(i, adet) for i in range(adet + 1)]
-            xe = None
-            if q != 0 and e.zemin is None:
-                aday = -f1 / q
-                g, gL = _gercek(aday), _gercek(L)
-                if g is not None and gL is not None and 1e-9 * gL < g < gL * (1 - 1e-9):
-                    xe = float(aday) if say else aday
-                    xs = sorted(xs + [xe], key=float)
-            V = [f1 + q * x for x in xs]
-            Mo = [-m1 + f1 * x + q * x * x / 2 for x in xs]
+            xs = _istasyonlar(M, e, adet)
+            xe, kokler = None, []
+            if e.parcalar and e.zemin is None:
+                kokler = _kesme_sifirlari(M, e, f1, xs)   # V(x) = 0: M ekstremumları istasyon olarak eklenir
+                if kokler:
+                    xs = sorted(xs + kokler, key=float)
+            V = [f1 + _yuk_integralleri(e.parcalar, x, z0)[0] for x in xs]
+            Mo = [-m1 + f1 * x + _yuk_integralleri(e.parcalar, x, z0)[1] for x in xs]
+            if kokler:
+                xe = max(kokler, key=lambda r: abs(float(Mo[xs.index(r)])))
             if e.zemin is not None:
                 ks = e.zemin
                 a0, a1 = v1, t1
@@ -2095,9 +2367,8 @@ def _diyagram_hazirla(M, adet=20):
             e.kontrol = (kM, kV)
             if tip == "cerceve3b":
                 fz1, my1, fz2, my2, mx1 = e.f[2], e.f[4], e.f[8], e.f[10], e.f[3]
-                qz = e.qz
-                Vz = [fz1 + qz * x for x in xs]
-                My = [my1 + fz1 * x + qz * x * x / 2 for x in xs]
+                Vz = [fz1 + _yuk_integralleri(e.parcalar_z, x, z0)[0] for x in xs]
+                My = [my1 + fz1 * x + _yuk_integralleri(e.parcalar_z, x, z0)[1] for x in xs]
                 if not say:
                     Vz = [_sade(v) if _gercek(v) is not None else sp.expand(v) for v in Vz]
                     My = [_sade(v) if _gercek(v) is not None else sp.expand(v) for v in My]
@@ -2328,16 +2599,20 @@ def _adim_model(M, anl):
         anl.metin("**Düğüm yükleri**\n\n" + _tablo(ust, sat))
     else:
         anl.metin("**Düğüm yükleri:** yok.")
+    parcali = any(_duzgun_mu(e) is None for e in M.elemanlar if e.parcalar or e.parcalar_z)
+    nitelik = ("parçalı doğrusal: $q_1 \\to q_2$ değeri $[x_1, x_2]$ aralığında doğrusal değişir; $x$ elemanın ilk "
+               "düğümünden ölçülür, tek değer bütün açıklıkta düzgün yük demektir" if parcali else "düzgün yayılı")
     if t == "cerceve3b":
-        qs = [[e.no, _metin(e.q), _metin(e.qz)] for e in M.elemanlar if e.q != 0 or e.qz != 0]
+        qs = [[e.no, _parca_metin(e.parcalar, e.L), _parca_metin(e.parcalar_z, e.L)]
+              for e in M.elemanlar if e.parcalar or e.parcalar_z]
         if qs:
-            anl.metin(f"**Yayılı yükler** (elemanın yerel y′ ve z′ yönlerinde düzgün yayılı)\n\n"
+            anl.metin(f"**Yayılı yükler** (elemanın yerel y′ ve z′ yönlerinde; {nitelik})\n\n"
                       + _tablo(["Eleman", f"q (y′) [{b['q']}]", f"qz (z′) [{b['q']}]"], qs)
                       + "\n\nYerel y′ elemanı içeren düşey düzlemde yukarıyı gösterir; aşağı doğru yük **negatif** q ile girilir.")
     else:
-        qs = [[e.no, _metin(e.q)] for e in M.elemanlar if e.q != 0]
+        qs = [[e.no, _parca_metin(e.parcalar, e.L)] for e in M.elemanlar if e.parcalar]
         if qs:
-            anl.metin(f"**Yayılı yükler** (elemanın yerel y yönünde düzgün yayılı)\n\n"
+            anl.metin(f"**Yayılı yükler** (elemanın yerel y yönünde; {nitelik})\n\n"
                       + _tablo(["Eleman", f"q [{b['q']}]"], qs)
                       + "\n\nYatay ve soldan sağa giden bir elemanda yerel y yukarıyı gösterir; bu yüzden aşağı doğru yük "
                         "**negatif** q ile girilir.")
@@ -2732,6 +3007,22 @@ def _adim_birlestirme(M, anl):
 
 
 # --- Adım 6: yük vektörü ------------------------------------------------------
+def _parca_latex(parcalar, M, L):
+    """Anlatım için parça listesi: q₁→q₂ [x₁, x₂] (düzgün bütün açıklık: yalnız q)."""
+    b = f"\\ \\text{{{M.kuvvet}/{M.uzunluk}}}"
+    Lf = float(L)
+    return "; ".join(f"${_L(q1)}{b}$" if (q1 == q2 and float(x1) == 0.0 and abs(float(x2) - Lf) <= 1e-9 * max(1.0, Lf))
+                     else f"${_L(q1)} \\to {_L(q2)}{b}$ $[{_L(x1)},\\ {_L(x2)}]\\ \\text{{{M.uzunluk}}}$"
+                     for q1, q2, x1, x2 in parcalar)
+
+
+def _feq_formul_parcali(M):
+    return (r"\mathbf{f}_{eq} = \sum_{\text{parça}} \int_{x_1}^{x_2} \mathbf{N}^T q(x)\,dx,\qquad "
+            r"q(x) = q_1 + (q_2 - q_1)\,\frac{x - x_1}{x_2 - x_1},\qquad "
+            r"\mathbf{N} = \begin{bmatrix} 1-3\xi^2+2\xi^3 \\ L(\xi-2\xi^2+\xi^3) \\ 3\xi^2-2\xi^3 \\ L(-\xi^2+\xi^3) \end{bmatrix},"
+            r"\ \xi = x/L")
+
+
 def _feq_formul(M):
     if M.tip == "kiris":
         return (r"\mathbf{f}_{eq} = \int_0^L \mathbf{N}^T q\,dx = "
@@ -2752,21 +3043,28 @@ def _adim_yukler(M, anl):
     ac += (", elemanın içine yayılmış yükler ise önce düğümlere aktarılır." if yayili else ".")
     _basla(anl, 6, "Yük vektörü F", ac)
     if yayili:
+        parcali = any(_duzgun_mu(e) is None for e in yayili)
         anl.kural("$\\mathbf{K}\\mathbf{u}=\\mathbf{F}$ denklemi yalnız **düğümlerde** yazılır; bu yüzden eleman boyunca yayılı yük, "
                   "elemanın uçlarına **eşdeğer düğüm yükleri** olarak aktarılır: $\\mathbf{f}_{eq}=\\int_0^L \\mathbf{N}^T q\\,dx$ "
                   "($\\mathbf{N}$: şekil fonksiyonları). Düzgün $q$ için her uca $qL/2$ kuvvet ve $\\pm qL^2/12$ moment gelir "
                   "(ankastre uç tepkilerinin ters işaretlisi). Bu yalnız bir hesap kolaylığıdır: eleman içindeki gerçek $V$ ve "
                   "$M$ diyagramı 8. adımda $\\mathbf{f}_{eq}$ çıkarılarak düzeltilir."
                   + (" Uzay çerçevede $z'$ yönündeki $q_z$ için momentler $y'$ ekseni etrafındadır ve işaretleri terstir "
-                     "($\\theta_y=-dw/dx$)." if t == "cerceve3b" else ""))
-        anl.mat(_feq_formul(M))
+                     "($\\theta_y=-dw/dx$)." if t == "cerceve3b" else "")
+                  + (" **Parçalı doğrusal** (üçgen/trapez ya da kısmi açıklıkta) yükte integral her parça için ayrı alınır; "
+                     "Hermite kübiği × doğrusal yük 4. dereceden polinom olduğundan 3 noktalı Gauss–Legendre integrali "
+                     "($x_g = \\tfrac{x_1+x_2}{2} + \\tfrac{x_2-x_1}{2}\\,\\xi_g$; $\\xi_g = 0, \\pm\\sqrt{3/5}$; "
+                     "$w_g = 8/9, 5/9$) **tam** sonuç verir. Üçgen yük $0 \\to q$ için "
+                     "$\\mathbf{f}_{eq} = [3qL/20,\\ qL^2/30,\\ 7qL/20,\\ -qL^2/20]$ çıkar." if parcali else ""))
+        anl.mat(_feq_formul_parcali(M) if parcali else _feq_formul(M))
         for e in yayili:
             yer = _yerel_etiketler(M, e)
             if t == "cerceve3b":
-                anl.metin(f"**Eleman {e.no}**: $q={_L(e.q)}$, $q_z={_L(e.qz)}\\ \\text{{{M.kuvvet}/{M.uzunluk}}}$, "
-                          f"$L={_L(e.L)}\\ \\text{{{M.uzunluk}}}$ (yerel $y'$ ve $z'$ yönlerinde).")
+                anl.metin(f"**Eleman {e.no}**: $q$ (yerel $y'$): {_parca_latex(e.parcalar, M, e.L) or '$0$'}; "
+                          f"$q_z$ (yerel $z'$): {_parca_latex(e.parcalar_z, M, e.L) or '$0$'}; "
+                          f"$L={_L(e.L)}\\ \\text{{{M.uzunluk}}}$.")
             else:
-                anl.metin(f"**Eleman {e.no}**: $q={_L(e.q)}\\ \\text{{{M.kuvvet}/{M.uzunluk}}}$, $L={_L(e.L)}\\ \\text{{{M.uzunluk}}}$ "
+                anl.metin(f"**Eleman {e.no}**: $q$ = {_parca_latex(e.parcalar, M, e.L)}, $L={_L(e.L)}\\ \\text{{{M.uzunluk}}}$ "
                           "(yerel $y$ yönünde; aşağı yönlü yük negatiftir).")
             anl.mat(rf"\mathbf{{f}}_{{eq}}^{{({e.no})}} = {_etiketli_vek(e.feq_yerel, yer)}")
             if e.T is not None:
@@ -2940,24 +3238,49 @@ def _yerel_ekran_yon(c, M, e, eksen):
     return (-float(e.s), -float(e.c))
 
 
-def _yayili_ciz(c, M, e, q, n, etiket, dolu):
+def _yayili_ciz(c, M, e, parcalar, n, etiket, dolu):
+    """Yayılı yük parçalarını çizer: ok boyu |q(x)| ile orantılı (trapez/üçgen biçim), düzgün yükte sabit 26 px.
+    Yük işareti ok yönünü belirler (q < 0: yerel y′ tersine, yani aşağı)."""
     a, b = c.E(e)
-    neg = (_f(q) < 0) if _gercek(q) is not None else _isaret_negatif(q)
-    d = (-n[0], -n[1]) if neg else n
+    L = float(e.L)
     uzp = math.hypot(b[0] - a[0], b[1] - a[1])
-    adet = max(3, int(round(uzp / 26.0)))
-    kuy = []
-    for k in range(adet):
-        r = (k + 0.5) / adet
-        p = (a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r)
-        kp = (p[0] - d[0] * 26.0, p[1] - d[1] * 26.0)
-        c.ok(kp, (p[0] - d[0] * 3.0, p[1] - d[1] * 3.0), "b", g=2, kalin=1.8, uc=6.0)
-        kuy.append(kp)
-    c.cizgi(kuy[0], kuy[-1], "b", kalin=1.8, sinif="g2")
-    orta = ((kuy[0][0] + kuy[-1][0]) / 2, (kuy[0][1] + kuy[-1][1]) / 2)
-    c.yazi(orta[0] - d[0] * 13.0, orta[1] - d[1] * 13.0, f"{etiket} = {_kisa(_buyukluk(q))} {M.kuvvet}/{M.uzunluk}", boyut=12)
-    dolu[e.ia].append((-d[0], -d[1]))
-    dolu[e.ib].append((-d[0], -d[1]))
+    qmax = max((abs(_f(v)) for q1, q2, _, _ in parcalar for v in (q1, q2)), default=0.0)
+    yon_kaydi = set()
+    for q1, q2, x1, x2 in parcalar:
+        f1, f2 = float(x1), float(x2)
+        g1, g2 = _f(q1), _f(q2)
+        sembolik = _gercek(q1) is None or _gercek(q2) is None
+        parca_uz = uzp * (f2 - f1) / L
+        adet = max(2, int(round(parca_uz / 26.0)))
+        kuy = []
+        for k in range(adet + 1):
+            r = f1 / L + (f2 - f1) / L * k / adet
+            qx = g1 + (g2 - g1) * k / adet
+            if sembolik:
+                qx = -1.0 if _isaret_negatif(q1 if k * 2 <= adet else q2) else 1.0
+            boy = 26.0 if (sembolik or qmax <= 0) else 26.0 * abs(qx) / qmax
+            d = (-n[0], -n[1]) if qx < 0 else n
+            p = (a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r)
+            kp = (p[0] - d[0] * boy, p[1] - d[1] * boy)
+            if boy >= 6.0:
+                c.ok(kp, (p[0] - d[0] * 3.0, p[1] - d[1] * 3.0), "b", g=2, kalin=1.8, uc=6.0)
+            kuy.append(kp)
+            yon_kaydi.add((-d[0], -d[1]))
+        c.yol(kuy, "b", kalin=1.8, sinif="g2")
+        orta = kuy[len(kuy) // 2]
+        dmid = (-n[0], -n[1]) if (g1 + g2) < 0 else n
+        if sembolik:
+            dmid = (-n[0], -n[1]) if _isaret_negatif(q1) else n
+        if q1 == q2:
+            deger = _kisa(_buyukluk(q1))
+        elif sembolik or g1 * g2 >= 0:
+            deger = f"{_kisa(_buyukluk(q1))}→{_kisa(_buyukluk(q2))}"
+        else:   # işaret değiştiren yük: değerler işaretli yazılır
+            deger = f"{_kisa(q1)}→{_kisa(q2)}"
+        c.yazi(orta[0] - dmid[0] * 13.0, orta[1] - dmid[1] * 13.0, f"{etiket} = {deger} {M.kuvvet}/{M.uzunluk}", boyut=12)
+    for yon in yon_kaydi:
+        dolu[e.ia].append(yon)
+        dolu[e.ib].append(yon)
 
 
 def _yaylari_ciz(c, M, dolu):
@@ -3031,10 +3354,10 @@ def _yukleri_ciz(c, M, dolu):
             if v != 0:
                 _kuvvet_oku(c, M, X, Y, ad, v, "b", fmax, dolu[i], kom=_komsu_yonler(c, M, i))
     for e in M.elemanlar:
-        if e.q != 0:
-            _yayili_ciz(c, M, e, e.q, _yerel_ekran_yon(c, M, e, 1), "q", dolu)
-        if t == "cerceve3b" and e.qz != 0:
-            _yayili_ciz(c, M, e, e.qz, _yerel_ekran_yon(c, M, e, 2), "qz", dolu)
+        if e.parcalar:
+            _yayili_ciz(c, M, e, e.parcalar, _yerel_ekran_yon(c, M, e, 1), "q", dolu)
+        if t == "cerceve3b" and e.parcalar_z:
+            _yayili_ciz(c, M, e, e.parcalar_z, _yerel_ekran_yon(c, M, e, 2), "qz", dolu)
 
 
 def _dugum_numaralari_yaz(c, M, dolu):
@@ -3742,6 +4065,10 @@ def _egilme_adim(M, anl):
               "$V(0)=f_{y,i}$, $V(L)=-f_{y,j}$, $M(0)=-m_i$, $M(L)=m_j$, $N=-f_{x,i}$. "
               "Eleman içinde: $V(x)=f_{y,i}+q\\,x$, $M(x)=-m_i+f_{y,i}\\,x+q\\,x^2/2$ "
               "($M>0$: alt lif çekilir; $N>0$: çekme)."
+              + (" Parçalı doğrusal yükte $q\\,x$ yerine $Q(x)=\\int_0^x q\\,ds$, $q\\,x^2/2$ yerine "
+                 "$\\int_0^x (x-s)\\,q(s)\\,ds$ gelir (her parça için kapalı form: $V$ parçada karesel, $M$ kübik); "
+                 "parça sınırları diyagram istasyonlarına eklenir."
+                 if any(_duzgun_mu(e) is None for e in M.elemanlar if e.parcalar or e.parcalar_z) else "")
               + ("\n\nUzay çerçevede $m_i\\to m_{z,i}$ ve ayrıca $x'z'$ düzlemi için $V_z(x)=f_{z,i}+q_z\\,x$, "
                  "$M_y(x)=m_{y,i}+f_{z,i}\\,x+q_z\\,x^2/2$; uçlarda $M_y(0)=m_{y,i}$, $M_y(L)=-m_{y,j}$ "
                  "($M_y>0$: $-z'$ lifi çekilir; sağ el kuralı yüzünden $m_y$'nin işareti $m_z$'ye göre terstir), "
@@ -3780,7 +4107,8 @@ def _egilme_adim(M, anl):
     if len(M.elemanlar) > 60:
         anl.metin("*(İlk 60 eleman gösterildi; tümü `veri[\"elemanlar\"]` içindedir.)*")
     if any(e.ekst is not None for e in M.elemanlar):
-        anl.metin("Yayılı yüklü elemanda $V(x)=0$ olduğu yerde $M$ ekstremumdur: $x^*=-f_{y,i}/q$. "
+        anl.metin("Yayılı yüklü elemanda $V(x)=0$ olduğu yerde $M$ ekstremumdur: düzgün yükte $x^*=-f_{y,i}/q$, "
+                  "parçalı doğrusal yükte $V$'nin karesel ifadesinin kökü. "
                   "Moment diyagramı bu noktada eğimini değiştirir (parabol tepesi).")
     olcek = _kuvvet_olcegi(M)
     kotu = [e.no for e in M.elemanlar
@@ -3971,7 +4299,7 @@ _PY_ELEMAN = {
     return kl, Te, [sd*i, sd*i + 1, sd*j, sd*j + 1], None
 ''',
     "kiris": '''def eleman_matrisleri(e):
-    i, j, Ek, Ik, qq = e
+    i, j, Ek, Ik, yuk = e
     Lb = dugum_xy[j][0] - dugum_xy[i][0]  # eleman boyu
     a = Ek*Ik/Lb**3
     kl = mat([[12*a, 6*Lb*a, -12*a, 6*Lb*a],
@@ -3979,12 +4307,12 @@ _PY_ELEMAN = {
               [-12*a, -6*Lb*a, 12*a, -6*Lb*a],
               [6*Lb*a, 2*Lb**2*a, -6*Lb*a, 4*Lb**2*a]])
     feq = None
-    if qq != 0:                           # yayılı yükün eşdeğer düğüm yükleri
-        feq = mat([qq*Lb/2, qq*Lb**2/12, qq*Lb/2, -qq*Lb**2/12])
+    if yuk:                               # yayılı yükün eşdeğer düğüm yükleri
+        feq = mat(feq_yayili(Lb, yuk))
     return kl, None, [sd*i, sd*i + 1, sd*j, sd*j + 1], feq
 ''',
     "cerceve": '''def eleman_matrisleri(e):
-    i, j, Ek, Ak, Ik, qq = e
+    i, j, Ek, Ak, Ik, yuk = e
     dx = dugum_xy[j][0] - dugum_xy[i][0]
     dy = dugum_xy[j][1] - dugum_xy[i][1]
     Lb = kok(dx**2 + dy**2)               # eleman boyu
@@ -4000,12 +4328,13 @@ _PY_ELEMAN = {
     Te = mat([[ci, si, 0, 0, 0, 0], [-si, ci, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
               [0, 0, 0, ci, si, 0], [0, 0, 0, -si, ci, 0], [0, 0, 0, 0, 0, 1]])
     feq = None
-    if qq != 0:                           # yayılı yükün eşdeğer düğüm yükleri (yerel eksende)
-        feq = mat([0, qq*Lb/2, qq*Lb**2/12, 0, qq*Lb/2, -qq*Lb**2/12])
+    if yuk:                               # yayılı yükün eşdeğer düğüm yükleri (yerel eksende)
+        fq = feq_yayili(Lb, yuk)
+        feq = mat([0, fq[0], fq[1], 0, fq[2], fq[3]])
     return kl, Te, [sd*i, sd*i + 1, sd*i + 2, sd*j, sd*j + 1, sd*j + 2], feq
 ''',
     "kiris_zemin": '''def eleman_matrisleri(e):
-    i, j, Ek, Ik, qq, ks = e
+    i, j, Ek, Ik, yuk, ks = e
     Lb = dugum_xy[j][0] - dugum_xy[i][0]  # eleman boyu
     a = Ek*Ik/Lb**3
     kl = mat([[12*a, 6*Lb*a, -12*a, 6*Lb*a],
@@ -4019,12 +4348,12 @@ _PY_ELEMAN = {
                        [54*z, 13*Lb*z, 156*z, -22*Lb*z],
                        [-13*Lb*z, -3*Lb**2*z, -22*Lb*z, 4*Lb**2*z]])
     feq = None
-    if qq != 0:                           # yayılı yükün eşdeğer düğüm yükleri
-        feq = mat([qq*Lb/2, qq*Lb**2/12, qq*Lb/2, -qq*Lb**2/12])
+    if yuk:                               # yayılı yükün eşdeğer düğüm yükleri
+        feq = mat(feq_yayili(Lb, yuk))
     return kl, None, [sd*i, sd*i + 1, sd*j, sd*j + 1], feq
 ''',
     "cerceve_zemin": '''def eleman_matrisleri(e):
-    i, j, Ek, Ak, Ik, qq, ks = e
+    i, j, Ek, Ak, Ik, yuk, ks = e
     dx = dugum_xy[j][0] - dugum_xy[i][0]
     dy = dugum_xy[j][1] - dugum_xy[i][1]
     Lb = kok(dx**2 + dy**2)               # eleman boyu
@@ -4050,8 +4379,9 @@ _PY_ELEMAN = {
     Te = mat([[ci, si, 0, 0, 0, 0], [-si, ci, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
               [0, 0, 0, ci, si, 0], [0, 0, 0, -si, ci, 0], [0, 0, 0, 0, 0, 1]])
     feq = None
-    if qq != 0:                           # yayılı yükün eşdeğer düğüm yükleri (yerel eksende)
-        feq = mat([0, qq*Lb/2, qq*Lb**2/12, 0, qq*Lb/2, -qq*Lb**2/12])
+    if yuk:                               # yayılı yükün eşdeğer düğüm yükleri (yerel eksende)
+        fq = feq_yayili(Lb, yuk)
+        feq = mat([0, fq[0], fq[1], 0, fq[2], fq[3]])
     return kl, Te, [sd*i, sd*i + 1, sd*i + 2, sd*j, sd*j + 1, sd*j + 2], feq
 ''',
     "kafes3b": '''def eleman_matrisleri(e):
@@ -4067,7 +4397,7 @@ _PY_ELEMAN = {
     return kl, Te, [sd*i, sd*i + 1, sd*i + 2, sd*j, sd*j + 1, sd*j + 2], None
 ''',
     "cerceve3b": '''def eleman_matrisleri(e):
-    i, j, Ek, Gk, Ak, Iy, Iz, Jk, qq, qz = e
+    i, j, Ek, Gk, Ak, Iy, Iz, Jk, yuk, yukz = e
     dx = dugum_xyz[j][0] - dugum_xyz[i][0]
     dy = dugum_xyz[j][1] - dugum_xyz[i][1]
     dz = dugum_xyz[j][2] - dugum_xyz[i][2]
@@ -4098,31 +4428,55 @@ _PY_ELEMAN = {
             for c in range(3):
                 Te[3*b + a, 3*b + c] = lam[a][c]
     feq = None
-    if qq != 0 or qz != 0:                # yayılı yükün eşdeğer düğüm yükleri (yerel y' ve z')
-        feq = mat([0, qq*Lb/2, qz*Lb/2, 0, -qz*Lb**2/12, qq*Lb**2/12,
-                   0, qq*Lb/2, qz*Lb/2, 0, qz*Lb**2/12, -qq*Lb**2/12])
+    if yuk or yukz:                       # yayılı yükün eşdeğer düğüm yükleri (yerel y' ve z'; θy = -w' olduğundan z' momentleri ters)
+        fq, fz = feq_yayili(Lb, yuk), feq_yayili(Lb, yukz)
+        feq = mat([0, fq[0], fz[0], 0, -fz[1], fq[1], 0, fq[2], fz[2], 0, -fz[3], fq[3]])
     return kl, Te, [sd*i + a for a in range(6)] + [sd*j + a for a in range(6)], feq
 ''',
 }
+
+# Parçalı doğrusal yayılı yükün eşdeğer düğüm yükleri (betikte; motorun _feq_parcali'siyle aynı 3 noktalı Gauss)
+_PY_FEQ = '''GAUSS = {GAUSS}   # 3 noktalı Gauss–Legendre: (ξ, w); 5. dereceye kadar polinomu tam integre eder
+
+def feq_yayili(Lb, yuk):
+    """[f_v,i, m_i, f_v,j, m_j] = Σ ∫ N^T q(x) dx; yuk = [(q1, q2, x1, x2), ...] (q doğrusal, N Hermite kübik)."""
+    f = [0, 0, 0, 0]
+    for q1, q2, x1, x2 in yuk:
+        h = (x2 - x1)/2
+        for g, w in GAUSS:
+            x = x1 + h*(1 + g)
+            q = q1 + (q2 - q1)*(x - x1)/(x2 - x1)
+            xi = x/Lb
+            N = (1 - 3*xi**2 + 2*xi**3, Lb*(xi - 2*xi**2 + xi**3), 3*xi**2 - 2*xi**3, Lb*(-xi**2 + xi**3))
+            for a in range(4):
+                f[a] += w*h*q*N[a]
+    return {DONUS}
+'''
+
+
+def _py_parcalar(M, parcalar):
+    """Betikte yayılı yük listesi: [(q1, q2, x1, x2), ...]."""
+    return "[" + ", ".join("(" + ", ".join(_py_sayi(M, v) for v in p) + ")" for p in parcalar) + "]"
 
 
 def _py_eleman_satiri(M, e):
     t = M.tip
     z = e.zemin if e.zemin is not None else 0
+    yuk = _py_parcalar(M, e.parcalar)
     deg = {"yay": [e.k], "cubuk": [e.E, e.A], "kafes": [e.E, e.A], "kafes3b": [e.E, e.A],
-           "kiris": [e.E, e.I, e.q] + ([z] if M.zemin_var else []),
-           "cerceve": [e.E, e.A, e.I, e.q] + ([z] if M.zemin_var else []),
-           "cerceve3b": [e.E, e.G, e.A, e.Iy, e.Iz, e.J, e.q, e.qz]}[t]
-    return "(" + ", ".join([str(e.ia), str(e.ib)] + [_py_sayi(M, v) for v in deg]) + "),"
+           "kiris": [e.E, e.I, yuk] + ([z] if M.zemin_var else []),
+           "cerceve": [e.E, e.A, e.I, yuk] + ([z] if M.zemin_var else []),
+           "cerceve3b": [e.E, e.G, e.A, e.Iy, e.Iz, e.J, yuk, _py_parcalar(M, e.parcalar_z)]}[t]
+    return "(" + ", ".join([str(e.ia), str(e.ib)] + [v if isinstance(v, str) else _py_sayi(M, v) for v in deg]) + "),"
 
 
 def _py_betik(M):
     t, d, kesin = M.tip, M.d, not M.sayisal
     S = lambda x: _py_sayi(M, x)  # noqa: E731
     ad_e = {"yay": "(i, j, k)", "cubuk": "(i, j, E, A)", "kafes": "(i, j, E, A)", "kafes3b": "(i, j, E, A)",
-            "kiris": "(i, j, E, I, q, k_s)" if M.zemin_var else "(i, j, E, I, q)",
-            "cerceve": "(i, j, E, A, I, q, k_s)" if M.zemin_var else "(i, j, E, A, I, q)",
-            "cerceve3b": "(i, j, E, G, A, Iy, Iz, J, q, qz)"}[t]
+            "kiris": "(i, j, E, I, yuk, k_s)" if M.zemin_var else "(i, j, E, I, yuk)",
+            "cerceve": "(i, j, E, A, I, yuk, k_s)" if M.zemin_var else "(i, j, E, A, I, yuk)",
+            "cerceve3b": "(i, j, E, G, A, Iy, Iz, J, yuk, yukz)"}[t]
     sablon = t + ("_zemin" if (M.zemin_var and t in ("kiris", "cerceve")) else "")
     koord = "dugum_xyz" if M.uc else "dugum_xy"
     s = [f"# {M.baslik}: {_TIP_AD[t]}, {M.n} SD, doğrudan rijitlik yöntemi (tek başına çalışır)"]
@@ -4130,7 +4484,8 @@ def _py_betik(M):
         s += ["import sympy as sp", "mat = sp.Matrix", "kok = sp.sqrt", ""]
         semb = set()
         for e in M.elemanlar:
-            for v in (e.E, e.A, e.I, e.k, e.q, e.G, e.Iy, e.Iz, e.J, e.zemin, e.qz):
+            yuk_degerleri = [v for p in e.parcalar + e.parcalar_z for v in p[:2]]
+            for v in (e.E, e.A, e.I, e.k, e.G, e.Iy, e.Iz, e.J, e.zemin, *yuk_degerleri):
                 if isinstance(v, sp.Basic):
                     semb |= v.free_symbols
         for satir in list(M.yuk) + list(M.yay):
@@ -4156,7 +4511,9 @@ def _py_betik(M):
           "",
           "# --- model verisi ---",
           koord_satir,
-          f"# elemanlar: {ad_e}; i, j = düğüm sırası (0'dan)",
+          f"# elemanlar: {ad_e}; i, j = düğüm sırası (0'dan)"
+          + ("; yuk = [(q1, q2, x1, x2), ...] yerel y' yönünde parçalı doğrusal yayılı yük" if t in _EGILME else "")
+          + (" (yukz: yerel z')" if t == "cerceve3b" else ""),
           "elemanlar = ["] + ["    " + _py_eleman_satiri(M, e) for e in M.elemanlar] + ["]"]
     fd = [M.F_dugum[i] for i in range(M.n)]
     s += ["F_dugum = [" + ", ".join(S(v) for v in fd) + "]   # düğüm yükleri (SD sırasıyla)",
@@ -4177,6 +4534,16 @@ def _py_betik(M):
         if M.cokme:
             s += ["cokme = {p: sp.sympify(v) for p, v in cokme.items()}"]
     kod = _PY_ELEMAN[sablon].replace("{DUSEY}", "== 0" if kesin else "< 1e-12")
+    if t in _EGILME:
+        if kesin:
+            gauss = ("[(-sp.sqrt(sp.Rational(3, 5)), sp.Rational(5, 9)), (0, sp.Rational(8, 9)), "
+                     "(sp.sqrt(sp.Rational(3, 5)), sp.Rational(5, 9))]")
+            donus = "[sp.expand(v) for v in f]   # köklü Gauss düğümleri birbirini götürür: sonuç kesirli"
+        else:
+            gauss = "[(-kok(0.6), 5/9), (0.0, 8/9), (kok(0.6), 5/9)]"
+            donus = "f"
+        s += ["", "# --- yayılı yük: eşdeğer düğüm yükleri (parçalı doğrusal q1→q2, [x1, x2]; 3 noktalı Gauss) ---"]
+        s += _PY_FEQ.replace("{GAUSS}", gauss).replace("{DONUS}", donus).rstrip("\n").split("\n")
     s += ["", "# --- eleman matrisleri ---"] + kod.rstrip("\n").split("\n")
     s += ["",
           "# --- birleştirme: K ve F ---",
@@ -4259,6 +4626,12 @@ def _adim_python(M, anl):
 # ============================================================================
 # Yapılı sonuç verisi ve genel işlev
 # ============================================================================
+def _yayili_veri(parcalar):
+    """Elemanın yayılı yük parçaları (veri çıktısı): [{q1, q2, x1, x2}, ...] (x2 eleman sonuysa L değeri yazılır)."""
+    V = _veri_sayi
+    return [{"q1": V(q1), "q2": V(q2), "x1": V(x1), "x2": V(x2)} for q1, q2, x1, x2 in parcalar]
+
+
 def _veri_olustur(M):
     """Sonuc.veri: JSON'a uygun, yapılı sonuçlar (sembolik çözümde sayı yerine ifade metni)."""
     t, d = M.tip, M.d
@@ -4279,6 +4652,10 @@ def _veri_olustur(M):
             "zemin_kuvvetleri": (None if e.f_zemin is None else [V(x) for x in e.f_zemin_g]),
             "diyagram": {"x": [V(x) for x in e.dx], "N": [V(x) for x in e.dN],
                          "V": [V(x) for x in e.dV], "M": [V(x) for x in e.dM]}}
+        if t in _EGILME:
+            kayit["yayili"] = _yayili_veri(e.parcalar)
+        if t == "cerceve3b":
+            kayit["yayili_z"] = _yayili_veri(e.parcalar_z)
         if M.uc:
             kayit["yon"] = [V(x) for x in e.yon]
             if e.lam is not None:
@@ -4325,11 +4702,13 @@ def _veri_olustur(M):
     return veri
 
 
-def se_coz(model, *, goster=None):
+def se_coz(model, *, goster=None, anlat=True):
     """Bir sonlu eleman modelini (sözlük ya da JSON metni) doğrudan rijitlik yöntemiyle çözer.
 
     Dönüş: ``Sonuc`` — ``.deger`` global yer değiştirme vektörü u (sympy Matrix), ``.veri`` yapılı sonuçlar,
-    ``.anlatim`` adım adım anlatım, ``.python_kodu`` / ``.python_ciktisi`` çalıştırılmış bağımsız betik."""
+    ``.anlatim`` adım adım anlatım, ``.python_kodu`` / ``.python_ciktisi`` çalıştırılmış bağımsız betik.
+    ``anlat=False`` hızlı yoldur: anlatım, şema ve betik üretilmez; yalnız ``.deger`` ve ``.veri`` dolar
+    (``.anlatim`` boş, ``.python_kodu`` boş metin)."""
     M = _model_oku(model)
     _hazirla(M)
     _coz(M)
@@ -4337,6 +4716,11 @@ def se_coz(model, *, goster=None):
     _denge_hesapla(M)
     _diyagram_hazirla(M)
     anl = mo.Anlatim()
+    if not anlat:
+        deger = sp.Matrix([float(v) for v in M.u]) if M.sayisal else sp.Matrix(M.u)
+        sonuc = mo.Sonuc(deger, anl, "u", "", "")
+        sonuc.veri = _veri_olustur(M)
+        return sonuc
     _adim_model(M, anl)
     _adim_sema_model(M, anl)
     _adim_sd(M, anl)
@@ -4356,4 +4740,131 @@ def se_coz(model, *, goster=None):
     sonuc.veri = _veri_olustur(M)
     mo.son_anlatim = anl
     anl.goster(goster)
+    return sonuc
+
+
+# ============================================================================
+# Çok yük durumlu çözüm (anlatımsız; yapı modülü ve kombinasyonlar için)
+# ============================================================================
+def _yuk_durumu_yukle(M, yuk, yayili, yayili_z):
+    """Bir yük durumunu hazır modele yerleştirir: M.yuk, eleman parçaları ve f_eq, F vektörü."""
+    M.yuk = yuk
+    for e in M.elemanlar:
+        _eleman_yuku(M, e, yayili[e.idx], yayili_z[e.idx])
+    _F_kur(M)
+
+
+def _kisa_veri(M):
+    """coz_coklu'nun bir yük durumu için kısa, JSON'a uygun sonucu (motor koordinatında, ondalık)."""
+    t, d = M.tip, M.d
+    tepkiler = []
+    for i, dg in enumerate(M.dugumler):
+        if not any(M.mesnet[i]):
+            continue
+        r = {"dugum": dg.no, "Fx": 0.0, "Fy": 0.0, "Fz": 0.0, "Mx": 0.0, "My": 0.0, "Mz": 0.0}
+        for j, ad in enumerate(_BILESEN[t]):
+            if M.mesnet[i][j]:
+                r["Mz" if ad == "M" else ad] = float(M.R_tam[d * i + j])
+        tepkiler.append(r)
+    elemanlar = []
+    for e in M.elemanlar:
+        uc = [float(-e.N), float(e.N)] if e.f is None else [float(x) for x in e.f]
+        kayit = {"no": e.no, "uc_kuvvetleri": uc, "N": float(e.N),
+                 "x": [float(x) for x in e.dx], "V": [float(x) for x in e.dV], "M": [float(x) for x in e.dM],
+                 "Vz": None, "My": None, "T": None}
+        if t == "cerceve3b":
+            kayit["Vz"] = [float(x) for x in e.dVz]
+            kayit["My"] = [float(x) for x in e.dMy]
+            kayit["T"] = [float(x) for x in e.dT]
+        enb = {"N": abs(kayit["N"]), "V": max(abs(v) for v in kayit["V"]), "M": max(abs(v) for v in kayit["M"])}
+        if t == "cerceve3b":
+            enb.update({"Vz": max(abs(v) for v in kayit["Vz"]), "My": max(abs(v) for v in kayit["My"]),
+                        "T": max(abs(v) for v in kayit["T"])})
+        kayit["enb"] = enb
+        elemanlar.append(kayit)
+    denge = {"Fx": 0.0, "Fy": 0.0, "Fz": 0.0, "Mx": 0.0, "My": 0.0, "Mz": 0.0}
+    for k, v in M.denge.items():
+        denge["Mz" if k == "M" else k] = float(v)
+    yaylar = []
+    for k, kk in M.yay_sd.items():
+        i, j = divmod(k, d)
+        yaylar.append({"dugum": M.dugumler[i].no, "sd": M.sd_et[k], "bilesen": _BILESEN[t][j], "k": float(kk),
+                       "kuvvet": float(M.F_yay[k])})
+    return {"u": [float(v) for v in M.u], "F": [float(v) for v in M.F], "tepkiler": tepkiler,
+            "elemanlar": elemanlar, "denge": denge, "yaylar": yaylar}
+
+
+def coz_coklu(model, durumlar, *, diyagram_nokta=11):
+    """Aynı modeli birden çok yük durumu için tek seferde çözer (anlatım üretilmez; her zaman sayısal/numpy).
+
+    ``model``: se_coz ile aynı şema; **modeldeki ``yukler`` ve ``yayili`` yoksayılır**, yükler yalnız ``durumlar``dan
+    gelir (geometri, özellikler, mesnetler, yaylar, zemin ve çökmeler modelden). ``durumlar``: ``{ad: durum}`` sözlüğü
+    (ya da durum listesi; adlar "1", "2", …); her durum ``{"yukler": [...], "yayili": [...]}`` (se_coz ile aynı
+    kayıt biçimi: düğüm yükleri, düzgün ``q``/``qz`` ya da parçalı doğrusal ``q1, q2, x1, x2`` / ``qz1, qz2``).
+    Rijitlik matrisi, mesnet listeleri ve mekanizma denetimi bir kez kurulur; bütün sağ taraflar tek
+    ``np.linalg.solve`` çağrısıyla çözülür. Harfli (sembolik) girdi kabul edilmez.
+
+    Dönüş ``{ad: kisa}``; ``kisa`` motor koordinatında (X sağa, Y yukarı, Z dışa) ve ondalık::
+
+        u [n], F [n],
+        tepkiler  [{dugum, Fx, Fy, Fz, Mx, My, Mz}]        # yalnız mesnetli düğümler (2B'de M → Mz)
+        elemanlar [{no, uc_kuvvetleri [yerel, SE işareti], N, x, V, M, Vz, My, T (2B'de None),
+                    enb {N, V, M[, Vz, My, T]} (mutlak en büyükler)}]
+        denge {Fx, Fy, Fz, Mx, My, Mz}   # ≈ 0
+        yaylar [{dugum, sd, bilesen, k, kuvvet}]
+
+    ``diyagram_nokta``: her elemanın diyagram istasyonu sayısı (parça sınırları ve V = 0 noktaları eklenir)."""
+    model = dict(_model_sozluk(model))
+    model.pop("yukler", None)
+    model.pop("yayili", None)
+    model["hesap"] = "sayisal"
+    if isinstance(durumlar, (list, tuple)):
+        durumlar = {str(k): durum for k, durum in enumerate(durumlar, start=1)}
+    if not isinstance(durumlar, dict) or not durumlar:
+        raise MatrisHatasi('coz_coklu: yük durumları {ad: {"yukler": [...], "yayili": [...]}} biçiminde, en az bir '
+                           'durum içeren bir sözlük olmalı.')
+    try:
+        adet = max(1, int(diyagram_nokta) - 1)
+    except (TypeError, ValueError):
+        raise MatrisHatasi(f"coz_coklu: diyagram_nokta tam sayı olmalı (girilen: {diyagram_nokta!r}).") from None
+    M = _model_oku(model)
+    _hazirla(M)
+    yukler = {}
+    for ad, durum in durumlar.items():
+        if isinstance(durum, (list, tuple)):
+            durum = {"yukler": list(durum)}
+        if not isinstance(durum, dict):
+            raise MatrisHatasi(f'Yük durumu {ad!r} bir sözlük olmalı: {{"yukler": [...], "yayili": [...]}}.')
+        try:
+            yuk, yayili, yayili_z, semb = _yukleri_oku(M, durum)
+        except MatrisHatasi as e:
+            raise MatrisHatasi(f"Yük durumu {ad!r}: {e}") from None
+        if semb:
+            raise MatrisHatasi(f"Yük durumu {ad!r}: coz_coklu harfli (sembolik) yük kabul etmez; sayı girin.")
+        yukler[str(ad)] = ([[float(v) for v in satir] for satir in yuk],
+                           _parcalari_floata_cevir(yayili), _parcalari_floata_cevir(yayili_z))
+    # --- bütün sağ taraflar bir kez: K_ff U_f = F_f − K_fs U_s ---
+    n, adlar = M.n, list(yukler)
+    Fcok = np.zeros((n, len(adlar)))
+    for k, ad in enumerate(adlar):
+        _yuk_durumu_yukle(M, *yukler[ad])
+        Fcok[:, k] = M.F
+    U = np.zeros((n, len(adlar)))
+    for i, v in M.cokme.items():
+        U[i, :] = v
+    if M.serbest:
+        rhs = Fcok[M.serbest, :]
+        if M.cokme:
+            rhs = rhs - M.K[np.ix_(M.serbest, M.sabit)] @ U[M.sabit, :]
+        U[M.serbest, :] = np.linalg.solve(M.K[np.ix_(M.serbest, M.serbest)], rhs)
+    # --- her durum için tepkiler, eleman kuvvetleri, denge, diyagramlar ---
+    sonuc = {}
+    for k, ad in enumerate(adlar):
+        _yuk_durumu_yukle(M, *yukler[ad])
+        M.u = U[:, k].copy()
+        _tepki_hesapla(M)
+        _eleman_kuvvetleri(M)
+        _denge_hesapla(M)
+        _diyagram_hazirla(M, adet=adet)
+        sonuc[ad] = _kisa_veri(M)
     return sonuc
