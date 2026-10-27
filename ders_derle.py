@@ -21,7 +21,9 @@ KOK = Path(__file__).resolve().parent
 DERS_KLASORU = KOK / "dersler"
 HEDEF = KOK / "docs" / "dersler.json"
 
-BOLUMLER = {"matris": "Matris", "se": "Sonlu elemanlar"}
+BOLUMLER = {"matris": "Matris", "se": "Sonlu elemanlar", "yapi": "Yapı analizi"}
+# Numara aralıkları (BICIM.md §1): 01–09 matris, 10–20 sonlu elemanlar, 21 ve üstü yapı analizi.
+BOLUM_ARALIGI = {"matris": (1, 9), "se": (10, 20), "yapi": (21, 99)}
 
 # Etkileşim ve alıştırma katalogları (BICIM.md §6 ve §7): ad → varsayılan başlık.
 ETKILESIMLER = {
@@ -46,6 +48,8 @@ ETKILESIMLER = {
     "uzay-cerceve-k": "Uzay çerçeve eleman matrisi",
     "elastik-mesnet": "Elastik mesnetli kiriş",
     "winkler-kiris": "Winkler zeminine oturan kiriş",
+    "doseme-dagilimi": "Döşemeden kirişe: 45° kuralı",
+    "kolon-birikimi": "Kolonda yük birikimi ve yük alanı",
 }
 ALISTIRMALAR = {
     "boyut": "Boyut ve indis",
@@ -62,15 +66,24 @@ ALISTIRMALAR = {
     "birlestir": "Birleştirme",
     "sinir-kosulu": "Sınır koşulu ve çözüm",
     "yay-seri": "Seri yaylar",
+    "doseme-esdeger": "Döşeme payı ve eşdeğer yük",
 }
-# Bu adlar docs/etkilesim_se.js içinde, ötekiler docs/etkilesim_matris.js içinde kaydedilir.
-# Alıştırmalar kayıtta "alistirma:<ad>" adını taşır.
+# SE_GRUBU docs/etkilesim_se.js, YAPI_GRUBU docs/etkilesim_yapi.js içinde, ötekiler docs/etkilesim_matris.js içinde
+# kaydedilir. Alıştırmalar kayıtta "alistirma:<ad>" adını taşır.
 SE_GRUBU = frozenset({
     "yay-sistemi", "cubuk-sekil", "kafes-aci", "dof-haritasi", "kiris-sekil", "esdeger-yuk", "kiris-nvm",
     "cerceve-k", "modal-titresim", "uzay-kafes-cubuk", "uzay-cerceve-k",
     "cerceve-k", "modal-titresim", "elastik-mesnet", "winkler-kiris",
     "cubuk-k", "kafes-k", "birlestir", "sinir-kosulu", "yay-seri",
 })
+YAPI_GRUBU = frozenset({"doseme-dagilimi", "kolon-birikimi", "doseme-esdeger"})
+
+
+def etkilesim_dosyasi(ad: str) -> str:
+    """Katalog adının kayıtlı olduğu docs/etkilesim_*.js dosya adı."""
+    if ad in YAPI_GRUBU:
+        return "etkilesim_yapi.js"
+    return "etkilesim_se.js" if ad in SE_GRUBU else "etkilesim_matris.js"
 
 KUTULAR = {
     "not": "Not", "uyari": "Dikkat", "ipucu": "İpucu", "tanim": "Tanım", "ozet": "Özet",
@@ -185,7 +198,7 @@ def _kod_denetle(kod: str, yer: str) -> None:
         raise DersHatasi(f"{yer}: kodun son satırı Sonuc döndüren bir ifade olmalı (ör. mo.carp(A, B))")
     for d in ast.walk(agac):
         if isinstance(d, (ast.Import, ast.ImportFrom)):
-            raise DersHatasi(f"{yer}: kodda import yazılmaz; mo, sp ve se hazır")
+            raise DersHatasi(f"{yer}: kodda import yazılmaz; mo, sp, se ve yapi hazır")
         if isinstance(d, ast.Attribute) and d.attr.startswith("__"):
             raise DersHatasi(f"{yer}: kodda çift alt çizgili öznitelik kullanılmaz: {d.attr}")
         if isinstance(d, ast.Name) and (d.id in _YASAK_ADLAR or d.id.startswith("__")):
@@ -440,8 +453,9 @@ def ders_oku(yol: Path) -> dict:
     metin = yol.read_text(encoding="utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
     satirlar = metin.split("\n")
     on, govde_bas = _on_bilgi(satirlar, ad)
-    if (on["bolum"] == "matris") != (no < 10):
-        raise DersHatasi(f"{ad}: numara {no:02d} ile bölüm '{on['bolum']}' uyuşmuyor (01–09 matris, 10 ve üstü se)")
+    alt, ust = BOLUM_ARALIGI[on["bolum"]]
+    if not alt <= no <= ust:
+        raise DersHatasi(f"{ad}: numara {no:02d} ile bölüm '{on['bolum']}' uyuşmuyor (01–09 matris, 10–20 se, 21 ve üstü yapi)")
     parcalar = _govde(satirlar[govde_bas:], ad, govde_bas + 1)
     if not parcalar:
         raise DersHatasi(f"{ad}: ders gövdesi boş")

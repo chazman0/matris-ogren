@@ -11,7 +11,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 ## 1. Dosya adı ve sıra
 
 - Ad: `NN-kisa-ad.md`. `NN` iki basamaklı ders numarasıdır ve benzersizdir.
-- `01`–`08` matris bölümü, `11`–`20` sonlu elemanlar bölümüdür. Sıra numaradan gelir.
+- `01`–`08` matris bölümü, `11`–`20` sonlu elemanlar bölümü, `21`–`29` yapı analizi bölümüdür. Sıra numaradan gelir.
 - Kodlama UTF-8. Satır sonu LF ya da CRLF olabilir.
 
 | No | Dosya | Konu |
@@ -34,6 +34,7 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 | 18 | `18-titresim.md` | kütle matrisi, serbest titreşim, modlar, OMA bağlantısı |
 | 19 | `19-uzay-yapilar.md` | uzay kafes $c_x, c_y, c_z$ ve 6×6; uzay çerçeve 12×12, $\boldsymbol\lambda$ ve yerel eksen kuralı, burulma, kiriş ızgarası |
 | 20 | `20-temel-sistemleri.md` | elastik mesnet $K_{ii}\mathrel{+}=k$, Winkler zemini $(k_sL/420)[\ldots]$ ve $\beta$, mesnet çökmesi $K_{ff}u_f=F_f-K_{fs}u_s$, kolon–kiriş–temel sistemi |
+| 21 | `21-yuk-akisi.md` | yük akışı: TS 498:2021 yükleri, $m=l_u/l_k$, TS 500 md. 11.4.3 45° kuralı (üçgen/trapez, tepe $wl_k/2$), $q_{eM}$, $q_{eV}$, kiriş tepkileri el ↔ FE, kolon birikimi ve yük alanı, $\sigma=N/A\pm6M/BL^2$, $e\le B/6$, korunum |
 
 ## 2. Ön bilgi
 
@@ -51,7 +52,7 @@ sure: 25
 | Alan | Zorunlu | Anlamı |
 |---|---|---|
 | `baslik` | evet | Ders başlığı. Satır içi `$…$` olabilir. |
-| `bolum` | evet | `matris` ya da `se` |
+| `bolum` | evet | `matris`, `se` ya da `yapi` (numara aralığıyla uyumlu: 01–09, 10–20, 21 ve üstü) |
 | `ozet` | evet | Tek cümle |
 | `sure` | evet | Tahmini çalışma süresi, dakika, tam sayı |
 
@@ -193,7 +194,7 @@ Statik çizim. İçerik ham SVG'dir; en çok 8000 karakter, `viewBox` zorunlu, g
 
 ## 5. Örnek kodu kuralları
 
-- Ad alanında `mo` (matris_ogren), `sp` (sympy) ve varsa `se` (sonlu_eleman) bulunur. `import` yazılmaz.
+- Ad alanında `mo` (matris_ogren), `sp` (sympy), varsa `se` (sonlu_eleman) ve `yapi` (bina analizi) bulunur. `import` yazılmaz.
 - Son satır bir ifadedir ve `Sonuc` ya da `Sonuc` listesi döndürür. Önceki satırlar atama olabilir.
 - Belirlenimci ve hızlı: her örnek 2 saniyenin altında. Dosya, ağ ve rastgele sayı yok.
 - `kontrol` tek satırlık ifadedir; `r` son ifadenin değeridir. Liste dönerse `r[-1]` kullanılır.
@@ -215,7 +216,10 @@ Statik çizim. İçerik ham SVG'dir; en çok 8000 karakter, `viewBox` zorunlu, g
 | `mo.birlestir([(k1, [1, 2]), (k2, [2, 3])], n)` | serbestlik numaraları 1'den başlar |
 | `mo.sinir_kosulu(K, F, sabit=[1])` | tutulu serbestlikler 1'den başlar |
 
-Sonlu eleman modeli çözen örnekler `se.se_coz(model)` kullanır; model §8.3 şemasındadır.
+Sonlu eleman modeli çözen örnekler `se.se_coz(model)` kullanır; model §8.3 şemasındadır. Bina örnekleri
+`yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))` ile çözülür; `r.veri` alanları (`yukler.dosemeler[].paylar`,
+`yukler.kirisler[].el_hesabi`, `durumlar.G.elemanlar`, `akis.kolonlar`, `akis.temeller`, `akis.korunum`) `kontrol`
+ifadesinde okunur. Şablonlar: `yapi.bina_sablonlar()`.
 
 ## 6. Etkileşim kataloğu
 
@@ -253,6 +257,13 @@ Parametreler isteğe bağlıdır; verilmeyenler varsayılanı alır. Her çizim 
 | `elastik-mesnet` | `E`, `I`, `L`, `P`, `k1`, `k2`, `kr` | İki ucu düşey yaya oturan iki elemanlı kiriş: yaylar zikzak, sol uçtaki dönme yayı sarmal; elastik eğri ve yay kuvvetleri $-k\,u$ oklarla; 6×6 $K$'da eleman parselleri mavi ve turuncu, yayın düştüğü köşegen hücreler yeşil kutulu; $K_{ii}\mathrel{+}=k$ formülü canlı; yay kaldırılınca mekanizma uyarısı |
 | `winkler-kiris` | `ks`, `EI` (ya da `E`, `I`), `L`, `P`, `n`: 4–16 | Winkler zeminine oturan kiriş, tutarlı zemin matrisi $(k_sl/420)[\ldots]$ ile çözülür; zemin yayları çökmeyle sıkışır, zemin basıncı $p=-k_sv$ diyagramı; $\beta$, $\beta L$ (kısa, orta, uzun) ve $\beta l_e$ ağ denetimi; $w_{\max}$ ve $M_{\max}$, Hetényi'nin $P\beta/2k_s$ ve $P/4\beta$ değerleriyle yüzde farkla karşılaştırılır |
 
+### 6.3 Yapı analizi (`docs/etkilesim_yapi.js`)
+
+| Ad | Parametreler | Ne gösterir, ne yapılır |
+|---|---|---|
+| `doseme-dagilimi` | `lx`, `ly`, `w`, `dagitim`: `otomatik`\|`cift`\|`tek` | Plan karesi; köşelerden 45° çizgiler ($m\le2$) ve kenar kirişleri üstüne üçgen (kısa kenar, mavi) ve trapez (uzun kenar, turuncu) yük şekilleri; $m>2$'de uzun kenarlara düzgün yük, kısa kenarlar boş; tepe $p=wl_k/2$, her kenarın payı kN, $q_{eM}$ ve $q_{eV}$ formülleri ve korunum $\sum=wl_kl_u$ canlı; $l_x$, $l_y$, $w$ kaydırıcıları, hazır paneller |
+| `kolon-birikimi` | `kat`: 1–8, `g`, `q`, `lx`, `ly`, `konum`: `ic`\|`kenar`\|`kose`, `beta`: true\|false | Solda plan ve kolonun yük alanı (iç: $l_xl_y$, kenar: yarısı, köşe: çeyreği); sağda kolon şeridi: her kat düzeyinde gelen $G$ ve $Q$ okları, aşağı inerken kalınlaşan kümülatif $N$ çubuğu ve sayıları; TS 498:2021 Çizelge 7 $\beta$ azaltması (üçten çok kat) seçilebilir; $A_{\text{trib}}$, $N_{\text{taban}}$ ve $\sigma=N/A$ için gerekli temel alanı formülü |
+
 ## 7. Alıştırma kataloğu
 
 Her alıştırma rastgele soru üretir, cevabı tam kesirle denetler (ondalık yazılırsa $10^{-3}$ bağıl hata içinde
@@ -274,6 +285,7 @@ Her alıştırma rastgele soru üretir, cevabı tam kesirle denetler (ondalık y
 | `birlestir` | `zorluk` | İki ya da üç elemanlı birleştirme |
 | `sinir-kosulu` | `zorluk` | Mesnetli sistemde bilinmeyen yer değiştirmeler |
 | `yay-seri` | `zorluk` | Seri yaylarda düğüm yer değiştirmeleri ve tepki |
+| `doseme-esdeger` | `zorluk` | Döşeme payı: $m$ ve tepe $p=wl_k/2$ (1), üçgen $q_{eM}$ ya da $q_{eV}$ (2), trapez $q_{eM}$ ya da $q_{eV}$ (3) |
 
 ## 8. Pedagoji kuralları
 
