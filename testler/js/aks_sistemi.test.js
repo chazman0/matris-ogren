@@ -1,0 +1,586 @@
+/* docs/aks_sistemi.js birim testleri — node'un yerleşik test koşucusu (bağımlılık yok).
+   Çalıştırma: node --test testler/js/aks_sistemi.test.js
+   Kapsam: saf mantık (sözdizimi, adlar, sistemler, REF çözücü, görünüm geometrisi, aks düzenlemenin modele etkisi,
+   kat ↔ Z eşlemesi, eski model yükseltme, hızlı aks), SVG katmanı (metin) ve model_ops ile birlikte çalışma. */
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const A = require(path.join(__dirname, "..", "..", "docs", "aks_sistemi.js"));
+const M = require(path.join(__dirname, "..", "..", "docs", "model_ops.js"));
+
+function yakin(a, b, tol, mesaj) {
+  tol = tol == null ? 1e-6 : tol;
+  if (Array.isArray(a)) { assert.equal(a.length, b.length, mesaj); a.forEach(function (x, i) { yakin(x, b[i], tol, mesaj); }); return; }
+  assert.ok(Math.abs(a - b) <= tol, (mesaj || "") + ` beklenen ${b}, bulunan ${a}`);
+}
+function dondurulmus(o) { return JSON.stringify(o); }
+
+/** Örnek bina: A–D (0, 6, 12, 19.5) × 1–3 (0, 5, 10); Z: ±0.00 (kat 0), +4.50 (kat 1), +8.00 (kat 2), Saçak 9, Mahya 10.5. */
+function ornek() {
+  const ak = A.hizliAks({ x: "2@6, 7.5", y: "2@5", z: "1@4.5, 3.5", ekZ: [{ ad: "Saçak", konum: 9 }, { ad: "Mahya", konum: 10.5 }] });
+  return { tur: "bina", surum: 3, akslar: ak, katlar: A.katlarTuret(ak), cubuklar: [], paneller: [], mesnetler: [], dugumler: [], ek_yukler: [] };
+}
+/** Ek sistemli örnek: KANAT (kartezyen, orijin (30, 0), 30°) ve KUBBE (silindirik, orijin (−20, 5)). */
+function sistemli() {
+  let b = ornek();
+  b = A.sistemEkle(b, { ad: "KANAT", tur: "kartezyen", orijin: [30, 0, 0], aci: 30, x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 4 }] }).model;
+  b = A.sistemEkle(b, { ad: "KUBBE", tur: "silindirik", orijin: [-20, 5, 0], r: [{ ad: "R1", konum: 4 }, { ad: "R2", konum: 8 }], teta: [0, 90, 180, 270].map(function (t, i) { return { ad: "T" + (i + 1), konum: t }; }) }).model;
+  return b;
+}
+const G = function (x, y, z) { return { aks: [x, y], z: z }; };
+
+// ------------------------------------------------------------------ sözdizimi
+test("aralık sözdizimi: n@a terimleri, tek aralık, ondalık nokta", function () {
+  const r = A.sozdizimiAyristir("3@6, 2@7.5, 5");
+  assert.equal(r.tur, "aralik");
+  assert.deepEqual(r.araliklar, [6, 6, 6, 7.5, 7.5, 5]);
+  assert.deepEqual(r.konumlar, [0, 6, 12, 18, 25.5, 33, 38]);
+  assert.deepEqual(A.sozdizimiAyristir("5").konumlar, [0, 5]);
+  assert.deepEqual(A.sozdizimiAyristir("2@3", { baslangic: 1.5 }).konumlar, [1.5, 4.5, 7.5]);
+  assert.deepEqual(A.sozdizimiAyristir("2×4; 3*2").araliklar, [4, 4, 2, 2, 2]);
+});
+test("konum sözdizimi: boşlukla ayrılmış artan sayılar; tekrarlar atılır", function () {
+  const r = A.sozdizimiAyristir("0 6 12 19.5");
+  assert.equal(r.tur, "konum");
+  assert.deepEqual(r.konumlar, [0, 6, 12, 19.5]);
+  assert.deepEqual(r.araliklar, [6, 6, 7.5]);
+  assert.deepEqual(A.sozdizimiAyristir("-3 0 4,5").konumlar, [-3, 0, 4.5]);
+  // artan değilse aralık sayılır
+  assert.equal(A.sozdizimiAyristir("6 6 6").tur, "aralik");
+  // açık kip
+  const k = A.sozdizimiAyristir("12 0 6", { kip: "konum" });
+  assert.deepEqual(k.konumlar, [0, 6, 12]);
+  assert.equal(A.sozdizimiAyristir("0 6 6 12", { kip: "konum" }).uyarilar.length, 1);
+});
+test("Türkçe ondalık virgül toleransı", function () {
+  assert.deepEqual(A.sozdizimiAyristir("7,5").araliklar, [7.5]);
+  assert.deepEqual(A.sozdizimiAyristir("2@7,5; 3").araliklar, [7.5, 7.5, 3]);
+  assert.deepEqual(A.sozdizimiAyristir("3@6, 2@7,5, 5").araliklar, [6, 6, 6, 7.5, 7.5, 5]);
+  assert.deepEqual(A.sozdizimiAyristir("3@6,2@7,5").araliklar, [6, 6, 6, 7.5, 7.5]);
+  assert.deepEqual(A.sozdizimiAyristir("6,7,8").araliklar, [6, 7, 8]);
+  assert.deepEqual(A.sozdizimiAyristir("1@4.5, 3@3,2").araliklar, [4.5, 3.2, 3.2, 3.2]);
+});
+test("sözdizimi hataları öğretici", function () {
+  assert.throws(function () { A.sozdizimiAyristir(""); }, /boş/);
+  assert.throws(function () { A.sozdizimiAyristir("3@x"); }, /anlaşılamadı/);
+  assert.throws(function () { A.sozdizimiAyristir("3@0"); }, /sıfırdan büyük/);
+  assert.throws(function () { A.sozdizimiAyristir("2@6 0 4", { kip: "konum" }); }, /adet@aralık/);
+  assert.throws(function () { A.sozdizimiAyristir("abc"); }, function (e) { return e instanceof A.AksHatasi; });
+});
+test("konum ↔ aralık ve kısa sözdizimi yazımı (gidiş-dönüş)", function () {
+  assert.deepEqual(A.konumdanAralik([0, 6, 12, 19.5]), [6, 6, 7.5]);
+  assert.deepEqual(A.araliktanKonum([6, 6, 7.5], 2), [2, 8, 14, 21.5]);
+  assert.equal(A.sozdizimiYaz([0, 6, 12, 18, 25.5]), "3@6, 7.5");
+  assert.equal(A.sozdizimiYaz([2, 5, 9]), "2 5 9");
+  for (const t of ["3@6, 2@7.5, 5", "4.25", "2@3, 1, 2@3"]) {
+    const k = A.sozdizimiAyristir(t).konumlar;
+    assert.deepEqual(A.sozdizimiAyristir(A.sozdizimiYaz(k)).konumlar, k, t);
+  }
+});
+
+// ------------------------------------------------------------------ adlar
+test("ad üretme: A…Z, AA…; sayılar; ilk ad; benzersiz ad; kot adı", function () {
+  assert.equal(A.adlarUret("x", 28).slice(24).join(","), "Y,Z,AA,AB");
+  assert.equal(A.harfAdi(701), "ZZ");
+  assert.equal(A.harfIndeks("AA"), 26);
+  assert.equal(A.harfIndeks("ZZ"), 701);
+  assert.equal(A.harfIndeks("1"), -1);
+  assert.deepEqual(A.adlarUret("y", 3), ["1", "2", "3"]);
+  assert.deepEqual(A.adlarUret("x", 3, "C"), ["C", "D", "E"]);
+  assert.deepEqual(A.adlarUret("y", 2, "7"), ["7", "8"]);
+  assert.deepEqual(A.adlarUret("x", 2, "1"), ["1", "2"]);
+  assert.deepEqual(A.adlarUret("teta", 2), ["T1", "T2"]);
+  assert.throws(function () { A.adlarUret("x", 2, "?"); }, /anlaşılamadı/);
+  assert.equal(A.benzersizAd("A", ["A", "A'"]), "A''");
+  assert.equal(A.kotAdi(0), "±0.00");
+  assert.equal(A.kotAdi(3.2), "+3.20");
+  assert.equal(A.kotAdi(-1.5), "-1.50");
+  assert.equal(A.sonrakiAd([{ ad: "A" }, { ad: "B" }], "x"), "C");
+  assert.equal(A.sonrakiAd([{ ad: "1" }, { ad: "4" }], "y"), "5");
+});
+
+// ------------------------------------------------------------------ hızlı aks, katlar, yükseltme
+test("hızlı aks: adet+aralık, kat adedi + ek Z aksları; katlar türetilir", function () {
+  const ak = A.hizliAks({ x: { adet: 4, aralik: 6 }, y: "2@5", katlar: { adet: 3, yukseklik: 3.2 }, ekZ: ["Saçak=10.1", { ad: "Mahya", konum: "11,6" }], ilkX: "B" });
+  assert.deepEqual(ak.x.map(function (a) { return a.ad; }), ["B", "C", "D", "E"]);
+  assert.deepEqual(ak.x.map(function (a) { return a.konum; }), [0, 6, 12, 18]);
+  assert.equal(ak.x[0].tur, "ana"); assert.equal(ak.x[0].gorunur, true); assert.equal(ak.x[0].balon, "bas");
+  assert.deepEqual(ak.z.map(function (a) { return [a.ad, a.konum, a.kat]; }),
+    [["±0.00", 0, 0], ["+3.20", 3.2, 1], ["+6.40", 6.4, 2], ["+9.60", 9.6, 3], ["Saçak", 10.1, undefined], ["Mahya", 11.6, undefined]]);
+  const k = A.katlarTuret(ak);
+  assert.deepEqual(k.map(function (x) { return [x.no, x.ad, x.kot]; }), [[0, "Temel", 0], [1, "1. kat", 3.2], [2, "2. kat", 6.4], [3, "3. kat", 9.6]]);
+  const z2 = A.hizliAks({ z: "1@4.5, 3@3.2", taban: -1 }).z;
+  assert.deepEqual(z2.map(function (a) { return a.konum; }), [-1, 3.5, 6.7, 9.9, 13.1]);
+  assert.throws(function () { A.hizliAks({ katlar: { adet: 1, yukseklik: 3 }, ekZ: [{ ad: "X", konum: 3 }] }); }, /aynı kotta/);
+});
+test("eski model yükseltme (surum 1 → 3): Z aksları katlardan, aks–kat elemanları aynen", function () {
+  const eski = { tur: "bina", surum: 1, akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 5 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 4 }] },
+    katlar: [{ no: 0, ad: "Temel", kot: 0 }, { no: 1, ad: "1. kat", kot: 3 }, { no: 2, ad: "Çatı", kot: 6 }],
+    kolonlar: [{ no: 1, aks: ["A", "1"], kat: 1, kesit: "S40x40", yon: "x" }], kirisler: [{ no: 1, kat: 1, bas: ["A", "1"], son: ["B", "1"], kesit: "K25x50" }] };
+  const once = dondurulmus(eski);
+  const r = A.yukselt(eski);
+  assert.equal(dondurulmus(eski), once, "girdi değişmemeli");
+  assert.equal(r.model.surum, 3);
+  assert.deepEqual(r.model.akslar.z, [{ ad: "±0.00", konum: 0, kat: 0 }, { ad: "+3.00", konum: 3, kat: 1 }, { ad: "+6.00", konum: 6, kat: 2 }]);
+  assert.deepEqual(r.model.kolonlar, eski.kolonlar);
+  assert.deepEqual(r.model.kirisler, eski.kirisler);
+  assert.deepEqual(r.model.katlar, eski.katlar);
+  assert.ok(r.uyarilar.some(function (u) { return /yükseltildi/.test(u); }));
+  // akslar.z olmasa da çözücü katlardan türetir
+  yakin(A.refKoordinat(eski, G("B", "2", "+6.00")), [5, 4, 6]);
+  yakin(A.refKoordinat(eski, { aks: ["B", "2"], kat: 1 }), [5, 4, 3]);
+});
+test("kat ↔ Z aksı: Z aksı taşınınca kat kotu da değişir (tek kaynak akslar.z)", function () {
+  const b = ornek();
+  assert.equal(A.katKotu(b, 2), 8);
+  assert.equal(A.zAksiKati(b, "+4.50"), 1);
+  assert.equal(A.zAksiKati(b, "Saçak"), null);
+  assert.equal(A.katZAksi(b, 1).ad, "+4.50");
+  const r = A.aksTasi(b, { yon: "z", ad: "+4.50", konum: 5 });
+  assert.equal(r.model.katlar.find(function (k) { return k.no === 1; }).kot, 5);
+  assert.equal(A.katKotu(r.model, 1), 5);
+  // katlarda olup Z'de olmayan kat → Z aksı eklenir; Z'de kat olup katlarda olmayan → kat eklenir
+  const c = JSON.parse(JSON.stringify(b));
+  c.katlar.push({ no: 3, ad: "Çatı", kot: 12 });
+  c.akslar.z.find(function (a) { return a.ad === "Mahya"; }).kat = 4;
+  const s = A.katlariSenkronla(c);
+  assert.ok(s.model.akslar.z.some(function (a) { return a.kat === 3 && a.konum === 12; }));
+  assert.ok(s.model.katlar.some(function (k) { return k.no === 4 && k.kot === 10.5; }));
+  assert.ok(s.uyarilar.some(function (u) { return /artan/.test(u); }), "kat 4 (10.5) kat 3'ün (12) altında: uyarı");
+});
+
+// ------------------------------------------------------------------ REF çözücü
+test("REF → koordinat: GLOBAL, eski {aks, kat}, kayıtsız aks–kat numarası, serbest", function () {
+  const b = ornek();
+  yakin(A.refKoordinat(b, G("D", "3", "Saçak")), [19.5, 10, 9]);
+  yakin(A.refKoordinat(b, { aks: ["B", "2"], kat: 2 }), [6, 5, 8]);
+  yakin(A.refKoordinat(b, { dugum: 1000 * 1 + 20 * 2 + 1 + 1 }), [12, 5, 4.5]);   // C2 kat 1
+  yakin(A.refKoordinat(b, [1, 2, 3]), [1, 2, 3]);
+  yakin(A.refKoordinat(b, { X: 1, Y: 2, Z: 3 }), [1, 2, 3]);
+  assert.throws(function () { A.refKoordinat(b, G("Q", "1", "Saçak")); }, /X aksı "Q"/);
+  assert.throws(function () { A.refKoordinat(b, { aks: ["A", "1"] }); }, /Z aksı eksik/);
+  assert.throws(function () { A.refKoordinat(b, { dugum: 123456 }); }, /modelde yok/);
+  assert.equal(A.refKoordinatGuvenli(b, { foo: 1 }), null);
+});
+test("REF → koordinat: döndürülmüş/ötelenmiş kartezyen ve silindirik sistem; ters dönüşüm", function () {
+  const b = sistemli();
+  const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6);
+  yakin(A.refKoordinat(b, { sistem: "KANAT", aks: ["B", "2"], z: "+8.00" }), [30 + 6 * c - 4 * s, 6 * s + 4 * c, 8]);
+  yakin(A.refKoordinat(b, { sistem: "KUBBE", aks: ["R2", "T2"], z: "Mahya" }), [-20, 13, 10.5]);
+  yakin(A.refKoordinat(b, { sistem: "KUBBE", aks: ["R1", "T3"], z: "±0.00" }), [-24, 5, 0]);
+  const S = A.sistemBul(b, "KANAT");
+  const P = A.sistemNokta(S, 2.5, -1.25, 3);
+  yakin(A.noktaSistem(S, P[0], P[1], P[2]), [2.5, -1.25, 3]);
+  const K = A.sistemBul(b, "KUBBE");
+  yakin(A.noktaSistem(K, -20, 1, 2), [4, 270, 2]);
+  // kendi Z listesi olan sistem: kot = orijin Z + konum
+  const b2 = A.sistemEkle(ornek(), { ad: "ASMA", orijin: [0, 0, 2], x: [{ ad: "A", konum: 0 }], y: [{ ad: "1", konum: 0 }], z: [{ ad: "Z1", konum: 1.5 }] }).model;
+  yakin(A.refKoordinat(b2, { sistem: "ASMA", aks: ["A", "1"], z: "Z1" }), [0, 0, 3.5]);
+  assert.throws(function () { A.refKoordinat(b, { sistem: "YOK", aks: ["A", "1"], z: "±0.00" }); }, /aks sistemi yok/);
+});
+test("bölme ve kesişim düğümleri yinelemeli çözülür; döngü yakalanır", function () {
+  const b = ornek();
+  b.dugumler = [
+    { no: 100001, tur: "bolme", cubuk_i: G("A", "1", "+4.50"), cubuk_j: G("D", "1", "+4.50"), oran: 0.25 },
+    { no: 100002, tur: "bolme", cubuk_i: { dugum: 100001 }, cubuk_j: G("A", "1", "+4.50"), oran: 0.5 },
+    { no: 100003, tur: "kesisim", a: [G("A", "1", "±0.00"), G("B", "1", "+4.50")], b: [G("B", "1", "±0.00"), G("A", "1", "+4.50")] },
+    { no: 100004, tur: "bolme", cubuk_i: { dugum: 100005 }, cubuk_j: G("A", "1", "±0.00"), oran: 0.5 },
+    { no: 100005, tur: "bolme", cubuk_i: { dugum: 100004 }, cubuk_j: G("A", "1", "±0.00"), oran: 0.5 },
+  ];
+  yakin(A.refKoordinat(b, { dugum: 100001 }), [4.875, 0, 4.5]);
+  yakin(A.refKoordinat(b, 100002), [2.4375, 0, 4.5]);
+  yakin(A.refKoordinat(b, { dugum: 100003 }), [3, 0, 2.25]);
+  assert.throws(function () { A.refKoordinat(b, { dugum: 100004 }); }, /Döngüsel/);
+  // aks taşınınca bölme düğümü birlikte taşınır (parametrik)
+  const t = A.aksTasi(b, { yon: "x", ad: "D", konum: 23.5 }).model;
+  yakin(A.refKoordinat(t, { dugum: 100001 }), [5.875, 0, 4.5]);
+  // paralel doğrular → kesişim yok
+  b.dugumler.push({ no: 100006, tur: "kesisim", a: [G("A", "1", "±0.00"), G("B", "1", "±0.00")], b: [G("A", "2", "±0.00"), G("B", "2", "±0.00")] });
+  assert.throws(function () { A.refKoordinat(b, { dugum: 100006 }); }, /paralel/);
+  yakin(A.dogruKesisimi([0, 0, 0], [1, 0, 0], [0, 1, 1], [0, 2, 1]), [0, 0, 0.5]);
+});
+test("koordinat → aks REF (en yakın kesişim, tolerans içinde; önce GLOBAL)", function () {
+  const b = sistemli();
+  assert.deepEqual(A.koordinattanRef(b, [12, 5, 9]), G("C", "2", "Saçak"));
+  assert.equal(A.koordinattanRef(b, [12.01, 5, 9]), null);
+  assert.deepEqual(A.koordinattanRef(b, [12.01, 5, 9], { tol: 0.02 }), G("C", "2", "Saçak"));
+  const P = A.refKoordinat(b, { sistem: "KANAT", aks: ["B", "1"], z: "+4.50" });
+  assert.deepEqual(A.koordinattanRef(b, P), { sistem: "KANAT", aks: ["B", "1"], z: "+4.50" });
+  assert.deepEqual(A.koordinattanRef(b, [-20, -3, 0]), { sistem: "KUBBE", aks: ["R2", "T4"], z: "±0.00" });
+  assert.equal(A.refAnahtar(b, { aks: ["A", "1"], kat: 1 }), A.refAnahtar(b, G("A", "1", "+4.50")));
+});
+
+// ------------------------------------------------------------------ görünüm geometrisi
+test("görünüm düzlemi: kesişimler, aks parçaları, gözler (plan/cephe/3B)", function () {
+  const b = ornek();
+  const plan = { tur: "plan", z: "Saçak" };
+  const k = A.kesisimler(b, plan);
+  assert.equal(k.length, 12);
+  assert.ok(k.every(function (x) { return x.P[2] === 9 && x.ref.z === "Saçak"; }));
+  const p = A.aksParcalari(b, plan);
+  assert.equal(p.length, 4 * 2 + 3 * 3);
+  assert.ok(p.some(function (x) { return x.aks.yon === "x" && x.aks.ad === "B" && x.i.aks[1] === "2" && x.j.aks[1] === "3"; }));
+  const g = A.gozler(b, plan);
+  assert.equal(g.length, 3 * 2);
+  assert.deepEqual(g[0].koseler, [G("A", "1", "Saçak"), G("B", "1", "Saçak"), G("B", "2", "Saçak"), G("A", "2", "Saçak")]);
+  const cephe = { tur: "cephe", y: "1" };
+  assert.equal(A.kesisimler(b, cephe).length, 4 * 5);
+  const gc = A.gozler(b, cephe);
+  assert.equal(gc.length, 3 * 4);
+  yakin(gc[0].P, [[0, 0, 0], [6, 0, 0], [6, 0, 4.5], [0, 0, 4.5]]);
+  assert.equal(A.aksParcalari(b, { tur: "cephe", x: "B" }).length, 3 * 4 + 5 * 2);
+  assert.equal(A.kesisimler(b, { tur: "3b" }).length, 4 * 3 * 5);
+  assert.throws(function () { A.kesisimler(b, { tur: "cephe" }); }, /aksı seçilmeli/);
+  // PgUp/PgDn
+  assert.equal(A.gorunumKomsu(b, plan, 1).z, "Mahya");
+  assert.equal(A.gorunumKomsu(b, { tur: "plan", z: "Mahya" }, 1).z, "Mahya");
+  assert.equal(A.gorunumKomsu(b, cephe, 1).y, "2");
+  // plan görünümünde ek sistemler de (aynı Z akslarını paylaşan)
+  const bs = sistemli();
+  assert.equal(A.kesisimler(bs, { tur: "plan", z: "±0.00" }).length, 12 + 4 + 8);
+  assert.equal(A.kesisimler(bs, { tur: "plan", z: "±0.00", sistem: "KANAT", yalnizSistem: true }).length, 4);
+  // silindirik: tam çember → kapanış yayları
+  assert.equal(A.aksParcalari(bs, { tur: "plan", z: "±0.00", sistem: "KUBBE", yalnizSistem: true }).filter(function (x) { return x.yay; }).length, 8);
+});
+test("en yakın kesişim (ekran izdüşümü ve 3B), en yakın aks parçası, göz bulma", function () {
+  const b = ornek();
+  const g = { tur: "plan", z: "+4.50" };
+  const iz = function (X, Y) { return [10 * X, 200 - 10 * Y]; };     // 10 px/m plan
+  const r = A.enYakinKesisim(b, g, [121, 151], { izdusum: iz });
+  assert.deepEqual(r.ref, G("C", "2", "+4.50"));
+  yakin(r.uzaklik, Math.SQRT2);
+  assert.equal(A.enYakinKesisim(b, g, [150, 150], { izdusum: iz }), null);
+  assert.deepEqual(A.enYakinKesisim(b, g, [6.1, 9.9, 4.5]).ref, G("B", "3", "+4.50"));
+  const p = A.enYakinParca(b, g, [90, 152], { izdusum: iz });
+  assert.equal(p.parca.aks.ad, "2");
+  assert.deepEqual([p.parca.i.aks[0], p.parca.j.aks[0]], ["B", "C"]);
+  const goz = A.gozBul(b, g, [150, 175], { izdusum: iz });
+  assert.deepEqual(goz.adlar, ["C–D", "1–2", "+4.50"]);
+  // bölme düğümlerine de yakalanır
+  b.dugumler = [{ no: 100001, tur: "bolme", cubuk_i: G("A", "1", "+4.50"), cubuk_j: G("B", "1", "+4.50"), oran: 0.5 }];
+  const d = A.enYakinKesisim(b, g, [31, 200], { izdusum: iz });
+  assert.deepEqual(d.ref, { dugum: 100001 });
+  assert.equal(d.tur, "bolme");
+  assert.equal(A.duzlemDugumleri(b, { tur: "plan", z: "Saçak" }).length, 0);
+});
+
+// ------------------------------------------------------------------ aks düzenleme
+/** Aksa bağlı birkaç eleman. */
+function elemanli() {
+  const b = ornek();
+  b.cubuklar = [
+    { no: 1, i: G("B", "1", "±0.00"), j: G("B", "1", "+4.50"), tur: "kolon" },
+    { no: 2, i: G("A", "1", "+4.50"), j: G("B", "1", "+4.50"), tur: "kiris" },
+    { no: 3, i: G("C", "1", "+4.50"), j: G("D", "1", "+4.50"), tur: "kiris" },
+    { no: 4, i: G("C", "1", "+4.50"), j: { dugum: 100001 }, tur: "capraz" },
+  ];
+  b.dugumler = [{ no: 100001, tur: "bolme", cubuk_i: G("A", "1", "+4.50"), cubuk_j: G("B", "1", "+4.50"), oran: 0.5 }, { no: 100002, X: 6, Y: 5, Z: 4.5 }];
+  b.paneller = [{ no: 1, kose: [G("A", "1", "+4.50"), G("B", "1", "+4.50"), G("B", "2", "+4.50"), G("A", "2", "+4.50")], tur: "doseme" }];
+  b.mesnetler = [{ dugum: G("B", "1", "±0.00"), ux: true, uy: true, uz: true }];
+  b.ek_yukler = [{ tur: "dugum", dugum: G("B", "1", "+4.50"), durum: "Q", FZ: -10 }, { tur: "cubuk", cubuk: 3, durum: "G", q1: -2 }];
+  b.kolonlar = [{ no: 1, aks: ["B", "2"], kat: 1, kesit: "S40x40", yon: "x" }];
+  b.kirisler = [{ no: 1, kat: 1, bas: ["A", "3"], son: ["B", "3"], kesit: "K25x50" }];
+  return b;
+}
+test("aks taşı: adla bağlı elemanlar yapışık (model aynı), sonrakileri kaydır, serbest düğüm de taşınır", function () {
+  const b = elemanli(), once = dondurulmus(b);
+  const r = A.aksTasi(b, { yon: "x", ad: "B", konum: 7 });
+  assert.equal(dondurulmus(b), once, "girdi değişmemeli");
+  assert.deepEqual(r.model.cubuklar, b.cubuklar);
+  yakin(A.refKoordinat(r.model, b.cubuklar[1].j), [7, 0, 4.5]);
+  yakin(A.refKoordinat(r.model, { dugum: 100001 }), [3.5, 0, 4.5]);
+  assert.deepEqual(r.model.dugumler[1], { no: 100002, X: 7, Y: 5, Z: 4.5 });
+  assert.ok(r.uyarilar.some(function (u) { return /serbest koordinatlı düğüm/.test(u); }));
+  const y = A.aksTasi(b, { yon: "x", ad: "B", konum: 7, yapisik: false });
+  assert.deepEqual(y.model.dugumler[1], b.dugumler[1]);
+  const k = A.aksTasi(b, { yon: "x", ad: "B", konum: 7, kaydir: true });
+  assert.deepEqual(k.model.akslar.x.map(function (a) { return a.konum; }), [0, 7, 13, 20.5]);
+  assert.deepEqual(k.tasinan, ["B", "C", "D"]);
+  const s = A.aksTasi(b, { yon: "x", ad: "B", konum: 14 });
+  assert.ok(s.uyarilar.some(function (u) { return /sırası değişti/.test(u); }));
+  const m = A.aksTasi(b, { yon: "x", ad: "B", konum: 11.9 });
+  assert.ok(m.uyarilar.some(function (u) { return /en az 0,30 m/.test(u); }));
+  assert.throws(function () { A.aksTasi(b, { yon: "x", ad: "B", konum: "on" }); }, /sayı/);
+});
+test("aralık değiştir: önceki aksa göre; kaydır seçeneği", function () {
+  const b = ornek();
+  const r = A.aralikDegistir(b, { yon: "x", ad: "C", aralik: "7,5" });
+  assert.deepEqual(r.model.akslar.x.map(function (a) { return a.konum; }), [0, 6, 13.5, 19.5]);
+  const k = A.aralikDegistir(b, { yon: "x", ad: "C", aralik: 7.5, kaydir: true });
+  assert.deepEqual(k.model.akslar.x.map(function (a) { return a.konum; }), [0, 6, 13.5, 21]);
+  assert.throws(function () { A.aralikDegistir(b, { yon: "x", ad: "A", aralik: 2 }); }, /İlk aksın/);
+  assert.throws(function () { A.aralikDegistir(b, { yon: "x", ad: "B", aralik: -1 }); }, /sıfırdan büyük/);
+});
+test("aks ekle: sona (sonraki harf, son aralık), araya (A'), Z'de kot adı; çakışma reddi", function () {
+  const b = ornek();
+  const s = A.aksEkle(b, { yon: "x" });
+  assert.equal(s.eklenen, "E");
+  assert.equal(s.model.akslar.x[4].konum, 27);
+  const a = A.aksEkle(b, { yon: "x", arasina: ["B", "C"] });
+  assert.equal(a.eklenen, "B'");
+  assert.equal(a.model.akslar.x.find(function (x) { return x.ad === "B'"; }).konum, 9);
+  assert.deepEqual(a.model.akslar.x.map(function (x) { return x.ad; }), ["A", "B", "B'", "C", "D"]);
+  const y = A.aksEkle(b, { yon: "y", konum: 7 });
+  assert.equal(y.eklenen, "2'");
+  const z = A.aksEkle(b, { yon: "z", konum: 6.2 });
+  assert.equal(z.eklenen, "+6.20");
+  assert.equal(A.aksEkle(b, { yon: "z", konum: 7, ad: "Kren" }).eklenen, "Kren");
+  assert.throws(function () { A.aksEkle(b, { yon: "x", konum: 6 }); }, /zaten bir aks/);
+  assert.throws(function () { A.aksEkle(b, { yon: "x", konum: 3, ad: "A" }); }, /benzersiz/);
+  const c = A.aksCogalt(b, { yon: "y", ad: "3", ofset: 2.5, adet: 2 });
+  assert.deepEqual(c.eklenen, ["4", "5"]);
+  assert.deepEqual(c.model.akslar.y.map(function (x) { return x.konum; }), [0, 5, 10, 12.5, 15]);
+});
+test("yeniden adlandır: bütün REF'ler ve aks–kat elemanları güncellenir", function () {
+  const b = elemanli();
+  const r = A.aksYenidenAdlandir(b, { yon: "x", eski: "B", yeni: "B1" });
+  const m = r.model;
+  assert.deepEqual(m.cubuklar[0].i, G("B1", "1", "±0.00"));
+  assert.deepEqual(m.cubuklar[1].j, G("B1", "1", "+4.50"));
+  assert.deepEqual(m.dugumler[0].cubuk_j, G("B1", "1", "+4.50"));
+  assert.deepEqual(m.paneller[0].kose[1], G("B1", "1", "+4.50"));
+  assert.deepEqual(m.mesnetler[0].dugum, G("B1", "1", "±0.00"));
+  assert.deepEqual(m.ek_yukler[0].dugum, G("B1", "1", "+4.50"));
+  assert.deepEqual(m.kolonlar[0].aks, ["B1", "2"]);
+  assert.deepEqual(m.kirisler[0].son, ["B1", "3"]);
+  assert.throws(function () { A.aksYenidenAdlandir(b, { yon: "x", eski: "B", yeni: "C" }); }, /benzersiz/);
+  // Z aksı: GLOBAL Z'yi paylaşan ek sistem REF'leri de
+  let bs = sistemli();
+  bs.cubuklar = [{ no: 1, i: { sistem: "KANAT", aks: ["A", "1"], z: "Saçak" }, j: G("A", "1", "Saçak"), tur: "kiris" }];
+  bs = A.aksYenidenAdlandir(bs, { yon: "z", eski: "Saçak", yeni: "SAÇAK" }).model;
+  assert.equal(bs.cubuklar[0].i.z, "SAÇAK");
+  assert.equal(bs.cubuklar[0].j.z, "SAÇAK");
+  // ek sistemin X aksı: yalnız o sistemin REF'leri
+  const bk = A.aksYenidenAdlandir(Object.assign(sistemli(), { cubuklar: [{ no: 1, i: { sistem: "KANAT", aks: ["A", "1"], z: "±0.00" }, j: G("A", "1", "±0.00") }] }), { sistem: "KANAT", yon: "x", eski: "A", yeni: "K" }).model;
+  assert.deepEqual(bk.cubuklar[0].i.aks, ["K", "1"]);
+  assert.deepEqual(bk.cubuklar[0].j.aks, ["A", "1"]);
+});
+test("yeniden harfle: konum sırasıyla A, B, C… (yer değiştiren adlar dahil)", function () {
+  let b = elemanli();
+  b = A.aksTasi(b, { yon: "x", ad: "A", konum: 15 }).model;    // sıra: B(6) C(12) A(15) D(19.5)
+  const r = A.yenidenHarfle(b, { yon: "x" });
+  assert.deepEqual(r.esleme, { B: "A", C: "B", A: "C" });
+  assert.deepEqual(r.model.cubuklar[0].i, G("A", "1", "±0.00"));       // eski B
+  assert.deepEqual(r.model.cubuklar[1].i, G("C", "1", "+4.50"));       // eski A
+  assert.deepEqual(r.model.kolonlar[0].aks, ["A", "2"]);
+  yakin(A.refKoordinat(r.model, r.model.cubuklar[1].i), A.refKoordinat(b, b.cubuklar[1].i));
+  const z = A.yenidenHarfle(ornek(), { yon: "z" });
+  assert.deepEqual(z.model.akslar.z.map(function (a) { return a.ad; }), ["±0.00", "+4.50", "+8.00", "+9.00", "+10.50"]);
+});
+test("aks sil: bağlı eleman raporu, onay, elemanlarla, en yakın aksa taşı, iptal", function () {
+  const b = elemanli(), once = dondurulmus(b);
+  const bag = A.bagliElemanlar(b, { yon: "x", ad: "B" });
+  assert.deepEqual(bag.cubuklar, [1, 2, 4]);          // 4: bölme düğümü 100001 üzerinden dolaylı
+  assert.deepEqual(bag.dugumler, [100001]);
+  assert.deepEqual(bag.paneller, [1]);
+  assert.deepEqual(bag.mesnetler, [0]);
+  assert.deepEqual(bag.ek_yukler, [0]);
+  assert.deepEqual(bag.kolonlar, [1]);
+  assert.deepEqual(bag.kirisler, [1]);
+  assert.match(bag.ozet, /3 çubuk/);
+  const o = A.aksSil(b, { yon: "x", ad: "B" });
+  assert.equal(o.onayGerekli, true);
+  assert.equal(o.silindi, false);
+  assert.equal(o.komsu, "A");
+  assert.deepEqual(o.hedef, { sistem: "GLOBAL", yon: "x", ad: "B" });
+  assert.deepEqual(o.secenekler, ["elemanlarla", "tasi", "iptal"]);
+  assert.equal(dondurulmus(o.model), once);
+  assert.equal(A.aksSil(b, { yon: "x", ad: "B", secenek: "iptal" }).silindi, false);
+  const e = A.aksSil(b, { yon: "x", ad: "B", secenek: "elemanlarla" }).model;
+  assert.deepEqual(e.akslar.x.map(function (a) { return a.ad; }), ["A", "C", "D"]);
+  assert.deepEqual(e.cubuklar.map(function (c) { return c.no; }), [3]);
+  assert.deepEqual(e.dugumler.map(function (d) { return d.no; }), [100002]);
+  assert.equal(e.paneller.length, 0); assert.equal(e.mesnetler.length, 0); assert.equal(e.kolonlar.length, 0); assert.equal(e.kirisler.length, 0);
+  assert.deepEqual(e.ek_yukler, [b.ek_yukler[1]]);
+  const t = A.aksSil(b, { yon: "x", ad: "B", secenek: "tasi" });
+  assert.equal(t.silindi, true);
+  assert.deepEqual(t.model.cubuklar.map(function (c) { return c.no; }), [1, 3, 4], "A1–A1 olan kiriş 2 sıfır boylu: silinir");
+  assert.deepEqual(t.model.cubuklar[0].i, G("A", "1", "±0.00"));
+  assert.equal(t.model.paneller.length, 0, "köşeleri çakışan panel silinir");
+  assert.deepEqual(t.model.kolonlar[0].aks, ["A", "2"]);
+  assert.equal(t.model.kirisler.length, 0, "başı ve sonu aynı aksa düşen kiriş silinir");
+  assert.ok(t.uyarilar.some(function (u) { return /sıfır|aynı kesişime/.test(u); }));
+  // bağsız aks doğrudan silinir
+  const d = A.aksSil(b, { yon: "y", ad: "3", secenek: undefined });
+  assert.equal(d.onayGerekli, true, "kiriş 1 (A3–B3) bağlı");
+  const z = A.aksSil(b, { yon: "z", ad: "Mahya" });
+  assert.equal(z.silindi, true);
+  assert.ok(!z.model.akslar.z.some(function (a) { return a.ad === "Mahya"; }));
+  // kata bağlı ve elemanlı Z aksı silinmez
+  const k = A.aksSil(b, { yon: "z", ad: "+4.50", secenek: "elemanlarla" });
+  assert.equal(k.silindi, false);
+  assert.match(k.uyarilar[0], /Katlar/);
+  // elemansız kat Z aksı: kat da kalkar
+  const kz = A.aksSil(ornek(), { yon: "z", ad: "+8.00" });
+  assert.equal(kz.silindi, true);
+  assert.ok(!kz.model.katlar.some(function (x) { return x.no === 2; }));
+});
+test("görsel özellikler ve sıralama", function () {
+  const b = ornek();
+  const r = A.aksOzellik(b, { yon: "x", ad: "B", ozellik: { tur: "ikincil", gorunur: false, balon: "iki" } });
+  const a = r.model.akslar.x[1];
+  assert.deepEqual([a.tur, a.gorunur, a.balon], ["ikincil", false, "iki"]);
+  assert.throws(function () { A.aksOzellik(b, { yon: "x", ad: "B", ozellik: { balon: "ust" } }); }, /Balon/);
+  const z = A.aksOzellik(b, { yon: "z", ad: "Saçak", ozellik: { kat: 3 } });
+  assert.ok(z.model.katlar.some(function (k) { return k.no === 3 && k.kot === 9; }));
+  assert.throws(function () { A.aksOzellik(b, { yon: "z", ad: "Saçak", ozellik: { kat: 1 } }); }, /başka bir Z/);
+  const c = JSON.parse(JSON.stringify(b));
+  c.akslar.x.reverse();
+  assert.deepEqual(A.aksSirala(c, { yon: "x" }).model.akslar.x.map(function (x) { return x.ad; }), ["A", "B", "C", "D"]);
+});
+test("ek sistemler: ekle (varsayılanlar), güncelle (ad değişince REF'ler), sil (bağlı kayıt onayı)", function () {
+  let b = ornek();
+  b = A.sistemEkle(b, { ad: "S", tur: "silindirik" }).model;
+  const s = b.aks_sistemleri[0];
+  assert.deepEqual(s.r.map(function (x) { return x.konum; }), [5, 10]);
+  assert.deepEqual(s.teta.map(function (x) { return x.konum; }), [0, 30, 60, 90]);
+  assert.equal(s.z, null);
+  assert.throws(function () { A.sistemEkle(b, { ad: "S" }); }, /zaten var/);
+  assert.throws(function () { A.sistemEkle(b, { ad: "GLOBAL" }); }, /ayrılmıştır/);
+  b.cubuklar = [{ no: 1, i: { sistem: "S", aks: ["R1", "T1"], z: "±0.00" }, j: { sistem: "S", aks: ["R2", "T1"], z: "±0.00" } }];
+  const g = A.sistemGuncelle(b, "S", { ad: "HALKA", aci: 15, orijin: [1, 2, 0] }).model;
+  assert.equal(g.cubuklar[0].i.sistem, "HALKA");
+  yakin(A.refKoordinat(g, g.cubuklar[0].j), [1 + 10 * Math.cos(15 * Math.PI / 180), 2 + 10 * Math.sin(15 * Math.PI / 180), 0]);
+  const o = A.sistemSil(g, "HALKA");
+  assert.equal(o.onayGerekli, true);
+  assert.deepEqual(o.bagli.cubuklar, [1]);
+  const e = A.sistemSil(g, "HALKA", "elemanlarla").model;
+  assert.equal(e.aks_sistemleri.length, 0);
+  assert.equal(e.cubuklar.length, 0);
+  assert.throws(function () { A.sistemSil(g, "GLOBAL"); }, /silinemez/);
+});
+test("saf işlevler girdiyi değiştirmez", function () {
+  const b = elemanli();
+  b.aks_sistemleri = sistemli().aks_sistemleri;
+  const once = dondurulmus(b);
+  A.aksTasi(b, { yon: "y", ad: "2", konum: 6, kaydir: true });
+  A.aksEkle(b, { yon: "x", arasina: ["A", "B"] });
+  A.aksSil(b, { yon: "x", ad: "B", secenek: "tasi" });
+  A.aksSil(b, { yon: "x", ad: "B", secenek: "elemanlarla" });
+  A.aksYenidenAdlandir(b, { yon: "x", eski: "A", yeni: "Z" });
+  A.yenidenHarfle(b, { yon: "y", ilk: "5" });
+  A.aksOzellik(b, { yon: "x", ad: "A", ozellik: { tur: "ikincil" } });
+  A.sistemGuncelle(b, "KANAT", { ad: "K2" });
+  A.sistemSil(b, "KUBBE", "elemanlarla");
+  A.katlariSenkronla(b); A.yukselt(b);
+  assert.equal(dondurulmus(b), once);
+});
+
+// ------------------------------------------------------------------ SVG katmanı ve sürükleme
+test("sahne katmanı: balonlar, ölçü zinciri, kesişimler; cephede Z etiketleri; NaN yok", function () {
+  const b = sistemli();
+  const iz = function (X, Y, Z) { return [100 + 10 * X, 300 - 10 * Y - 0 * Z]; };
+  const s = A.sahneKatmani(b, { tur: "plan", z: "±0.00" }, iz, { secili: { yon: "x", ad: "C" } });
+  assert.ok(s.startsWith('<g class="aks-katman">'));
+  assert.equal((s.match(/class="aks-balon /g) || []).length, 4 + 3 + 2 + 2 + 4 + 2, "GLOBAL 7, KANAT 4, KUBBE 4 θ + 2 R");
+  assert.ok(s.includes('data-aks-sistem="GLOBAL" data-aks-yon="x" data-aks-ad="C"'));
+  assert.ok(/aks-balon aks-s0 aks-secili/.test(s));
+  assert.ok(s.includes(">6,00<") && s.includes(">7,50<") && s.includes(">19,50<"), "aralık ve toplam ölçüsü");
+  assert.equal((s.match(/class="aks-kesisim/g) || []).length, 12 + 4 + 8);
+  assert.ok(!/NaN|undefined/.test(s));
+  const ref = JSON.parse(s.match(/data-aks-ref="([^"]+)"/)[1].replace(/&quot;/g, '"'));
+  assert.ok(A.aksRefMi(ref));
+  const c = A.sahneKatmani(b, { tur: "cephe", y: "1" }, function (X, Y, Z) { return [100 + 10 * X, 300 - 10 * Z]; });
+  assert.equal((c.match(/aks-zbalon/g) || []).length, 5);
+  assert.ok(c.includes("Saçak  +9,00") && c.includes(">±0,00<"));
+  const d = A.sahneKatmani(b, { tur: "3b", z: "Saçak" }, function (X, Y, Z) { return [100 + 10 * X - 5 * Y, 300 - 10 * Z + 3 * Y]; });
+  assert.equal((d.match(/aks-zbalon/g) || []).length, 5);
+  assert.ok(!/NaN/.test(d));
+  // gizli aks çizilmez; ikincil kesikli sınıfta
+  const h = A.aksOzellik(ornek(), { yon: "x", ad: "B", ozellik: { gorunur: false } }).model;
+  assert.ok(!A.sahneKatmani(h, { tur: "plan" }, iz).includes('data-aks-ad="B"'));
+  const i2 = A.aksOzellik(ornek(), { yon: "x", ad: "B", ozellik: { tur: "ikincil" } }).model;
+  assert.ok(A.sahneKatmani(i2, { tur: "plan" }, iz).includes("aks-cizgi aks-ikincil"));
+  // önizleme (sürükleme): aks geçici konumda
+  const on = A.sahneKatmani(ornek(), { tur: "plan" }, iz, { onizleme: { sistem: "GLOBAL", yon: "x", ad: "B", konum: 8 } });
+  assert.ok(on.includes(">8,00<"));
+  assert.equal(A.sahneKatmani(ornek(), { tur: "plan", z: "YOK" }, iz), '<g class="aks-katman"></g>');
+});
+test("balon sürükleme: ekran farkı → konum, 0,05 m yakalama; kenar payları; uygun izdüşüm", function () {
+  const b = ornek();
+  const iz = function (X, Y) { return [10 * X, 200 - 10 * Y]; };
+  assert.equal(A.surukleKonum(b, { yon: "x", ad: "B" }, iz, [60, 0], [77.3, 40]), 7.75);
+  assert.equal(A.surukleKonum(b, { yon: "y", ad: "2" }, iz, [0, 150], [0, 141.2]), 5.9);
+  assert.equal(A.surukleKonum(b, { yon: "x", ad: "B" }, iz, [60, 0], [61.2, 0], { adim: 0.5 }), 6);
+  assert.equal(A.yuvarla(7.7749, 0.05), 7.75);
+  const kp = A.kenarPaylari(b, { tur: "cephe", y: "1" });
+  assert.ok(kp.sag > kp.ust && kp.alt > kp.ust);
+  const f = A.uygunIzdusum(b, { tur: "plan" }, 600, 400);
+  const p0 = f(0, 0, 0), p1 = f(19.5, 10, 0);
+  assert.ok(p0[0] >= kp.sol - 1e-9 || p0[0] > 0);
+  assert.ok(p1[0] <= 600 && p1[1] >= 0 && p0[1] <= 400 && p0[1] > p1[1]);
+});
+
+// ------------------------------------------------------------------ model_ops ile birlikte
+test("model_ops: aks REF'li çubuk, kat dışı Z aksı (sanal düğüm), REF adla geri yazılır", function () {
+  let b = ornek();
+  let r = M.cubukCiz(b, G("A", "1", "±0.00"), G("A", "1", "Saçak"), { tur: "kolon" });
+  b = r.model;
+  assert.deepEqual(b.cubuklar[0].i, G("A", "1", "±0.00"));
+  assert.deepEqual(b.cubuklar[0].j, G("A", "1", "Saçak"));
+  yakin(M.uzunluk(b, 1), 9);
+  yakin(M.dugumKonumu(b, G("B", "3", "Mahya")), [6, 10, 10.5]);
+  assert.equal(M.dugumNo(b, G("A", "1", "+4.50")), 1001, "kat Z aksı aks–kat numarası");
+  assert.ok(M.dugumNo(b, G("A", "1", "Saçak")) >= 800001, "kat dışı Z aksı: sanal aks düğümü");
+  // koordinatlı REF aks kesişimine düşerse aks REF'ine çevrilir
+  r = M.cubukCiz(b, [19.5, 10, 4.5], [19.5, 10, 10.5]);
+  assert.deepEqual(r.model.cubuklar[1].i, G("D", "3", "+4.50"));
+  assert.deepEqual(r.model.cubuklar[1].j, G("D", "3", "Mahya"));
+  // eski {aks, kat} REF'i de geçerli
+  r = M.cubukCiz(b, { aks: ["B", "1"], kat: 0 }, { aks: ["B", "1"], kat: 1 });
+  yakin(M.uzunluk(r.model, 2), 4.5);
+  // Z aksı taşınınca çubuk boyu değişir (yapışık), model REF'leri aynı
+  const t = A.aksTasi(b, { yon: "z", ad: "Saçak", konum: 9.6 }).model;
+  yakin(M.uzunluk(t, 1), 9.6);
+  // ek sistem REF'i
+  const bs = sistemli();
+  const k = M.cubukCiz(bs, { sistem: "KANAT", aks: ["A", "1"], z: "±0.00" }, { sistem: "KANAT", aks: ["B", "1"], z: "±0.00" }).model;
+  yakin(M.uzunluk(k, 1), 6);
+  assert.equal(k.cubuklar[0].i.sistem, "KANAT");
+  assert.throws(function () { M.cubukCiz(b, G("Q", "1", "Saçak"), G("A", "1", "Saçak")); }, /Aks başvurusu geçersiz/);
+});
+test("model_ops.aksaBagla: kesişime düşen düğüm aks REF'i, bölünmüş çubuktaki düğüm bölme düğümü olur", function () {
+  let b = ornek();
+  b = M.cubukCiz(b, G("A", "1", "Saçak"), G("D", "1", "Saçak"), { tur: "kiris" }).model;
+  b = M.bol(b, 1, { parca: 3 }).model;                          // serbest düğümler (6.5, 0, 9) ve (13, 0, 9)
+  b.dugumler.push({ no: 100010, X: 12, Y: 5, Z: 9 });            // C2 Saçak kesişimi
+  b = M.cubukCiz(b, { dugum: 100010 }, G("C", "3", "Saçak")).model;
+  b.dugumler.push({ no: 100011, X: 40, Y: 40, Z: 0 });           // hiçbir yere düşmeyen
+  const r = M.aksaBagla(b);
+  assert.deepEqual(r.baglanan.map(function (x) { return x.no; }), [100010]);
+  assert.deepEqual(r.bolme.sort(), [100001, 100002]);
+  assert.deepEqual(r.kalan, [100011]);
+  const m = r.model;
+  assert.ok(!m.dugumler.some(function (d) { return d.no === 100010; }));
+  assert.deepEqual(m.cubuklar.find(function (c) { return c.no === 4; }).i, G("C", "2", "Saçak"));
+  const d1 = m.dugumler.find(function (d) { return d.no === 100001; });
+  assert.equal(d1.tur, "bolme");
+  assert.deepEqual([d1.cubuk_i, d1.cubuk_j], [G("A", "1", "Saçak"), G("D", "1", "Saçak")]);
+  yakin(d1.oran, 1 / 3, 1e-8);
+  assert.equal(d1.X, undefined);
+  // aks taşınınca bölme düğümleri ve çubuklar birlikte
+  const t = A.aksTasi(m, { yon: "x", ad: "D", konum: 22.5 }).model;
+  yakin(M.dugumKonumu(t, { dugum: 100002 }), [15, 0, 9], 1e-5);
+  const t2 = A.aksTasi(m, { yon: "z", ad: "Saçak", konum: 9.5 }).model;
+  yakin(M.dugumKonumu(t2, { dugum: 100001 })[2], 9.5);
+  assert.deepEqual(M.denetle(m).uyarilar.filter(function (u) { return u.kod === "eksik-dugum"; }), []);
+  // bölme düğümü taşınırsa serbest olur (uyarıyla)
+  const s = M.dugumTasi(m, 100001, 6.5, 0.5, 9);
+  assert.equal(s.model.dugumler.find(function (d) { return d.no === 100001; }).tur, undefined);
+  assert.ok(s.uyarilar.some(function (u) { return /bölme düğümüydü/.test(u); }));
+});
+test("model_ops: gözden çapraz üretimi ve kat Z aksı adıyla REF yazımı", function () {
+  const b = ornek();
+  const goz = A.gozler(b, { tur: "cephe", y: "1" })[0];
+  const r = M.caprazUret(b, goz.koseler, "X", { kesit: "L80x8" });
+  const c = r.model.cubuklar.filter(function (x) { return x.tur === "capraz"; });
+  assert.equal(c.length, 2);
+  assert.deepEqual(c[0].i, G("A", "1", "±0.00"));
+  assert.deepEqual(c[0].j, G("B", "1", "+4.50"));
+  // akslar.z varken aks–kat düğümleri {aks, z} olarak yazılır; yoksa {aks, kat}
+  const eski = { tur: "bina", akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 5 }], y: [{ ad: "1", konum: 0 }] }, katlar: [{ no: 0, kot: 0 }, { no: 1, kot: 3 }] };
+  assert.deepEqual(M.cubukCiz(eski, [0, 0, 0], [0, 0, 3]).model.cubuklar[0].j, { aks: ["A", "1"], kat: 1 });
+  const yeni = A.yukselt(eski).model;
+  assert.deepEqual(M.cubukCiz(yeni, [0, 0, 0], [0, 0, 3]).model.cubuklar[0].j, { aks: ["A", "1"], z: "+3.00" });
+});
