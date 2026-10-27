@@ -122,7 +122,7 @@ $$
 
 Eğrinin üç özel noktası vardır. **Saf basınç** $\ka{N_0=0.85f_{cd}(A_c-A_s)+A_sf_{yd}}$, **saf çekme** $\ka{N_t=-A_sf_{yd}}$ ve **dengeli nokta**: en uzak çubuk $\varepsilon_{yd}$'ye ulaşırken beton 0.003'te ezilir, $c_b=0.003\,d/(0.003+\varepsilon_{yd})$. Dengeli noktanın üstünde **basınç kırılması**, altında **çekme kırılması** olur; az basınç ($0.9G-E$ gibi) momente dayanımı düşürür.
 
-Talep noktası $P=(N_d,M_d)$ eğrinin içindeyse kesit yeterlidir. Kapasite oranı orijinden $P$'ye çizilen ışının eğriyi kestiği $Q$ noktasıyla ölçülür: $\text{D/C}=|OP|/|OQ|$ (SAP2000 ve ETABS'taki PMM oranıyla aynı fikir).
+Talep noktası $P=(N_d,M_d)$ eğrinin içindeyse kesit yeterlidir. Kapasite oranı orijinden $P$'ye çizilen ışının eğriyi kestiği $Q$ noktasıyla ölçülür: $\text{D/C}=|OP|/|OQ|$ (ticari yapı analiz programlarındaki PMM oranıyla aynı fikir).
 
 ::: etkilesim kolon-nm
 {"b": 0.45, "h": 0.45, "rho": 0.01, "beton": "C30", "N": 380.4, "M": 89.13}
@@ -291,7 +291,7 @@ tasarim.kolon_kontrol_anlatimli(1200, 90, 60, 0.45, 0.45, 20.25, 0.05)
 --- kontrol
 r.veri["noktalar"][0]["iki_eksen_yontemi"] == "Bresler ters yük" and abs(r.veri["noktalar"][0]["N_rx_kN"] - 2795.26) < 0.05 and abs(r.veri["noktalar"][0]["N_ry_kN"] - 3214.47) < 0.05 and abs(r.veri["noktalar"][0]["N_r_kN"] - 2337.86) < 0.05 and abs(r.veri["noktalar"][0]["dc_iki_eksen"] - 0.51329) < 1e-4
 --- yorum
-Bresler formülü yüksek basınçta iyi sonuç verir; az basınçta tutucu ya da güvensiz olabilir, bu yüzden motor orada doğrusal moment toplamına geçer. TS 500'ün kendisi bu formülü vermez (md. 7.6.2.6); SAP2000 ve ETABS üç boyutlu PMM yüzeyini sayısal olarak kurar.
+Bresler formülü yüksek basınçta iyi sonuç verir; az basınçta tutucu ya da güvensiz olabilir, bu yüzden motor orada doğrusal moment toplamına geçer. TS 500'ün kendisi bu formülü vermez (md. 7.6.2.6); ticari yapı analiz programları üç boyutlu PMM yüzeyini sayısal olarak kurar.
 :::
 
 ::: ornek Bina motoru: tasarım sonucunu okumak
@@ -315,8 +315,8 @@ r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A1→A2/k2" and abs(r.ve
 Kirişlerin D/C'si 1'e yakındır çünkü donatı tasarlanır; asıl bilgi önerilen çubuklardadır. Şablon bütün elemanlarda D/C ≤ 1 verir (en büyük 0.998). Kolonda donatı verilmediği için $\rho=0.01$ varsayıldı ve belirleyen nokta en büyük basınç değil, az basınçlı deprem birleşimidir: zarfla yapılan kolon kontrolünün kaçırdığı durum. Tek elemanın anlatımlı tahkikini (N–M eğrisi ve bütün kombinasyon noktaları) `yapi.eleman_tasarim(r.ic, "kolon", 1)` verir.
 :::
 
-::: muhendislik SAP2000, ETABS ve kapasite tasarımı
-ETABS ve SAP2000'de betonarme için "TS 500-2000(R2018)" kodu seçilir; program kirişte her istasyonda zarftan üst ve alt donatı ile $A_{sw}/s$, kolonda üç boyutlu $N$–$M_2$–$M_3$ yüzeyi ve orijinden ışınla kapasite oranı verir, $e_{min}=15+0.03h$'yi de uygular. Bu uygulama aynı mantığı açık formüllerle gösterir. Gerçek deprem tasarımı bir adım daha ister: TBDY'nin **kapasite tasarımı** (güçlü kolon–zayıf kiriş, kapasite kesmesi, birleşim bölgesi). Buradaki sonuçlar bu yüzden ön boyutlandırmadır.
+::: muhendislik Yapı analiz programları ve kapasite tasarımı
+Yaygın yapı analiz programlarında betonarme için TS 500 tasarım kodu seçilir; program kirişte her istasyonda zarftan üst ve alt donatı ile $A_{sw}/s$, kolonda üç boyutlu $N$–$M_2$–$M_3$ yüzeyi ve orijinden ışınla kapasite oranı verir, $e_{min}=15+0.03h$'yi de uygular. Bu uygulama aynı mantığı açık formüllerle gösterir. Gerçek deprem tasarımı bir adım daha ister: TBDY'nin **kapasite tasarımı** (güçlü kolon–zayıf kiriş, kapasite kesmesi, birleşim bölgesi). Buradaki sonuçlar bu yüzden ön boyutlandırmadır.
 
 Tarihi yığma köprülerde betonarme kesit hesabı yoktur ama aynı düşünce geçerlidir: kemer kesitindeki $(N,M)$ çifti, çekme taşımayan malzemenin etkileşim bölgesinde kalmalıdır (bileşkenin kesit çekirdeğinde ya da kesit içinde kalması). OMA ile güncellenen modelden alınan iç kuvvetler bu denetimin girdisidir.
 :::
