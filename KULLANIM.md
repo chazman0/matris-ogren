@@ -302,7 +302,8 @@ Hazır örnekler: `kiris-elastik-zemin`, `cerceve-iki-katli`, `cerceve-elastik-m
 
 Web uygulamasında aynı çözücü **Sonlu eleman** sayfasında çalışır (3B modeller için bakış açısı kaydırıcıları, yay /
 çökme tabloları ve altı diyagram düğmesi vardır); 11–20 numaralı dersler (yay, çubuk, kafes, birleştirme, sınır koşulu,
-kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır.
+kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır;
+21. ders (yük akışı: döşemeden zemine) aynı zinciri bina ölçeğinde `yapi.py` ile sürdürür (toplam 19 ders).
 
 ### 3.9 Bina analizi ve yük akışı (yapi.py)
 
