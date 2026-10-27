@@ -32,10 +32,14 @@ Kullanım: çelikte von Mises / F_y; betonarmede tasarım kapasiteleriyle |M|/M_
 Döşemeler (sonlu eleman değildir): 45° yük payı poligonları (TS 500 md. 11.4.3 dağıtımıyla aynı) ve dört kenarı basit
 mesnetli dikdörtgen plak için çift Fourier (Navier) serisi: w, m_x, m_y (ν = 0,2; sürekli kenar etkisi yok sayılır).
 
-Dışa açık yardımcılar (köprü ``bina_alan`` ve eleman bilgi paneli için):
-``eleman_alanlari``, ``panel_alanlari``, ``alan_paketi``, ``durum_katsayilari``, ``durum_listesi``, ``fe_elemanlari``,
-``eleman_kaydi``, ``istasyon_kuvvetleri``, ``uc_yer_degistirmeleri``, ``navier_plak``, ``yuk_payi_poligonlari``,
-çekirdek: ``sehim_egrisi``, ``eksenel_yer_degistirme``, ``hermite_ara_deger``.
+Radye / mütemadi temel (temel modülü çözüm paketine taban basıncı metası koyduysa): Winkler düğüm oturması w = −u_Z ve
+taban basıncı p = k0·w, düğümler ızgaraya dizilerek (``radye_alani``).
+
+Dışa açık yardımcılar (köprü ``bina_alan`` ve eleman bilgi paneli ``bina_eleman_bilgi`` için):
+``eleman_alanlari``, ``panel_alanlari``, ``radye_alani``, ``alan_paketi``, ``durum_katsayilari``, ``durum_listesi``,
+``fe_elemanlari``, ``eleman_kaydi``, ``istasyon_kuvvetleri``, ``uc_yer_degistirmeleri``, ``eleman_bilgi_alani``,
+``kesit_geometrisi``, ``lif_gerilmesi``, ``navier_plak``, ``yuk_payi_poligonlari``, ``poligon_alani``;
+çekirdek: ``cubuk_alani``, ``sehim_egrisi``, ``eksenel_yer_degistirme``, ``hermite_ara_deger``, ``istasyon_izgarasi``.
 """
 from __future__ import annotations
 
@@ -467,11 +471,25 @@ def _gamma_matrisi(pa, liste):
 # ============================================================================
 # Türetilmiş büyüklükler: gerilme, kesme, von Mises, kullanım
 # ============================================================================
-def _kapasite(kay, bas):
+def _kapasite(kay, bas, uc=None):
+    """Tasarım kontrol satırından kapasite (ad ``bas`` ile başlar; ``uc`` verilirse adında o uç geçen satır)."""
     for k in (kay or {}).get("kontroller") or []:
-        if str(k.get("ad", "")).startswith(bas) and k.get("kapasite"):
+        ad = str(k.get("ad", ""))
+        if ad.startswith(bas) and k.get("kapasite") and (uc is None or ad.endswith(uc)):
             return float(k["kapasite"])
     return None
+
+
+def _kolon_kapasitesi(kay, bas, x):
+    """Kolon M_r(x): alt (x = 0) ve üst (x = L) uç kapasiteleri arasında doğrusal (her biri o ucun belirleyici
+    kombinasyonundaki N ile); tek uç biliniyorsa sabit."""
+    alt, ust = _kapasite(kay, bas, "alt uç"), _kapasite(kay, bas, "üst uç")
+    if alt is None and ust is None:
+        tek = _kapasite(kay, bas)
+        return None if tek is None else np.full_like(x, tek)
+    alt, ust = alt if alt is not None else ust, ust if ust is not None else alt
+    L = float(x[-1]) if len(x) and x[-1] > 0 else 1.0
+    return alt + (ust - alt) * (np.asarray(x, dtype=float) / L)
 
 
 def _turet(F, el):
@@ -502,10 +520,10 @@ def _turet(F, el):
                 if Vr:
                     kul = np.maximum(kul, np.abs(Vy) / Vr)
         elif el.get("tur") == "kolon":
-            Mrx, Mry = _kapasite(kay, "N–Mx"), _kapasite(kay, "N–My")
-            if Mrx and Mry:
+            Mrx, Mry = _kolon_kapasitesi(kay, "N–Mx", el["x"]), _kolon_kapasitesi(kay, "N–My", el["x"])
+            if Mrx is not None and Mry is not None and np.all(Mrx > 0) and np.all(Mry > 0):
                 lam = el["lam"]
-                MX = My * lam[1][0] + Mz * lam[2][0]
+                MX = My * lam[1][0] + Mz * lam[2][0]      # bina X / Y eksenleri etrafında (yon takası lam ile kendiliğinden)
                 MY = My * lam[1][1] + Mz * lam[2][1]
                 kul = np.abs(MX) / Mrx + np.abs(MY) / Mry
     return smax, smin, tau, vm, kul
@@ -525,13 +543,18 @@ def _yuvarla(a, b=5):
 
 
 def _ekstremum(seri, x):
+    """{deger, x} = en büyük mutlak değer ve yeri; ayrıca "max" / "min" {deger, x} (işaretli büyüklükler için)."""
     if seri is None:
         return None
     a = np.asarray(seri, dtype=float)
-    if not a.size:
+    if not a.size or not np.all(np.isfinite(a)):
         return None
-    i = int(np.argmax(np.abs(a)))
-    return {"deger": float(f"{a[i]:.5g}"), "x": float(f"{x[i]:.5g}")}
+
+    def kay(i):
+        return {"deger": float(f"{a[i]:.5g}"), "x": float(f"{x[i]:.5g}")}
+    out = kay(int(np.argmax(np.abs(a))))
+    out["max"], out["min"] = kay(int(np.argmax(a))), kay(int(np.argmin(a)))
+    return out
 
 
 # ============================================================================
@@ -639,6 +662,7 @@ def eleman_alanlari(ic, durum, *, istasyon=ISTASYON, katsayilar=None, elemanlar=
                            + " ayrı ayrı alınır (farklı kombinasyonlardan gelebilir); |u|, τ, von Mises ve kullanımda her zaman en büyük.")
     if paneller and istenen is None:
         out["paneller"] = panel_alanlari(ic, durum, katsayilar=katsayilar)
+        out["radye"] = radye_alani(ic, durum, katsayilar=katsayilar)
     return out
 
 
@@ -771,16 +795,88 @@ def panel_alanlari(ic, durum, *, katsayilar=None, nx=PLAK_IZGARA, ny=PLAK_IZGARA
             poli = pol.get(p.get("kenar_ad"), [])
             paylar.append({"kiris": p.get("kiris_no"), "eleman": fe, "kenar": p.get("kenar_ad"), "sekil": p.get("sekil"),
                            "poligon": [[round(a, 6), round(b, 6)] for a, b in poli], "alan": round(poligon_alani(poli), 6) if poli else 0.0})
+        ls = min(x1 - x0, y1 - y0)
+        mx_e, my_e, w_e = float(np.max(np.abs(pl["mx"]))), float(np.max(np.abs(pl["my"]))), float(np.max(np.abs(pl["w"])))
+        qls2 = abs(q) * ls * ls
         out.append({"no": d["no"], "kat": d["kat"], "adres": d.get("adres"), "z": z, "tip": d.get("tip"),
                     "kose": [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]],
                     "izgara": {"nx": nx, "ny": ny, "x": _yuvarla(pl["x"] + x0, 6), "y": _yuvarla(pl["y"] + y0, 6),
                                "w": _yuvarla(pl["w"]), "mx": _yuvarla(pl["mx"]), "my": _yuvarla(pl["my"]), "q": q, "D": Dp,
                                "t": t, "E": E, "nu": PLAK_NU},
+                    "en_buyuk": {"w": float(f"{w_e:.5g}"), "mx": float(f"{mx_e:.5g}"), "my": float(f"{my_e:.5g}")},
+                    # karşılaştırma için basit mesnetli plak katsayıları α = m / (q·l_s²) (TS 500 Denk. 11.3 biçimi m_d = α p_d l_sn²)
+                    "alfa": ({"ls": ls, "x": float(f"{mx_e / qls2:.4g}"), "y": float(f"{my_e / qls2:.4g}")} if qls2 > 0 else None),
                     "yuk_payi": paylar,
-                    "not": "Yaklaşık plak çözümü: dört kenar basit mesnetli (Navier serisi); sürekli kenar etkisi yok sayılır — "
-                           "TS 500 md. 11.4 moment katsayıları sürekli kenarlarda mesnet momenti ve daha küçük açıklık momenti verir. "
-                           "Kirişlere aktarım 45° yük payı bölgeleriyle (renkli poligonlar) yapılır."})
+                    "not": "Yaklaşık plak çözümü: dört kenar basit mesnetli (Navier serisi, ν = 0,2); sürekli kenar etkisi yok "
+                           "sayılır. TS 500 md. 11.4.3 (Denk. 11.3, m_d = α·p_d·l_sn², α Çizelge 11.1) sürekli kenarlarda mesnet "
+                           "momenti ve daha küçük açıklık momenti verir; buradaki α = m/(q·l_s²) dört kenarı basit mesnetli üst "
+                           "sınır karşılaştırmasıdır. Kirişlere aktarım 45° yük payı bölgeleriyle (renkli poligonlar) yapılır."})
     return out
+
+
+def _radye_meta(ic):
+    """Temel modülü (mütemadi/radye) çözüm paketine taban basıncı metası koyduysa: (tip, k0, [(no, X, Y)], q_em)."""
+    A = ic.get("alan") or {}
+    B = A.get("B")
+    tem = getattr(B, "temeller", None) or {}
+    tip = tem.get("tip") if isinstance(tem, dict) else None
+    meta = ic.get("temel")
+    k0 = dug = None
+    if isinstance(meta, dict) and meta.get("dugumler"):
+        k0, dug = meta.get("k0"), meta["dugumler"]
+    else:
+        ti = (A.get("ag") or {}).get("temel")
+        if ti is not None and getattr(ti, "dugumler", None):
+            k0 = getattr(ti, "k0", None)
+            dug = [(r["no"], r["X"], r["Y"]) for r in ti.dugumler]
+    if not dug or not k0:
+        return None
+    q_em = ((tem.get("zemin") or {}).get("q_em")) if isinstance(tem, dict) else None
+    return tip, float(k0), [(int(a), float(x), float(y)) for a, x, y in dug], q_em
+
+
+def radye_alani(ic, durum, *, katsayilar=None):
+    """§16.2 (c) Radye (ve mütemadi temel) Winkler taban basıncı ve oturması: temel düğümlerinde w = −u_Z, p = k0·w
+    (basınç +). Radyede düğümler bir ızgaraya dizilir (eksik hücre None). Temel modülü yoksa None."""
+    _ic_kontrol(ic)
+    meta = _radye_meta(ic)
+    if meta is None:
+        return None
+    tip, k0, dug, q_em = meta
+    pa = alan_paketi(ic)
+    liste = durum_katsayilari(ic, durum, katsayilar)
+    G = _gamma_matrisi(pa, liste)
+    d_idx = {no: i for i, no in enumerate(ic["paket"].dugum_no)}
+    sec = [(no, X, Y) for no, X, Y in dug if no in d_idx]
+    if not sec:
+        return None
+    uZ = np.tensordot(G, pa["DUG"][:, [d_idx[no] for no, _, _ in sec], 2], axes=(1, 0))      # (c, n)
+    w = -uZ
+    if len(liste) > 1:
+        w = w.min(axis=0) if str(durum) == "zarf-" else w.max(axis=0)
+    else:
+        w = w[0]
+    p = k0 * w
+    xs = sorted({round(X, 6) for _, X, _ in sec})
+    ys = sorted({round(Y, 6) for _, _, Y in sec})
+    ix, iy = {v: i for i, v in enumerate(xs)}, {v: i for i, v in enumerate(ys)}
+    W = [[None] * len(xs) for _ in ys]
+    Pm = [[None] * len(xs) for _ in ys]
+    for (no, X, Y), wi, pi in zip(sec, w, p):
+        W[iy[round(Y, 6)]][ix[round(X, 6)]] = float(f"{wi:.5g}")
+        Pm[iy[round(Y, 6)]][ix[round(X, 6)]] = float(f"{pi:.5g}")
+    z = 0.0
+    B = ic["alan"]["B"]
+    try:
+        z = float(B.kat[0]["kot"])
+    except (AttributeError, KeyError, IndexError, TypeError):
+        pass
+    return {"tip": tip, "k0": k0, "q_em": q_em, "z": z, "x": xs, "y": ys, "w": W, "p": Pm,
+            "dugumler": [{"no": no, "X": X, "Y": Y, "w": float(f"{wi:.5g}"), "p": float(f"{pi:.5g}")} for (no, X, Y), wi, pi in zip(sec, w, p)],
+            "p_maks": float(np.max(p)), "p_min": float(np.min(p)), "w_maks": float(np.max(w)),
+            "birim": {"w": "m", "p": "kN/m²"},
+            "not": "Winkler zemini: p = k0·w (düğüm oturması w, yatak katsayısı k0); basınç +, çekme (−) zeminde oluşmaz — "
+                   "negatif değer temelin kalktığını gösterir (doğrusal modelde gösterim)."}
 
 
 # ============================================================================
@@ -842,3 +938,28 @@ def uc_yer_degistirmeleri(ic, fe_no, durum, katsayilar=None):
         out[uc] = {"dugum": dn, "u": [float(a) for a in v[:3]], "r": [float(a) for a in v[3:]],
                    "u_yerel": [float(a) for a in lam @ v[:3]], "r_yerel": [float(a) for a in lam @ v[3:]]}
     return out
+
+
+def eleman_bilgi_alani(ic, tur, no, durum, *, katsayilar=None, istasyon=ISTASYON):
+    """Bina elemanı (kolon / kiriş: bütün FE parçaları; 'fe': tek FE eleman) için alan özeti (bilgi paneli,
+    ``bina_eleman_bilgi``): {"tur", "no", "durum", "fe": [no], "parcalar": [eleman_alanlari kaydı], "uclar": [uç yer
+    değiştirmeleri] (zarfta None), "en_buyuk": {büyüklük: {deger, fe, x}}}."""
+    fe = [e["no"] for e in fe_elemanlari(ic, tur, no)]
+    al = eleman_alanlari(ic, durum, katsayilar=katsayilar, elemanlar=fe, paneller=False, istasyon=istasyon)
+    zarf = str(durum).startswith("zarf")
+    en = {}
+    for kay in al["elemanlar"]:
+        for ad, ek in (kay.get("ekstremum") or {}).items():
+            if ek and (ad not in en or abs(ek["deger"]) > abs(en[ad]["deger"])):
+                en[ad] = {"deger": ek["deger"], "x": ek["x"], "fe": kay["no"]}
+    return {"tur": tur, "no": no, "durum": al["durum"], "fe": fe, "parcalar": al["elemanlar"], "birim": al["birim"],
+            "uclar": None if zarf else [uc_yer_degistirmeleri(ic, f, durum, katsayilar) for f in fe],
+            "en_buyuk": en, "not": al.get("not"), "isaret": ISARET}
+
+
+def lif_gerilmesi(kesit, N, My, Mz, y, z):
+    """Doğrusal elastik lif gerilmesi (MPa, çekme +): σ = N/A − Mz·y/Iz − My·z/Iy; y, z yerel (m), kesit ağırlık merkezinden.
+    Mz > 0 alt (−y′) lifi, My > 0 −z′ lifini çeker (motorun işaret kuralı; testle kilitli). İstemci (isi_haritasi.js)
+    aynı formülü kullanır."""
+    A, Iy, Iz = float(kesit["A"]), float(kesit["Iy"]), float(kesit["Iz"])
+    return (N / A - Mz * np.asarray(y, dtype=float) / Iz - My * np.asarray(z, dtype=float) / Iy) / 1000.0

@@ -44,6 +44,13 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
                     kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
                     "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
+  "bina_alan":      girdi {"cozum_kimligi" | "bina", "durum" (yük durumu | kombinasyon adı | "zarf+" | "zarf-"), "istasyon"? (2…61,
+                    varsayılan 21), "katsayilar"? ({"G": 1.2, ...} serbest birleşim), "elemanlar"? ([FE no] yalnız bunlar; döşemesiz)}
+                    → {"alan": alan.eleman_alanlari (§16.1: durum, birim, elemanlar [istasyonlarda N, Vy, Vz, T, My, Mz, eğri u,
+                    σ_maks/σ_min, τ, von Mises, kullanım, ekstremum], dugumler, aralik, secenekler, not) + "paneller" (§16.2 Navier
+                    plak ızgarası w/mx/my ve 45° yük payı poligonları) + "radye" (temel modülü varsa Winkler basıncı), "cozum_kimligi",
+                    "hata": null}. Önbellekteki çözümden (yeniden çözmez): kombinasyon = durumların katsayılı toplamı, zarf =
+                    istasyon bazında en büyük / en küçük. alan.py yoksa öğretici hata.
 """
 from __future__ import annotations
 
@@ -287,6 +294,14 @@ def _tasarim_modulu():
         return None
 
 
+def _alan_modulu():
+    """alan.py (ısı haritası alanları: çubuk boyunca iç kuvvet, gerilme, eğri yer değiştirme; döşeme plakları) varsa; yoksa None."""
+    try:
+        return importlib.import_module("alan")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
@@ -415,10 +430,10 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon", "bina_eleman_tasarim")
+# "bina_kombinasyon", "bina_eleman_tasarim", "bina_alan")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim"}
+                 "bina_eleman_tasarim", "bina_alan"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -512,7 +527,43 @@ def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
             "hata": None}
 
 
+ALAN_ISTASYON = (2, 61)   # bina_alan istasyon sayısı sınırları
+
+
+def _bina_alan_yaniti(girdi: dict) -> dict:
+    """Isı haritası alanı (alan.py §16): önbellekteki çözümden durum / kombinasyon / zarf için eleman ve döşeme alanları."""
+    yapi = _yapi_zorunlu()
+    alan = _alan_modulu()
+    if alan is None:
+        raise mo.MatrisHatasi("Isı haritası modülü (alan.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    durum = str(girdi.get("durum") or "").strip()
+    if not durum:
+        raise mo.MatrisHatasi("Durum (durum) boş: bir yük durumu (G, Q…), kombinasyon adı (örn. \"1.4G+1.6Q\") ya da "
+                              "\"zarf+\" / \"zarf-\" verin.")
+    istasyon = girdi.get("istasyon")
+    try:
+        istasyon = alan.ISTASYON if istasyon is None else int(istasyon)
+    except (TypeError, ValueError):
+        raise mo.MatrisHatasi(f"istasyon bir tamsayı olmalı ({ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]}).") from None
+    if not ALAN_ISTASYON[0] <= istasyon <= ALAN_ISTASYON[1]:
+        raise mo.MatrisHatasi(f"istasyon {ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]} arasında olmalı (verilen {istasyon}).")
+    katsayilar = girdi.get("katsayilar")
+    if katsayilar is not None and not isinstance(katsayilar, dict):
+        raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    elemanlar = girdi.get("elemanlar")
+    if elemanlar is not None:
+        if not isinstance(elemanlar, list):
+            raise mo.MatrisHatasi("elemanlar bir FE eleman numarası listesi olmalı: [12, 13].")
+        elemanlar = _sayi_listesi(elemanlar)
+    ic = _bina_ic(yapi, girdi)
+    sonuc = alan.eleman_alanlari(ic, durum, istasyon=istasyon, katsayilar=katsayilar, elemanlar=elemanlar,
+                                 paneller=elemanlar is None)
+    return {"alan": _sonlu_sayilar(sonuc), "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_alan":
+        return _bina_alan_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":
