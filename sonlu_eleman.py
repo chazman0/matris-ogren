@@ -58,7 +58,7 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
   eksenleri X, Y, Z (Z yukarı) değildir, yapı modülü çevirir). Şiddet ``q`` ya da ``q1, q2`` (+ = eksen yönü; öz ağırlık
   için "gy" ile q < 0) eleman boyu başınadır ve λ ile yerel x′, y′, z′ bileşenlerine ayrılır: q_yerel = q·λ·ĝ.
   ``"izdusum": true`` ise q, elemanın yük doğrultusuna dik düzleme izdüşüm boyu L_p = L·√(1 − (x̂′·ĝ)²) başınadır
-  (SAP2000 "projected"; düşey yükte yatay izdüşüm, kar/hareketli yük): eleman boyu başına şiddet q·L_p/L = q·cos θ
+  (izdüşüm boyu kuralı; düşey yükte yatay izdüşüm, kar/hareketli yük): eleman boyu başına şiddet q·L_p/L = q·cos θ
   (θ elemanın yatayla açısı), toplam yük q·L_p. Düzlem modelde "gz" ve kirişte "gx" (eksenel) kullanılamaz.
 * Uç serbestlikleri (``serbest``; kiriş, çerçeve, uzay çerçeve elemanında): ``{"i": [...], "j": [...]}`` yerel iç kuvvet
   adları — uzay çerçeve "N", "Vy", "Vz", "T", "My", "Mz"; düzlem çerçeve "N", "V", "M"; kiriş "V", "M". Mafsal = My + Mz
@@ -66,7 +66,7 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
   sonra d_r = k_rr⁻¹ (f_r − k_rf d_f) geri kazanılır ve uç kuvvetleri tam elemanla f = k d − f_eq (serbest uçta o bileşen 0).
   Kesin (sympy) kipte de çalışır. Bir düğümde bütün elemanlar aynı dönmeyi serbest bırakırsa ve mesnet/yay yoksa K tekildir
   (mekanizma hatası, ipucuyla); k_rr tekilse (iki uçta N ya da T) eleman kendi içinde kararsızdır (öğretici hata).
-* Uzay çerçeve elemanında ``aci`` (derece; SAP2000 "local axis angle"): y′, z′ eksenleri x′ etrafında sağ el kuralıyla
+* Uzay çerçeve elemanında ``aci`` (derece; yerel eksen açısı): y′, z′ eksenleri x′ etrafında sağ el kuralıyla
   döndürülür (x′ izleyiciye bakarken saat yönünün tersine +): y″ = cos a·y′ + sin a·z′, z″ = −sin a·y′ + cos a·z′.
   aci = 90 → y″ = z′, z″ = −y′; I_y ile I_z'yi takas etmekle aynı global rijitlik. Öteki türlerde ``aci`` yok sayılır.
 * ``yalniz_cekme: true`` (kafes, kafes3b, cerceve, cerceve3b): se_coz ve coz_coklu bu çubukları etkin sayar
@@ -1568,7 +1568,7 @@ def _model_oku(model):
         M.uyarilar.append(
             f"Yalnız çekme çubukları var (eleman {', '.join(str(n) for n in ycs)}): bu çözüm DOĞRUSAL ÖN ÇÖZÜMDÜR, bütün "
             "çubuklar etkin sayıldı. Basınca düşen yalnız-çekme çubuğunu devre dışı bırakan doğrusal olmayan çözüm için "
-            "coz_yalniz_cekme kullanın (SAP2000 doğrusal olmayan durum: süperpozisyon geçersizdir; her yük birleşimi "
+            "coz_yalniz_cekme kullanın (doğrusal olmayan durum: süperpozisyon geçersizdir; her yük birleşimi "
             "ayrı ve yinelemeli çözülür).")
 
     # --- hesap modu ("hesap": "sayisal" anahtarı küçük modelde de numpy modunu zorlar) ---
@@ -1840,7 +1840,7 @@ def _lam3b(cx, cy, cz, sayisal, aci=0):
     """Uzay çerçeve yerel eksen matrisi λ (satırlar x', y', z'): y' elemanı içeren düşey düzlemde yukarı,
     z' = x' × y' yatay; düşey elemanda z' = Z (Kassimali kuralı).
 
-    ``aci`` (derece; SAP2000 "local axis angle"): y' ve z' x' ekseni etrafında sağ el kuralıyla aci kadar döndürülür
+    ``aci`` (derece; yerel eksen açısı): y' ve z' x' ekseni etrafında sağ el kuralıyla aci kadar döndürülür
     (x' izleyiciye bakarken saat yönünün tersine): y'' = cos a·y' + sin a·z', z'' = −sin a·y' + cos a·z'. aci = 90°
     → y'' = z', z'' = −y' (I_y ile I_z'nin takası ile aynı rijitlik)."""
     if sayisal:
@@ -3210,7 +3210,7 @@ def _adim_model(M, anl):
                   "ile küçültülür (4. adım).")
     if M.aci_var:
         anl.metin("**Yerel eksen açısı:** elemanın $y'$, $z'$ eksenleri $x'$ etrafında sağ el kuralıyla (x′ size bakarken "
-                  "saat yönünün tersine) verilen açı kadar döndürülür (SAP2000 *local axis angle*). 90° döndürmek, "
+                  "saat yönünün tersine) verilen açı kadar döndürülür (yerel eksen açısı). 90° döndürmek, "
                   "$I_y$ ile $I_z$'yi takas etmekle aynı rijitliği verir.")
     if M.zemin_var:
         anl.metin("**Elastik zemin (Winkler):** k_s verilen elemanlar zemine oturur; zemin, çökmeyle orantılı dağılı "
@@ -5938,7 +5938,7 @@ def _etkinlik_uygula(M, pasif):
 
 def coz_yalniz_cekme(model, yukler_listesi_ya_da_durumlar, *, en_fazla_yineleme=10, diyagram_nokta=11):
     """Yalnız çekme çubuklu (``"yalniz_cekme": true``; kafes, kafes3b, cerceve, cerceve3b) yapıyı her yük durumu için
-    AYRI AYRI ve yinelemeli çözer (doğrusal olmayan çözüm; SAP2000'deki "tension only" + nonlinear static durum gibi).
+    AYRI AYRI ve yinelemeli çözer (doğrusal olmayan çözüm: yalnız çekme çalışan çubuk + doğrusal olmayan statik durum).
 
     Her durumda: (1) bütün çubuklar etkinken çöz; (2) basınçta kalan (N < −tol) yalnız-çekme çubuklarını rijitlikten
     çıkar, devre dışı çubuklardan uzaması yeniden çekmeye dönenleri (N_sanal = EA/L·δ > tol) geri al; (3) etkin küme
