@@ -1,4 +1,5 @@
-"""docs/web_kopru.py bina işlemleri: bina_coz, bina_kutuphane, bina_sablonlar, bina_sablon, bina_yuk_yolu."""
+"""docs/web_kopru.py bina işlemleri: bina_coz, bina_kutuphane, bina_sablonlar, bina_sablon, bina_yuk_yolu, bina_deprem,
+bina_kombinasyon, bina_eleman_tasarim, bina_rapor."""
 from __future__ import annotations
 
 import importlib.util
@@ -34,7 +35,7 @@ def yanit(kopru):
 
 def test_islemler_tanimli(kopru):
     assert kopru.BINA_ISLEMLER == {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem",
-                                   "bina_kombinasyon", "bina_eleman_tasarim"}
+                                   "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor"}
     assert kopru._yapi_modulu() is not None
 
 
@@ -251,3 +252,44 @@ def test_bina_eleman_tasarim(kopru):
                          ({"cozum_kimligi": "bina-yok", "tur": "kolon", "no": 1}, "bellekte yok")):
         z = iste(kopru, "bina_eleman_tasarim", girdi)
         assert z["hata_turu"] == "girdi" and desen in z["hata"], z
+
+
+# ---------------------------------------------------------------------------
+# bina_rapor: statik hesap raporu (rapor.py), önbellekteki çözümden
+# ---------------------------------------------------------------------------
+def test_bina_rapor(kopru, monkeypatch):
+    kopru._BINA_ONBELLEK.clear()
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    kimlik = v["cozum_kimligi"]
+    assert kopru._BINA_ONBELLEK[kimlik]["veri"]["cozum_kimligi"] == kimlik    # rapor için çözüm verisi de saklanır
+
+    def cozme(*a, **k):
+        raise AssertionError("bina_rapor önbellekteki çözümü yeniden çözmemeli")
+
+    monkeypatch.setattr(yapi, "bina_coz", cozme)
+    secenek = {"proje": {"ad": "Deneme <Konut>", "il": "Ankara", "hazirlayan": "A. Yazar"}, "eleman_detay": "yok"}
+    y = iste(kopru, "bina_rapor", {"cozum_kimligi": kimlik, "secenek": secenek})
+    assert y["hata"] is None and set(y) == {"html", "dosya_adi", "cozum_kimligi", "hata"}
+    assert y["dosya_adi"] == "statik_rapor_deneme_konut.html" and y["cozum_kimligi"] == kimlik
+    h = y["html"]
+    assert h.startswith("<!DOCTYPE html>") and "Deneme &lt;Konut&gt;" in h and "A. Yazar" in h and "Ankara" in h
+    assert "Deprem parametreleri (TBDY 2018)" in h and "Ek B — Çubuk bağlantı tablosu" in h and kimlik in h
+    assert '<div class="eleman">' not in h and "eğitim amaçlıdır" in h
+    monkeypatch.undo()
+    # kimlik önbellekte yoksa model verilirse çözülür (ve önbelleğe girer); verilmezse öğretici hata
+    kopru._BINA_ONBELLEK.clear()
+    y = iste(kopru, "bina_rapor", {"cozum_kimligi": kimlik})
+    assert y["hata_turu"] == "girdi" and "bellekte yok" in y["hata"]
+    y = iste(kopru, "bina_rapor", {"bina": json.dumps(yapi.bina_sablon("celik-1kat-depo"))})
+    assert y["hata"] is None and "Çelik eleman kontrolleri" in y["html"] and "HEB 240" in y["html"]
+    assert y["cozum_kimligi"] in kopru._BINA_ONBELLEK
+    for girdi, desen in (({}, "boş"), ({"bina": b, "secenek": ["x"]}, "sözlük")):
+        y = iste(kopru, "bina_rapor", girdi)
+        assert y["hata_turu"] == "girdi" and desen in y["hata"], y
+
+
+def test_bina_rapor_rapor_modulu_yok(kopru, monkeypatch):
+    monkeypatch.setattr(kopru, "_rapor_modulu", lambda: None)
+    y = iste(kopru, "bina_rapor", {"bina": yapi.bina_sablon("betonarme-tek-aciklik")})
+    assert y["hata_turu"] == "girdi" and "rapor.py" in y["hata"]

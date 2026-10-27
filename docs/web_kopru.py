@@ -44,6 +44,12 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
                     kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
                     "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
+  "bina_rapor":     girdi {"cozum_kimligi" | "bina", "secenek"?} → {"html": tam, kendi içinde HTML statik hesap raporu (rapor.py;
+                    gömülü CSS, A4 yazdırma), "dosya_adi": "statik_rapor_<ad>.html", "cozum_kimligi", "hata": null}. Önbellekteki
+                    çözüm kullanılır (yeniden çözülmez); kimlik önbellekte yoksa "bina" anlatımsız çözülür. "secenek": {"proje": {ad, yer,
+                    il, ilce, ada, parsel, malik, hazirlayan, kontrol, tarih}, "bolumler": [1..14, "A", "B", "C", "metraj"],
+                    "eleman_detay": "kritik" | "hepsi" | "yok", "ek_tablolar": [TABLO...], "tablolar": [tablo adı...],
+                    "tablo_filtre": {ad: {"satirlar": [indeks...]}}}.
 """
 from __future__ import annotations
 
@@ -287,6 +293,14 @@ def _tasarim_modulu():
         return None
 
 
+def _rapor_modulu():
+    """rapor.py (statik hesap raporu) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("rapor")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
@@ -415,10 +429,10 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon", "bina_eleman_tasarim")
+# "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim"}
+                 "bina_eleman_tasarim", "bina_rapor"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -452,9 +466,13 @@ def _bina_girdisi(girdi: dict):
 
 def _bina_coz_yaniti(girdi: dict) -> dict:
     yapi = _yapi_zorunlu()
-    r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
-    _onbellege_koy(getattr(r, "ic", None) or {})
+    bina = _bina_girdisi(girdi)
+    r = yapi.bina_coz(bina, goster="yok")
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
+    ic = getattr(r, "ic", None)
+    if isinstance(ic, dict):        # rapor (bina_rapor) yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
+        ic["veri"], ic["bina"] = veri, bina
+        _onbellege_koy(ic)
     return {
         "ad": "bina", "bloklar": _bloklar(r.anlatim),
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
@@ -485,8 +503,10 @@ def _bina_ic(yapi, girdi: dict) -> dict:
     if ic is not None:
         _BINA_ONBELLEK.move_to_end(str(kimlik))
     elif girdi.get("bina") is not None:
-        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        bina = _bina_girdisi(girdi)
+        r = yapi.bina_coz(bina, goster="yok", anlat=False)
         ic = r.ic
+        ic["veri"], ic["bina"] = _sonlu_sayilar(r.veri), bina
         _onbellege_koy(ic)
     else:
         raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
@@ -512,7 +532,38 @@ def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
             "hata": None}
 
 
+def _bina_rapor_yaniti(girdi: dict) -> dict:
+    """Statik hesap raporu (rapor.py): önbellekteki çözümün verisinden (yeniden çözmeden); kimlik önbellekte yoksa girdi.bina
+    anlatımsız çözülür. Yanıt: {"html", "dosya_adi", "cozum_kimligi", "hata"}."""
+    yapi = _yapi_zorunlu()
+    rapor = _rapor_modulu()
+    if rapor is None:
+        raise mo.MatrisHatasi("Rapor modülü (rapor.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    secenek = girdi.get("secenek")
+    if secenek is not None and not isinstance(secenek, dict):
+        raise mo.MatrisHatasi("secenek bir sözlük olmalı: {\"proje\": {\"ad\": ...}, \"eleman_detay\": \"kritik\"}.")
+    if not girdi.get("cozum_kimligi") and girdi.get("bina") is None:
+        raise mo.MatrisHatasi("Rapor girdisi boş: önce binayı çözün ve çözüm kimliğini (cozum_kimligi) ya da bina modelini (bina) "
+                              "gönderin.")
+    ic = _bina_ic(yapi, girdi)
+    veri = ic.get("veri")
+    if veri is None:                 # önbellekteki eski paket (veri saklanmamış): model verilmişse yeniden çöz
+        if girdi.get("bina") is None:
+            raise mo.MatrisHatasi("Bu çözümün verisi bellekte yok; binayı yeniden çözün ya da girdide 'bina' modelini de gönderin.")
+        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        ic = r.ic
+        ic["veri"], ic["bina"] = _sonlu_sayilar(r.veri), girdi.get("bina")
+        _onbellege_koy(ic)
+        veri = ic["veri"]
+    bina = girdi.get("bina") if girdi.get("bina") is not None else ic.get("bina")
+    html = rapor.statik_rapor(bina if bina is not None else {}, veri, secenek=secenek)
+    return {"html": html, "dosya_adi": rapor.dosya_adi(bina if bina is not None else {}, veri, secenek),
+            "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_rapor":
+        return _bina_rapor_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":
