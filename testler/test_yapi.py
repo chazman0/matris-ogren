@@ -1290,7 +1290,7 @@ def test_anlatim_deprem_bolumleri():
     r = yapi.bina_coz(hepsi_acik("betonarme-3kat-3x3", SS_DD3=0.4, S1_DD3=0.12), goster="yok")
     metin = "\n".join(str(i) for _, i, _ in r.anlatim.bloklar)
     for parca in ("load pattern", "Tablo 2.1", "Rayleigh", "T_pA", "V_tE", "M_b,x", "efendi", "η_bi", "θ_II", "Tablo 4.4",
-                  "SAP2000 bir kombinasyonu yeniden", "G+Q+0.2S+EX++0.3EY++0.3EZ", "(2/3)·S_DS", "λ = S_ae"):
+                  "programları bir kombinasyonu yeniden", "G+Q+0.2S+EX++0.3EY++0.3EZ", "(2/3)·S_DS", "λ = S_ae"):
         assert parca in metin, parca
     semalar = [i for t, i, _ in r.anlatim.bloklar if t == "sema"]
     basliklar = " ".join(k["baslik"] for s in semalar for k in s["kareler"])

@@ -16,6 +16,7 @@ import contextlib
 import copy
 import io
 import json
+import math
 import re
 import time
 from collections import defaultdict
@@ -109,8 +110,9 @@ def _feq_parcali(parcalar, L):
     return f
 
 
-def _lam3b(cx, cy, cz):
-    """Yerel eksenler vektörel çarpımla: z' = x' × Y, y' = z' × x'; düşeyde z' = Z."""
+def _lam3b(cx, cy, cz, aci=0.0):
+    """Yerel eksenler vektörel çarpımla: z' = x' × Y, y' = z' × x'; düşeyde z' = Z. aci (derece): y', z' x' etrafında
+    Rodrigues dönmesiyle (sağ el) döndürülür."""
     xp = np.array([cx, cy, cz])
     zp = np.cross(xp, [0.0, 1.0, 0.0])
     if np.linalg.norm(zp) < 1e-9:
@@ -118,7 +120,47 @@ def _lam3b(cx, cy, cz):
     else:
         zp = zp / np.linalg.norm(zp)
     yp = np.cross(zp, xp)
+    if aci:
+        a = np.radians(aci)
+        def don(v):   # Rodrigues: v cos a + (k × v) sin a + k (k·v)(1 − cos a), k = x'
+            return v * np.cos(a) + np.cross(xp, v) * np.sin(a) + xp * (xp @ v) * (1 - np.cos(a))
+        yp, zp = don(yp), don(zp)
     return np.vstack([xp, yp, zp])
+
+
+_SERBEST_REF = {"kiris": {"V": 0, "M": 1}, "cerceve": {"N": 0, "V": 1, "M": 2},
+                "cerceve3b": {"N": 0, "Vy": 1, "Vz": 2, "T": 3, "My": 4, "Mz": 5}}
+_GYON = {"gx": 0, "gy": 1, "gz": 2}
+
+
+def _yerel_parcalar(kayitlar, L, lam):
+    """Bir elemanın yayılı yük kayıtları → (px, py, pz) yerel x', y', z' parçaları. Global yönlü kayıt ("yon": gx/gy/gz)
+    λ satırlarıyla ayrıştırılır; "izdusum" ise şiddet √(1 − (x'·ĝ)²) ile çarpılır."""
+    px, py, pz = [], [], []
+    for y in kayitlar:
+        if y.get("yon"):
+            g = np.zeros(3)
+            g[_GYON[y["yon"]]] = 1.0
+            bil = lam @ g
+            c = np.sqrt(1 - bil[0] ** 2) if y.get("izdusum") else 1.0
+            for liste, b in zip((px, py, pz), bil):
+                for q1, q2, x1, x2 in _parcalar([y], L, "q1", "q2", "q"):
+                    if abs(b) > 1e-14:
+                        liste.append((q1 * c * b, q2 * c * b, x1, x2))
+        else:
+            py += _parcalar([y], L, "q1", "q2", "q")
+            pz += _parcalar([y], L, "qz1", "qz2", "qz")
+            px += _parcalar([y], L, "qx1", "qx2", "qx")
+    return px, py, pz
+
+
+def _feq_eksenel_ref(parcalar, L):
+    """Eksenel yük için Σ ∫ [1 − x/L, x/L] q dx (Gauss; çözücüden bağımsız)."""
+    f = np.zeros(2)
+    for q1, q2, x1, x2 in parcalar:
+        D = x2 - x1
+        f = f + _gauss_integral(lambda t: (q1 + (q2 - q1) * t / D) * np.array([1 - (x1 + t) / L, (x1 + t) / L]), D)
+    return f
 
 
 def _cerceve3b_k(EA, GJ, EIy, EIz, L):
@@ -174,8 +216,14 @@ def referans(m):
         dx, dy, dz = xyz[b] - xyz[a]
         L = float(np.sqrt(dx * dx + dy * dy + dz * dz))
         c, s = dx / L, dy / L
-        py = _parcalar(kayitlar.get(e["no"], []), L, "q1", "q2", "q")
-        pz = _parcalar(kayitlar.get(e["no"], []), L, "qz1", "qz2", "qz")
+        if tip == "cerceve3b":
+            lam = _lam3b(dx / L, dy / L, dz / L, float(e.get("aci") or 0))
+        elif tip == "kiris":
+            lam = np.eye(3)
+        else:
+            lam = np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]])
+        px, py, pz = _yerel_parcalar(kayitlar.get(e["no"], []), L, lam)
+        fx = _feq_eksenel_ref(px, L)
         ks = float(e.get("zemin") or 0)
         EA = float(e["E"]) * float(e["A"]) if "A" in e and "E" in e else 0.0
         if tip == "yay":
@@ -203,19 +251,29 @@ def referans(m):
             t3 = np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]])
             T = np.block([[t3, np.zeros((3, 3))], [np.zeros((3, 3)), t3]])
             fq = _feq_parcali(py, L)
-            feq = np.array([0, fq[0], fq[1], 0, fq[2], fq[3]])
+            feq = np.array([fx[0], fq[0], fq[1], fx[1], fq[2], fq[3]])
         else:
             E = float(e["E"])
             kl = _cerceve3b_k(EA, float(e["G"]) * float(e["J"]), E * float(e["Iy"]), E * float(e["Iz"]), L)
-            lam = _lam3b(dx / L, dy / L, dz / L)
             T = np.kron(np.eye(4), lam)
             fq, fz = _feq_parcali(py, L), _feq_parcali(pz, L)
-            feq = np.array([0, fq[0], fz[0], 0, -fz[1], fq[1], 0, fq[2], fz[2], 0, -fz[3], fq[3]])
+            feq = np.array([fx[0], fq[0], fz[0], 0, -fz[1], fq[1], fx[1], fq[2], fz[2], 0, -fz[3], fq[3]])
         dofs = [d * a + j for j in range(d)] + [d * b + j for j in range(d)]
-        ke = T.T @ kl @ T
+        # uç serbestlikleri: yoğunlaştırma (bağımsız yazım: ters matris açıkça)
+        r = sorted(k * d + _SERBEST_REF[tip][ad] for k, uc in enumerate(("i", "j"))
+                   for ad in (e.get("serbest") or {}).get(uc, []))
+        kc, fc = kl, feq
+        if r:
+            f_ = [i for i in range(len(feq)) if i not in r]
+            Kinv = np.linalg.inv(kl[np.ix_(r, r)])
+            kc = np.zeros_like(kl)
+            kc[np.ix_(f_, f_)] = kl[np.ix_(f_, f_)] - kl[np.ix_(f_, r)] @ Kinv @ kl[np.ix_(r, f_)]
+            fc = np.zeros_like(feq)
+            fc[f_] = feq[f_] - kl[np.ix_(f_, r)] @ Kinv @ feq[r]
+        ke = T.T @ kc @ T
         K[np.ix_(dofs, dofs)] += ke
-        F[dofs] += T.T @ feq
-        eleman_verisi.append((kl, T, dofs, feq, c, s, EA, L))
+        F[dofs] += T.T @ fc
+        eleman_verisi.append((kl, T, dofs, feq, c, s, EA, L, r))
     for y in m.get("yukler", []):
         i = sira[y["dugum"]]
         for ad, j in _YUK[tip].items():
@@ -243,8 +301,12 @@ def referans(m):
     u[serbest] = np.linalg.solve(K[np.ix_(serbest, serbest)], sag)
     Rt = K @ u - F
     uc = []
-    for kl, T, dofs, feq, c, s, EA, L in eleman_verisi:
-        f = kl @ (T @ u[dofs]) - feq
+    for kl, T, dofs, feq, c, s, EA, L, r in eleman_verisi:
+        dl = T @ u[dofs]
+        if r:   # serbest bırakılan SD'nin yer değiştirmesi: k_rf d_f + k_rr d_r = f_r
+            f_ = [i for i in range(len(dl)) if i not in r]
+            dl[r] = np.linalg.solve(kl[np.ix_(r, r)], feq[r] - kl[np.ix_(r, f_)] @ dl[f_])
+        f = kl @ dl - feq
         if tip in ("kafes", "kafes3b"):
             # çubuk ekseni yönündeki birim vektör: global uç kuvvetinin (j ucu) eksene izdüşümü = N
             yon = np.array([c, s]) if tip == "kafes" else (xyz[dofs[d] // d] - xyz[dofs[0] // d]) / L
@@ -1704,7 +1766,9 @@ def test_coz_coklu_se_coz_ile_ayni(ad):
     c = se.coz_coklu(m, {"A": durum}, diyagram_nokta=21)
     assert list(c) == ["A"]
     k = c["A"]
-    assert set(k) == {"u", "F", "tepkiler", "elemanlar", "denge", "yaylar", "n", "serbest_sd", "diyafram_kuvvetleri"}
+    assert set(k) == {"u", "F", "tepkiler", "elemanlar", "denge", "yaylar", "n", "serbest_sd", "diyafram_kuvvetleri",
+                      "uyarilar"}
+    assert k["uyarilar"] == []
     assert k["n"] == v["sd_sayisi"] == len(k["u"]) and k["serbest_sd"] == v["serbest_sd"] and k["diyafram_kuvvetleri"] == []
     assert yakin(k["u"], v["u"], rtol=1e-10, atol=1e-13) and yakin(k["F"], v["F"], rtol=1e-10, atol=1e-10)
     tv, tk = _tepki_sozlugu(v["tepkiler"]), _tepki_sozlugu(k["tepkiler"])
@@ -1717,6 +1781,9 @@ def test_coz_coklu_se_coz_ile_ayni(ad):
         assert ek["no"] == ev["no"]
         assert yakin(ek["uc_kuvvetleri"], ev["uc_kuvvetleri"], rtol=1e-10, atol=1e-9)
         assert ek["N"] == pytest.approx(ev["N"], rel=1e-10, abs=1e-9)
+        assert yakin(ek["Nx"], [ev["diyagram"]["N"][hv0] for hv0 in
+                                [{round(x, 9): i for i, x in enumerate(ev["diyagram"]["x"])}[round(x, 9)] for x in ek["x"]]],
+                     rtol=1e-10, atol=1e-9)
         # coz_coklu istasyonları: eşit aralıklı + parça sınırları (V = 0 kökleri eklenmez) ⊆ se_coz istasyonları
         hv = {round(x, 9): i for i, x in enumerate(ev["diyagram"]["x"])}
         assert all(round(x, 9) in hv for x in ek["x"]) and len(ek["x"]) >= (21 if m["tip"] in ("kiris", "cerceve", "cerceve3b") else 2)
@@ -2260,3 +2327,537 @@ def test_diyafram_python_betigi_tutarli():
     assert all(abs(x) < 1e-6 for x in v["denge"].values())
     c = se.coz_coklu(m, {"A": {"yukler": m["yukler"], "yayili": m["yayili"]}})
     assert yakin(c["A"]["u"], v["u"], rtol=1e-10, atol=1e-14)
+
+
+# ---------------------------------------------------------------------------
+# Uç serbestlikleri (statik yoğunlaştırma), global yönlü / izdüşümlü / eksenel yayılı yük, yerel eksen açısı,
+# yalnız çekme çubukları (coz_yalniz_cekme)
+# ---------------------------------------------------------------------------
+_OZ2 = {"E": "200e6", "A": "0.01", "I": "1e-4"}
+_OZ3 = {"E": "200e6", "G": "80e6", "A": "0.01", "Iy": "2e-4", "Iz": "3e-4", "J": "1e-4"}
+_ANK = {"kiris": {"uy": True, "rz": True}, "cerceve": {"ux": True, "uy": True, "rz": True},
+        "cerceve3b": {"ux": True, "uy": True, "uz": True, "rx": True, "ry": True, "rz": True}}
+
+
+def _tek_eleman(tip, serbest=None, L=6, yayili=None, hesap=None, mesnet2=None, **ek):
+    """Tek elemanlı x ekseni boyunca kiriş: 1 ankastre, 2 (varsayılan) ankastre; eleman özellikleri tipe göre."""
+    oz = {"kiris": {"E": "200e6", "I": "1e-4"}, "cerceve": _OZ2, "cerceve3b": _OZ3}[tip]
+    m = {"tip": tip, "dugumler": [{"no": 1, "x": 0, "y": 0, "z": 0}, {"no": 2, "x": L, "y": 0, "z": 0}],
+         "elemanlar": [dict(oz, no=1, dugumler=[1, 2], **({"serbest": serbest} if serbest else {}), **ek)],
+         "mesnetler": [dict(_ANK[tip], dugum=1), dict(mesnet2 if mesnet2 is not None else _ANK[tip], dugum=2)],
+         "yayili": yayili or []}
+    if hesap:
+        m["hesap"] = hesap
+    return m
+
+
+@pytest.mark.parametrize("tip,ad,hesap", [("kiris", "M", None), ("cerceve", "M", None), ("cerceve", "M", "sayisal"),
+                                          ("cerceve3b", "Mz", None), ("cerceve3b", "Mz", "sayisal")])
+def test_mafsalli_ankastre_kiris_kapali_form(tip, ad, hesap):
+    """Bir ucu ankastre, öteki ucunda moment serbest (mafsal) kiriş, düzgün q: tepkiler 5qL/8, 3qL/8; ankastre uç
+    momenti qL²/8; mafsalda M = 0; açıklık momenti 9qL²/128 (x = 5L/8'de, i ucundan). İkinci düğüm ankastre mesnetli
+    olsa da elemanın ucu mafsallı olduğundan o mesnetin moment tepkisi 0'dır. Kesin kipte tam (kesirli) eşitlik."""
+    q, L = -10, 6
+    m = _tek_eleman(tip, {"j": [ad]}, L=L, yayili=[{"eleman": 1, "q": q}], hesap=hesap)
+    r = se.se_coz(m)
+    v = r.veri
+    assert v["mod"] == ("sayisal" if hesap else "kesin")
+    Mk = "M" if tip != "cerceve3b" else "Mz"
+    t1, t2 = v["tepkiler"]
+    assert t1["Fy"] == pytest.approx(-5 * q * L / 8, abs=1e-9) and t2["Fy"] == pytest.approx(-3 * q * L / 8, abs=1e-9)
+    assert t1[Mk] == pytest.approx(-q * L * L / 8, abs=1e-9) and t2[Mk] == pytest.approx(0.0, abs=1e-9)
+    e = v["elemanlar"][0]
+    d = e["diyagram"]
+    assert d["M"][0] == pytest.approx(q * L * L / 8, abs=1e-9)      # i ucunda hogging (−45)
+    assert d["M"][-1] == pytest.approx(0.0, abs=1e-12)              # mafsalda moment yok
+    assert max(d["M"]) == pytest.approx(-9 * q * L * L / 128, rel=1e-12)
+    i = d["M"].index(max(d["M"]))
+    assert d["x"][i] == pytest.approx(5 * L / 8)
+    sira = {"kiris": 3, "cerceve": 5, "cerceve3b": 11}[tip]      # j ucundaki moment bileşeni (uç kuvvetleri)
+    assert e["uc_kuvvetleri"][sira] == 0.0
+    if v["mod"] == "kesin":
+        assert sp.Rational(str(t1["Fy"])) == R(75, 2) and sp.Rational(str(t1[Mk])) == 45
+    metin = anlatim_metni(r)
+    assert "statik yoğunlaştırma" in metin and "k}_{rr}^{-1}" in metin and "Uç serbestliği" in metin
+    sema = json.dumps([b[1] for b in r.anlatim.bloklar if b[0] == "sema"])
+    assert 'r=\\"4.2\\"' in sema or 'r="4.2"' in sema     # mafsal simgesi (içi boş daire)
+
+
+def test_iki_ucu_mafsalli_kiris_basit_kirise_esit():
+    """İki ucunda M serbest, iki düğümü de ankastre mesnetli çerçeve elemanı = basit kiriş (sabit + kayıcı mesnet):
+    tepkiler qL/2, açıklık momenti qL²/8, mesnet momentleri 0; diyagramlar birebir. 3B'de My + Mz iki uçta ve T bir uçta
+    serbest (kafes çubuğu davranışı) aynı sonucu verir."""
+    q, L = -8, 5
+    m = _tek_eleman("cerceve", {"i": ["M"], "j": ["M"]}, L=L, yayili=[{"eleman": 1, "q": q}])
+    basit = _tek_eleman("cerceve", None, L=L, yayili=[{"eleman": 1, "q": q}])
+    basit["mesnetler"] = [{"dugum": 1, "ux": True, "uy": True}, {"dugum": 2, "uy": True}]
+    a, b = se.se_coz(m).veri, se.se_coz(basit).veri
+    for t in a["tepkiler"]:
+        assert t["Fy"] == pytest.approx(-q * L / 2) and t["M"] == 0.0 and t["Fx"] == 0.0
+    assert yakin(a["elemanlar"][0]["diyagram"]["M"], b["elemanlar"][0]["diyagram"]["M"], rtol=1e-12, atol=1e-12)
+    assert yakin(a["elemanlar"][0]["diyagram"]["V"], b["elemanlar"][0]["diyagram"]["V"], rtol=1e-12, atol=1e-12)
+    assert max(a["elemanlar"][0]["diyagram"]["M"]) == pytest.approx(-q * L * L / 8)
+    m3 = _tek_eleman("cerceve3b", {"i": ["My", "Mz", "T"], "j": ["My", "Mz"]}, L=L,
+                     yayili=[{"eleman": 1, "q": q, "qz": 2 * q}])
+    v3 = se.se_coz(m3).veri
+    e = v3["elemanlar"][0]["diyagram"]
+    assert max(e["M"]) == pytest.approx(-q * L * L / 8) and e["M"][0] == e["M"][-1] == 0.0
+    assert abs(e["My"][len(e["My"]) // 2]) == pytest.approx(abs(2 * q) * L * L / 8) and e["My"][0] == e["My"][-1] == 0.0
+    for t in v3["tepkiler"]:
+        assert t["Fy"] == pytest.approx(-q * L / 2) and t["Fz"] == pytest.approx(-q * L)
+        assert t["Mx"] == t["My"] == t["Mz"] == 0.0
+
+
+def test_mafsalli_uclu_cubuklarla_cerceve_kafese_esit():
+    """Pratt kafes köprü: bütün çubukları iki ucu mafsallı (M serbest) çerçeve elemanı olarak kurmak, düğüm dönmeleri
+    tutulunca (rz: elemanların hiçbiri düğüm dönmesine bağlı değildir) kafes modeliyle birebir aynı N ve ötelemeleri verir.
+    Dönmeler tutulmazsa her düğüm dönmesi boşta kalır: mekanizma hatası uç serbestliği ipucunu içerir."""
+    kafes = se.ornek_model("kafes-pratt-kopru")
+    cer = copy.deepcopy(kafes)
+    cer["tip"] = "cerceve"
+    for e in cer["elemanlar"]:
+        e.update(I="3e-5", serbest={"i": ["M"], "j": ["M"]})
+    mes = {m["dugum"]: m for m in cer["mesnetler"]}
+    cer["mesnetler"] = [dict(mes.get(dg["no"], {"dugum": dg["no"]}), rz=True) for dg in cer["dugumler"]]
+    vk, vc = se.se_coz(kafes).veri, se.se_coz(cer).veri
+    for ek, ec in zip(vk["elemanlar"], vc["elemanlar"]):
+        assert ec["N"] == pytest.approx(ek["N"], rel=1e-9, abs=1e-9), ek["no"]
+        assert max(abs(x) for x in ec["diyagram"]["M"]) < 1e-9
+    for dk, dc in zip(vk["dugumler"], vc["dugumler"]):
+        assert yakin(dc["u"][:2], dk["u"], rtol=1e-9, atol=1e-13)
+    for t in vc["tepkiler"]:
+        assert abs(t["M"]) < 1e-9
+    cer2 = copy.deepcopy(cer)
+    cer2["mesnetler"] = kafes["mesnetler"]
+    with pytest.raises(se.MatrisHatasi, match=r"Uç serbestlikleri \(mafsal\) bir düğümde bütün elemanlarda"):
+        se.se_coz(cer2)
+
+
+def test_cerceve3b_My_ve_Mz_ayri_serbest():
+    """İki ucu ankastre mesnetli 3B kiriş, j ucunda yalnız My serbest: x′z′ düzleminde (qz) mafsallı–ankastre
+    (|My(0)| = qz L²/8, My(L) = 0, Fz tepkileri 5/8, 3/8), x′y′ düzleminde (q) iki ucu ankastre (Mz = qL²/12 iki uçta,
+    açıklıkta qL²/24). Mz serbest bırakılınca roller yer değiştirir."""
+    L, q, qz = 6.0, -4.0, -6.0
+    m = _tek_eleman("cerceve3b", {"j": ["My"]}, L=L, yayili=[{"eleman": 1, "q": q, "qz": qz}])
+    v = se.se_coz(m).veri
+    d = v["elemanlar"][0]["diyagram"]
+    assert abs(d["My"][0]) == pytest.approx(abs(qz) * L * L / 8) and d["My"][-1] == 0.0
+    assert d["M"][0] == pytest.approx(q * L * L / 12) and d["M"][-1] == pytest.approx(q * L * L / 12)
+    assert d["M"][len(d["M"]) // 2] == pytest.approx(-q * L * L / 24)
+    t1, t2 = v["tepkiler"]
+    assert t1["Fz"] == pytest.approx(-5 * qz * L / 8) and t2["Fz"] == pytest.approx(-3 * qz * L / 8)
+    assert t1["Fy"] == pytest.approx(-q * L / 2) and t2["Fy"] == pytest.approx(-q * L / 2)
+    assert t2["My"] == 0.0 and abs(t2["Mz"]) == pytest.approx(abs(q) * L * L / 12)
+    v2 = se.se_coz(_tek_eleman("cerceve3b", {"j": ["Mz"]}, L=L, yayili=[{"eleman": 1, "q": q, "qz": qz}])).veri
+    d2 = v2["elemanlar"][0]["diyagram"]
+    assert d2["M"][-1] == 0.0 and d2["M"][0] == pytest.approx(q * L * L / 8)
+    assert abs(d2["My"][0]) == pytest.approx(abs(qz) * L * L / 12) == pytest.approx(abs(d2["My"][-1]))
+    _referansla_karsilastir(m)
+
+
+def test_burulma_serbestligi_T():
+    """İki ucu ankastre iki elemanlı mil (L1 = 3, L2 = 4), ortadaki düğüme Mx = 10: serbestlik yokken burulma
+    rijitlik oranında paylaşılır (GJ/L: 4/7 ve 3/7); 2. elemanın j ucunda T serbest bırakılınca bütün burulmayı
+    1. eleman taşır, 2. elemanın T diyagramı sıfırdır."""
+    def model(serbest):
+        e2 = dict(_OZ3, no=2, dugumler=[2, 3])
+        if serbest:
+            e2["serbest"] = serbest
+        return {"tip": "cerceve3b", "dugumler": [{"no": 1, "x": 0}, {"no": 2, "x": 3}, {"no": 3, "x": 7}],
+                "elemanlar": [dict(_OZ3, no=1, dugumler=[1, 2]), e2],
+                "mesnetler": [dict(_ANK["cerceve3b"], dugum=1), dict(_ANK["cerceve3b"], dugum=3)],
+                "yukler": [{"dugum": 2, "Mx": 10}]}
+    v0 = se.se_coz(model(None)).veri
+    assert v0["tepkiler"][0]["Mx"] == pytest.approx(-10 * 4 / 7) and v0["tepkiler"][1]["Mx"] == pytest.approx(-10 * 3 / 7)
+    v = se.se_coz(model({"j": ["T"]})).veri
+    assert v["tepkiler"][0]["Mx"] == pytest.approx(-10.0) and v["tepkiler"][1]["Mx"] == 0.0
+    assert all(x == pytest.approx(10.0) for x in v["elemanlar"][0]["diyagram"]["T"])
+    assert all(abs(x) < 1e-12 for x in v["elemanlar"][1]["diyagram"]["T"])
+    _referansla_karsilastir(model({"j": ["T"]}))
+
+
+@pytest.mark.parametrize("tip", ["cerceve", "cerceve3b"])
+def test_eksenel_serbestlik_kayici_uc(tip):
+    """Eksenel serbestlik (N, kayıcı birleşim): iki elemanlı çubuk, ortadaki düğüme Fx = 12. Serbestlik yokken eksenel
+    kuvvet EA/L oranında paylaşılır (4/7, 3/7); 2. elemanın j ucunda N serbestken yükün tamamı 1. elemana (çekme 12)
+    ve sol mesnete gider, 2. eleman eksenel kuvvetsizdir. Düzlem çerçevede kesin (kesirli) kipte."""
+    oz = _OZ2 if tip == "cerceve" else _OZ3
+
+    def model(serbest):
+        e2 = dict(oz, no=2, dugumler=[2, 3], **({"serbest": serbest} if serbest else {}))
+        return {"tip": tip, "dugumler": [{"no": 1, "x": 0}, {"no": 2, "x": 3}, {"no": 3, "x": 7}],
+                "elemanlar": [dict(oz, no=1, dugumler=[1, 2]), e2],
+                "mesnetler": [dict(_ANK[tip], dugum=1), dict(_ANK[tip], dugum=3)], "yukler": [{"dugum": 2, "Fx": 12}]}
+    v0 = se.se_coz(model(None)).veri
+    assert v0["tepkiler"][0]["Fx"] == pytest.approx(-12 * 4 / 7)
+    r = se.se_coz(model({"j": ["N"]}))
+    v = r.veri
+    if tip == "cerceve":
+        assert v["mod"] == "kesin"
+    assert v["tepkiler"][0]["Fx"] == pytest.approx(-12.0) and v["tepkiler"][1]["Fx"] == 0.0
+    assert v["elemanlar"][0]["N"] == pytest.approx(12.0) and v["elemanlar"][1]["N"] == 0.0
+    _referansla_karsilastir(model({"j": ["N"]}))
+
+
+def test_yogunlastirilmis_eleman_yayili_yuk_referansla():
+    """Uç serbestlikli elemanlarda parçalı/eksenel/global yönlü yayılı yükün yoğunlaştırılmış eşdeğer yükü
+    (f* = f_f − k_fr k_rr⁻¹ f_r) bağımsız referans çözücüyle aynı: düzlem portal (kirişin iki ucu mafsallı, sağ kolon tepesi
+    mafsallı), uzay portal (kirişlerde My/Mz/T serbestlikleri, kolonlarda aci) ve kiriş."""
+    m = se.ornek_model("cerceve-portal")
+    m["elemanlar"][1]["serbest"] = {"i": ["M"]}
+    m["elemanlar"][2]["serbest"] = {"j": ["M"]}
+    m["yayili"] = [{"eleman": 2, "q1": -5, "q2": -15, "x1": 0.5, "x2": 4.5}, {"eleman": 2, "qx": 3},
+                   {"eleman": 1, "q": 4, "yon": "gx"}, {"eleman": 3, "q1": -2, "q2": -6, "yon": "gy", "x2": 3}]
+    r = _referansla_karsilastir(m)
+    d = r.veri["elemanlar"]
+    assert d[1]["diyagram"]["M"][0] == 0.0 and d[2]["diyagram"]["M"][-1] == 0.0
+    assert all(abs(x) < 1e-7 for x in r.veri["denge"].values())
+    m3 = se.ornek_model("cerceve3b-portal")
+    for e in m3["elemanlar"][4:]:
+        e["serbest"] = {"i": ["My", "Mz", "T"], "j": ["Mz"]}
+    m3["elemanlar"][0]["aci"] = 30
+    m3["elemanlar"][2]["aci"] = -90
+    m3["yayili"] = list(m3.get("yayili", [])) + [
+        {"eleman": 5, "qz1": 0, "qz2": -6, "x1": 0.5}, {"eleman": 6, "q": -3, "yon": "gy", "izdusum": True},
+        {"eleman": 1, "q": 2, "yon": "gx"}, {"eleman": 3, "qx": -1.5}]
+    r3 = _referansla_karsilastir(m3)
+    for e in r3.veri["elemanlar"][4:]:
+        assert e["diyagram"]["M"][0] == 0.0 and e["diyagram"]["My"][0] == 0.0 and e["diyagram"]["M"][-1] == 0.0
+        assert e["diyagram"]["T"][0] == 0.0
+    assert all(abs(x) < 1e-7 for x in r3.veri["denge"].values())
+    mk = _kiris_tek(L=4, yayili=[{"eleman": 1, "q1": 0, "q2": -10, "x1": 1}])
+    mk["elemanlar"][0]["serbest"] = {"i": ["M"]}
+    mk["mesnetler"] = [{"dugum": 1, "uy": True, "rz": True}, {"dugum": 2, "uy": True, "rz": True}]
+    _referansla_karsilastir(mk)
+
+
+def test_yogunlastirma_ince_bolmeli_modelle_ayni():
+    """Mafsallı uçlu, trapez yüklü eleman: aynı eleman 12 parçaya bölünüp mafsal yalnız ilk parçanın ucuna verilince
+    (ara düğümler sürekli) tepkiler ve uç momentleri aynı (Hermite eleman yayılı yükte düğümlerde kesindir)."""
+    L, n = 6.0, 12
+    tek = _tek_eleman("cerceve", {"i": ["M"]}, L=L, yayili=[{"eleman": 1, "q1": -4, "q2": -16, "hesap": None}])
+    tek["hesap"] = "sayisal"
+    ince = {"tip": "cerceve", "dugumler": [{"no": k + 1, "x": L * k / n, "y": 0} for k in range(n + 1)],
+            "elemanlar": [dict(_OZ2, no=k + 1, dugumler=[k + 1, k + 2]) for k in range(n)],
+            "mesnetler": [dict(_ANK["cerceve"], dugum=1), dict(_ANK["cerceve"], dugum=n + 1)],
+            "yayili": [{"eleman": k + 1, "q1": -4 - 12 * k / n, "q2": -4 - 12 * (k + 1) / n} for k in range(n)]}
+    ince["elemanlar"][0]["serbest"] = {"i": ["M"]}
+    a, b = se.se_coz(tek).veri, se.se_coz(ince).veri
+    for ta, tb in zip(a["tepkiler"], b["tepkiler"]):
+        for k in ("Fx", "Fy", "M"):
+            assert ta[k] == pytest.approx(tb[k], rel=1e-9, abs=1e-9)
+    assert a["elemanlar"][0]["diyagram"]["M"][-1] == pytest.approx(b["elemanlar"][-1]["diyagram"]["M"][-1], rel=1e-9)
+
+
+@pytest.mark.parametrize("izdusum", [True, False])
+def test_egik_cati_kirisi_global_yuk_izdusum(izdusum):
+    """15° eğimli çatı kirişi (yatay izdüşüm 6 m), global düşey yük q = −2 kN/m (bina Z = motor gy). İzdüşümlü yükte
+    q yatay izdüşüm boyu başınadır: eleman boyu başına şiddet q cos θ, yerel bileşenler q_y′ = q cos²θ,
+    q_x′ = q cos θ sin θ; toplam düşey tepki −q · 6. Boy başına yükte q_y′ = q cos θ, q_x′ = q sin θ; toplam −q · 6 / cos θ."""
+    th = math.radians(15.0)
+    a, q = 6.0, -2.0
+    m = {"tip": "cerceve3b", "hesap": "sayisal",
+         "dugumler": [{"no": 1, "x": 0, "y": 0, "z": 0}, {"no": 2, "x": a, "y": a * math.tan(th), "z": 0}],
+         "elemanlar": [dict(_OZ3, no=1, dugumler=[1, 2])],
+         "mesnetler": [dict(_ANK["cerceve3b"], dugum=1), {"dugum": 2, "uy": True, "uz": True}],
+         "yayili": [{"eleman": 1, "q": q, "yon": "gy", "izdusum": izdusum}]}
+    v = se.se_coz(m).veri
+    e = v["elemanlar"][0]
+    c = math.cos(th) if izdusum else 1.0
+    assert e["yayili"][0]["q1"] == pytest.approx(q * c * math.cos(th), rel=1e-12)
+    assert e["yayili_x"][0]["q1"] == pytest.approx(q * c * math.sin(th), rel=1e-12)
+    assert e["yayili_z"] == []
+    top_y = sum(t["Fy"] for t in v["tepkiler"])
+    assert top_y == pytest.approx(-q * (a if izdusum else a / math.cos(th)), rel=1e-12)
+    assert sum(t["Fx"] for t in v["tepkiler"]) == pytest.approx(0.0, abs=1e-9)
+    assert all(abs(x) < 1e-9 for x in v["denge"].values())
+    c2 = se.coz_coklu(m, {"S": {"yayili": m["yayili"]}})["S"]
+    assert sum(t["Fy"] for t in c2["tepkiler"]) == pytest.approx(top_y, rel=1e-12)
+    _referansla_karsilastir(m)
+
+
+def test_egik_eleman_izdusum_kesin_ve_metin():
+    """3-4-5 eğik düzlem çerçeve elemanı (cos θ = 0.8) kesin kipte: izdüşümlü düşey yük q = −10 için yerel bileşenler
+    q_y′ = −6.4, q_x′ = −4.8 (tam), toplam düşey tepki 40 = 10 · 4; anlatımda global yük tablosu."""
+    m = {"tip": "cerceve", "dugumler": [{"no": 1, "x": 0, "y": 0}, {"no": 2, "x": 4, "y": 3}],
+         "elemanlar": [dict(_OZ2, no=1, dugumler=[1, 2])],
+         "mesnetler": [{"dugum": 1, "ux": True, "uy": True}, {"dugum": 2, "uy": True}],
+         "yayili": [{"eleman": 1, "q": -10, "yon": "gy", "izdusum": True}]}
+    r = se.se_coz(m)
+    v = r.veri
+    assert v["mod"] == "kesin"
+    assert v["elemanlar"][0]["yayili"] == [{"q1": -6.4, "q2": -6.4, "x1": 0.0, "x2": 5.0}]
+    assert v["elemanlar"][0]["yayili_x"] == [{"q1": -4.8, "q2": -4.8, "x1": 0.0, "x2": 5.0}]
+    assert sum(t["Fy"] for t in v["tepkiler"]) == 40.0 and v["tepkiler"][0]["Fx"] == 0.0
+    metin = anlatim_metni(r)
+    assert "Global yönlü yayılı yükler" in metin and "izdüşüm boyu başına" in metin
+    _referansla_karsilastir(m)
+
+
+@pytest.mark.parametrize("tip", ["cerceve", "cerceve3b"])
+def test_eksenel_yayili_yuk_kolon_oz_agirligi(tip):
+    """Düşey kolon (tabanı ankastre, tepesi serbest) kendi ağırlığı: global gy yönünde q = −2.5 kN/m → yerel x′
+    (eksen yukarı) yükü; N tabanda qL = −7.5 (basınç), tepede 0, arada doğrusal; tepki Fy = 7.5. Üçgen eksenel yük
+    (qx1 = 0 → qx2 = −4) N(x) = −6 + 2x²/3 (karesel). coz_coklu 'Nx' aynı değerleri verir."""
+    oz = _OZ2 if tip == "cerceve" else _OZ3
+    L, q = 3.0, -2.5
+    m = {"tip": tip, "dugumler": [{"no": 1, "x": 0, "y": 0}, {"no": 2, "x": 0, "y": L}],
+         "elemanlar": [dict(oz, no=1, dugumler=[1, 2])], "mesnetler": [dict(_ANK[tip], dugum=1)],
+         "yayili": [{"eleman": 1, "q": q, "yon": "gy"}]}
+    r = se.se_coz(m)
+    v = r.veri
+    d = v["elemanlar"][0]["diyagram"]
+    assert d["N"][0] == pytest.approx(q * L, abs=1e-12) and d["N"][-1] == pytest.approx(0.0, abs=1e-12)
+    for x, N in zip(d["x"], d["N"]):
+        assert N == pytest.approx(q * (L - x), abs=1e-12)
+    assert v["tepkiler"][0]["Fy"] == pytest.approx(-q * L) and max(abs(x) for x in d["M"]) < 1e-12
+    assert v["elemanlar"][0]["N"] == pytest.approx(q * L)
+    c = se.coz_coklu(m, {"G": {"yayili": m["yayili"]}}, diyagram_nokta=7)["G"]["elemanlar"][0]
+    assert yakin(c["Nx"], [q * (L - x) for x in c["x"]], rtol=1e-12, atol=1e-12)
+    assert c["enb"]["N"] == pytest.approx(-q * L)
+    m2 = dict(m, yayili=[{"eleman": 1, "qx1": 0, "qx2": -4}])
+    d2 = se.se_coz(m2).veri["elemanlar"][0]["diyagram"]
+    for x, N in zip(d2["x"], d2["N"]):
+        assert N == pytest.approx(-6 + 2 * x * x / 3, abs=1e-12)
+    _referansla_karsilastir(m)
+    _referansla_karsilastir(m2)
+    if tip == "cerceve":
+        assert r.veri["mod"] == "kesin" and "f_{x,i} = W - S/L" in anlatim_metni(r)
+
+
+def test_aci_90_Iy_Iz_takasina_esit():
+    """cerceve3b yerel eksen açısı: aci = 90 iken (y″ = z′, z″ = −y′) global çözüm, aci = 0 ve I_y ↔ I_z takaslı modelle
+    aynı (u, tepkiler); λ satırları kurala uyar. Kesin kipte de tam eşit. aci = 30 bağımsız referansla (Rodrigues)."""
+    m = se.ornek_model("cerceve3b-portal")
+    for e in m["elemanlar"]:
+        e["Iz"] = str(float(e["Iy"]) * 3)
+    m["yayili"] = [dict(y, yon="gy") for y in m["yayili"]]     # yerel q aci ile döner; global düşey yük dönmez
+    a90 = copy.deepcopy(m)
+    for e in a90["elemanlar"]:
+        e["aci"] = 90
+    takas = copy.deepcopy(m)
+    for e in takas["elemanlar"]:
+        e["Iy"], e["Iz"] = e["Iz"], e["Iy"]
+    v0, va, vt = se.se_coz(m).veri, se.se_coz(a90).veri, se.se_coz(takas).veri
+    assert yakin(va["u"], vt["u"], rtol=1e-10, atol=1e-14) and not yakin(va["u"], v0["u"], rtol=1e-6, atol=1e-12)
+    for ta, tt in zip(va["tepkiler"], vt["tepkiler"]):
+        for k in ("Fx", "Fy", "Fz", "Mx", "My", "Mz"):
+            assert ta[k] == pytest.approx(tt[k], rel=1e-9, abs=1e-9)
+    for e0, ea in zip(v0["elemanlar"], va["elemanlar"]):
+        l0, la = np.array(e0["lam"]), np.array(ea["lam"])
+        assert np.allclose(la[0], l0[0]) and np.allclose(la[1], l0[2]) and np.allclose(la[2], -l0[1])
+        assert ea["aci"] == 90.0
+    # kesin kip (küçük model): aci = 90 ile takas birebir
+    k = _tek_eleman("cerceve3b", None, L=3, mesnet2={})
+    k["yukler"] = [{"dugum": 2, "Fy": -10, "Fz": 4, "Mx": 2}]
+    k90 = copy.deepcopy(k)
+    k90["elemanlar"][0]["aci"] = 90
+    kt = copy.deepcopy(k)
+    kt["elemanlar"][0]["Iy"], kt["elemanlar"][0]["Iz"] = _OZ3["Iz"], _OZ3["Iy"]
+    r90, rt = se.se_coz(k90), se.se_coz(kt)
+    assert r90.veri["mod"] == "kesin" and r90.deger == rt.deger
+    assert "Eksen açısı" in anlatim_metni(r90)
+    m30 = se.ornek_model("cerceve3b-portal")
+    for e in m30["elemanlar"]:
+        e["aci"] = 30
+        e["Iz"] = "5e-4"
+    m30["yayili"] = list(m30.get("yayili", [])) + [{"eleman": 6, "q": -4, "yon": "gy"}]
+    _referansla_karsilastir(m30)
+
+
+def test_aci_isaret_kurali_ve_yok_sayilan_alanlar():
+    """aci pozitifken y′, x′ etrafında sağ el kuralıyla z′'ye doğru döner: x′ = +X olan yatay kirişte aci = 90
+    → y″ = z′ = +Z, z″ = −Y. Düzlem çerçevede 'aci' ve öteki tanımsız alanlar (tur, grup, kat, Lb, K, kaynak) yok sayılır."""
+    m = _tek_eleman("cerceve3b", None, L=4, aci=90)
+    lam = se.se_coz(m).veri["elemanlar"][0]["lam"]
+    assert yakin(lam, [[1, 0, 0], [0, 0, 1], [0, -1, 0]], atol=1e-12)
+    m2 = se.ornek_model("cerceve-portal")
+    for e in m2["elemanlar"]:
+        e.update(tur="kiris", aci=37, grup="K1", kat=1, Lb=None, K=[1.0, 1.0], kaynak={"uretec": 3})
+    assert yakin(se.se_coz(m2).veri["u"], coz("cerceve-portal").veri["u"], rtol=1e-12, atol=1e-15)
+    m3 = se.ornek_model("cerceve3b-portal")
+    for e in m3["elemanlar"]:
+        e.update(tur="kolon", grup="C", kat=1, Lb=3.0, K=[1.0, 0.7], kaynak={"uretec": 1}, yalniz_cekme=False)
+    assert yakin(se.se_coz(m3).veri["u"], coz("cerceve3b-portal").veri["u"], rtol=1e-12, atol=1e-15)
+
+
+def _x_caprazli_kafes(P=10.0, tip="kafes"):
+    """4 × 3 m tek göz, iki taban mafsallı (kafes) ya da ankastre (cerceve3b, kiriş/kolon sürekli) X çaprazlı çerçeve;
+    çaprazlar (eleman 4: 1→3, eleman 5: 2→4) yalnız çekme."""
+    if tip == "kafes":
+        oz, ozc = {"E": "200e6", "A": "0.01"}, {"E": "200e6", "A": "0.001"}
+        dug = [{"no": 1, "x": 0, "y": 0}, {"no": 2, "x": 4, "y": 0}, {"no": 3, "x": 4, "y": 3}, {"no": 4, "x": 0, "y": 3}]
+        mes = [{"dugum": 1, "ux": True, "uy": True}, {"dugum": 2, "ux": True, "uy": True}]
+        ser = {}
+    else:
+        oz = dict(_OZ3)
+        ozc = dict(_OZ3, A="0.001", Iy="1e-6", Iz="1e-6", J="1e-6")
+        dug = [{"no": 1, "x": 0, "y": 0}, {"no": 2, "x": 4, "y": 0}, {"no": 3, "x": 4, "y": 3}, {"no": 4, "x": 0, "y": 3}]
+        mes = [dict(_ANK["cerceve3b"], dugum=1), dict(_ANK["cerceve3b"], dugum=2),
+               {"dugum": 3, "uz": True, "rx": True, "ry": True}, {"dugum": 4, "uz": True, "rx": True, "ry": True}]
+        ser = {"serbest": {"i": ["My", "Mz", "T"], "j": ["My", "Mz"]}}
+    return {"tip": tip, "dugumler": dug,
+            "elemanlar": [dict(oz, no=1, dugumler=[1, 4]), dict(oz, no=2, dugumler=[2, 3]), dict(oz, no=3, dugumler=[4, 3]),
+                          dict(ozc, no=4, dugumler=[1, 3], yalniz_cekme=True, **ser),
+                          dict(ozc, no=5, dugumler=[2, 4], yalniz_cekme=True, **ser)],
+            "mesnetler": mes}
+
+
+def test_yalniz_cekme_x_capraz_el_hesabi_ve_ters_yuk():
+    """X çaprazlı tek göz (kafes, mafsallı kolon ve kiriş: çaprazsız mekanizma): sol üst düğüme +X yönünde P = 10.
+    Doğrusal çözümde iki çapraz da çalışır (biri basınçta); yalnız çekme çözümünde basınç çaprazı (5) devre dışı kalır,
+    çekme çaprazı bütün kesmeyi alır: N₄ = P/cos α = P·5/4 = 12.5; sağ kolon N₂ = −P·h/L = −7.5; kiriş N₃ = −P;
+    tepkiler Fx₁ = −P, Fy₁ = −7.5, Fy₂ = 7.5. İki çözüm (yineleme = 2). Ters yükte öteki çapraz (4) devre dışı."""
+    m = _x_caprazli_kafes()
+    r = se.coz_yalniz_cekme(m, {"+X": {"yukler": [{"dugum": 4, "Fx": 10}]}, "-X": {"yukler": [{"dugum": 3, "Fx": -10}]}})
+    a = r["+X"]
+    assert a["etkin_degil"] == [5] and a["yineleme"] == 2 and a["uyarilar"] == []
+    N = {e["no"]: e["N"] for e in a["elemanlar"]}
+    assert N[4] == pytest.approx(12.5, rel=1e-12) and N[5] == 0.0
+    assert N[2] == pytest.approx(-7.5, rel=1e-12) and N[3] == pytest.approx(-10.0, rel=1e-12) and abs(N[1]) < 1e-9
+    t = {x["dugum"]: x for x in a["tepkiler"]}
+    assert t[1]["Fx"] == pytest.approx(-10.0) and t[2]["Fx"] == pytest.approx(0.0, abs=1e-9)
+    assert t[1]["Fy"] == pytest.approx(-7.5) and t[2]["Fy"] == pytest.approx(7.5)
+    assert all(abs(x) < 1e-9 for x in a["denge"].values())
+    b = r["-X"]
+    assert b["etkin_degil"] == [4] and b["yineleme"] == 2
+    Nb = {e["no"]: e["N"] for e in b["elemanlar"]}
+    assert Nb[5] == pytest.approx(12.5, rel=1e-12) and Nb[4] == 0.0 and Nb[1] == pytest.approx(-7.5, rel=1e-12)
+    # doğrusal ön çözümde (coz_coklu) basınç çaprazı çalışır; uyarı verilir
+    with pytest.warns(UserWarning, match="doğrusal"):
+        c = se.coz_coklu(m, {"+X": {"yukler": [{"dugum": 4, "Fx": 10}]}})
+    assert "coz_yalniz_cekme" in c["+X"]["uyarilar"][0]
+    Nc = {e["no"]: e["N"] for e in c["+X"]["elemanlar"]}
+    assert Nc[5] < -1.0 and 0 < Nc[4] < 12.5
+    # se_coz da doğrusal ön çözüm uyarısını anlatımda ve veride verir
+    r2 = se.se_coz(dict(m, yukler=[{"dugum": 4, "Fx": 10}]))
+    assert any("DOĞRUSAL ÖN ÇÖZÜM" in u for u in r2.veri["uyarilar"])
+    assert r2.veri["elemanlar"][3]["yalniz_cekme"] is True
+    json.dumps(r)
+
+
+def test_yalniz_cekme_uzay_cerceve_ve_yineleme_siniri():
+    """Uzay çerçevede (kolonlar ankastre, kiriş sürekli) mafsallı yalnız çekme çaprazları: basınç çaprazı devre dışı,
+    toplam yatay tepki = −P, çekme çaprazı çekmede. en_fazla_yineleme = 1 → yakınsamadı uyarısı (doğrusal çözüm döner).
+    Tek çaprazlı gözde çapraz basınca düşerse yapı mekanizma olur: uyarıyla son kararlı (doğrusal) çözüm döner."""
+    m = _x_caprazli_kafes(tip="cerceve3b")
+    r = se.coz_yalniz_cekme(m, [{"yukler": [{"dugum": 4, "Fx": 20}]}])
+    a = r["1"]
+    assert a["etkin_degil"] == [5] and a["yineleme"] == 2
+    N = {e["no"]: e["N"] for e in a["elemanlar"]}
+    assert N[4] > 1.0 and N[5] == 0.0
+    assert sum(t["Fx"] for t in a["tepkiler"]) == pytest.approx(-20.0)
+    assert all(abs(x) < 1e-8 for x in a["denge"].values())
+    s = se.coz_yalniz_cekme(m, {"A": {"yukler": [{"dugum": 4, "Fx": 20}]}}, en_fazla_yineleme=1)["A"]
+    assert s["yineleme"] == 1 and s["etkin_degil"] == [] and "Yakınsamadı" in s["uyarilar"][0]
+    tek = _x_caprazli_kafes()
+    tek["elemanlar"] = tek["elemanlar"][:4]
+    k = se.coz_yalniz_cekme(tek, {"-X": {"yukler": [{"dugum": 3, "Fx": -10}]}})["-X"]
+    assert k["etkin_degil"] == [] and k["yineleme"] == 1 and "Mekanizma" in k["uyarilar"][0]
+    assert {e["no"]: e["N"] for e in k["elemanlar"]}[4] == pytest.approx(-12.5)
+
+
+def test_uc_serbestligi_ve_yuk_hatalari():
+    def hata(m, kalip):
+        with pytest.raises(se.MatrisHatasi, match=kalip):
+            se.se_coz(m)
+    hata(_tek_eleman("cerceve", {"j": ["Mz", "X"]}), "bilinmeyen uç serbestliği")
+    hata(_tek_eleman("cerceve", {"i": ["N"], "j": ["N"]}), "kendi içinde kararsız")
+    hata(_tek_eleman("cerceve3b", {"i": ["T"], "j": ["T"]}), "kendi içinde kararsız")
+    hata(_tek_eleman("cerceve", {"k": ["M"]}), "'serbest' bir sözlük")
+    k = se.ornek_model("kafes-iki-cubuk")
+    k["elemanlar"][0]["serbest"] = {"i": ["M"]}
+    hata(k, "zaten uçlarında mafsallı")
+    k["elemanlar"][0].pop("serbest")
+    k["elemanlar"][0]["yalniz_cekme"] = True
+    se.se_coz(k)                                         # kafeste yalnız çekme geçerli
+    kk = se.ornek_model("kiris-konsol")
+    kk["elemanlar"][0]["yalniz_cekme"] = True
+    hata(kk, "yalniz_cekme")
+    # iki elemanlı kirişte ortak düğümde iki eleman da M serbest: düğüm dönmesi boşta (mekanizma) → ipucu
+    m = {"tip": "cerceve", "dugumler": [{"no": 1, "x": 0}, {"no": 2, "x": 3}, {"no": 3, "x": 6}],
+         "elemanlar": [dict(_OZ2, no=1, dugumler=[1, 2], serbest={"j": ["M"]}),
+                       dict(_OZ2, no=2, dugumler=[2, 3], serbest={"i": ["M"]})],
+         "mesnetler": [dict(_ANK["cerceve"], dugum=1), dict(_ANK["cerceve"], dugum=3)], "yukler": [{"dugum": 2, "Fy": -5}]}
+    hata(m, r"Mesnetler yetersiz.*Uç serbestlikleri \(mafsal\)")
+    m["elemanlar"][1].pop("serbest")                     # tek tarafta mafsal: çözülür (Gerber mafsalı)
+    v = se.se_coz(m).veri
+    assert v["elemanlar"][0]["diyagram"]["M"][-1] == 0.0 and v["elemanlar"][1]["diyagram"]["M"][0] == 0.0
+    # yayılı yük yön/izdüşüm hataları
+    p = se.ornek_model("cerceve-portal")
+    hata(dict(p, yayili=[{"eleman": 2, "q": -1, "yon": "Z"}]), "gx")
+    hata(dict(p, yayili=[{"eleman": 2, "q": -1, "yon": "gz"}]), "düzlem modelde")
+    hata(dict(p, yayili=[{"eleman": 2, "q": -1, "izdusum": True}]), "izdusum")
+    hata(dict(p, yayili=[{"eleman": 2, "q": -1, "yon": "gy", "qz": 1}]), "yalnız q")
+    kb = se.ornek_model("kiris-basit-yayili")
+    hata(dict(kb, yayili=[{"eleman": 1, "qx": 2}]), "kiriş modelinde tanımsız")
+    hata(dict(kb, yayili=[{"eleman": 1, "q": 2, "yon": "gx"}]), "eksenel")
+    # aynı konumdaki iki düğüm (1e-6 toleransı içinde) sıfır boylu eleman hatası
+    z = se.ornek_model("kafes-iki-cubuk")
+    z["dugumler"][2].update(x=z["dugumler"][0]["x"] + 5e-7, y=z["dugumler"][0]["y"])
+    with pytest.raises(se.MatrisHatasi, match="boyu sıfır"):
+        se.se_coz(z)
+
+
+@pytest.mark.parametrize("hesap", ["", "sayisal"])
+def test_uc_serbestligi_eksenel_aci_betigi_tutarli(hesap):
+    """Üretilen betik yoğunlaştırmayı (yogunlastir / geri_kazan), eksenel yükü (feq_eksenel) ve aci dönmesini yazar:
+    u ve tepkiler motorla aynı (kesin ve sayısal kipte)."""
+    m2 = se.ornek_model("cerceve-portal")
+    m2["elemanlar"][1]["serbest"] = {"i": ["M"], "j": ["M"]}
+    m2["mesnetler"][1]["rz"] = True
+    m2["yayili"] = [{"eleman": 2, "q1": -5, "q2": -15, "x1": 0.5}, {"eleman": 2, "qx": 2},
+                    {"eleman": 1, "q": -3, "yon": "gy"}]
+    m3 = se.ornek_model("cerceve3b-konsol-L")
+    m3["elemanlar"][1].update(serbest={"i": ["My"]}, aci=30, Iz="3e-4")   # kökte y′ etrafında mafsal (z′ = −X yönü)
+    m3["mesnetler"].append({"dugum": 3, "ux": True})
+    m3["yayili"] = [{"eleman": 1, "q": -2, "yon": "gy"}, {"eleman": 2, "qz1": 0, "qz2": -4}]
+    mk = _kiris_tek(L=4, yayili=[{"eleman": 1, "q": -6}])
+    mk["elemanlar"][0]["serbest"] = {"j": ["M"]}
+    mk["mesnetler"] = [{"dugum": 1, "uy": True, "rz": True}, {"dugum": 2, "uy": True, "rz": True}]
+    for m in (m2, m3, mk):
+        if hesap:
+            m["hesap"] = hesap
+        r = se.se_coz(m)
+        v = r.veri
+        assert v["mod"] == ("sayisal" if (hesap or v["sd_sayisi"] > se.SD_ESIK) else "kesin")
+        assert "def yogunlastir" in r.python_kodu and "geri_kazan" in r.python_kodu
+        assert "Traceback" not in r.python_ciktisi and "[Hata" not in r.python_ciktisi
+        ns: dict = {"__name__": "betik"}
+        with contextlib.redirect_stdout(io.StringIO()):
+            exec(compile(r.python_kodu, "<betik>", "exec"), ns)
+        assert yakin([float(sp.N(x)) for x in ns["u"]], v["u"], rtol=1e-9, atol=1e-12)
+        d = _D[m["tip"]]
+        sira = {dg["no"]: i for i, dg in enumerate(v["dugumler"])}
+        bil = list(_YUK[m["tip"]])
+        for t in v["tepkiler"]:
+            for b in bil:
+                ms = next(x for x in m["mesnetler"] if x["dugum"] == t["dugum"])
+                if ms.get(_MESNET[m["tip"]][bil.index(b)]):
+                    assert float(sp.N(ns["R"][d * sira[t["dugum"]] + bil.index(b)])) == pytest.approx(t[b], rel=1e-9, abs=1e-9)
+    assert "feq_eksenel" in se.se_coz(m2).python_kodu
+    assert "aci != 0" in se.se_coz(m3).python_kodu
+
+
+def test_coz_coklu_uc_serbestligi_global_ve_eksenel_yuk_se_coz_ile_ayni():
+    """coz_coklu: uç serbestlikli, aci'li uzay portalda global yönlü, izdüşümlü ve eksenel yükler se_coz ile 1e-10 aynı
+    (u, uç kuvvetleri, N(x), My, Mz); iki durumun toplamı birleşik duruma eşit (doğrusal model)."""
+    m = se.ornek_model("cerceve3b-portal")
+    for e in m["elemanlar"][4:]:
+        e["serbest"] = {"i": ["My", "Mz"], "j": ["Mz"]}
+    m["elemanlar"][1]["aci"] = 45
+    A = {"yayili": [{"eleman": 5, "q": -4, "yon": "gy", "izdusum": True}, {"eleman": 2, "qx1": -1, "qx2": -3}]}
+    B = {"yayili": [{"eleman": 6, "q1": 0, "q2": 5, "yon": "gx", "x1": 1}], "yukler": [{"dugum": 7, "Fz": 4}]}
+    AB = {"yayili": A["yayili"] + B["yayili"], "yukler": B["yukler"]}
+    c = se.coz_coklu(m, {"A": A, "B": B, "AB": AB}, diyagram_nokta=9)
+    v = se.se_coz(dict(m, yukler=[], yayili=A["yayili"])).veri
+    assert yakin(c["A"]["u"], v["u"], rtol=1e-10, atol=1e-14)
+    for ek, ev in zip(c["A"]["elemanlar"], v["elemanlar"]):
+        assert yakin(ek["uc_kuvvetleri"], ev["uc_kuvvetleri"], rtol=1e-10, atol=1e-9)
+        hv = {round(x, 9): i for i, x in enumerate(ev["diyagram"]["x"])}
+        ortak = [(k, hv[round(x, 9)]) for k, x in enumerate(ek["x"]) if round(x, 9) in hv]   # B'nin parça sınırı A'da yok
+        assert len(ortak) >= 5
+        for b, bv in (("Nx", "N"), ("My", "My"), ("M", "M"), ("V", "V")):
+            assert yakin([ek[b][k] for k, _ in ortak], [ev["diyagram"][bv][i] for _, i in ortak], rtol=1e-10, atol=1e-9)
+    assert yakin(np.array(c["A"]["u"]) + np.array(c["B"]["u"]), c["AB"]["u"], rtol=1e-10, atol=1e-14)
+    assert c["A"]["uyarilar"] == []
