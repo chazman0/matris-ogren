@@ -294,27 +294,27 @@ abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["N_trib_G"] - 10
 :::
 
 ::: ornek Temel A1: taban basıncı ve çekirdek
-A1 kolonunun 1.6×1.6 m tekil temeline servis yükü $N=177.75$ kN, $M_X=-3.76$, $M_Y=6.17$ kN·m geliyor; $q_{em}=200$ kN/m². $\sigma_{\max}$, $\sigma_{\min}$, dışmerkezlikleri ve D/C oranını bul.
+A1 kolonunun 1.6×1.6×0.6 m tekil temeline kolon tabanından servis yükü $N_G+N_Q=158.41+19.34=177.75$ kN, $M_X=-3.76$, $M_Y=6.17$ kN·m geliyor; temelin öz ağırlığı $25\cdot1.6\cdot1.6\cdot0.6=38.4$ kN de tabana iner; $q_{em}=200$ kN/m². $\sigma_{\max}$, $\sigma_{\min}$, dışmerkezlikleri ve D/C oranını bul.
 --- ipucu
-$A=2.56$ m²; $BL^2=4.096$ m³. Dışmerkezlik $e_X=M_Y/N$, çekirdek $B/6=0.267$ m.
+$N=177.75+38.4=216.15$ kN; $A=2.56$ m²; $BL^2=4.096$ m³. Dışmerkezlik $e_X=M_Y/N$, çekirdek $B/6=0.267$ m.
 --- cevap
 $$
 \begin{aligned}
-\frac{N}{BL}&=\frac{177.75}{2.56}=\ka{69.43}\\
+\frac{N}{BL}&=\frac{216.15}{2.56}=\ka{84.43}\\
 \frac{6|M_X|}{BL^2}&=\frac{22.53}{4.096}=\kb{5.50},\qquad
 \frac{6|M_Y|}{LB^2}=\frac{37.03}{4.096}=\kb{9.04}\\[2pt]
-\sigma_{\max}&=69.43+5.50+9.04=\kutuc{83.97}\ \text{kN/m}^2\\
-\sigma_{\min}&=69.43-5.50-9.04=\kutuc{54.89}\ \text{kN/m}^2\\[2pt]
-e_X&=\frac{6.17}{177.75}=0.035\le\frac{1.6}{6}=0.267\ \checkmark,\qquad \frac{\sigma_{\max}}{q_{em}}=\kc{0.42}
+\sigma_{\max}&=84.43+5.50+9.04=\kutuc{98.97}\ \text{kN/m}^2\\
+\sigma_{\min}&=84.43-5.50-9.04=\kutuc{69.89}\ \text{kN/m}^2\\[2pt]
+e_X&=\frac{6.17}{216.15}=0.029\le\frac{1.6}{6}=0.267\ \checkmark,\qquad \frac{\sigma_{\max}}{q_{em}}=\kc{0.49}
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))
 r
 --- kontrol
-abs(r.veri["akis"]["temeller"][0]["sigma_max"] - 83.974) < 1e-3 and abs(r.veri["akis"]["temeller"][0]["sigma_min"] - 54.892) < 1e-3 and r.veri["akis"]["temeller"][0]["cekirdek_icinde"] and abs(r.veri["akis"]["temeller"][0]["DC"] - 0.42) < 1e-2 and abs(r.veri["akis"]["temeller"][0]["N_servis"] - (r.veri["akis"]["temeller"][0]["N_G"] + r.veri["akis"]["temeller"][0]["N_Q"])) < 1e-6
+abs(r.veri["akis"]["temeller"][0]["sigma_max"] - 98.974) < 1e-3 and abs(r.veri["akis"]["temeller"][0]["sigma_min"] - 69.892) < 1e-3 and r.veri["akis"]["temeller"][0]["cekirdek_icinde"] and abs(r.veri["akis"]["temeller"][0]["DC"] - 0.49) < 1e-2 and abs(r.veri["akis"]["temeller"][0]["N_servis"] - (r.veri["akis"]["temeller"][0]["N_G"] + r.veri["akis"]["temeller"][0]["N_Q"] + r.veri["akis"]["temeller"][0]["N_temel"])) < 1e-6
 --- yorum
-Taban tümüyle basınçta, D/C 0.42: temel rahat. Momentler yalnız düşey yükten geliyor (çerçeve etkisi); deprem birleşiminde $M$ büyür, $e$ çekirdeği aşabilir ve dağılım üçgene döner. `temeller` listesi `N_servis`, `e_X`, `e_Y`, `DC` ve `cekirdek_icinde` alanlarını taşır.
+Taban tümüyle basınçta, D/C 0.49: temel rahat. Temelin öz ağırlığı eksenel yükü artırır ama momenti değiştirmez; dolgu ağırlığı bu araçta ihmal edilir. Momentler yalnız düşey yükten geliyor (çerçeve etkisi); deprem birleşiminde $M$ büyür, $e$ çekirdeği aşabilir ve dağılım üçgene döner. `temeller` listesi `N_servis`, `N_temel`, `e_X`, `e_Y`, `DC` ve `cekirdek_icinde` alanlarını taşır.
 :::
 
 ::: ornek Korunum: beş sayı
