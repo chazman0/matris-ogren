@@ -318,7 +318,7 @@ her kayıtta `kaynak` ve `dogrulandi` taşır.
 ```python
 import yapi
 b = yapi.bina_sablon("betonarme-2kat-3x2")          # 5 şablon: yapi.bina_sablonlar()
-r = yapi.bina_coz(b)                                # 12 adımlı anlatım + bağımsız numpy betiği
+r = yapi.bina_coz(b)                                # 13 adımlı anlatım (12: kesit tahkikleri) + bağımsız numpy betiği
 v = r.veri
 v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden üçgen/trapez pay (tepe, q_eM, q_eV, toplam kN)
 v["akis"]["kolonlar"]                               # kat kat N (FE) ve yük alanı (tributary) karşılaştırması, fark %
@@ -380,8 +380,39 @@ Yanıt boyutu için `durumlar` içinde yalnız G ve Q tam diyagramlıdır; S, W,
 (`diyagram: false`), `sonuclar` yalnız ilk dayanım kombinasyonunu içerir (büyük modelde o da tembel kalır, `ozet.sonuclar_tembel`).
 
 Köprü işlemleri: `bina_coz`, `bina_kutuphane` (`tasiyici_sistemler` dahil), `bina_sablonlar`, `bina_sablon`, `bina_yuk_yolu`,
-`bina_deprem` (girdi `{bina}` → `{deprem}`: çözümsüz önizleme) ve `bina_kombinasyon` (girdi `{cozum_kimligi, ad, katsayilar}`
-→ `{ad, sonuc}`: tam kayıt; köprü son 3 çözümü bellekte tutar, kimlik yoksa `bina` verilirse yeniden çözer).
+`bina_deprem` (girdi `{bina}` → `{deprem}`: çözümsüz önizleme), `bina_kombinasyon` (girdi `{cozum_kimligi, ad, katsayilar}`
+→ `{ad, sonuc}`: tam kayıt; köprü son 3 çözümü bellekte tutar, kimlik yoksa `bina` verilirse yeniden çözer) ve
+`bina_eleman_tasarim` (girdi `{cozum_kimligi, tur: "kiris"|"kolon", no, bina?}` → `{ad, bloklar, sonuc}`: tek elemanın anlatımlı
+kesit tahkiki; aynı önbellek).
+
+**Kesit tahkikleri (Dilim 3).** `tasarim.py` yüklüyse `bina_coz` her bina kirişini ve kolonunu dayanım ve deprem
+kombinasyonlarının (servis ve öteleme birleşimleri hariç) her biriyle denetler ve sonucu `veri["tasarim"]`a, en büyük D/C'yi
+`veri["ozet"]["en_buyuk_dc"]`ye, anlatımı 12. adıma yazar (Python betiği 13. adım olur). `tasarim.py` yoksa bu alanlar
+yazılmaz, çözüm aynen çalışır.
+
+- **Betonarme kiriş (TS 500):** bütün FE parçalarında mesnet uçlarındaki en büyük negatif moment → üst donatı, açıklıktaki en
+  büyük pozitif moment → alt donatı (motor M işareti: alt lif çekme +), en büyük |V| → etriye (`kiris_egilme`, `kiris_kesme`).
+  d′ = paspayı (kesitte `pas`, varsayılan 30 mm) + 20 mm; momentler kolon ekseninde, kesme yüze indirgenmeden (güvenli tarafta).
+- **Betonarme kolon (TS 500 + TBDY 7.3):** her kombinasyonun alt ve üst ucundaki **eş zamanlı** (N, Mx, My) noktaları (zarf
+  değil) N–M etkileşim eğrisiyle (`kolon_kontrol`, e_min dahil). Eksenler bina eksenleridir: Mx bina X ekseni etrafında
+  (derinlik Y yönü boyutu bY), My bina Y ekseni etrafında (derinlik bX); `yon` takası kendiliğinden işlenir. Donatı kesitte
+  (`donati_orani` ya da `As` cm²) yoksa ρ = %1 varsayılır ve 0,01 → 0,04 taramasıyla "gerekli ρ" önerilir. Ek denetimler: TBDY
+  en küçük boyut 300 mm, N_dm ≤ 0,40 f_ck A_c (N_dm deprem birleşimlerinden; deprem yoksa G + Q).
+- **Çelik (ÇYTHYE 2018, YDKT; GKT kümesinde GKT):** kombinasyon başına (N, güçlü eksen Mx, zayıf eksen My, V) ile
+  `celik_eleman_kontrol`; kolonda K = 1, L = kat yüksekliği; kirişte L_b = açıklık, döşemeli kirişte üst başlık tutulu (L_b = 0;
+  `analiz.celik_Lb = "boy"` ile kapatılır), C_b = 1.
+- Elemanın D/C'si dayanım satırlarının en büyüğüdür; yönetmelik alt/üst sınır koşulları (en az donatı, boyut, aralık,
+  narinlik; satırda `kosul: true`) yalnız sağlanmadığında belirler. Deprem kombinasyonu varsa uyarı: TBDY kapasite tasarımı
+  (güçlü kolon–zayıf kiriş, kapasite kesmesi, birleşim bölgesi) bu araçta yoktur — sonuçlar ön boyutlandırmadır.
+
+```python
+t = r.veri["tasarim"]
+t["en_buyuk_dc"], t["dc_dagilimi"], t["kritik_elemanlar"][:3]      # {"<0.7": n, "0.7-0.9": n, "0.9-1.0": n, ">1.0": n}
+e = t["elemanlar"][0]                                               # {no, tur, adres, kesit, dc, durum, belirleyen, kontroller, ozet}
+e["ozet"]["As_ust_cm2"], e["ozet"]["oneri_alt"], e["ozet"]["etriye"]   # kiriş: gerekli donatı, öneri ("3Φ14"), "Φ8/20"
+k = yapi.eleman_tasarim(r.ic, "kolon", 1)                           # anlatımlı ayrıntı: kesit şeması, N–M eğrisi
+k.veri["egri_x"][:3], k.veri["noktalar"][0]                         # [{N, M}], {ad, kombinasyon, uc, N, Mx, My, dc}
+```
 
 ---
 

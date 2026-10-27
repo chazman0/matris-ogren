@@ -40,6 +40,10 @@ Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_kombinasyon": girdi {"cozum_kimligi", "ad", "katsayilar"?, "bina"?} → {"ad", "cozum_kimligi", "sonuc": KISA (tam diziler),
                     "hata": null}. Son çözümler (en çok BINA_ONBELLEK_EN_FAZLA) bellekte tutulur; kimlik önbellekte yoksa ve
                     "bina" verilmişse bina anlatımsız yeniden çözülür, yoksa öğretici hata.
+  "bina_eleman_tasarim": girdi {"cozum_kimligi", "tur": "kiris"|"kolon", "no" (bina eleman no'su), "bina"?} → {"ad", "bloklar"
+                    (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
+                    kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
+                    "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
 """
 from __future__ import annotations
 
@@ -400,11 +404,12 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon")
+# "bina_kombinasyon", "bina_eleman_tasarim")
 # ---------------------------------------------------------------------------
-BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon"}
+BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
+                 "bina_eleman_tasarim"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
-BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar için bellekte tutulan son çözüm sayısı
+BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
 
 
@@ -457,6 +462,13 @@ def _bina_kombinasyon_yaniti(girdi: dict) -> dict:
     katsayilar = girdi.get("katsayilar")
     if katsayilar is not None and not isinstance(katsayilar, dict):
         raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    ic = _bina_ic(yapi, girdi)
+    sonuc = yapi.kombinasyon_kisa(ic, ad, katsayilar)
+    return {"ad": ad, "cozum_kimligi": ic.get("kimlik"), "sonuc": _sonlu_sayilar(sonuc), "hata": None}
+
+
+def _bina_ic(yapi, girdi: dict) -> dict:
+    """Önbellekteki çözüm paketi (cozum_kimligi); yoksa girdi.bina anlatımsız yeniden çözülür ve önbelleğe konur."""
     kimlik = girdi.get("cozum_kimligi")
     ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
     if ic is not None:
@@ -467,10 +479,26 @@ def _bina_kombinasyon_yaniti(girdi: dict) -> dict:
         _onbellege_koy(ic)
     else:
         raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
-                              + " çözümün dışında kaldı). Binayı yeniden çözün; kombinasyonlar, çözümde hesaplanan G, Q, S, W ve E "
-                              "durumlarının katsayılı toplamıdır (yeniden çözüm gerekmez, ama durumların bellekte olması gerekir).")
-    sonuc = yapi.kombinasyon_kisa(ic, ad, katsayilar)
-    return {"ad": ad, "cozum_kimligi": ic.get("kimlik"), "sonuc": _sonlu_sayilar(sonuc), "hata": None}
+                              + " çözümün dışında kaldı). Binayı yeniden çözün; kombinasyonlar ve kesit tahkikleri, çözümde hesaplanan "
+                              "G, Q, S, W ve E durumlarının katsayılı toplamından kurulur (yeniden çözüm gerekmez, ama durumların "
+                              "bellekte olması gerekir).")
+    return ic
+
+
+def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
+    """Tek bina elemanının anlatımlı kesit tahkiki (tasarim.py): önbellekteki çözümden, yoksa girdi.bina yeniden çözülür."""
+    yapi = _yapi_zorunlu()
+    if not hasattr(yapi, "eleman_tasarim"):
+        raise mo.MatrisHatasi("Bu kurulumdaki bina modülü kesit tahkiki içermiyor; uygulamayı yenileyin.")
+    tur = str(girdi.get("tur") or "").strip().lower()
+    if tur not in ("kiris", "kolon"):
+        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
+    if girdi.get("no") is None:
+        raise mo.MatrisHatasi("Eleman numarası (no) verilmedi: bina kirişinin ya da kolonunun no'su.")
+    ic = _bina_ic(yapi, girdi)
+    r = yapi.eleman_tasarim(ic, tur, girdi.get("no"), goster="yok")
+    return {"ad": r.ad, "bloklar": _bloklar(r.anlatim), "sonuc": _sonlu_sayilar(r.veri), "cozum_kimligi": ic.get("kimlik"),
+            "hata": None}
 
 
 def _bina_islem(islem: str, girdi: dict) -> dict:
@@ -478,6 +506,8 @@ def _bina_islem(islem: str, girdi: dict) -> dict:
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":
         return _bina_kombinasyon_yaniti(girdi)
+    if islem == "bina_eleman_tasarim":
+        return _bina_eleman_tasarim_yaniti(girdi)
     yapi = _yapi_zorunlu()
     if islem == "bina_deprem":
         return {"deprem": _sonlu_sayilar(yapi.deprem_onizleme(_bina_girdisi(girdi))), "hata": None}
