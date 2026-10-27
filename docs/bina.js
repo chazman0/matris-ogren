@@ -170,11 +170,13 @@
   let sonEski = false;                  // model çözümden sonra değişti
   let ONIZLEME = null;                  // deprem kartı canlı önizlemesi {deprem, kaynak: "motor"|"tahmin"}
   let onizlemeZ = 0, onizlemeSira = 0;  // 400 ms gecikme ve yarış koruması
-  const KOMB_BEKLEYEN = {};             // tembel kombinasyon istekleri (ad → Promise)
+  const KOMB_BEKLEYEN = {};             // tembel kombinasyon / tam durum istekleri (ad → Promise)
+  const TASARIM_AYR = {};               // bina_eleman_tasarim yanıtları ("tur:no" → yanıt | Promise)
   const D = {
     kat: 1, arac: "sec", gorunum: "3b", secim: [], tumKatlar: false, firca: null, kirisBas: null,
     sekme: "akis", akisDurum: "G", akisHedef: null, oynat: 0, diyagram: "M", diyagramDurum: "1.4G+1.6Q", aksFiltre: "", deformeDurum: "G+Q", olcek: 100,
     hafif: false, sankeySecim: null, formul: null, cozuluyor: false, panelSekme: "nesne", depremYon: "x", depremOk: true,
+    dcGorunum: true, tasarimSecim: null, tasarimFiltre: "", nmEksen: "x",
   };
   const gecmis = { geri: [], ileri: [] };
   const ref = {};
@@ -577,6 +579,8 @@
     const hafif = D.hafif, kat = D.kat, kot = katKot(kat), celik = B.sistem === "celik";
     const uyarilar = sonUyarilar || [];
     const uyariVar = function (tur, no) { return uyarilar.some(function (u) { return u.tur === tur && u.no === no; }); };
+    // D/C görünümü (Tasarım sekmesi): kolon/kiriş D/C rengiyle, bütün katlar tam renk ve dokunulabilir; döşeme/duvar soluk
+    const dcG = dcAktif(), dcSn = function (tur, no) { const e = tasarimKaydi(tur, no); return " b3-dc b3-dc-" + (e ? dcSinif(e.dc) : "yok"); };
 
     // zemin ızgarası ve aks adları (katman 0)
     const izgara = function (Z, sinif) {
@@ -612,8 +616,9 @@
       const ko = kesitOz(c.kesit);
       if (X == null || Y == null || z1 == null || z0 == null) return;
       const bX = ko ? (c.yon === "y" ? ko.b : ko.h) : 0.4, bY = ko ? (c.yon === "y" ? ko.h : ko.b) : 0.4;
-      const sinif = "b3-kolon " + (ko && ko.celik ? "b3-celik" : "b3-beton") + (c.kat !== kat ? " b3-hayalet" : "") + (secildiMi("kolon", c.no) ? " b3-secili" : "") + (uyariVar("kolon", c.no) ? " b3-uyarili" : "");
+      const sinif = "b3-kolon " + (dcG ? dcSn("kolon", c.no) : (ko && ko.celik ? "b3-celik" : "b3-beton") + (c.kat !== kat ? " b3-hayalet" : "")) + (secildiMi("kolon", c.no) ? " b3-secili" : "") + (uyariVar("kolon", c.no) ? " b3-uyarili" : "");
       const ekr = C.prizma(sahne, T, b, [X, Y, z0], [X, Y, z1], [bX / 2, 0, 0], [0, bY / 2, 0], sinif, ' data-tur="kolon" data-no="' + c.no + '"', 1);
+      if (dcG && c.kat !== kat) hedefler.push({ tur: "dogru", a: P(X, Y, z0), b: P(X, Y, z1), r: 12 * s, kind: "nesne", nesne: "kolon", no: c.no });
       if (c.kat === kat) {
         hedefler.push({ tur: "dogru", a: P(X, Y, z0), b: P(X, Y, z1), r: 14 * s, kind: "nesne", nesne: "kolon", no: c.no });
         if (!hafif && uyariVar("kolon", c.no)) { const p = P(X, Y, (z0 + z1) / 2); sahne.ekle(1e9, rozet(p[0] + 12, p[1]), 2); }
@@ -627,13 +632,14 @@
       if (X1 == null || Y1 == null || X2 == null || Y2 == null || Z == null) return;
       const bb = ko ? ko.b : 0.25, hh = ko ? ko.h : 0.5, yatayX = Y1 === Y2;
       const e1 = yatayX ? [0, bb / 2, 0] : [bb / 2, 0, 0];
-      const sinif = "b3-kiris " + (ko && ko.celik ? "b3-celik" : "b3-beton") + (k.kat !== kat ? " b3-hayalet" : "") + (secildiMi("kiris", k.no) ? " b3-secili" : "") + (uyariVar("kiris", k.no) ? " b3-uyarili" : "");
+      const sinif = "b3-kiris " + (dcG ? dcSn("kiris", k.no) : (ko && ko.celik ? "b3-celik" : "b3-beton") + (k.kat !== kat ? " b3-hayalet" : "")) + (secildiMi("kiris", k.no) ? " b3-secili" : "") + (uyariVar("kiris", k.no) ? " b3-uyarili" : "");
       C.prizma(sahne, T, b, [X1, Y1, Z - hh / 2], [X2, Y2, Z - hh / 2], e1, [0, 0, hh / 2], sinif, ' data-tur="kiris" data-no="' + k.no + '"', 1);
       if (k.duvar && !hafif) {
         const ust = katKot(k.kat + 1) != null ? katKot(k.kat + 1) - hh : Z + 1.0;
         const kose = [[X1, Y1, Z], [X2, Y2, Z], [X2, Y2, ust], [X1, Y1, ust]];
-        C.dortgen(sahne, T, b, kose, "b3-duvar" + (k.kat !== kat ? " b3-hayalet" : ""), ' data-tur="duvar" data-no="' + k.no + '"', 1);
+        C.dortgen(sahne, T, b, kose, "b3-duvar" + (k.kat !== kat || dcG ? " b3-hayalet" : ""), ' data-tur="duvar" data-no="' + k.no + '"', 1);
       }
+      if (dcG && k.kat !== kat) hedefler.push({ tur: "dogru", a: P(X1, Y1, Z), b: P(X2, Y2, Z), r: 12 * s, kind: "nesne", nesne: "kiris", no: k.no });
       if (k.kat === kat) {
         hedefler.push({ tur: "dogru", a: P(X1, Y1, Z), b: P(X2, Y2, Z), r: 14 * s, kind: "nesne", nesne: "kiris", no: k.no });
         if (!hafif && uyariVar("kiris", k.no)) { const p = P((X1 + X2) / 2, (Y1 + Y2) / 2, Z); sahne.ekle(1e9, rozet(p[0], p[1] - 14), 2); }
@@ -644,7 +650,7 @@
       const X1 = aksX(d.kose[0][0]), Y1 = aksY(d.kose[0][1]), X2 = aksX(d.kose[1][0]), Y2 = aksY(d.kose[1][1]), Z = katKot(d.kat);
       if (X1 == null || Y1 == null || X2 == null || Y2 == null || Z == null) return;
       const kose = [[X1, Y1, Z], [X2, Y1, Z], [X2, Y2, Z], [X1, Y2, Z]];
-      const sinif = "b3-doseme" + (d.kat !== kat ? " b3-hayalet" : "") + (secildiMi("doseme", d.no) ? " b3-secili" : "") + (uyariVar("doseme", d.no) ? " b3-uyarili" : "");
+      const sinif = "b3-doseme" + (d.kat !== kat || dcG ? " b3-hayalet" : "") + (secildiMi("doseme", d.no) ? " b3-secili" : "") + (uyariVar("doseme", d.no) ? " b3-uyarili" : "");
       const ekr = C.dortgen(sahne, T, b, kose, sinif, ' data-tur="doseme" data-no="' + d.no + '"', 1);
       if (d.kat === kat) {
         hedefler.push({ tur: "cokgen", pts: ekr, kind: "nesne", nesne: "doseme", no: d.no });
@@ -656,7 +662,8 @@
       }
     });
     // dokunma hedefleri: etkin katın aks kesişimleri ve hücreleri
-    if (kat >= 1 && kot != null && !hafif) {
+    // (D/C görünümünde Seç aracıyla kesişim/hücre hedefleri konmaz: dokunuş doğrudan kolon/kirişe gider, bütün katlarda)
+    if (kat >= 1 && kot != null && !hafif && !(dcG && D.arac === "sec")) {
       const kes = kesisimler();
       kes.forEach(function (aks) {
         const X = aksX(aks[0]), Y = aksY(aks[1]), p = P(X, Y, kot);
@@ -686,8 +693,10 @@
     const vb = kamera.viewBox().split(" ").map(Number);
     const eksen = eksenTakimi(vb, b);
     svg.setAttribute("viewBox", kamera.viewBox());
-    svg.innerHTML = '<defs><pattern id="b3-tarama" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" class="b3-tarama-c"/></pattern></defs>' +
+    svg.innerHTML = '<defs><pattern id="b3-tarama" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" class="b3-tarama-c"/></pattern>' +
+      '<pattern id="b3-dc-desen" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" class="b3-dc-desen-z"/><line x1="0" y1="0" x2="0" y2="7" class="b3-dc-desen-c"/></pattern></defs>' +
       sahne.html() + eksen + '<path id="bn-gecici" class="b3-gecici" d=""/>';
+    dcLejantCiz();
   }
   function rozet(x, y) {
     return '<g class="b3-rozet"><circle cx="' + r1(x) + '" cy="' + r1(y) + '" r="8"/>' + metinSvg(x, y + 4, "!", "b3-rozet-t", "middle") + "</g>";
@@ -790,6 +799,7 @@
       degisti();
       return;
     }
+    if (SON && !sonEski && D.sekme === "tasarim" && tasarimVar() && (tur === "kolon" || tur === "kiris")) { tasarimSec(tur, no, false); return; }
     if (SON && !sonEski && D.sekme === "akis") { D.akisHedef = { tur: tur, no: no }; D.secim = [{ tur: tur, no: no }]; akisYenile(); yenile(); return; }
     if (secildiMi(tur, no)) D.secim = D.secim.filter(function (s) { return !(s.tur === tur && s.no === no); });
     else if (D.secim.length && D.secim[0].tur === tur) D.secim.push({ tur: tur, no: no });
@@ -949,6 +959,7 @@
         '<div class="bn-arac" id="bn-arac" role="toolbar" aria-label="Araçlar"></div>' +
         '<div class="bn-sahne-kutu" id="bn-sahne-kutu"><svg id="bn-svg" class="bn-svg" role="img" aria-label="3B bina sahnesi" preserveAspectRatio="xMidYMid meet"></svg>' +
           '<div class="bn-sahne-ust" id="bn-sahne-ust"></div>' +
+          '<div class="bn-dc-lejant" id="bn-dc-lejant" hidden></div>' +
           '<div class="bn-sahne-alt"><label class="bn-onay"><input type="checkbox" id="bn-tum-katlar"> Tüm katlara uygula</label>' +
             '<button type="button" class="dugme kucuk" id="bn-doldur">Döşemeleri doldur</button><button type="button" class="dugme kucuk" id="bn-kat-kopyala">Alt katı kopyala</button></div>' +
           '<div id="bn-formul" class="bn-formul gizli"></div>' +
@@ -1387,7 +1398,15 @@
   }
 
   // ---------- Hesap hattı ve çözüm ----------
-  // Hesap hattı: Yükler → Yük durumları (açık durumlar) → Kombinasyonlar (N) → Zarf → Tasarım (yakında); çözümden sonra kutular yeşil
+  // Hesap hattı: Yükler → Yük durumları (açık durumlar) → Kombinasyonlar (N) → Zarf → Tasarım (D/C maks); çözümden sonra kutular yeşil.
+  // Kutu [etiket, anlatım adımı, sekme?, ek sınıf]; adım 0 = pasif. Tasarım kutusu Tasarım sekmesini açar (veri.tasarim varsa).
+  function kombSayisi(v) {
+    return (v.zarf && v.zarf.kombinasyon_sayisi) || (v.kombinasyonlar || []).filter(function (k) { return k.uygulandi && k.tur !== "drift"; }).length || Object.keys(v.sonuclar || {}).length;
+  }
+  function driftSayisi(v) {
+    return (v.ozet && v.ozet.drift_kombinasyon_sayisi) || (v.kombinasyonlar || []).filter(function (k) { return k.uygulandi && k.tur === "drift"; }).length;
+  }
+  function dcSinif(dc) { return dc == null ? "" : dc < 0.7 ? "y" : dc < 0.9 ? "s" : dc <= 1.0 ? "t" : "k"; }
   function hatAdimlari() {
     const tamam = SON && !sonEski, v = tamam ? SON.veri : null;
     let durumlar;
@@ -1395,15 +1414,17 @@
       const harf = {}; Object.keys(v.durumlar).forEach(function (k) { harf[k.charAt(0)] = 1; });
       durumlar = ["G", "Q", "S", "W", "E"].filter(function (k) { return harf[k]; }).join(" ") + " (" + Object.keys(v.durumlar).length + ")";
     } else durumlar = Object.keys(B.yuk_durumlari || {}).filter(function (k) { return B.yuk_durumlari[k].acik; }).join(" ");
-    const nKomb = v ? (v.kombinasyonlar || []).filter(function (k) { return k.uygulandi && k.tur !== "drift"; }).length || Object.keys(v.sonuclar || {}).length : "";
-    return [["Yükler", 2], ["Yük durumları " + durumlar, 6], ["Kombinasyonlar" + (nKomb ? " " + nKomb : ""), 9], ["Zarf", 9], ["Tasarım (yakında)", 0]];
+    const nKomb = v ? kombSayisi(v) : "", nDrift = v ? driftSayisi(v) : 0;
+    const t = v && v.tasarim, dcM = t ? (t.en_buyuk_dc != null ? t.en_buyuk_dc : Math.max.apply(null, (t.elemanlar || []).map(function (e) { return e.dc || 0; }).concat([0]))) : null;
+    const tasarim = t ? ["Tasarım · D/C maks " + f2(dcM), 12, "tasarim", " bn-hat-dc bn-dc-" + dcSinif(dcM)] : [v ? "Tasarım (motor güncellemesiyle)" : "Tasarım", 0];
+    return [["Yükler", 2], ["Yük durumları " + durumlar, 6], ["Kombinasyonlar" + (nKomb ? " " + nKomb : "") + (nDrift ? " (+" + nDrift + " öteleme)" : ""), 9], ["Zarf", 9], tasarim];
   }
   function hatCiz() {
     const tamam = SON && !sonEski;
     ref.hat.innerHTML = hatAdimlari().map(function (h, i) {
       const pasif = h[1] === 0;
-      return (i ? '<span class="bn-hat-ok" aria-hidden="true">→</span>' : "") + '<button type="button" class="bn-hat-adim' + (tamam && !pasif ? " tamam" : "") + (pasif ? " pasif" : "") + '" data-adim="' + h[1] + '"' + (pasif ? " disabled" : "") + ">" +
-        (tamam && !pasif ? "✓ " : "") + kacis(h[0]) + "</button>";
+      return (i ? '<span class="bn-hat-ok" aria-hidden="true">→</span>' : "") + '<button type="button" class="bn-hat-adim' + (tamam && !pasif ? " tamam" : "") + (pasif ? " pasif" : "") + (h[3] || "") + '" data-adim="' + h[1] + '"' +
+        (h[2] ? ' data-hat-sekme="' + h[2] + '"' : "") + (pasif ? " disabled" : "") + ">" + (tamam && !pasif ? "✓ " : "") + kacis(h[0]) + "</button>";
     }).join("");
     ref.coz.disabled = D.cozuluyor;
     ref.coz.textContent = D.cozuluyor ? "Çözülüyor…" : "Çöz ▶";
@@ -1415,12 +1436,16 @@
     if (dg.hata.length) { ref.hata.scrollIntoView({ block: "nearest", behavior: "smooth" }); return; }
     if (dg.uyari.length && !window.confirm(dg.uyari.length + " uyarı var (ör. " + dg.uyari[0].metin + "). Yine de çözülsün mü?")) return;
     D.cozuluyor = true; hatCiz();
-    A.motorIstegi({ islem: "bina_coz", girdi: { bina: kopya(B) } }).then(function (y) {
+    const cozulen = kopya(B);
+    A.motorIstegi({ islem: "bina_coz", girdi: { bina: cozulen } }).then(function (y) {
       if (!y || y.hata) { SON = null; hataGoster(ref.hata, [y && y.hata ? y.hata : "Boş yanıt."], y && y.hata_turu === "ic" ? "Motor hatası" : "Bina çözülemedi"); sonucuTemizle(); return; }
       if (!y.veri || !y.veri.ag || !y.veri.durumlar) { hataGoster(ref.hata, ["Motor yanıtında “veri.ag” ya da “veri.durumlar” yok (şema §4)."], "Beklenmeyen yanıt"); return; }
       hataGoster(ref.hata, []);
-      SON = { y: y, veri: y.veri }; sonEski = false; D.akisHedef = null; D.sankeySecim = null; D.sekme = "akis";
+      SON = { y: y, veri: y.veri, bina: cozulen }; sonEski = false; D.akisHedef = null; D.sankeySecim = null; D.sekme = "akis"; D.tasarimSecim = null;
       Object.keys(KOMB_BEKLEYEN).forEach(function (k) { delete KOMB_BEKLEYEN[k]; });
+      Object.keys(KOMB_HATA).forEach(function (k) { delete KOMB_HATA[k]; });
+      Object.keys(TASARIM_AYR).forEach(function (k) { delete TASARIM_AYR[k]; });
+      if (y.veri.ozet && y.veri.ozet.sonuclar_tembel) A.toast("Büyük model: kombinasyon sonuçları yanıta yazılmadı; önce G durumu gösteriliyor, kombinasyonlar seçince motordan alınır.");
       if (!(D.diyagramDurum in (y.veri.sonuclar || {})) && D.diyagramDurum !== "zarf" && !(D.diyagramDurum in y.veri.durumlar)) D.diyagramDurum = Object.keys(y.veri.sonuclar || {})[0] || "G";
       if (!(D.deformeDurum in (y.veri.sonuclar || {})) && !(D.deformeDurum in y.veri.durumlar)) D.deformeDurum = Object.keys(y.veri.sonuclar || {})[0] || "G";
       if (!(["G", "Q", "G+Q", "S", "W"].indexOf(D.akisDurum) >= 0) || (D.akisDurum === "S" && !y.veri.durumlar.S)) D.akisDurum = "G";
@@ -1841,7 +1866,7 @@
   function katAdV(v, no) { const k = v.bina.katlar.filter(function (x) { return x.no === no; })[0]; return k ? k.ad : "kat " + no; }
 
   // ---------- Sonuç bölümü ----------
-  const SEKMELER = [["akis", "Yük akışı"], ["deprem", "Deprem"], ["deforme", "Deforme"], ["diyagram", "Diyagramlar"], ["tablolar", "Tablolar"], ["anlatim", "Anlatım"]];
+  const SEKMELER = [["akis", "Yük akışı"], ["deprem", "Deprem"], ["deforme", "Deforme"], ["diyagram", "Diyagramlar"], ["tablolar", "Tablolar"], ["tasarim", "Tasarım"], ["anlatim", "Anlatım"]];
   let anlatimCizildi = false;
   function depremVar() { const v = V(); return !!(v && v.deprem && v.deprem.katlar); }
   function sonucuCiz() {
@@ -1855,7 +1880,8 @@
       '<span class="se-rozet">ΣG = ' + f1(o.toplam_G != null ? o.toplam_G : v.yukler.toplam.G) + " kN</span><span class=\"se-rozet\">ΣQ = " + f1(o.toplam_Q != null ? o.toplam_Q : v.yukler.toplam.Q) + " kN</span>" +
       '<span class="se-rozet">' + Object.keys(v.durumlar || {}).length + " durum · " + ((v.kombinasyonlar || []).filter(function (k) { return k.uygulandi && k.tur !== "drift"; }).length || Object.keys(v.sonuclar || {}).length) + " kombinasyon</span>" +
       (depremVar() ? '<span class="se-rozet">V_tE = ' + f1(v.deprem.VtE) + " kN</span>" : "") +
-      (o.en_buyuk_temel_DC != null ? '<span class="se-rozet">Temel D/C maks ' + f2(o.en_buyuk_temel_DC) + "</span>" : "") + "</div>";
+      (o.en_buyuk_temel_DC != null ? '<span class="se-rozet">Temel D/C maks ' + f2(o.en_buyuk_temel_DC) + "</span>" : "") +
+      (v.tasarim ? '<span class="se-rozet bn-dc-rozet bn-dc-' + dcSinif(v.tasarim.en_buyuk_dc) + '">Eleman D/C maks ' + f2(v.tasarim.en_buyuk_dc) + "</span>" : "") + "</div>";
     if (o.uyarilar && o.uyarilar.length) h += '<div class="bn-uyari-kutu">' + o.uyarilar.map(function (u) { return "<div>⚠ " + kacis(u) + "</div>"; }).join("") + "</div>";
     h += '<div class="bn-sekmeler" role="tablist">' + SEKMELER.filter(function (s) { return s[0] !== "deprem" || depremVar(); }).map(function (s) { return '<button type="button" role="tab" class="bn-sekme' + (D.sekme === s[0] ? " aktif" : "") + '" data-sekme="' + s[0] + '" aria-selected="' + (D.sekme === s[0]) + '">' + s[1] + "</button>"; }).join("") + "</div>";
     h += '<div class="bn-sekme-icerik" id="bn-sekme-icerik"></div>';
@@ -1872,53 +1898,101 @@
     else if (D.sekme === "deforme") kap.innerHTML = deformeSekmesi();
     else if (D.sekme === "diyagram") kap.innerHTML = diyagramSekmesi();
     else if (D.sekme === "tablolar") kap.innerHTML = tablolarSekmesi();
+    else if (D.sekme === "tasarim") kap.innerHTML = tasarimSekmesi();
     else kap.innerHTML = anlatimSekmesi();
     if (D.sekme === "akis") sankeyCiz();
     else if (D.sekme === "deprem") depremCiz();
     else if (D.sekme === "deforme") deformeyiCiz();
     else if (D.sekme === "diyagram") diyagramiCiz();
     else if (D.sekme === "anlatim") anlatimiCiz();
+    else if (D.sekme === "tasarim") tasarimAyrintiCiz();
     sahneCiz();
   }
-  // Durum / kombinasyon seçici: tüm yük durumları, hazır kombinasyonlar, uygulanan ama yanıtta olmayan kombinasyonlar (tembel yükleme), zarf
+  // Durum / kombinasyon seçici: yük durumları, kombinasyon aileleri (optgroup), öteleme (drift) kombinasyonları, zarf.
+  // "⇣": tam dizileri yanıtta yok, seçince motordan (bina_kombinasyon) alınır.
   function durumSecici(id, secili, zarf) {
-    const v = V(), l = [], var_ = {};
-    const ekle = function (k, ad) { if (var_[k]) return; var_[k] = 1; l.push([k, ad]); };
-    Object.keys(v.durumlar || {}).forEach(function (k) { ekle(k, "Durum " + k); });
-    if (!(v.sonuclar && v.sonuclar["G+Q"]) && v.durumlar.G && v.durumlar.Q) ekle("G+Q", "G+Q (toplam)");
-    Object.keys(v.sonuclar || {}).forEach(function (k) { ekle(k, "Kombinasyon " + k); });
-    (v.kombinasyonlar || []).forEach(function (k) { if (k.uygulandi && !(v.sonuclar && v.sonuclar[k.ad]) && !v.durumlar[k.ad]) ekle(k.ad, (k.tur === "drift" ? "Öteleme " : "Kombinasyon ") + k.ad + " ⇣"); });
-    if (zarf) ekle("zarf", "Zarf (max/min, " + ((v.zarf && v.zarf.kombinasyon_sayisi) || (v.kombinasyonlar || []).filter(function (k) { return k.uygulandi && k.tur !== "drift"; }).length || Object.keys(v.sonuclar || {}).length) + " kombinasyon)");
-    return '<select class="girdi bn-secici" id="' + id + '" aria-label="Yük durumu / kombinasyon">' + secenekler(l, secili) + "</select>";
+    const v = V(), gruplar = [], var_ = {}, gAd = {};
+    const grup = function (baslik) { if (!gAd[baslik]) { gAd[baslik] = { baslik: baslik, l: [] }; gruplar.push(gAd[baslik]); } return gAd[baslik]; };
+    const ekle = function (g, k, ad) { if (var_[k]) return; var_[k] = 1; g.l.push([k, ad]); };
+    const gd = grup("Yük durumları");
+    Object.keys(v.durumlar || {}).forEach(function (k) { ekle(gd, k, "Durum " + k + (ince(v.durumlar[k]) ? " ⇣" : "")); });
+    if (!(v.sonuclar && v.sonuclar["G+Q"]) && v.durumlar.G && v.durumlar.Q) ekle(gd, "G+Q", "G+Q (toplam)");
+    Object.keys(v.sonuclar || {}).forEach(function (k) {
+      const t = (v.kombinasyonlar || []).filter(function (x) { return x.ad === k; })[0];
+      ekle(grup(t ? kombAile(t) : "Kombinasyonlar"), k, k);
+    });
+    (v.kombinasyonlar || []).forEach(function (k) {
+      if (!k.uygulandi || v.durumlar[k.ad]) return;
+      ekle(grup(kombAile(k)), k.ad, k.ad + (hazirMi(k.ad) ? "" : " ⇣"));
+    });
+    if (zarf) ekle(grup("Zarf"), "zarf", "Zarf (max/min, " + kombSayisi(v) + " kombinasyon)");
+    return '<select class="girdi bn-secici" id="' + id + '" aria-label="Yük durumu / kombinasyon">' + gruplar.filter(function (g) { return g.l.length; }).map(function (g) {
+      return '<optgroup label="' + kacis(g.baslik) + '">' + secenekler(g.l, secili) + "</optgroup>";
+    }).join("") + "</select>";
   }
-  // Seçilen ad yanıtta yoksa motordan `bina_kombinasyon {cozum_kimligi, ad}` ile alınır; sonuç `veri.sonuclar`a yazılır (önbellek). cb(hazır: bool)
+  function kombAile(k) {
+    const tur = { dayanim: "Dayanım", deprem: "Deprem", servis: "Servis", drift: "Öteleme (drift)" }[k.tur] || k.tur || "Kombinasyon";
+    return tur + (k.aile && k.aile !== k.ad ? ": " + k.aile : "");
+  }
+  // İnce kayıt (S/W/E durumları): u yok, diyagram dizileri yok; yalnız uç kuvvetleri, enb, düğüm/tepki (motor §4 sapma notu b)
+  function ince(k) { return !!k && (k.diyagram === false || !(k.elemanlar && k.elemanlar.length && Array.isArray(k.elemanlar[0].M))); }
+  // Seçilen ad diyagram/deforme için hazır mı (tam diziler yanıtta / önbellekte)?
+  function hazirMi(ad) {
+    const v = V();
+    if (!v) return false;
+    if (ad === "zarf") return true;
+    if (ad === "G+Q" && !(v.sonuclar && v.sonuclar["G+Q"])) return !!v.durumlar.G && !ince(v.durumlar.G) && !!v.durumlar.Q && !ince(v.durumlar.Q);
+    const k = (v.sonuclar && v.sonuclar[ad]) || (v.durumlar && v.durumlar[ad]);
+    return !!k && !ince(k);
+  }
+  const KOMB_HATA = {};     // ad → kullanıcıya gösterilen neden (tekrar istek atılmaz; yeniden çözümde sıfırlanır)
+  // Tam dizileri motordan `bina_kombinasyon {cozum_kimligi, ad, katsayilar, bina}` ile alır: yanıtta olmayan kombinasyon ya da ince durum
+  // (tek durum: katsayilar {"EX+": 1}). Sonuç önbelleğe yazılır (kombinasyon → veri.sonuclar, durum → veri.durumlar). cb(hazır: bool)
   function kombinasyonHazirla(ad, cb) {
     const v = V();
-    if (!v || ad === "zarf" || ad === "G+Q" || (v.sonuclar && v.sonuclar[ad]) || (v.durumlar && v.durumlar[ad])) { cb(true); return; }
-    const tanim = (v.kombinasyonlar || []).filter(function (k) { return k.ad === ad; })[0];
-    if (!tanim) { cb(false); return; }
+    if (!v || hazirMi(ad)) { cb(true); return; }
+    if (KOMB_HATA[ad]) { cb(false); return; }
+    const durumMu = !!(v.durumlar && v.durumlar[ad]);
+    const tanim = durumMu ? { ad: ad, katsayilar: {} } : (v.kombinasyonlar || []).filter(function (k) { return k.ad === ad; })[0];
+    if (durumMu) tanim.katsayilar[ad] = 1;
+    if (!tanim) { KOMB_HATA[ad] = "Kombinasyon tanımı yanıtta yok: " + ad; cb(false); return; }
     if (!KOMB_BEKLEYEN[ad]) {
       const sonSON = SON;
-      KOMB_BEKLEYEN[ad] = A.motorIstegi({ islem: "bina_kombinasyon", girdi: { cozum_kimligi: v.cozum_kimligi || null, ad: ad, katsayilar: tanim.katsayilar } }).then(function (y) {
+      const girdi = { cozum_kimligi: v.cozum_kimligi || null, ad: ad, katsayilar: tanim.katsayilar, bina: SON.bina || kopya(B) };
+      KOMB_BEKLEYEN[ad] = A.motorIstegi({ islem: "bina_kombinasyon", girdi: girdi }).then(function (y) {
         if (SON !== sonSON) return false;
-        if (!y || y.hata || !y.sonuc) {
-          // motor yoksa / çözüm kimliği eskiyse: doğrusallıkla durumlardan yerel birleşim (öğretici not)
-          const yerel = kisaBirlesim(tanim.katsayilar);
-          if (!yerel) { A.toast("Kombinasyon alınamadı: " + ((y && y.hata) || "yanıt yok")); return false; }
+        if (!y || y.hata || !y.sonuc || ince(y.sonuc)) {
+          // motor yoksa / çözüm bellekte değilse: doğrusallıkla durumlardan yerel birleşim — durumlar tam diziliyse
+          const neden = (y && y.hata) || "yanıt yok";
+          const yerel = durumMu ? { hata: "ince durumun tam dizileri yalnız motordan alınabilir" } : kisaBirlesim(tanim.katsayilar);
+          if (yerel.hata) { KOMB_HATA[ad] = ad + " alınamadı (" + neden + "); yerel birleşim devre dışı: " + yerel.hata + "."; A.toast(KOMB_HATA[ad]); return false; }
           yerel.yerel = true;
+          A.toast(ad + ": motor yanıtı yok (" + neden + "); G/Q durumlarından yerel birleşim gösteriliyor.");
           v.sonuclar = v.sonuclar || {}; v.sonuclar[ad] = yerel;
           return true;
         }
-        v.sonuclar = v.sonuclar || {}; v.sonuclar[ad] = y.sonuc;
+        if (durumMu) v.durumlar[ad] = y.sonuc;
+        else { v.sonuclar = v.sonuclar || {}; v.sonuclar[ad] = y.sonuc; }
         return true;
-      }, function (e) { A.toast("Kombinasyon alınamadı: " + (e && e.message ? e.message : e)); return false; });
+      }, function (e) { KOMB_HATA[ad] = ad + " alınamadı: " + (e && e.message ? e.message : e); A.toast(KOMB_HATA[ad]); return false; });
     }
     KOMB_BEKLEYEN[ad].then(function (ok) { delete KOMB_BEKLEYEN[ad]; cb(!!ok); });
   }
-  // Durumların doğrusal birleşimi (u_komb = Σγ_i u_i; iç kuvvetler aynı katsayılarla)
+  // Çizimden önce: hazır değilse kutuda bekleme notu, motor isteği; gelince (ya da hata) yeniden çiz
+  function hazirDegilse(kap, ad, ciz) {
+    if (hazirMi(ad)) return false;
+    if (KOMB_HATA[ad]) { kap.innerHTML = '<p class="not se-bos bn-komb-hata">' + kacis(KOMB_HATA[ad]) + "</p>"; return true; }
+    kap.innerHTML = '<p class="not se-bos">' + kacis(ad) + " motordan alınıyor…</p>";
+    kombinasyonHazirla(ad, function () { if (kap.isConnected) { ciz(); sahneCiz(); } });
+    return true;
+  }
+  // Durumların doğrusal birleşimi (u_komb = Σγ_i u_i; iç kuvvetler aynı katsayılarla). Durumlardan biri ince ise {hata}: boş dizi üretilmez.
   function kisaBirlesim(katsayilar) {
-    const v = V(), adlar = Object.keys(katsayilar || {}).filter(function (k) { return v.durumlar && v.durumlar[k]; });
-    if (!adlar.length) return null;
+    const v = V(), adlar = Object.keys(katsayilar || {});
+    const eksik = adlar.filter(function (k) { return !(v.durumlar && v.durumlar[k]); });
+    if (!adlar.length || eksik.length) return { hata: "yanıtta olmayan durum: " + (eksik.join(", ") || "—") };
+    const inceler = adlar.filter(function (k) { return ince(v.durumlar[k]); });
+    if (inceler.length) return { hata: inceler.join(", ") + " durumları yanıtta yalnız uç kuvvetleriyle (ince) geldi" };
     const l = adlar.map(function (k) { return v.durumlar[k]; }), c = adlar.map(function (k) { return +katsayilar[k] || 0; });
     const o = { dugumler: [], tepkiler: [], elemanlar: [], denge: {} };
     l[0].dugumler.forEach(function (n, i) { const d = { no: n.no }; ["uX", "uY", "uZ", "rX", "rY", "rZ"].forEach(function (k) { d[k] = l.reduce(function (t, s, j) { return t + c[j] * ((s.dugumler[i] || {})[k] || 0); }, 0); }); o.dugumler.push(d); });
@@ -1940,8 +2014,12 @@
     const par = function (ad, deger, k) { return '<div class="bn-param"><span>' + ad + "</span><b>" + deger + "</b>" + kay(k) + "</div>"; };
     let h = "";
     if (d.uyarilar && d.uyarilar.length) h += '<div class="bn-uyari-kutu">' + d.uyarilar.map(function (u) { return "<div>⚠ " + kacis(u) + "</div>"; }).join("") + "</div>";
-    if (d.uygulanabilir === false) h += '<div class="hata-kutu" role="alert">Eşdeğer deprem yükü yöntemi bu bina için uygulanamaz (TBDY Tablo 4.4: BYS ' + kacis(d.BYS) + ", η_bi > 2,0 ya da B2 düzensizliği). Modal hesap gerekir; sonuçlar yalnız öğretim içindir.</div>";
-    else h += '<p class="bn-iyi-kutu">✓ Eşdeğer deprem yükü yöntemi uygulanabilir (Tablo 4.4: DTS ' + kacis(d.DTS) + ", BYS " + kacis(d.BYS) + ").</p>";
+    const U = d.uygulanabilirlik || {};
+    const uNot = (U.kosul_duzenli ? " Koşul: " + U.kosul_duzenli + "." : "") + (U.not ? " " + U.not : "");
+    if (d.uygulanabilir === false) h += '<div class="hata-kutu" role="alert">Eşdeğer deprem yükü yöntemi bu bina için uygulanamaz (' + kacis(U.kaynak || "TBDY Tablo 4.4") + ": DTS " + kacis(d.DTS) + ", BYS " + kacis(d.BYS) + ", η_bi > 2,0 ya da B2 düzensizliği). Modal hesap gerekir; sonuçlar yalnız öğretim içindir." + kacis(uNot) + "</div>";
+    else h += '<p class="bn-iyi-kutu">✓ Eşdeğer deprem yükü yöntemi uygulanabilir (' + kacis(U.kaynak || "Tablo 4.4") + ": DTS " + kacis(d.DTS) + ", BYS " + kacis(d.BYS) +
+      (U.esik_duzenli != null ? "; eşik BYS ≥ " + kacis(U.esik_duzenli) + " (düzenli) / ≥ " + kacis(U.esik_diger) + " (diğer)" : "") + ")." + kacis(uNot) + "</p>";
+    if (d.tahmin) h += '<p class="not">Değerler çözümsüz önizlemedir (tahmin); çözüm sonrası kat ötelemeleri ve η_bi motor çözümünden gelir.</p>';
     h += '<div class="bn-satir"><div class="se-seg" role="group" aria-label="Deprem doğrultusu">' + ["x", "y"].map(function (y) { return '<button type="button" class="se-seg-d" data-dep-yon="' + y + '" aria-pressed="' + (yon === y) + '">E' + y.toUpperCase() + "</button>"; }).join("") + "</div>" +
       '<label class="bn-onay"><input type="checkbox" id="bn-dep-ok"' + (D.depremOk ? " checked" : "") + "> 3B’de kat kuvveti okları ve kütle merkezi</label></div>";
     h += '<h4>Tasarım spektrumu (TBDY 2018 md. 2.3, 4.2)</h4><div class="se-sekil bn-spek-buyuk" id="bn-spek-buyuk" data-adim="12"></div>';
@@ -1953,16 +2031,39 @@
       par("S_ae(T_p) / R_a / S_aR", f2(d.Sae_Tp) + " / " + f2(d.Ra) + " / " + fmt(d.SaR, 3) + " g", "SaR") + par("m_t · W_t", (d.m_t != null ? f1(d.m_t) + " t · " : "") + f1(d.W_t != null ? d.W_t : (d.katlar || []).reduce(function (t, k) { return t + (k.w_i || 0); }, 0)) + " kN", "VtE") +
       par("V_tE (≥ min)", f1(d.VtE) + " kN (min " + f1(d.VtE_min) + ")", "VtE") + par("ΔF_N", f2(d.dFN) + " kN", "dFN") +
       (d.lambda != null ? par("λ (DD-3 / DD-2)", fmt(d.lambda, 3), "oran") : "") + (d.theta_sinir != null ? par("θ_II sınırı", fmt(d.theta_sinir, 3), "theta") : "") + "</div>";
+    // doğrultu ayrıntıları (motor: veri.deprem.X / .Y — T_p, Rayleigh, V_tE, D_b, η_max, M_o)
+    const Yd = d[yon.toUpperCase()] || {}, YON = "E" + yon.toUpperCase();
+    if (d.X || d.Y) {
+      h += "<h4>" + YON + " doğrultusu</h4><div class=\"bn-param-grid\">" +
+        par("T_p (" + YON + ")", f2(Yd.Tp != null ? Yd.Tp : d.Tp) + " s (" + kacis(Yd.Tp_yontem || d.Tp_yontem || "ampirik") + ")", "TpA") +
+        (Yd.Tp_rayleigh != null ? par("Rayleigh T (Denk. 4.26)", f2(Yd.Tp_rayleigh) + " s" + (Yd.Tp_rayleigh_sinirli != null && Math.abs(Yd.Tp_rayleigh_sinirli - Yd.Tp_rayleigh) > 1e-6 ? " → " + f2(Yd.Tp_rayleigh_sinirli) + " s (≤ 1,4·T_pA)" : ""), "Tp") : "") +
+        par("S_aR / R_a", fmt(Yd.SaR != null ? Yd.SaR : d.SaR, 3) + " g / " + f2(Yd.Ra != null ? Yd.Ra : d.Ra), "SaR") +
+        par("V_tE (" + YON + ")", f1(Yd.VtE != null ? Yd.VtE : d.VtE) + " kN" + (Yd.alt_sinir_etkin ? " (alt sınır etkin)" : ""), "VtE") +
+        (Yd.D_b != null ? par("Dışmerkezlik büyütme D_b (Denk. 4.29)", f2(Yd.D_b) + " · e = " + f2(Yd.e_oran != null ? Yd.e_oran : d.e_oran) + "·B", "D_b") : "") +
+        (Yd.eta_max != null ? par("η_b,maks (Tablo 3.6)", f2(Yd.eta_max) + (Yd.eta_max > 1.2 ? " — A1 burulma düzensizliği" : " ≤ 1,2"), "eta") : "") +
+        (Yd.Mo != null ? par("Devrilme momenti M_o", f1(Yd.Mo) + " kN·m", "Mo") : "") +
+        (Yd.theta_max != null ? par("θ_II,maks / sınır", fmt(Yd.theta_max, 3) + " / " + fmt(Yd.theta_sinir != null ? Yd.theta_sinir : d.theta_sinir, 3), "theta") : "") +
+        (d.EZ_katsayi != null ? par("EZ katsayısı (düşey deprem)", f2(d.EZ_katsayi) + " · G (≈ (2/3)·S_DS)", "EZ") : "") + "</div>";
+      if (Yd.rayleigh && Yd.rayleigh.length) h += '<details class="bn-ayrinti"><summary>Rayleigh periyodu verisi (' + YON + "; birim kuvvetler F_f, ötelemeler d_f)</summary>" +
+        tabloH(["Kat", "m_i (t)", "F_fi", "d_fi (mm)"], Yd.rayleigh.slice().sort(function (a, b) { return b.kat - a.kat; }).map(function (r) { return [katAdV(v, r.kat), f2(r.m), fmt(r.F_f, 3), fmt(r.d_f * 1000, 3)]; }), "bn-mini") + "</details>";
+    }
     const kat = (d.katlar || []).slice().sort(function (a, b) { return b.kat - a.kat; });
     const F = "F_" + yon, Vk = "V_" + yon, dk = "d_" + yon, dl = "delta_" + yon, or = "oran_" + yon, eta = "eta_b" + yon, th = "theta_" + yon;
-    h += '<h4>Kat kuvvetleri F_i ve kat kesmesi V_i (E' + yon.toUpperCase() + "; Denk. 4.23)</h4>" +
+    const ekVar = kat.some(function (k) { return k["e_" + yon] != null; });
+    h += '<h4>Kat kuvvetleri F_i ve kat kesmesi V_i (' + YON + "; Denk. 4.23)</h4>" +
       '<div class="bn-iki-kolon"><div class="se-sekil" id="bn-kat-kuvvet"></div>' +
-      tabloH(["Kat", "H (m)", "w_i (kN)", "m_i (t)", "F_i (kN)", "V_i (kN)"], kat.map(function (k) { return [katAdV(v, k.kat), f2(k.H), f1(k.w_i), f2(k.m_i), f1(k[F]), f1(k[Vk])]; })) + "</div>";
+      tabloH(["Kat", "H (m)", "w_i (kN)", "m_i (t)", "F_i (kN)", "V_i (kN)"].concat(ekVar ? ["e_i (m)", "M_bi (kN·m)"] : []), kat.map(function (k) {
+        return [katAdV(v, k.kat), f2(k.H), f1(k.w_i), f2(k.m_i), f1(k[F]), f1(k[Vk])].concat(ekVar ? [f2(k["e_" + yon]), f1(k["Mb_" + yon])] : []);
+      })) + "</div>";
     h += '<h4>Göreli kat ötelemesi (md. 4.9.1) · burulma η_bi (Tablo 3.6) · ikinci mertebe θ_II (md. 4.9.2)</h4>' +
       tabloH(["Kat", "h (m)", "d_i (mm)", "Δ_i (mm)", "δ_i = (R/I)Δ_i (mm)", "λ·δ_i/h_i", "Sınır", "η_bi", "θ_II", "Uygun"], kat.map(function (k) {
-        const s = { ek: k.uygun === false || (k[or] != null && k.sinir != null && k[or] > k.sinir) ? ' class="bn-drift-asim"' : "" };
-        const r = [katAdV(v, k.kat), f2(k.h != null ? k.h : (k.H - (kat.filter(function (x) { return x.kat === k.kat - 1; })[0] || { H: 0 }).H)), f2((k[dk] || 0) * 1000), f2((k[dl] || 0) * 1000), f2((k[dl] || 0) * 1000 * (d.R / d.I)),
-          fmt(k[or], 3), fmt(k.sinir, 3), k[eta] != null ? f2(k[eta]) + (k[eta] > 1.2 ? " (A1!)" : "") : "—", fmt(k[th], 3), k.uygun === false ? "✗" : "✓"];
+        // doğrultuya özgü uygunluk (uygun_x / uygun_y; yoksa genel) ve sınır (veri.deprem.X.sinir; yoksa kat / genel)
+        const sinirK = Yd.sinir != null ? Yd.sinir : k.sinir != null ? k.sinir : d.sinir_oran;
+        const uyg = k["uygun_" + yon] != null ? k["uygun_" + yon] : k.uygun;
+        const s = { ek: uyg === false || (k[or] != null && sinirK != null && k[or] > sinirK + 1e-12) ? ' class="bn-drift-asim"' : "" };
+        const dEt = k["delta_etkin_" + yon] != null ? k["delta_etkin_" + yon] : (k[dl] || 0) * (d.R / d.I);
+        const r = [katAdV(v, k.kat), f2(k.h != null ? k.h : (k.H - (kat.filter(function (x) { return x.kat === k.kat - 1; })[0] || { H: 0 }).H)), f2((k[dk] || 0) * 1000), f2((k[dl] || 0) * 1000), f2(dEt * 1000),
+          fmt(k[or], 3), fmt(sinirK, 3), k[eta] != null ? f2(k[eta]) + (k[eta] > 1.2 ? " (A1!)" : "") : "—", fmt(k[th], 3), s.ek ? "✗" : "✓"];
         r.ek = s.ek;
         return r;
       }));
@@ -2066,6 +2167,7 @@
   function deformeyiCiz() {
     const kap = document.getElementById("bn-def-sekil"), v = V();
     if (!kap || !v) return;
+    if (hazirDegilse(kap, D.deformeDurum, deformeyiCiz)) return;
     const ks = durumKisa(D.deformeDurum);
     if (!ks) { kap.innerHTML = '<p class="not se-bos">Bu durum için sonuç yok.</p>'; return; }
     const W = Math.max(260, kap.clientWidth || 600), H = Math.max(260, Math.round(W * 0.55)), b = kamera.bakis;
@@ -2116,6 +2218,7 @@
     const kap = document.getElementById("bn-dgm-sekil"), v = V();
     if (!kap || !v) return;
     document.querySelectorAll("#bn-sonuc .se-seg-d[data-dgm]").forEach(function (d) { d.setAttribute("aria-pressed", String(d.dataset.dgm === D.diyagram)); });
+    if (hazirDegilse(kap, D.diyagramDurum, diyagramiCiz)) { const nt0 = document.getElementById("bn-dgm-not"); if (nt0) nt0.textContent = ""; return; }
     const tur = D.diyagram, def = DIYAGRAM[tur], zarf = D.diyagramDurum === "zarf", ks = zarf ? null : durumKisa(D.diyagramDurum);
     if (!zarf && !ks) { kap.innerHTML = '<p class="not se-bos">Bu durum için sonuç yok.</p>'; return; }
     const W = Math.max(260, kap.clientWidth || 600), H = Math.max(260, Math.round(W * 0.55)), b = kamera.bakis;
@@ -2208,6 +2311,10 @@
     const v = V();
     let h = '<div class="bn-satir">' + durumSecici("bn-tablo-durum", D.deformeDurum, false) + "</div>";
     const ks = durumKisa(D.deformeDurum);
+    if (!ks && D.deformeDurum !== "zarf") {
+      h += '<p class="not" id="bn-tablo-bekle">' + kacis(KOMB_HATA[D.deformeDurum] || D.deformeDurum + " motordan alınıyor…") + "</p>";
+      if (!KOMB_HATA[D.deformeDurum]) setTimeout(function () { kombinasyonHazirla(D.deformeDurum, function () { if (D.sekme === "tablolar") sekmeCiz(); }); }, 0);
+    }
     if (ks) {
       h += "<h4>Mesnet tepkileri (bina koordinatı; kN, kN·m)</h4>" + tabloH(["Düğüm", "FX", "FY", "FZ", "MX", "MY", "MZ"], (ks.tepkiler || []).map(function (t) { const d = agDugum(t.dugum); return [(d ? d.adres : t.dugum), f1(t.FX), f1(t.FY), f1(t.FZ), f1(t.MX), f1(t.MY), f1(t.MZ)]; }));
       const dn = ks.denge || {}, tamam = ["FX", "FY", "FZ", "MX", "MY", "MZ"].every(function (k) { return dn[k] == null || Math.abs(dn[k]) < 1e-4; });
@@ -2219,26 +2326,273 @@
     h += "<h4>Döşeme payları (TS 500 11.4.3)</h4>" + tabloH(["Döşeme", "lx×ly", "m", "Tip", "g / q", "Kiriş", "Kenar", "Şekil", "Tepe G", "Tepe Q", "q_eM G", "q_eV G", "Toplam G", "Toplam Q"], [].concat.apply([], (v.yukler.dosemeler || []).map(function (d) {
       return d.paylar.map(function (p, i) { return [i ? "" : dosemeAdres(d.no), i ? "" : f2(d.lx) + "×" + f2(d.ly), i ? "" : f2(d.m), i ? "" : d.tip, i ? "" : f2(d.g) + " / " + f2(d.q), kirisAdres(p.kiris_no), p.kenar, p.sekil, f2(p.tepe_g), f2(p.tepe_q), f2(p.q_eM_g), f2(p.q_eV_g), f1(p.toplam_G), f1(p.toplam_Q)]; });
     })));
+    // Kombinasyonlar: önce aile özeti (aile = yönetmelik denklemi; deprem ailesi 32 doğrultu/işaret varyantı), sonra açılır tam liste
     const kombs = v.kombinasyonlar || [], nUyg = kombs.filter(function (k) { return k.uygulandi; }).length;
-    h += "<h4>Kombinasyonlar (" + nUyg + " uygulandı / " + kombs.length + ")</h4>" + tabloH(["Ad", "Katsayılar", "Tür", "Kaynak", "Durum"], kombs.map(function (k) {
-      const r = [k.ad, Object.keys(k.katsayilar || {}).map(function (d) { return String(k.katsayilar[d]).replace(".", ",") + "·" + d; }).join(" + "), k.tur || "", k.kaynak || "",
-        k.uygulandi ? ((v.sonuclar && v.sonuclar[k.ad]) ? "✓ hazır" : "✓ (seçince yüklenir)") : "— " + (k.neden || "uygulanmadı")];
-      r.ek = k.uygulandi ? "" : ' class="bn-pasif-satir"';
-      return r;
-    }));
+    const aileler = [], aileAd = {};
+    kombs.forEach(function (k) {
+      const a = (k.aile || k.ad) + "|" + (k.tur || "") + "|" + (k.uygulandi ? 1 : 0);
+      if (!aileAd[a]) { aileAd[a] = { ad: k.aile || k.ad, tur: k.tur || "", kaynak: k.kaynak || "", uygulandi: k.uygulandi, neden: k.neden, not: k.not || "", l: [] }; aileler.push(aileAd[a]); }
+      aileAd[a].l.push(k);
+      if (k.not && !aileAd[a].not) aileAd[a].not = k.not;
+    });
+    const zarfK = {}; ((v.zarf && v.zarf.kombinasyonlar) || []).forEach(function (a) { zarfK[a] = 1; });
+    h += "<h4>Kombinasyonlar (" + nUyg + " uygulandı / " + kombs.length + "; zarfa giren " + kombSayisi(v) + (driftSayisi(v) ? ", öteleme " + driftSayisi(v) : "") + ")</h4>" +
+      tabloH(["Aile", "Adet", "Tür", "Kaynak", "Durum / not"], aileler.map(function (a) {
+        const r = [a.ad, String(a.l.length), a.tur, a.kaynak, a.uygulandi ? "✓ " + (a.not || (a.tur === "drift" ? "göreli kat ötelemesi" : "zarfa girer")) : "— " + (a.neden || "uygulanmadı") + (a.not ? " (" + a.not + ")" : "")];
+        r.ek = a.uygulandi ? "" : ' class="bn-pasif-satir"';
+        return r;
+      })) +
+      '<details class="bn-ayrinti"><summary>Tüm kombinasyonlar (' + kombs.length + ")</summary>" + tabloH(["Ad", "Katsayılar", "Tür", "Zarf", "Durum"], kombs.map(function (k) {
+        const r = [k.ad, Object.keys(k.katsayilar || {}).map(function (d) { return String(k.katsayilar[d]).replace(".", ",") + "·" + d; }).join(" + "), k.tur || "", zarfK[k.ad] ? "✓" : "—",
+          k.uygulandi ? ((v.sonuclar && v.sonuclar[k.ad]) ? "✓ hazır" : "✓ (seçince yüklenir)") : "— " + (k.neden || "uygulanmadı")];
+        r.ek = k.uygulandi ? "" : ' class="bn-pasif-satir"';
+        return r;
+      })) + "</details>";
     if (v.ruzgar && v.ruzgar.katlar) {
       h += "<h4>Rüzgâr kat kuvvetleri (TS 498:2021 md. 14; W = C·q·A, C = " + f2(v.ruzgar.C) + ")</h4>" + tabloH(["Kat", "z (m)", "q (kN/m²)", "Cephe A_x (m²)", "Cephe A_y (m²)", "F_x (kN)", "F_y (kN)"], v.ruzgar.katlar.slice().sort(function (a, b) { return b.kat - a.kat; }).map(function (k) {
         const q = (v.ruzgar.q_h || []).filter(function (x) { return x.kat === k.kat; })[0] || {};
-        return [katAdV(v, k.kat), f2(q.z), f2(q.q), f2(k.cephe_x), f2(k.cephe_y), f1(k.F_x), f1(k.F_y)];
+        return [katAdV(v, k.kat), f2(k.z != null ? k.z : q.z), f2(k.q != null ? k.q : q.q), f2(k.cephe_x), f2(k.cephe_y), f1(k.F_x), f1(k.F_y)];
       }));
+      if (v.ruzgar.toplam_x != null) h += '<p class="not">ΣW_x = ' + f1(v.ruzgar.toplam_x) + " kN · ΣW_y = " + f1(v.ruzgar.toplam_y) + " kN. Cephe alanı A = cephe genişliği × kat yükseklik payı (m²); F_x, X doğrultusunda esen rüzgârın kat kuvvetidir.</p>";
       if (v.ruzgar.kaynak) h += '<p class="not">' + kacis(v.ruzgar.kaynak) + "</p>";
     }
     if (v.kar) {
-      h += "<h4>Kar yükü (TS 498:2021 md. 11)</h4>" + tabloH(["Bölge", "Rakım (m)", "S_k (kN/m²)", "μ", "s = μ·S_k (kN/m²)", "Çatı alanı (m²)", "ΣS (kN)"], [[String(v.kar.bolge), f1(v.kar.rakim), f2(v.kar.Sk), f2(v.kar.mu), f2(v.kar.s), f2(v.kar.cati_alani), f1(v.kar.S_toplam)]]);
-      if (v.kar.kaynak) h += '<p class="not">' + kacis(v.kar.kaynak) + "</p>";
+      const kr = v.kar;
+      h += "<h4>Kar yükü (TS 498:2021 md. 11)</h4>" + tabloH(["Bölge", "Rakım (m)", "S_k (kN/m²)", "μ", "C_e · C_t", "s = μ·C_e·C_t·S_k (kN/m²)", "Çatı alanı (m²)", "ΣS (kN)"],
+        [[String(kr.bolge), f1(kr.rakim), f2(kr.Sk), f2(kr.mu), (kr.Ce != null ? f2(kr.Ce) : "1,00") + " · " + (kr.Ct != null ? f2(kr.Ct) : "1,00"), f2(kr.s), f2(kr.cati_alani), f1(kr.S_toplam)]]);
+      [kr.Sk_kaynak, kr.mu_kaynak].filter(Boolean).forEach(function (t) { h += '<p class="not">' + kacis(t) + "</p>"; });
+      if (kr.kaynak && !kr.Sk_kaynak) h += '<p class="not">' + kacis(kr.kaynak) + "</p>";
+      if (kr.dogrulandi === false) h += '<p class="bn-uyari-kutu">Kar değerleri doğrulanacak (dogrulandi: false).</p>';
     }
     h += "<h4>Ağ</h4>" + tabloH(["Eleman", "Tür", "Kaynak", "Kat", "L (m)", "Kesit", "Düğümler"], (v.ag.elemanlar || []).map(function (e) { return ["e" + e.no, e.tur, e.tur === "kolon" ? kolonAdres(e.kaynak_no) : kirisAdres(e.kaynak_no), String(e.kat), f2(e.L), e.kesit, e.dugumler.join(" → ")]; }));
     return h;
+  }
+  // ---------- Tasarım (Dilim 3, §11: veri.tasarim) ----------
+  // D/C sınıfları: y < 0,7 ≤ s < 0,9 ≤ t ≤ 1,0 < k (renk körlüğü için kırmızıda desen + kalın kenar; tabloda simge)
+  const DC_SINIF = [["y", "< 0,7", "<0.7"], ["s", "0,7–0,9", "0.7-0.9"], ["t", "0,9–1,0", "0.9-1.0"], ["k", "> 1,0", ">1.0"]];
+  const OZET_ETIKET = {
+    Md_mesnet: ["M_d mesnet (−M)", "kN·m"], Mr_mesnet: ["M_r mesnet", "kN·m"], As_ust_cm2: ["Üst donatı gerekli (mesnet)", "cm²"], As_ust_mevcut_cm2: ["Üst donatı (kesitte)", "cm²"], oneri_ust: ["Üst çubuk önerisi", ""],
+    Md_aciklik: ["M_d açıklık (+M)", "kN·m"], Mr_aciklik: ["M_r açıklık", "kN·m"], As_alt_cm2: ["Alt donatı gerekli (açıklık)", "cm²"], As_alt_mevcut_cm2: ["Alt donatı (kesitte)", "cm²"], oneri_alt: ["Alt çubuk önerisi", ""],
+    Vd: ["V_d", "kN"], etriye: ["Etriye", ""],
+    rho: ["Boyuna donatı oranı ρ", "%"], As_toplam_cm2: ["A_s toplam", "cm²"], N_max_kN: ["N_d,maks (basınç +)", "kN"], N_min_kN: ["N_d,min", "kN"],
+    N_sinir_TBDY_kN: ["N sınırı 0,40·f_ck·A_c (TBDY 7.3.1.2)", "kN"], N_sinir_TS500_kN: ["N sınırı 0,9·f_cd·A_c (TS 500)", "kN"], e_min_x_mm: ["e_min,x", "mm"], e_min_y_mm: ["e_min,y", "mm"],
+    sinif: ["Kesit sınıfı (Tablo 5.1)", ""], profil: ["Profil", ""], Mn_kNm: ["M_n (karakteristik)", "kN·m"], Pn_kN: ["P_n (basınç)", "kN"], Vn_kN: ["V_n (kesme)", "kN"],
+    Mc_kNm: ["M_c = M_n/Ω", "kN·m"], Pc_kN: ["P_c = P_n/Ω", "kN"], Vc_kN: ["V_c = V_n/Ω", "kN"], Lb_m: ["L_b (yanal tutulmamış boy)", "m"],
+  };
+  function tasarimVar() { const v = V(); return !!(v && v.tasarim && Array.isArray(v.tasarim.elemanlar)); }
+  function dcAktif() { return !!(SON && !sonEski && D.sekme === "tasarim" && D.dcGorunum && tasarimVar()); }
+  function tasarimKaydi(tur, no) { const v = V(); return v && v.tasarim ? (v.tasarim.elemanlar || []).filter(function (e) { return e.tur === tur && e.no === no; })[0] || null : null; }
+  function dcDagilimi(t) {
+    if (t.dc_dagilimi) return t.dc_dagilimi;
+    const d = { "<0.7": 0, "0.7-0.9": 0, "0.9-1.0": 0, ">1.0": 0 };
+    (t.elemanlar || []).forEach(function (e) { d[DC_SINIF.filter(function (c) { return c[0] === dcSinif(e.dc); })[0][2]]++; });
+    return d;
+  }
+  function dcMetin(dc) { return dc == null ? "—" : dc >= 99 ? "≥ 99 (kesit yetersiz)" : f2(dc); }
+  function dcCip(dc) { const c = dcSinif(dc); return '<span class="bn-dc-cip bn-dc-' + c + '">' + (c === "k" ? "✗ " : c === "t" ? "! " : "") + dcMetin(dc) + "</span>"; }
+  function turAd(e) { return (e.sistem === "celik" ? "çelik " : "") + (e.tur === "kolon" ? "kolon" : "kiriş"); }
+  // belirleyen kontrolün talep / kapasitesi: adı belirleyenle başlayan en büyük D/C'li kontrol (yoksa en büyük D/C)
+  function belirleyenKontrol(e) {
+    const l = e.kontroller || [], b = (e.belirleyen && e.belirleyen.kontrol) || "";
+    const uyan = l.filter(function (k) { return b && k.ad && (k.ad === b || k.ad.indexOf(b) === 0 || k.ad.indexOf(": " + b) >= 0); });
+    const ara = uyan.length ? uyan : l;
+    return ara.reduce(function (m, k) { return !m || (k.dc || 0) > (m.dc || 0) ? k : m; }, null);
+  }
+  function tkDeger(x, birim) { return typeof x === "number" ? fmt(x, 3) + (birim ? " " + birim : "") : x == null ? "—" : String(x); }
+  // Yatay yığılmış D/C dağılım çubuğu (HTML; genişlik ∝ eleman sayısı)
+  function dcCubugu(t) {
+    const d = dcDagilimi(t), top = DC_SINIF.reduce(function (s, c) { return s + (+d[c[2]] || 0); }, 0) || 1;
+    return '<div class="bn-dc-cubuk" role="img" aria-label="D/C dağılımı: ' + DC_SINIF.map(function (c) { return c[1] + " " + (d[c[2]] || 0); }).join(", ") + '">' +
+      DC_SINIF.map(function (c) { const n = +d[c[2]] || 0; return n ? '<span class="bn-dc-dilim bn-dc-' + c[0] + '" style="flex-grow:' + n + '" title="D/C ' + c[1] + ": " + n + ' eleman">' + n + "</span>" : ""; }).join("") + "</div>" +
+      '<div class="bn-dc-lejant-satir">' + DC_SINIF.map(function (c) { return '<span><i class="bn-dc-kare bn-dc-' + c[0] + '"></i>D/C ' + c[1] + " · " + (+d[c[2]] || 0) + "</span>"; }).join("") + "<span>toplam " + top + "</span></div>";
+  }
+  // 3B sahne altı lejant (D/C görünümü açıkken)
+  function dcLejantCiz() {
+    const el = document.getElementById("bn-dc-lejant");
+    if (!el) return;
+    if (!dcAktif()) { el.hidden = true; el.innerHTML = ""; return; }
+    const t = V().tasarim, d = dcDagilimi(t);
+    el.hidden = false;
+    el.innerHTML = "<b>D/C</b>" + DC_SINIF.map(function (c) { return '<span><i class="bn-dc-kare bn-dc-' + c[0] + '"></i>' + c[1] + " (" + (+d[c[2]] || 0) + ")</span>"; }).join("") +
+      '<span class="bn-dc-not">en büyük ' + f2(t.en_buyuk_dc != null ? t.en_buyuk_dc : 0) + " · bütün katlar</span>";
+  }
+  function tasarimSekmesi() {
+    const v = V(), t = v.tasarim;
+    if (!t) return '<div class="bn-bilgi-kutu" id="bn-tasarim-yok"><b>Tasarım kontrolleri motor güncellemesiyle gelecek.</b><p class="not">Kiriş eğilme/kesme ve kolon N–M etkileşimi (TS 500, TBDY 2018 Bölüm 7), çelik eleman tahkikleri (ÇYTHYE 2018) motorun kesit tasarımı modülüyle (veri.tasarim) gelir; bu yanıtta yok. İç kuvvetler ve zarf “Diyagramlar” sekmesinde hazır.</p></div>';
+    const yon = t.yontem || {};
+    let h = '<details class="bn-yontem" open><summary>Yöntem ve varsayımlar</summary>' +
+      '<div class="bn-yontem-ic"><p>' + Object.keys(yon).map(function (k) { return "<b>" + kacis(k === "celik" ? "Çelik" : k === "betonarme" ? "Betonarme" : k) + ":</b> " + kacis(yon[k]); }).join(" · ") + "</p>" +
+      ((t.varsayimlar || []).length ? "<ul>" + t.varsayimlar.map(function (x) { return "<li>" + kacis(x) + "</li>"; }).join("") + "</ul>" : "") +
+      '<p class="not">Öğretim / ön boyutlandırma amaçlıdır; kapasite tasarımı, ikinci mertebe ve süneklik koşullarının tamamı kapsam dışıdır.</p></div></details>';
+    if ((t.uyarilar || []).length) h += '<div class="bn-uyari-kutu">' + t.uyarilar.map(function (u) { return "<div>⚠ " + kacis(u) + "</div>"; }).join("") + "</div>";
+    h += "<h4>D/C dağılımı (" + (t.elemanlar || []).length + " eleman; en büyük " + f2(t.en_buyuk_dc) + ")</h4>" + dcCubugu(t);
+    h += '<div class="bn-satir"><label class="bn-onay"><input type="checkbox" id="bn-dc-gorunum"' + (D.dcGorunum ? " checked" : "") + "> 3B’de D/C renkleri</label>" +
+      '<select class="girdi bn-secici" id="bn-dc-filtre" aria-label="Tasarım tablosu süzgeci">' + secenekler([["", "Bütün elemanlar"], ["kiris", "Yalnız kirişler"], ["kolon", "Yalnız kolonlar"], ["asim", "Yalnız D/C > 1"]], D.tasarimFiltre) + "</select></div>";
+    h += '<div id="bn-tasarim-ayrinti" class="bn-tasarim-ayrinti" aria-live="polite">' + tasarimAyrintiHtml() + "</div>";
+    h += "<h4>Elemanlar (D/C’ye göre sıralı; satıra dokun: 3B’de seçilir, ayrıntı açılır)</h4>" + tasarimTablosu(t);
+    return h;
+  }
+  function tasarimTablosu(t) {
+    const f = D.tasarimFiltre;
+    const l = (t.elemanlar || []).filter(function (e) { return !f || (f === "asim" ? e.dc > 1 : e.tur === f); }).slice().sort(function (a, b) { return (b.dc || 0) - (a.dc || 0); });
+    if (!l.length) return '<p class="not">Süzgece uyan eleman yok.</p>';
+    const sec = D.tasarimSecim;
+    return '<div class="se-tablo-kutu"><table class="se-sonuc-tablo bn-dc-tablo"><thead><tr>' + ["Eleman", "Tür", "Kesit", "Belirleyen kontrol", "Kombinasyon", "Talep", "Kapasite", "D/C", "Durum"].map(function (x) { return "<th>" + x + "</th>"; }).join("") + "</tr></thead><tbody>" +
+      l.map(function (e) {
+        const k = belirleyenKontrol(e) || {}, b = e.belirleyen || {};
+        const aktif = sec && sec.tur === e.tur && sec.no === e.no;
+        return '<tr class="bn-dc-satir bn-dc-satir-' + dcSinif(e.dc) + (aktif ? " aktif" : "") + '" data-dc-tur="' + e.tur + '" data-dc-no="' + e.no + '" tabindex="0" aria-selected="' + !!aktif + '">' +
+          '<th scope="row">' + kacis(e.adres || (e.tur === "kolon" ? kolonAdres(e.no) : kirisAdres(e.no))) + '<span class="bn-dc-mobil"> ' + dcCip(e.dc) + "</span></th><td class=\"bn-dc-kisa\">" + kacis(turAd(e)) + "</td><td class=\"bn-dc-kisa\">" + kacis(e.kesit || "") + "</td><td>" + kacis(b.kontrol || k.ad || "") + "</td>" +
+          '<td class="bn-komb-ad">' + kacis(b.kombinasyon || k.kombinasyon || "—") + '</td><td class="sayi">' + kacis(tkDeger(k.talep, k.birim)) + '</td><td class="sayi">' + kacis(tkDeger(k.kapasite, k.birim)) + "</td>" +
+          '<td class="sayi">' + dcCip(e.dc) + "</td><td>" + kacis(e.durum || "") + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+  function tasarimAyrintiHtml() {
+    const s = D.tasarimSecim, e = s && tasarimKaydi(s.tur, s.no);
+    if (!e) return '<p class="not bn-tasarim-ipucu">Bir elemana dokunun (3B sahnede ya da tablodaki satıra): özet, kontroller ve “Ayrıntılı hesap”.</p>';
+    const oz = e.ozet || {}, b = e.belirleyen || {};
+    const sira = Object.keys(OZET_ETIKET), ozAnahtar = Object.keys(oz).sort(function (a, b) { const i = sira.indexOf(a), j = sira.indexOf(b); return (i < 0 ? 999 : i) - (j < 0 ? 999 : j); });
+    const ozSatir = ozAnahtar.filter(function (k) { return oz[k] != null && oz[k] !== ""; }).map(function (k) {
+      const et = OZET_ETIKET[k] || [k, ""], val = oz[k];
+      const deger = k === "rho" && typeof val === "number" ? "%" + fmt(val * 100, 3) : typeof val === "number" ? fmt(val, 4) + (et[1] ? " " + et[1] : "") : String(val);
+      return '<div class="bn-param"><span>' + kacis(et[0]) + "</span><b>" + kacis(deger) + "</b></div>";
+    }).join("");
+    const kont = (e.kontroller || []).map(function (k) {
+      const r = [k.ad || "", tkDeger(k.talep, k.birim), tkDeger(k.kapasite, k.birim), dcMetin(k.dc), k.saglandi === false || k.dc > 1 + 1e-9 ? "✗" : "✓", k.kombinasyon || "", k.kaynak || ""];
+      r.ek = k.dc > 1 + 1e-9 ? ' class="bn-drift-asim"' : "";
+      return r;
+    });
+    const anahtar = e.tur + ":" + e.no, ayr = TASARIM_AYR[anahtar];
+    return '<div class="bn-kart bn-dc-kart bn-dc-kenar-' + dcSinif(e.dc) + '"><div class="bn-dc-baslik"><b>' + kacis(e.adres || "") + "</b> · " + kacis(turAd(e)) + " · " + kacis(e.kesit || "") + (e.malzeme ? " · " + kacis(e.malzeme) : "") +
+      " · kat " + kacis(e.kat) + " " + dcCip(e.dc) + ' <span class="se-rozet">' + kacis(e.durum || "") + "</span>" +
+      '<button type="button" class="bn-firca-kapat bn-dc-kapat" id="bn-tasarim-kapat" aria-label="Ayrıntıyı kapat">✕</button></div>' +
+      '<p class="not">Belirleyen: <b>' + kacis(b.kontrol || "—") + "</b>" + (b.kombinasyon ? " · " + kacis(b.kombinasyon) : "") + (e.fe_elemanlar && e.fe_elemanlar.length ? " · FE eleman " + e.fe_elemanlar.map(function (n) { return "e" + n; }).join(", ") : "") + "</p>" +
+      (ozSatir ? '<div class="bn-param-grid bn-dc-ozet">' + ozSatir + "</div>" : "") +
+      (kont.length ? '<details class="bn-ayrinti"' + (kont.length <= 8 ? " open" : "") + "><summary>Kontroller (" + kont.length + ")</summary>" + tabloH(["Kontrol", "Talep", "Kapasite", "D/C", "", "Kombinasyon", "Kaynak"], kont, "bn-mini") + "</details>" : "") +
+      '<div class="dugmeler"><button type="button" class="dugme kucuk" id="bn-tasarim-hesap"' + (ayr && ayr.then ? " disabled" : "") + ">" + (ayr && ayr.then ? "Hesaplanıyor…" : ayr ? "Ayrıntılı hesabı yenile" : "Ayrıntılı hesap") + "</button></div>" +
+      '<div id="bn-tasarim-hesap-kap">' + (ayr && !ayr.then ? ayrintiliHesapHtml(ayr) : "") + "</div></div>";
+  }
+  function ayrintiliHesapHtml(y) {
+    if (y.hata) return '<div class="hata-kutu" role="alert"><strong>Ayrıntılı hesap alınamadı</strong><div class="se-hata-metin">' + kacis(y.hata) + "</div></div>";
+    const s = y.sonuc || {};
+    let h = "";
+    if (s.egri_x || s.egri_y) {
+      h += "<h4>N–M etkileşim diyagramı</h4>" + '<div class="se-seg" role="group" aria-label="Eğilme ekseni">' + ["x", "y"].filter(function (k) { return s["egri_" + k]; }).map(function (k) {
+        return '<button type="button" class="se-seg-d" data-nm-eksen="' + k + '" aria-pressed="' + (D.nmEksen === k) + '">M_' + k + " ekseni</button>";
+      }).join("") + '</div><div class="se-sekil bn-nm" id="bn-nm"></div>' +
+        '<p class="not">Eğri: kesitin taşıma gücü (N basınç +). Noktalar: her kombinasyonun kolon alt/üst ucundaki eş zamanlı (N, M) değerleri (e_min dahil); kırmızı nokta D/C > 1. Kesikli ışın orijinden en elverişsiz noktaya, eğriyle kesiştiği yer kapasitedir: D/C = |OP| / |OC|.</p>';
+    }
+    h += '<div class="anlatim se-anlatim bn-tasarim-anlatim" id="bn-tasarim-anlatim"></div>';
+    return h;
+  }
+  // tasarım ayrıntısını (ve gerekiyorsa N–M ile anlatımı) çiz
+  function tasarimAyrintiCiz() {
+    const kap = document.getElementById("bn-tasarim-ayrinti");
+    if (!kap) return;
+    kap.innerHTML = tasarimAyrintiHtml();
+    const s = D.tasarimSecim, ayr = s && TASARIM_AYR[s.tur + ":" + s.no];
+    if (!ayr || ayr.then || ayr.hata) return;
+    nmCiz();
+    const an = document.getElementById("bn-tasarim-anlatim");
+    if (an && ayr.bloklar && ayr.bloklar.length) {
+      A.semaOlaylariBagla(an);
+      A.anlatimDersCiz({ ad: ayr.ad || "tasarim", bloklar: ayr.bloklar, zincir: false }, an);
+    }
+  }
+  function nmCiz() {
+    const kap = document.getElementById("bn-nm"), s = D.tasarimSecim, ayr = s && TASARIM_AYR[s.tur + ":" + s.no];
+    if (!kap || !ayr || !ayr.sonuc) return;
+    if (!ayr.sonuc["egri_" + D.nmEksen]) D.nmEksen = ayr.sonuc.egri_x ? "x" : "y";
+    document.querySelectorAll("#bn-tasarim-ayrinti [data-nm-eksen]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.nmEksen === D.nmEksen)); });
+    kap.innerHTML = nmSvg(ayr.sonuc, D.nmEksen, Math.max(260, Math.min(640, kap.clientWidth || 480)));
+  }
+  // egri: [{N, M}] (§11) ya da tasarim.kolon_etkilesim çıktısı {noktalar: [{N_kN, M_kNm}]}
+  function egriNokta(e) {
+    const l = Array.isArray(e) ? e : (e && e.noktalar) || [];
+    return l.map(function (p) { return { N: +(p.N != null ? p.N : p.N_kN), M: Math.abs(+(p.M != null ? p.M : p.M_kNm)) }; }).filter(function (p) { return isFinite(p.N) && isFinite(p.M); }).sort(function (a, b) { return a.N - b.N; });
+  }
+  function nmSvg(son, eksen, W) {
+    const egri = egriNokta(son["egri_" + eksen]);
+    if (egri.length < 2) return '<p class="not">Etkileşim eğrisi verisi yok.</p>';
+    const nk = (son.noktalar || []).map(function (p) {
+      const M = Math.abs(+(eksen === "y" ? (p.My != null ? p.My : p.My_tasarim_kNm) : (p.Mx != null ? p.Mx : p.Mx_tasarim_kNm)) || 0), N = +(p.N != null ? p.N : p.Nd_kN) || 0;
+      const dc = eksen === "y" ? (p.dc_y != null ? p.dc_y : p.dc) : (p.dc_x != null ? p.dc_x : p.dc);
+      return { ad: p.ad || "", N: N, M: M, dc: +dc || 0 };
+    });
+    const H = Math.round(Math.min(420, Math.max(240, W * 0.78))), pl = 56, pr = 16, pu = 16, pa = 36;
+    const Mmax = Math.max.apply(null, egri.map(function (p) { return p.M; }).concat(nk.map(function (p) { return p.M; }))) * 1.12 || 1;
+    const Nlo = Math.min(0, Math.min.apply(null, egri.map(function (p) { return p.N; }).concat(nk.map(function (p) { return p.N; })))) * 1.06;
+    const Nhi = Math.max.apply(null, egri.map(function (p) { return p.N; }).concat(nk.map(function (p) { return p.N; }))) * 1.06 || 1;
+    const X = function (m) { return pl + m / Mmax * (W - pl - pr); }, Y = function (n) { return H - pa - (n - Nlo) / (Nhi - Nlo) * (H - pa - pu); };
+    const adim = function (aralik) { const k = Math.pow(10, Math.floor(Math.log10(aralik / 5))); return [1, 2, 5, 10].map(function (c) { return c * k; }).filter(function (c) { return aralik / c <= 6; })[0] || k * 10; };
+    let s = "";
+    const aN = adim(Nhi - Nlo), aM = adim(Mmax);
+    for (let n = Math.ceil(Nlo / aN) * aN; n <= Nhi + 1e-9; n += aN) s += '<path class="bn-spek-izgara" d="M' + pt(pl - 4, Y(n)) + " L" + pt(W - pr, Y(n)) + '"/>' + metinSvg(pl - 6, Y(n) + 4, fmt(n, 4), "bn-spek-t", "end");
+    for (let m = 0; m <= Mmax + 1e-9; m += aM) s += '<path class="bn-spek-izgara" d="M' + pt(X(m), Y(Nlo)) + " L" + pt(X(m), pu) + '"/>' + metinSvg(X(m), H - pa + 15, fmt(m, 4), "bn-spek-t", "middle");
+    s += '<path class="se-eksen" d="M' + pt(pl, Y(0)) + " L" + pt(W - pr, Y(0)) + " M" + pt(X(0), Y(Nlo)) + " L" + pt(X(0), pu) + '"/>';
+    // N sınırları (TBDY 0,40 fck Ac; TS 500 0,9 fcd Ac)
+    const oz = son.ozet || {};
+    [[oz.N_sinir_TBDY_kN, "0,40·f_ck·A_c"], [oz.N_sinir_TS500_kN, "0,9·f_cd·A_c"]].forEach(function (c) {
+      if (typeof c[0] === "number" && c[0] < Nhi) s += '<path class="bn-nm-sinir" d="M' + pt(X(0), Y(c[0])) + " L" + pt(W - pr, Y(c[0])) + '"/>' + metinSvg(W - pr - 2, Y(c[0]) - 4, c[1] + " = " + f1(c[0]), "bn-spek-t bn-nm-sinir-t", "end");
+    });
+    let d = "M" + pt(X(0), Y(egri[0].N));
+    egri.forEach(function (p) { d += " L" + pt(X(p.M), Y(p.N)); });
+    d += " L" + pt(X(0), Y(egri[egri.length - 1].N));
+    s += '<path class="bn-nm-egri" d="' + d + ' Z"/>';
+    // noktalar (D/C > 1 kırmızı); en elverişsiz nokta için orijinden ışın ve eğri kesişimi
+    let en = null;
+    nk.forEach(function (p) { if (!en || p.dc > en.dc) en = p; });
+    nk.forEach(function (p) {
+      s += '<circle class="bn-nm-n' + (p.dc > 1 + 1e-9 ? " bn-nm-asim" : "") + '" cx="' + r1(X(p.M)) + '" cy="' + r1(Y(p.N)) + '" r="3.4"><title>' + kacis(p.ad + ": N = " + f1(p.N) + " kN, M = " + f1(p.M) + " kN·m, D/C = " + f2(p.dc)) + "</title></circle>";
+    });
+    if (en && (en.M > 1e-9 || Math.abs(en.N) > 1e-9)) {
+      let tK = null;
+      for (let i = 0; i < egri.length - 1; i++) {
+        const a = egri[i], b = egri[i + 1], dM = b.M - a.M, dN = b.N - a.N, den = en.M * dN - en.N * dM;
+        if (Math.abs(den) < 1e-12) continue;
+        const t = (a.M * dN - a.N * dM) / den, u = (a.M * en.N - a.N * en.M) / den;
+        if (t > 0 && u >= -1e-9 && u <= 1 + 1e-9 && (tK == null || t < tK)) tK = t;
+      }
+      const uc = tK != null ? Math.max(tK, 1) : 1.15;
+      s += '<path class="bn-nm-isin" d="M' + pt(X(0), Y(0)) + " L" + pt(X(en.M * uc), Y(en.N * uc)) + '"/>';
+      if (tK != null) s += '<rect class="bn-nm-kap" x="' + r1(X(en.M * tK) - 4.5) + '" y="' + r1(Y(en.N * tK) - 4.5) + '" width="9" height="9" transform="rotate(45 ' + r1(X(en.M * tK)) + " " + r1(Y(en.N * tK)) + ')"><title>Kapasite C: N = ' + kacis(f1(en.N * tK)) + " kN, M = " + kacis(f1(en.M * tK)) + " kN·m</title></rect>";
+      s += '<circle class="bn-nm-en' + (en.dc > 1 + 1e-9 ? " bn-nm-asim" : "") + '" cx="' + r1(X(en.M)) + '" cy="' + r1(Y(en.N)) + '" r="6"/>' +
+        metinSvg(Math.min(W - pr - 4, X(en.M) + 9), Y(en.N) - 8, "P: D/C = " + f2(en.dc), "bn-spek-t bn-spek-vurgu", X(en.M) > W * 0.6 ? "end" : "start");
+    }
+    s += metinSvg((pl + W - pr) / 2, H - 4, "M_" + eksen + " (kN·m)", "bn-spek-t", "middle") + metinSvg(6, pu + 4, "N (kN)", "bn-spek-t", "start");
+    return '<svg class="se-svg bn-nm-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="N–M' + eksen + ' etkileşim diyagramı"><title>N–M etkileşimi (M_' + eksen + "), " + nk.length + " kombinasyon noktası; en büyük D/C " + kacis(f2(en ? en.dc : 0)) + "</title>" + s + "</svg>";
+  }
+  // Eleman seçimi (sahne ya da tablo): ayrıntı paneli, tablo satırı vurgusu, 3B seçim
+  function tasarimSec(tur, no, kaydir) {
+    const e = tasarimKaydi(tur, no);
+    D.tasarimSecim = e ? { tur: tur, no: no } : null;
+    D.secim = e ? [{ tur: tur, no: no }] : [];
+    if (e && D.kat !== e.kat && B.katlar.some(function (k) { return k.no === e.kat; })) D.kat = e.kat;
+    yenile();
+    tasarimAyrintiCiz();
+    document.querySelectorAll("#bn-sekme-icerik tr.bn-dc-satir").forEach(function (r) {
+      const a = e && r.dataset.dcTur === tur && +r.dataset.dcNo === no;
+      r.classList.toggle("aktif", !!a); r.setAttribute("aria-selected", String(!!a));
+    });
+    if (!e) { A.toast("Bu eleman için tasarım kaydı yok."); return; }
+    if (kaydir) { const k = document.getElementById("bn-tasarim-ayrinti"); if (k) k.scrollIntoView({ block: "nearest", behavior: azHareket() ? "auto" : "smooth" }); }
+  }
+  // Ayrıntılı hesap: bina_eleman_tasarim {cozum_kimligi, tur, no, bina} → {ad, bloklar, sonuc (+ egri_x, egri_y, noktalar), hata}
+  function ayrintiliHesap() {
+    const s = D.tasarimSecim, v = V();
+    if (!s || !v) return;
+    const anahtar = s.tur + ":" + s.no, sonSON = SON;
+    const p = A.motorIstegi({ islem: "bina_eleman_tasarim", girdi: { cozum_kimligi: v.cozum_kimligi || null, tur: s.tur, no: s.no, bina: SON.bina || kopya(B) } }).then(function (y) {
+      if (SON !== sonSON) return;
+      if (!y) y = { hata: "Boş yanıt." };
+      if (y.hata && /Bilinmeyen işlem/.test(y.hata)) y = { hata: "Bu motor sürümü eleman tasarım ayrıntısını (bina_eleman_tasarim) henüz desteklemiyor. Özet ve kontroller yukarıda." };
+      TASARIM_AYR[anahtar] = y;
+    }, function (e) { if (SON === sonSON) TASARIM_AYR[anahtar] = { hata: (e && e.message) ? e.message : String(e) }; }).then(function () {
+      const c = D.tasarimSecim;
+      if (c && c.tur + ":" + c.no === anahtar && D.sekme === "tasarim") tasarimAyrintiCiz();
+    });
+    TASARIM_AYR[anahtar] = p;
+    tasarimAyrintiCiz();
   }
   // ---------- Anlatım ----------
   function anlatimSekmesi() {
@@ -2327,6 +2681,7 @@
       if (ds.kesitSil) { kesitSil(ds.kesitSil); return; }
       if (t.id === "bn-yk-ekle") { yeniKesitEkle(); return; }
       if (t.id === "bn-coz") { coz(); return; }
+      if (ds.hatSekme && !t.disabled && SON) { D.sekme = ds.hatSekme; sekmeCiz(); ref.sonuc.scrollIntoView({ block: "start", behavior: azHareket() ? "auto" : "smooth" }); return; }
       if (ds.adim != null && !t.disabled) { adimaGit(+ds.adim); return; }
       if (ds.sekme) { D.sekme = ds.sekme; sekmeCiz(); return; }
       if (ds.akisDurum) { D.akisDurum = ds.akisDurum; sekmeCiz(); return; }
@@ -2335,8 +2690,18 @@
       if (ds.dgm) { D.diyagram = ds.dgm; diyagramiCiz(); return; }
       if (ds.depYon) { D.depremYon = ds.depYon === "y" ? "y" : "x"; sekmeCiz(); return; }
       if (t.id === "bn-se-ac") { seAc(); return; }
+      if (t.id === "bn-tasarim-hesap") { ayrintiliHesap(); return; }
+      if (t.id === "bn-tasarim-kapat") { D.tasarimSecim = null; D.secim = []; yenile(); tasarimAyrintiCiz(); document.querySelectorAll("#bn-sekme-icerik tr.bn-dc-satir.aktif").forEach(function (r) { r.classList.remove("aktif"); r.setAttribute("aria-selected", "false"); }); return; }
+      if (ds.nmEksen) { D.nmEksen = ds.nmEksen; nmCiz(); return; }
+    });
+    // tasarım tablosu: satıra dokun / Enter → eleman seçimi
+    kok.addEventListener("click", function (e) {
+      const r = e.target.closest ? e.target.closest("tr.bn-dc-satir") : null;
+      if (r && kok.contains(r)) tasarimSec(r.dataset.dcTur, +r.dataset.dcNo, true);
     });
     kok.addEventListener("keydown", function (e) {
+      const r = e.target.closest("tr.bn-dc-satir");
+      if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); tasarimSec(r.dataset.dcTur, +r.dataset.dcNo, true); return; }
       const t = e.target.closest("[data-sankey]");
       if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); D.sankeySecim = D.sankeySecim === t.dataset.sankey ? null : t.dataset.sankey; sankeyCiz(); }
     });
@@ -2356,17 +2721,14 @@
       if (ds.katI != null) { katDegistir(+ds.katI, ds.a, el.value); return; }
       if (el.id === "bn-yk-tip") { document.getElementById("bn-yk-dik").style.display = el.value === "profil" ? "none" : ""; document.getElementById("bn-yk-prof").style.display = el.value === "profil" ? "" : "none"; return; }
       if (el.id === "bn-dep-ok") { D.depremOk = el.checked; sahneCiz(); return; }
+      if (el.id === "bn-dc-gorunum") { D.dcGorunum = el.checked; sahneCiz(); return; }
+      if (el.id === "bn-dc-filtre") { D.tasarimFiltre = el.value; sekmeCiz(); return; }
       if (el.id === "bn-def-durum" || el.id === "bn-tablo-durum" || el.id === "bn-dgm-durum") {
-        // kombinasyon yanıtta yoksa motordan tembel alınır (önbellek: veri.sonuclar); gelene kadar not
-        const id = el.id, ad = el.value, not = document.getElementById("bn-dgm-not");
+        // yanıtta olmayan kombinasyon / ince durum motordan tembel alınır (önbellek: veri.sonuclar / veri.durumlar); çizim işlevleri bekler
+        const id = el.id, ad = el.value;
         if (id === "bn-dgm-durum") D.diyagramDurum = ad; else D.deformeDurum = ad;
-        if (!(V().sonuclar && V().sonuclar[ad]) && !V().durumlar[ad] && ad !== "zarf" && ad !== "G+Q") { el.disabled = true; if (not) not.textContent = "Kombinasyon " + ad + " motordan alınıyor…"; }
-        kombinasyonHazirla(ad, function (ok) {
-          el.disabled = false;
-          if (!ok) { A.toast("Kombinasyon yüklenemedi: " + ad); return; }
-          if (id === "bn-def-durum") deformeyiCiz(); else if (id === "bn-dgm-durum") diyagramiCiz(); else sekmeCiz();
-          if (id !== "bn-tablo-durum") sahneCiz();
-        });
+        if (id === "bn-def-durum") deformeyiCiz(); else if (id === "bn-dgm-durum") diyagramiCiz(); else sekmeCiz();
+        if (id !== "bn-tablo-durum") sahneCiz();
         return;
       }
       if (el.id === "bn-aks-filtre") { D.aksFiltre = el.value; diyagramiCiz(); return; }
@@ -2554,7 +2916,7 @@
       if (Math.abs(w - sonGenislik) < 24) return;
       sonGenislik = w;
       cancelAnimationFrame(bekleyen);
-      bekleyen = requestAnimationFrame(function () { sahneBoyutla(); sahneCiz(); if (SON) { sankeyCiz(); deformeyiCiz(); diyagramiCiz(); depremCiz(); } if (D.panelSekme === "deprem") onizlemeCiz(); });
+      bekleyen = requestAnimationFrame(function () { sahneBoyutla(); sahneCiz(); if (SON) { sankeyCiz(); deformeyiCiz(); diyagramiCiz(); depremCiz(); nmCiz(); } if (D.panelSekme === "deprem") onizlemeCiz(); });
     }).observe(kok);
   }
   acilis();
