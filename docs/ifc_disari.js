@@ -622,7 +622,8 @@
     const kNmm = tureyen([tur(kN, 1), tur(m, 1), tur(m, -1)], "LINEARMOMENTUNIT");
     const kyay = tureyen([tur(kN, 1), tur(m, -1)], "LINEARSTIFFNESSUNIT");
     const kdon = tureyen([tur(kN, 1), tur(m, 1), tur(rad, -1)], "ROTATIONALSTIFFNESSUNIT");
-    const birimler = w.ekle("IFCUNITASSIGNMENT", [[m, m2, m3, rad, kN, kNm, kNm2, kNxm, kNmm, kyay, kdon]]);
+    const kyatak = tureyen([tur(kN, 1), tur(m, -3)], "MODULUSOFSUBGRADEREACTIONUNIT");     // zemin yatak katsayısı k0 (kN/m³)
+    const birimler = w.ekle("IFCUNITASSIGNMENT", [[m, m2, m3, rad, kN, kNm, kNm2, kNxm, kNmm, kyay, kdon, kyatak]]);
     // Sahiplik geçmişi: uygulama yalnız "Matris Öğren" adını taşır
     const gelistirici = w.ekle("IFCORGANIZATION", [null, UYGULAMA_AD, null, null, null]);
     const uygulama = w.ekle("IFCAPPLICATION", [gelistirici, SURUM, UYGULAMA_AD, UYGULAMA_AD]);
@@ -772,6 +773,11 @@
       const p2 = w.ekle("IFCAXIS2PLACEMENT2D", [this.nokta2([-kay, 0]), w.ekle("IFCDIRECTION", [[-1, 0]])]);
       ref = w.ekle("IFCLSHAPEPROFILEDEF", [E("AREA"), ad + " (1)", p1, k.h, k.b, k.t, null, null, null]);
       ek = w.ekle("IFCLSHAPEPROFILEDEF", [E("AREA"), ad + " (2)", p2, k.h, k.b, k.t, null, null, null]);
+    } else if (k.tur === "tersT") {
+      // ters T temel kesiti: IfcTShapeProfileDef'in başlığı +y'dedir; 180° döndürülür → tabla (B × h_tabla) altta, gövde üstte
+      const p = w.ekle("IFCAXIS2PLACEMENT2D", [this.nokta2([0, 0]), w.ekle("IFCDIRECTION", [[-1, 0]])]);
+      ref = w.ekle("IFCTSHAPEPROFILEDEF", [E("AREA"), ad, p, k.hg, k.B, k.bg, k.ht, null, null, null, null, null]);
+      derinlik = k.hg;
     } else if (k.tur === "U") {
       ref = w.ekle("IFCUSHAPEPROFILEDEF", [E("AREA"), ad, null, k.h, k.b, k.tw, k.tf, null, null, null]);
     } else {
@@ -1043,64 +1049,121 @@
   };
 
   // ---- temeller (§3 tekil, §13 sürekli / radye) ----
+  // veri.temel (temel.py; mütemadi/radye) varsa temel hatları, plak sınırları ve kesitler oradan; yoksa bina.temeller'den
+  // (motorla aynı kurallar: "tum" seçiminde zemin kat kolonu olmayan aks atlanır; hat uçları = uç kolonlar ± taşma).
+  Uretici.prototype.veriTemel = function () {
+    const vt = this.Bm.veri && this.Bm.veri.temel;
+    if (!vt || typeof vt !== "object") return null;
+    const tip = String(vt.tip || "").toLowerCase();
+    return (tip === "surekli" || tip === "radye") && Array.isArray(vt.dugumler) && vt.dugumler.length ? vt : null;
+  };
+  // Ters T kesit nesnesi (tabla B × h_tabla, gövde b_govde, toplam yükseklik h_govde); tabla yoksa dikdörtgen
+  Uretici.prototype.tersTKesit = function (Bt, ht, bg, hg, malzeme) {
+    const g = function (x) { return sy(x); };
+    if (!(ht > 0) || bg >= Bt - 1e-9 || ht >= hg - 1e-9) {
+      const b = Math.max(Bt, bg);
+      return { ad: "TK " + g(b) + "x" + g(hg), tur: "dikdortgen", b: b, h: hg, malzeme: malzeme };
+    }
+    return { ad: "TK " + g(Bt) + "/" + g(ht) + "-" + g(bg) + "/" + g(hg), tur: "tersT", B: Bt, ht: ht, bg: bg, hg: hg, malzeme: malzeme };
+  };
+  // Zemin özellikleri ve tasarım D/C'si (Pset_MatrisOgren alanları)
+  Uretici.prototype.temelOzellik = function (vt, dc) {
+    const o = [];
+    if (vt) {
+      const md = sozluk(vt.model);
+      if (isFinite(+vt.q_em)) o.push(["q_em", T("IFCPLANARFORCEMEASURE", +vt.q_em)]);
+      if (isFinite(+md.k0)) o.push(["k0", T("IFCMODULUSOFSUBGRADEREACTIONMEASURE", +md.k0)]);
+      if (isFinite(+vt.p_maks)) o.push(["p_maks", T("IFCPLANARFORCEMEASURE", +vt.p_maks)]);
+      if (isFinite(+vt.DC_zemin)) o.push(["DC_zemin", T("IFCRATIOMEASURE", +vt.DC_zemin)]);
+      if (isFinite(+vt.oturma_maks_mm)) o.push(["Oturma_maks", T("IFCLENGTHMEASURE", +vt.oturma_maks_mm / 1000)]);
+    }
+    if (this.s.sonuclar && dc && isFinite(+dc.dc)) {
+      o.push(["DC", T("IFCRATIOMEASURE", +dc.dc)]);
+      if (dc.durum) o.push(["TasarimDurumu", T("IFCLABEL", String(dc.durum))]);
+    }
+    return o;
+  };
   Uretici.prototype.temeller = function (beton) {
     const Bm = this.Bm, self = this, t = sozluk(Bm.bina.temeller);
     const tip = String(t.tip || "tekil").toLowerCase();
-    const z0 = Bm.kot0;
+    const z0 = Bm.kot0, kat0 = Bm.katlar[0].no;
     const tabanlar = this.kolonTabanlari();
-    if (tip === "surekli" || tip === "mutemadi") {
+    const vt = this.veriTemel();
+    const md = vt ? sozluk(vt.model) : {};
+    const malz = beton.anahtar || beton.ad;
+    const tasarimlar = vt ? dizi(vt.tasarim) : [];
+    const enDc = function (l) { return l.filter(function (x) { return x && isFinite(+x.dc); }).sort(function (a, b) { return b.dc - a.dc; })[0] || null; };
+    // hat (yon, sabit, bas, son) → temel kirişi / radye kirişi çubuğu (üstü temel kotunda)
+    const hatCubugu = function (h, sinif, tip_, k, ad, aciklama, ozel) {
+      const p1 = h.yon === "x" ? [h.bas, h.sabit, z0] : [h.sabit, h.bas, z0];
+      const p2 = h.yon === "x" ? [h.son, h.sabit, z0] : [h.sabit, h.son, z0];
+      self.cubukEleman({ sinif: sinif, tip: tip_, anahtar: "temel-hat:" + h.no, ad: ad, etiket: ad, kat: kat0, aciklama: aciklama,
+        p1: p1, p2: p2, d: [0, 0, 1], kardinal: 8, k: k, ek: { adres: ad, tur: tip_ === "STRIP_FOOTING" ? "temel-kirisi" : "radye-kirisi", ozel: ozel } });
+    };
+    if (tip === "surekli" || tip === "mutemadi" || tip === "mütemadi" || tip === "sürekli") {
       const s = Object.assign({ yon: "xy", akslar: "tum", B: 1.2, h_tabla: 0.4, b_govde: 0.5, h_govde: 1.0, tasma: 0.5 }, sozluk(t.surekli));
-      const Bt = sayi(s.B, 1.2), ht = sayi(s.h_tabla, 0.4), bg = sayi(s.b_govde, 0.5), hg = Math.max(sayi(s.h_govde, 1.0), ht);
-      const tas = sayi(s.tasma, 0.5);
-      const yonlar = String(s.yon || "xy").toLowerCase();
-      const secili = function (ad) { return s.akslar === "tum" || !Array.isArray(s.akslar) || s.akslar.map(String).indexOf(String(ad)) >= 0; };
-      // ters T kesit: tabla (B × h_tabla) altta, gövde (b_govde) toplam yükseklik h_govde; profil Y yukarı, üst = 0
-      const w = this.w;
-      const kp = [[-Bt / 2, -hg], [Bt / 2, -hg], [Bt / 2, -hg + ht], [bg / 2, -hg + ht], [bg / 2, 0], [-bg / 2, 0], [-bg / 2, -hg + ht], [-Bt / 2, -hg + ht]];
-      const ptsT = (ht > 0 && bg < Bt) ? kp : [[-Math.max(Bt, bg) / 2, -hg], [Math.max(Bt, bg) / 2, -hg], [Math.max(Bt, bg) / 2, 0], [-Math.max(Bt, bg) / 2, 0]];
-      const pl = ptsT.map(function (p) { return self.nokta2(p); });
-      pl.push(pl[0]);
-      const profil = w.ekle("IFCARBITRARYCLOSEDPROFILEDEF", [E("AREA"), "Temel kirişi (ters T) B=" + Bt + " h=" + hg, w.ekle("IFCPOLYLINE", [pl])]);
-      const serit = function (anahtar, ad, p1, p2) {
-        const kat = self.katlar[Bm.katlar[0].no];
-        const tt = vbirim(vfark(p2, p1)), d = [0, 0, 1], x = vdis(d, tt), L = vboy(vfark(p2, p1));
-        const yer = self.yerlesim(kat.yer, [p1[0], p1[1], p1[2] - kat.kot], tt, x);
-        const ref = w.ekle("IFCFOOTING", [self.gid(anahtar), null, ad, "Mütemadi (sürekli) temel kirişi", "Ters T temel kirişi", yer,
-          self.sekil([self.uzat(profil, L)]), null, E("STRIP_FOOTING")]);
-        kat.elemanlar.push(ref);
-        self.malzemeBagla(self.malzeme(beton), ref);
-        self.ortakPsetler(anahtar, ref, "IFCFOOTING", null, { adres: ad, tur: "temel-kirisi", referans: ad,
-          ozel: [["B", T("IFCPOSITIVELENGTHMEASURE", Bt)], ["h_tabla", T("IFCLENGTHMEASURE", ht)], ["b_govde", T("IFCPOSITIVELENGTHMEASURE", bg)],
-            ["h_govde", T("IFCPOSITIVELENGTHMEASURE", hg)]] });
-      };
-      const xs = Bm.ax.map(function (a) { return a.konum; }), ys = Bm.ay.map(function (a) { return a.konum; });
-      if (yonlar.indexOf("x") >= 0) Bm.ay.forEach(function (a) {      // X yönünde: sayılı aks çizgileri boyunca
-        if (!secili(a.ad)) return;
-        serit("temel-x:" + a.ad, "TK-" + a.ad, [xs[0] - tas, a.konum, z0], [xs[xs.length - 1] + tas, a.konum, z0]);
-      });
-      if (yonlar.indexOf("y") >= 0) Bm.ax.forEach(function (a) {      // Y yönünde: harfli aks çizgileri boyunca
-        if (!secili(a.ad)) return;
-        serit("temel-y:" + a.ad, "TK-" + a.ad, [a.konum, ys[0] - tas, z0], [a.konum, ys[ys.length - 1] + tas, z0]);
+      const ks = sozluk(md.kesit);
+      const Bt = sayi(ks.B, sayi(s.B, 1.2)), ht = sayi(ks.h_tabla, sayi(s.h_tabla, 0.4)), bg = sayi(ks.b_govde, sayi(s.b_govde, 0.5));
+      const hg = Math.max(sayi(ks.h_govde, sayi(s.h_govde, 1.0)), ht);
+      const k = this.tersTKesit(Bt, ht, bg, hg, malz);
+      let hatlar;
+      if (vt && dizi(vt.hatlar).length) {
+        hatlar = dizi(vt.hatlar).map(function (h) { return { no: h.no, ad: String(h.ad), yon: h.yon, sabit: +h.sabit, bas: +h.bas, son: +h.son }; });
+      } else {
+        const tas = sayi(s.tasma, 0.5), yonlar = String(s.yon || "xy").toLowerCase();
+        const liste = Array.isArray(s.akslar) ? s.akslar.map(String) : null;
+        hatlar = [];
+        const ekle = function (yon, a) {
+          if (liste && liste.indexOf(a.ad) < 0) return;
+          const kol = tabanlar.filter(function (tb) { return Math.abs((yon === "x" ? tb.Y : tb.X) - a.konum) < 1e-6; })
+            .map(function (tb) { return yon === "x" ? tb.X : tb.Y; });
+          if (!kol.length) {
+            if (liste) self.uyarilar.push("Mütemadi temel: " + a.ad + " aksında zemin kat kolonu yok; temel kirişi yazılmadı.");
+            return;
+          }
+          const bas = Math.min.apply(null, kol) - tas, son = Math.max.apply(null, kol) + tas;
+          if (son - bas > 1e-6) hatlar.push({ no: hatlar.length + 1, ad: a.ad, yon: yon, sabit: a.konum, bas: bas, son: son });
+        };
+        if (yonlar.indexOf("x") >= 0) Bm.ay.forEach(function (a) { ekle("x", a); });     // X yönünde: sayılı aks çizgileri boyunca
+        if (yonlar.indexOf("y") >= 0) Bm.ax.forEach(function (a) { ekle("y", a); });     // Y yönünde: harfli aks çizgileri boyunca
+      }
+      hatlar.forEach(function (h) {
+        const dc = enDc(tasarimlar.filter(function (x) { return x.tur === "temel-kirisi" && String(x.hat) === h.ad; }));
+        hatCubugu(h, "IFCFOOTING", "STRIP_FOOTING", k, "TK-" + h.ad,
+          "Mütemadi (sürekli) temel kirişi, " + (k.tur === "tersT" ? "ters T" : "dikdörtgen") + " kesit, " + h.yon.toUpperCase() + " doğrultusu",
+          [["B", T("IFCPOSITIVELENGTHMEASURE", Bt)], ["h_tabla", T("IFCLENGTHMEASURE", k.tur === "tersT" ? ht : 0)],
+            ["b_govde", T("IFCPOSITIVELENGTHMEASURE", bg)], ["h_govde", T("IFCPOSITIVELENGTHMEASURE", hg)]].concat(self.temelOzellik(vt, dc)));
       });
       return;
     }
     if (tip === "radye") {
       const r = Object.assign({ h: 0.8, tasma: 1.0, kiris: null }, sozluk(t.radye));
-      const h = sayi(r.h, 0.8), tas = sayi(r.tasma, 1.0);
+      const h = sayi(md.h, sayi(r.h, 0.8)), tas = sayi(r.tasma, 1.0);
       const xs = Bm.ax.map(function (a) { return a.konum; }), ys = Bm.ay.map(function (a) { return a.konum; });
-      const x0 = xs[0] - tas, x1 = xs[xs.length - 1] + tas, y0 = ys[0] - tas, y1 = ys[ys.length - 1] + tas;
-      this.kutuEleman({ sinif: "IFCSLAB", tip: "BASESLAB", anahtar: "radye", ad: "Radye temel", etiket: "R", kat: Bm.katlar[0].no,
-        aciklama: "Radye (plak) temel, h = " + h + " m", nesneTipi: "Radye", profilAd: "Radye",
+      const pl = sozluk(md.plak);
+      const x0 = sayi(pl.X0, xs[0] - tas), x1 = sayi(pl.X1, xs[xs.length - 1] + tas);
+      const y0 = sayi(pl.Y0, ys[0] - tas), y1 = sayi(pl.Y1, ys[ys.length - 1] + tas);
+      this.kutuEleman({ sinif: "IFCSLAB", tip: "BASESLAB", anahtar: "radye", ad: "Radye temel", etiket: "R", kat: kat0,
+        aciklama: "Radye (plak) temel, h = " + sy(h) + " m", nesneTipi: "Radye", profilAd: "Radye",
         cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, dx: x1 - x0, dy: y1 - y0, zUst: z0, h: h, malzeme: beton,
-        ek: { adres: "Radye", tur: "radye", referans: "Radye", dis: true, ozel: [["Kalinlik", T("IFCPOSITIVELENGTHMEASURE", h)]] } });
-      if (r.kiris && sayi(r.kiris.b, 0) > 0 && sayi(r.kiris.h, 0) > 0) {
-        const k = { ad: "Radye kirişi " + r.kiris.b + "x" + r.kiris.h, tur: "dikdortgen", b: +r.kiris.b, h: +r.kiris.h, malzeme: beton.anahtar };
-        const kiris = function (anahtar, ad, p1, p2) {
-          self.cubukEleman({ sinif: "IFCFOOTING", tip: "FOOTING_BEAM", anahtar: anahtar, ad: ad, kat: Bm.katlar[0].no, aciklama: "Kirişli radye: temel kirişi",
-            p1: p1, p2: p2, d: [0, 0, 1], kardinal: 8, k: k, ek: { adres: ad, tur: "radye-kirisi" } });
-        };
-        Bm.ay.forEach(function (a) { kiris("radye-kiris-x:" + a.ad, "RK-" + a.ad, [xs[0], a.konum, z0], [xs[xs.length - 1], a.konum, z0]); });
-        Bm.ax.forEach(function (a) { kiris("radye-kiris-y:" + a.ad, "RK-" + a.ad, [a.konum, ys[0], z0], [a.konum, ys[ys.length - 1], z0]); });
+        ek: { adres: "Radye", tur: "radye", referans: "Radye", dis: true,
+          ozel: [["Kalinlik", T("IFCPOSITIVELENGTHMEASURE", h)]].concat(this.temelOzellik(vt, enDc(tasarimlar))) } });
+      const kir = vt ? (md.kiris && typeof md.kiris === "object" ? md.kiris : null) : r.kiris;
+      if (kir && sayi(kir.b, 0) > 0 && sayi(kir.h, 0) > 0) {
+        const k = { ad: "RK " + sy(kir.b) + "x" + sy(kir.h), tur: "dikdortgen", b: +kir.b, h: +kir.h, malzeme: malz };
+        let hatlar;
+        if (vt && dizi(vt.hatlar).length) {
+          hatlar = dizi(vt.hatlar).filter(function (x) { return x.kirisli; })
+            .map(function (x) { return { no: x.no, ad: String(x.ad), yon: x.yon, sabit: +x.sabit, bas: +x.bas, son: +x.son }; });
+        } else {
+          hatlar = Bm.ay.map(function (a, i) { return { no: "x" + (i + 1), ad: a.ad, yon: "x", sabit: a.konum, bas: x0, son: x1 }; })
+            .concat(Bm.ax.map(function (a, i) { return { no: "y" + (i + 1), ad: a.ad, yon: "y", sabit: a.konum, bas: y0, son: y1 }; }));
+        }
+        hatlar.forEach(function (hh) {
+          const dc = enDc(tasarimlar.filter(function (x) { return x.tur === "temel-kirisi" && String(x.hat) === hh.ad; }));
+          hatCubugu(hh, "IFCFOOTING", "FOOTING_BEAM", k, "RK-" + hh.ad, "Kirişli radye: temel kirişi (plak dahil yükseklik " + sy(kir.h) + " m)",
+            [["b", T("IFCPOSITIVELENGTHMEASURE", +kir.b)], ["h", T("IFCPOSITIVELENGTHMEASURE", +kir.h)]].concat(self.temelOzellik(null, dc)));
+        });
       }
       return;
     }
@@ -1151,6 +1214,50 @@
   // ======================================================================
   // Yapısal analiz modeli
   // ======================================================================
+  // Temel ağı elemanının kesiti (temel.py ile aynı): mütemadi temel kirişi ters T (model.kesit); radye şeridi b × h
+  // (b = şerit genişliği, kenarda yarım); kirişli radyede aks şeridi ters T (tabla = şerit b × radye h, gövde = kiriş b × h)
+  Uretici.prototype.temelElemanKesiti = function (vt, x, tur) {
+    const md = sozluk(vt.model), malz = betonMalzeme(this.Bm);
+    const m = malz.anahtar || malz.ad;
+    x = x || {};
+    if (String(vt.tip) === "surekli") {
+      const ks = sozluk(md.kesit);
+      return this.tersTKesit(sayi(ks.B, sayi(x.b, 1)), sayi(ks.h_tabla, 0), sayi(ks.b_govde, sayi(x.b, 1)), sayi(ks.h_govde, sayi(x.h, 1)), m);
+    }
+    const b = sayi(x.b, sayi(md.ag, 1)), h = sayi(md.h, sayi(x.h, 0.5));
+    if (tur === "temel-kirisi" && md.kiris && typeof md.kiris === "object") {
+      const kb = sayi(md.kiris.b, b), kh = sayi(md.kiris.h, h);
+      return b >= kb ? this.tersTKesit(b, h, kb, kh, m) : { ad: "RK " + sy(kb) + "x" + sy(kh), tur: "dikdortgen", b: kb, h: kh, malzeme: m };
+    }
+    return { ad: "RŞ " + sy(b) + "x" + sy(h), tur: "dikdortgen", b: b, h: h, malzeme: m };
+  };
+  // Zemin yayları (temel.py ağ kuralı): k_z = k0·A (A: düğüm etki alanı, veri.temel.dugumler[].A); yatay "tutulu" ise X, Y
+  // ötelemeleri ve düşey eksen etrafında dönme tutulu, "yay" ise k_h = kh_oran·k_z; mütemadide kiriş ekseni etrafında dönme yayı
+  // k_θ = k0·B³/12·l_etki (l_etki: hat üzerindeki komşu düğümlere yarı uzaklıkların toplamı). Dönüş: [{dugum, ux..rz, k0, A}]
+  Uretici.prototype.zeminYaylari = function (vt) {
+    const md = sozluk(vt.model), k0 = sayi(md.k0, sayi(sozluk(sozluk(this.Bm.bina.temeller).zemin).k0, 20000));
+    const tutulu = String(md.yatay || "tutulu") !== "yay", kh = sayi(md.kh_oran, 0);
+    const kon = {}, krX = {}, krY = {};
+    vt.dugumler.forEach(function (d) { kon[d.no] = d; });
+    if (String(vt.tip) === "surekli") {
+      const Bt = sayi(sozluk(md.kesit).B, 0);
+      dizi(vt.hatlar).forEach(function (h) {
+        const ns = dizi(h.dugumler).filter(function (n) { return kon[n]; });
+        const c = function (n) { return h.yon === "x" ? +kon[n].X : +kon[n].Y; };
+        const hedef = h.yon === "x" ? krX : krY;
+        ns.forEach(function (n, i) {
+          const l = (i > 0 ? (c(n) - c(ns[i - 1])) / 2 : 0) + (i < ns.length - 1 ? (c(ns[i + 1]) - c(n)) / 2 : 0);
+          hedef[n] = (hedef[n] || 0) + k0 * Math.pow(Bt, 3) / 12 * Math.abs(l);
+        });
+      });
+    }
+    return vt.dugumler.filter(function (d) { return +d.A > 0; }).map(function (d) {
+      const kz = k0 * d.A;
+      return { dugum: d.no, k0: k0, A: +d.A, ux: tutulu ? true : (kh > 0 ? kh * kz : false), uy: tutulu ? true : (kh > 0 ? kh * kz : false), uz: kz,
+        rx: krX[d.no] > 0 ? krX[d.no] : false, ry: krY[d.no] > 0 ? krY[d.no] : false, rz: tutulu };
+    });
+  };
+
   // Analiz ağı: veri.ag varsa ondan; yoksa bina JSON'dan (aks–kat kolon/kiriş parçaları + surum 3 çubuklar)
   Uretici.prototype.analizAgi = function () {
     const Bm = this.Bm, self = this, dug = this.dug;
@@ -1171,24 +1278,36 @@
         if (d.efendi) { efendi[d.no] = true; return; }
         dug.ekle(+d.no, sayi(d.X, 0), sayi(d.Y, 0), sayi(d.Z, 0), d.adres || ("N" + d.no));
       });
+      const vt = this.veriTemel();
+      const temelEl = {};
+      if (vt) dizi(vt.elemanlar).forEach(function (x) { temelEl[x.no] = x; });
       Bm.ag.elemanlar.forEach(function (e) {
         const kay = sozluk(e.kaynak);
         const tur = e.tur || kay.tur || "diger";
         const kno = e.kaynak_no !== undefined ? e.kaynak_no : kay.no;
-        const kb = kaynakBilgi(kay.tur === "cubuk" ? "cubuk" : tur, kno);
+        const temel = tur === "temel-kirisi" || tur === "radye-serit";
+        const kb = temel ? {} : kaynakBilgi(kay.tur === "cubuk" ? "cubuk" : tur, kno);
         const dd = dizi(e.dugumler);
         if (dd.length < 2 || efendi[dd[0]] || efendi[dd[1]]) return;
         // motorun yerel eksenleri (lam: satırlar x′, y′, z′ bina koordinatında) varsa derinlik y′'den alınır
         const lam = dizi(e.lam), ly = dizi(lam[1]);
         const dLam = ly.length === 3 && ly.every(function (x) { return isFinite(+x); }) && vboy(ly.map(Number)) > 0.5 ? vbirim(ly.map(Number)) : null;
-        elemanlar.push({ no: e.no, i: dug.no[dd[0]], j: dug.no[dd[1]], tur: tur, kaynakTur: kay.tur === "cubuk" ? "cubuk" : tur, kaynakNo: kno,
+        const kayit = { no: e.no, i: dug.no[dd[0]], j: dug.no[dd[1]], tur: tur, kaynakTur: kay.tur === "cubuk" ? "cubuk" : tur, kaynakNo: kno,
           parca: e.parca, kesit: e.kesit || kb.kesit, yon: kb.yon, aci: e.aci !== undefined ? e.aci : kb.aci, serbest: e.serbest || kb.serbest,
-          yalniz_cekme: e.yalniz_cekme || kb.yalniz_cekme, adres: e.adres, dLam: dLam });
+          yalniz_cekme: e.yalniz_cekme || kb.yalniz_cekme, adres: e.adres, dLam: dLam };
+        if (temel) {
+          // temel kirişi / radye şeridi (temel.py ağı): kesit veri.temel'den, fiziksel karşılık temel hattı ya da radye plağı
+          kayit.kesitObj = self.temelElemanKesiti(vt, temelEl[e.no], tur);
+          kayit.kesit = kayit.kesitObj.ad;
+          kayit.fizikAnahtar = tur === "radye-serit" ? "radye" : "temel-hat:" + kno;
+        }
+        elemanlar.push(kayit);
       });
       const tem = sozluk(Bm.bina.temeller);
       const k0 = sayi(sozluk(tem.zemin).k0, 20000);
       const tbl = {};
       dizi(tem.liste).concat(dizi(tem.ozel)).forEach(function (o) { if (o && o.aks) tbl[o.aks[0] + "|" + o.aks[1]] = o; });
+      if (vt) this.zeminYaylari(vt).forEach(function (m) { const d = dug.no[m.dugum]; if (d) mesnetler.push({ d: d, yay: m }); });
       dizi(Bm.ag.mesnetler).forEach(function (m) {
         const d = dug.no[m.dugum];
         if (!d) return;
@@ -1284,7 +1403,15 @@
     const mesnetKosulu = {};
     ag.mesnetler.forEach(function (m) {
       let ref;
-      if (m.serbestlik) {
+      if (m.yay) {
+        const y = m.yay;
+        const bil = function (v, tip) { return typeof v === "number" ? [tip, v] : !!v; };
+        const deg = [bil(y.ux, "IFCLINEARSTIFFNESSMEASURE"), bil(y.uy, "IFCLINEARSTIFFNESSMEASURE"), bil(y.uz, "IFCLINEARSTIFFNESSMEASURE"),
+          bil(y.rx, "IFCROTATIONALSTIFFNESSMEASURE"), bil(y.ry, "IFCROTATIONALSTIFFNESSMEASURE"), bil(y.rz, "IFCROTATIONALSTIFFNESSMEASURE")];
+        const anahtar = "yay:" + deg.map(function (v) { return Array.isArray(v) ? R(v[1]) : (v ? "T" : "F"); }).join(",");
+        ref = kosul(anahtar, "Zemin yayı (Winkler): k_z = k0·A = " + sy(y.k0) + " × " + sy(y.A) + " = " + sy(y.uz) + " kN/m",
+          deg[0], deg[1], deg[2], deg[3], deg[4], deg[5]);
+      } else if (m.serbestlik) {
         const s = m.serbestlik, b = function (a) { return !!s[a]; };
         ref = kosul("S" + ["ux", "uy", "uz", "rx", "ry", "rz"].map(function (a) { return b(a) ? 1 : 0; }).join(""), "Mesnet",
           b("ux"), b("uy"), b("uz"), b("rx"), b("ry"), b("rz"));
@@ -1328,8 +1455,8 @@
       const uye = w.ekle("IFCSTRUCTURALCURVEMEMBER", [self.gid("yc:" + e.no), null, ad, e.kesit ? "Kesit " + e.kesit : null, null, yer, sek, E(tip), self.yon(e.d)]);
       self.yapisalUye[e.no] = { ref: uye, e: e };
       uyeler.push(uye);
-      if (e.kesit) {
-        const k = kesitCoz(Bm, e.kesit, []);
+      if (e.kesitObj || e.kesit) {
+        const k = e.kesitObj || kesitCoz(Bm, e.kesit, []);
         self.malzemeBagla(self.profilKullanimi(k, 5), uye);
       }
       // uç bağlantıları ve serbestlikleri (yerel x′ = çubuk, y′ = derinlik, z′ = x′ × y′)
@@ -1343,7 +1470,7 @@
         }
         w.ekle("IFCRELCONNECTSSTRUCTURALMEMBER", [self.gid("ycb:" + e.no + ":" + uc[0]), null, null, null, uye, baglanti[uc[1].no], kos, null, null, ks]);
       });
-      const fk = (e.kaynakTur || e.tur) + ":" + e.kaynakNo;
+      const fk = e.fizikAnahtar || ((e.kaynakTur || e.tur) + ":" + e.kaynakNo);
       if (self.fizik[fk]) (fizikIliski[fk] = fizikIliski[fk] || []).push(uye);
     });
     // fiziksel eleman ↔ analitik üye

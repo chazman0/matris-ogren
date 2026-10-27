@@ -178,17 +178,99 @@ test("surum 3: çubuklar, paneller, profil türleri, uç serbestlikleri, mütema
   assert.match(r.metin, /IFCRELASSIGNSTOPRODUCT\(/, "fiziksel eleman ↔ analitik üye");
 });
 
-test("§13 temeller: radye (BASESLAB + FOOTING_BEAM), seçili akslarda mütemadi (dikdörtgen kesit)", function () {
+test("§13 temeller: radye (BASESLAB + plak kenarına uzanan FOOTING_BEAM), seçili akslarda mütemadi, ters T kesit", function () {
   const r = uret(O.radye());
   assert.match(r.metin, /IFCSLAB\([^\n]*\.BASESLAB\.\);/);
   assert.equal(r.tipler.IFCFOOTING, 4);
   assert.match(r.metin, /IFCFOOTING\([^\n]*\.FOOTING_BEAM\.\);/);
   assert.equal(r.tipler.IFCSLAB, 3);
+  assert.match(r.metin, /IFCRECTANGLEPROFILEDEF\(\.AREA\.,'RK 0\.5x1\.2',\$,0\.5,1\.2\)/);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('Kalinlik',\$,IFCPOSITIVELENGTHMEASURE\(0\.8\),\$\)/);
   const s = uret(O.surekli());
   assert.equal(s.tipler.IFCFOOTING, 1);
   assert.match(s.metin, /IFCFOOTING\('[^']+',#\d+,'TK-1',[^\n]*\.STRIP_FOOTING\.\);/);
-  // b_govde = B ve h_tabla = 0 → dörtgen kesit (4 köşe + kapanış)
-  assert.match(s.metin, /IFCPOLYLINE\(\((#\d+,){4}#\d+\)\)/);
+  // b_govde = B ve h_tabla = 0 → dikdörtgen kesit
+  assert.match(s.metin, /IFCRECTANGLEPROFILEDEF\(\.AREA\.,'TK 0\.8x0\.9',\$,0\.8,0\.9\)/);
+  // ters T (serbest örnek: B 1,2, tabla 0,4, gövde 0,5 × 1,0): IfcTShapeProfileDef 180° döndürülmüş (başlık = tabla altta)
+  const t = uret(O.serbest());
+  assert.match(t.metin, /IFCTSHAPEPROFILEDEF\(\.AREA\.,'TK 1\.2\/0\.4-0\.5\/1',#\d+,1\.,1\.2,0\.5,0\.4,\$,\$,\$,\$,\$\)/);
+  assert.match(t.metin, /IFCDIRECTION\(\(-1\.,0\.\)\)/);
+  // "tum" seçiminde zemin kat kolonu olmayan aks atlanır; hat uçları = uç kolonlar ± taşma
+  const b = O.surekli();
+  b.akslar.x.push({ ad: "C", konum: 9 });
+  b.temeller.surekli = { yon: "xy", akslar: "tum", B: 1.0, h_tabla: 0.3, b_govde: 0.4, h_govde: 0.8, tasma: 0.5 };
+  const u = uret(b);
+  assert.equal(u.tipler.IFCFOOTING, 4);       // 1, 2 (X) + A, B (Y); C aksında kolon yok
+  assert.deepEqual(u.uyarilar, []);
+});
+
+// Sentetik veri.temel (temel.py şeması): A–B arasında 1 aksı boyunca tek mütemadi temel hattı (ağ 3 m), iki kolon
+function surekliVeri(yatay) {
+  const n = [[50001, -0.4], [1, 0], [50002, 3], [21, 6], [50003, 6.4]];
+  const A = [0.48, 1.32, 3.6, 1.32, 0.48];
+  return {
+    ag: {
+      dugumler: n.map(function (d) { return { no: d[0], X: d[1], Y: 0, Z: 0, adres: d[0] > 50000 ? "T(" + d[1] + "; 0)" : (d[0] === 1 ? "A1/k0" : "B1/k0") }; })
+        .concat([{ no: 1001, X: 0, Y: 0, Z: 3.5, adres: "A1/k1" }, { no: 1021, X: 6, Y: 0, Z: 3.5, adres: "B1/k1" }]),
+      elemanlar: [{ no: 1, dugumler: [1, 1001], tur: "kolon", kaynak_no: 1, kesit: "S30x60" }, { no: 2, dugumler: [21, 1021], tur: "kolon", kaynak_no: 2, kesit: "S30x60" }]
+        .concat([0, 1, 2, 3].map(function (i) {
+          return { no: 64 + i, dugumler: [n[i][0], n[i + 1][0]], tur: "temel-kirisi", kaynak_no: 1, parca: i + 1, kesit: "TK", adres: "TK-1 p" + (i + 1),
+            lam: [[1, 0, 0], [0, 0, 1], [0, -1, 0]] };
+        })),
+      mesnetler: [],
+    },
+    temel: {
+      tip: "surekli", q_em: 200, p_maks: 80, DC_zemin: 0.4, oturma_maks_mm: 4,
+      model: { k0: 20000, yatay: yatay || "tutulu", kh_oran: yatay === "yay" ? 0.3 : null, kesit: { B: 1.2, h_tabla: 0.3, b_govde: 0.4, h_govde: 0.9 } },
+      dugumler: n.map(function (d, i) { return { no: d[0], X: d[1], Y: 0, A: A[i] }; }),
+      elemanlar: [0, 1, 2, 3].map(function (i) { return { no: 64 + i, tur: "temel-kirisi", yon: "x", dugumler: [n[i][0], n[i + 1][0]], b: 0.4, h: 0.9 }; }),
+      hatlar: [{ ad: "1", yon: "x", no: 1, sabit: 0, bas: -0.4, son: 6.4, elemanlar: [64, 65, 66, 67], dugumler: n.map(function (d) { return d[0]; }) }],
+      tasarim: [{ tur: "temel-kirisi", hat: "1", dc: 0.42, durum: "yeterli" }],
+    },
+  };
+}
+function surekliTekHat() {
+  const b = O.temel();
+  b.kolonlar = b.kolonlar.filter(function (c) { return c.no === 1 || c.no === 2; });
+  b.kirisler = [b.kirisler[0]];
+  b.dosemeler = [];
+  b.temeller = { tip: "surekli", zemin: { q_em: 200, k0: 20000 }, surekli: { yon: "x", akslar: ["1"], B: 1.2, h_tabla: 0.3, b_govde: 0.4, h_govde: 0.9, tasma: 0.4 } };
+  return b;
+}
+
+test("veri.temel (mütemadi): temel kirişi analitik üyeleri, Winkler yayları k_z = k0·A ve dönme yayı k0·B³/12·l", function () {
+  const r = MatrisIFC.uretAyrintili(surekliTekHat(), surekliVeri(), ZAMAN);
+  const t = stepDenetle(r.metin).tipler;
+  assert.deepEqual(r.uyarilar, []);
+  assert.equal(t.IFCFOOTING, 1);
+  assert.equal(t.IFCSTRUCTURALCURVEMEMBER, 2 + 4);
+  assert.equal(t.IFCSTRUCTURALPOINTCONNECTION, 7);
+  // yaylar: A1 (A = 1,32): k_z = 26400; l_etki = 0,2 + 1,5 = 1,7 → k_θ = 20000·1,2³/12·1,7 = 4896; X, Y ve düşey eksen etrafında dönme tutulu
+  assert.match(r.metin, /IFCBOUNDARYNODECONDITION\('Zemin yay[^']*',IFCBOOLEAN\(\.T\.\),IFCBOOLEAN\(\.T\.\),IFCLINEARSTIFFNESSMEASURE\(26400\.\),IFCROTATIONALSTIFFNESSMEASURE\(4896\.\),IFCBOOLEAN\(\.F\.\),IFCBOOLEAN\(\.T\.\)\);/);
+  assert.match(r.metin, /IFCLINEARSTIFFNESSMEASURE\(72000\.\)/);           // orta düğüm A = 3,6
+  const kos = (r.metin.match(/IFCSTRUCTURALPOINTCONNECTION\([^\n]*,#\d+,\$\);/g) || []);
+  assert.equal(kos.length, 5, "beş temel düğümünün hepsi yaylı");
+  // ters T profil ve fiziksel ↔ analitik ilişki
+  assert.match(r.metin, /IFCTSHAPEPROFILEDEF\(\.AREA\.,'TK 1\.2\/0\.3-0\.4\/0\.9'/);
+  assert.match(r.metin, /IFCSTRUCTURALCURVEMEMBER\([^\n]*'TK-1 p2 \[E65\]'/);
+  // zemin özellikleri ve hat D/C'si fiziksel temel kirişinde
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('k0',\$,IFCMODULUSOFSUBGRADEREACTIONMEASURE\(20000\.\),\$\)/);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('DC',\$,IFCRATIOMEASURE\(0\.42\),\$\)/);
+  assert.match(r.metin, /IFCDERIVEDUNIT\([^\n]*\.MODULUSOFSUBGRADEREACTIONUNIT\.,\$\)/);
+  const fiz = /#(\d+)=IFCFOOTING\('[^']+',#\d+,'TK-1',/.exec(r.metin)[1];
+  assert.match(r.metin, new RegExp("IFCRELASSIGNSTOPRODUCT\\([^\\n]*,\\((#\\d+,){3}#\\d+\\),\\$,#" + fiz + "\\);"), "4 temel kirişi parçası → 1 fiziksel temel kirişi");
+});
+
+test("veri.temel (yatay: yay): yatay yaylar k_h = kh_oran·k_z, düşey eksen etrafında dönme serbest", function () {
+  const r = MatrisIFC.uretAyrintili(surekliTekHat(), surekliVeri("yay"), ZAMAN);
+  stepDenetle(r.metin);
+  assert.match(r.metin, /IFCBOUNDARYNODECONDITION\('Zemin yay[^']*',IFCLINEARSTIFFNESSMEASURE\(7920\.\),IFCLINEARSTIFFNESSMEASURE\(7920\.\),IFCLINEARSTIFFNESSMEASURE\(26400\.\),[^\n]*,IFCBOOLEAN\(\.F\.\)\);/);
+});
+
+test("veri.temel tekil ise mevcut davranış: kolon tabanlarında mesnet, tekil temel", function () {
+  const veri = { temel: { tip: "tekil", dugumler: [], elemanlar: [], tasarim: [] } };
+  const a = MatrisIFC.uret(O.temel(), veri, ZAMAN), b = MatrisIFC.uret(O.temel(), null, ZAMAN);
+  assert.equal(a, b);
 });
 
 test("§19 aks sistemi: Z aksları, {aks, z} REF'leri, bölme/kesişim düğümleri, döndürülmüş ve silindirik sistemler", function () {
