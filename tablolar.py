@@ -25,6 +25,12 @@ TABLO şeması (§15.1)::
   alana işaret eder: anahtar (metin), liste sırası (tam sayı) ya da liste elemanı seçici ``{"no": 3}`` / ``{"ad": "A"}`` /
   ``{"aks": ["B", "1"], "_olustur": true}`` (``_olustur``: eşleşen eleman yoksa seçici alanlarıyla yeni eleman eklenir).
   Ara sözlük/liste yoksa oluşturulur. ``secenekler`` elemanı değer ya da ``{"deger", "etiket"}`` olabilir.
+  Bir hücre birden çok alana birlikte yazılabilir: ``yol`` değeri yolların listesi olur (ilk elemanı liste; ör. kat seviyesi olan
+  Z aksının konumu hem ``akslar.z`` hem ``katlar[n].kot``).
+- ``satir.bag``: {sütun_ad: {"islem": "aks_ad", "yon", "sistem"} | {"islem": "sistem_ad"}} — ad değişikliği bağlı başvuruları da
+  günceller (aks yeniden adlandırma: kolon/kiriş/döşeme aksları ve bütün REF'ler; sistem adı: ``"sistem"`` alanları).
+  Değişiklik kaydı ``{"yol", "deger", "bag"?}``; yeniden adlandırmalar en son uygulanır (aynı toplu düzenlemedeki seçiciler eski adı
+  kullanır).
 - ``satir.hucre``: anahtar–değer (parametre) tablolarında satıra özgü hücre türü/seçenekleri.
 - ``satir.ozet``: ara toplam / Σ satırı (arayüz kalın gösterir).
 - ``sutun.vurgu == "dc"``: değer > 1 ise arayüz ve rapor kırmızı gösterir.
@@ -117,7 +123,9 @@ def _adim(kap, p, sonraki, olustur):
 
 def yol_al(bina, yol):
     """``yol``un gösterdiği değer (son anahtar sözlükte yoksa None — "varsayılan"); ara adımlar yoksa KeyError
-    (seçici ``_olustur`` olsa bile oluşturmaz)."""
+    (seçici ``_olustur`` olsa bile oluşturmaz). Yolların listesinde ilk yol okunur."""
+    if _coklu_yol(yol):
+        yol = yol[0]
     kap = bina
     for i, p in enumerate(yol[:-1]):
         kap = _adim(kap, p, yol[i + 1], False)
@@ -127,8 +135,18 @@ def yol_al(bina, yol):
     return _adim(kap, son, None, False)
 
 
+def _coklu_yol(yol):
+    """Yol tek mi (ilk adımı metin/sayı/seçici) yoksa yolların listesi mi (ilk elemanı liste)?"""
+    return isinstance(yol, (list, tuple)) and bool(yol) and isinstance(yol[0], (list, tuple))
+
+
 def yol_ata(bina, yol, deger):
-    """``bina`` içinde ``yol``a ``deger`` yazar (yerinde); ara sözlük/listeler ve ``_olustur`` seçicili elemanlar oluşturulur."""
+    """``bina`` içinde ``yol``a ``deger`` yazar (yerinde); ara sözlük/listeler ve ``_olustur`` seçicili elemanlar oluşturulur.
+    ``yol`` yolların listesiyse değer hepsine yazılır."""
+    if _coklu_yol(yol):
+        for y in yol:
+            yol_ata(bina, y, copy.deepcopy(deger))
+        return bina
     if not isinstance(yol, (list, tuple)) or not yol:
         raise KeyError("yol boş")
     kap = bina
@@ -148,11 +166,151 @@ def yol_ata(bina, yol, deger):
     return bina
 
 
+_AKS_SIRA = {"x": 0, "y": 1, "r": 0, "teta": 1}     # REF "aks" dizisindeki yer (silindirik: [R, θ])
+
+
+def _sistem_adi(s):
+    """REF/aks sisteminin adı; GLOBAL için None."""
+    return None if s in (None, "", "GLOBAL") else str(s)
+
+
+def _aks_listesi(bina, yon, sistem):
+    sistem = _sistem_adi(sistem)
+    if sistem is None:
+        akslar = bina.get("akslar") if isinstance(bina, dict) else None
+        liste = akslar.get(yon) if isinstance(akslar, dict) else None
+    else:
+        s = next((s for s in bina.get("aks_sistemleri") or [] if isinstance(s, dict) and str(s.get("ad")) == sistem), None)
+        if s is None:
+            raise KeyError(f"aks sistemi {sistem!r} yok")
+        liste = s.get(yon)
+    if not isinstance(liste, list):
+        raise KeyError(f"{yon} aks listesi yok" + (f" ({sistem})" if sistem else ""))
+    return liste
+
+
+def aks_yeniden_adlandir(bina, yon, eski, yeni, sistem=None):
+    """Aksı (yerinde) yeniden adlandırır ve bağlı bütün başvuruları günceller: kolon ``aks``, kiriş ``bas``/``son``, döşeme ``kose``
+    (aks–kat modeli, yalnız GLOBAL x/y), REF'ler (``{"aks": [x, y], ...}``: kolon/çubuk uçları, panel köşeleri, mesnet, ek yük,
+    özel temel, bölme/kesişim düğümleri) ve Z aksında ``{"z": ad}``. Sistemi ``z`` null olan ek sistemlerin REF'leri GLOBAL Z adlarını
+    kullanır. Ad boş ya da listede zaten varsa ValueError."""
+    yon = str(yon).lower()
+    eski = str(eski).strip()
+    yeni = "" if yeni is None else str(yeni).strip()
+    if not yeni:
+        raise ValueError("Aks adı boş olamaz.")
+    liste = _aks_listesi(bina, yon, sistem)
+    hedef = None
+    for a in liste:
+        if not isinstance(a, dict):
+            continue
+        ad = str(a.get("ad", "")).strip()
+        if ad == yeni and yeni != eski:
+            raise ValueError(f"{yon.upper()} aksı {yeni!r} zaten var; aks adları benzersiz olmalı.")
+        if ad == eski and hedef is None:
+            hedef = a
+    if hedef is None:
+        raise KeyError(f"{yon.upper()} aksı {eski!r} yok")
+    if yeni == eski:
+        return bina
+    hedef["ad"] = yeni
+    sistem = _sistem_adi(sistem)
+    z_ortak = {str(s.get("ad")) for s in bina.get("aks_sistemleri") or []
+               if isinstance(s, dict) and not (isinstance(s.get("z"), list) and s.get("z"))}
+    i = _AKS_SIRA.get(yon)
+
+    def uyar(rs):
+        if yon == "z" and sistem is None:
+            return rs is None or rs in z_ortak
+        return rs == sistem
+
+    def yurut(o, kok):
+        if isinstance(o, dict):
+            rs = _sistem_adi(o.get("sistem"))
+            if yon == "z":
+                if "aks" in o and isinstance(o.get("z"), str) and o["z"].strip() == eski and uyar(rs):
+                    o["z"] = yeni
+            elif i is not None:
+                a = o.get("aks")
+                if isinstance(a, list) and len(a) > i and not isinstance(a[i], (dict, list)) and str(a[i]).strip() == eski and uyar(rs):
+                    a[i] = yeni
+                if sistem is None and rs is None and yon in ("x", "y"):
+                    for k in ("bas", "son"):
+                        b = o.get(k)
+                        if isinstance(b, list) and len(b) == 2 and not isinstance(b[i], (dict, list)) and str(b[i]).strip() == eski:
+                            b[i] = yeni
+                    kose = o.get("kose")
+                    if isinstance(kose, list):
+                        for kk in kose:
+                            if isinstance(kk, list) and len(kk) == 2 and not isinstance(kk[i], (dict, list)) and str(kk[i]).strip() == eski:
+                                kk[i] = yeni
+            for k, v in o.items():
+                if kok and k in ("akslar", "aks_sistemleri"):
+                    continue
+                yurut(v, False)
+        elif isinstance(o, list):
+            for v in o:
+                yurut(v, False)
+
+    yurut(bina, True)
+    return bina
+
+
+def aks_sistemi_yeniden_adlandir(bina, eski, yeni):
+    """Ek aks sistemini (yerinde) yeniden adlandırır; ``"sistem": eski`` taşıyan bütün REF'ler güncellenir."""
+    eski = str(eski).strip()
+    yeni = "" if yeni is None else str(yeni).strip()
+    if not yeni or yeni == "GLOBAL":
+        raise ValueError("Aks sistemi adı boş ya da 'GLOBAL' olamaz.")
+    sistemler = [s for s in bina.get("aks_sistemleri") or [] if isinstance(s, dict)]
+    hedef = next((s for s in sistemler if str(s.get("ad", "")).strip() == eski), None)
+    if hedef is None:
+        raise KeyError(f"aks sistemi {eski!r} yok")
+    if yeni == eski:
+        return bina
+    if any(str(s.get("ad", "")).strip() == yeni for s in sistemler):
+        raise ValueError(f"Aks sistemi {yeni!r} zaten var.")
+    hedef["ad"] = yeni
+
+    def yurut(o, kok):
+        if isinstance(o, dict):
+            if isinstance(o.get("sistem"), str) and o["sistem"].strip() == eski:
+                o["sistem"] = yeni
+            for k, v in o.items():
+                if not (kok and k == "aks_sistemleri"):
+                    yurut(v, False)
+        elif isinstance(o, list):
+            for v in o:
+                yurut(v, False)
+
+    yurut(bina, True)
+    return bina
+
+
+def _bag_sirasi(d):
+    bag = d.get("bag") if isinstance(d, dict) else None
+    if not isinstance(bag, dict):
+        return 0
+    return 2 if bag.get("islem") == "sistem_ad" else 1
+
+
+def degisiklik_uygula(bina, d):
+    """Tek değişikliği (yerinde) uygular: {"yol", "deger", "bag"?}."""
+    bag = d.get("bag")
+    yol = list(d["yol"])
+    if isinstance(bag, dict) and bag.get("islem") == "aks_ad":
+        return aks_yeniden_adlandir(bina, bag.get("yon"), yol_al(bina, yol), d.get("deger"), bag.get("sistem"))
+    if isinstance(bag, dict) and bag.get("islem") == "sistem_ad":
+        return aks_sistemi_yeniden_adlandir(bina, yol_al(bina, yol), d.get("deger"))
+    return yol_ata(bina, yol, copy.deepcopy(d.get("deger")))
+
+
 def degisiklikleri_uygula(bina, degisiklikler):
-    """Tablo düzenlemelerini binanın KOPYASINA uygular: degisiklikler = [{"yol": [...], "deger": v}, ...] → yeni bina."""
+    """Tablo düzenlemelerini binanın KOPYASINA uygular: degisiklikler = [{"yol": [...], "deger": v, "bag"?}, ...] → yeni bina.
+    Önce düz değer yazımları, sonra aks yeniden adlandırmaları, en son sistem adları (kararlı sıra)."""
     yeni = copy.deepcopy(bina)
-    for d in degisiklikler or []:
-        yol_ata(yeni, list(d["yol"]), copy.deepcopy(d.get("deger")))
+    for d in sorted(degisiklikler or [], key=_bag_sirasi):
+        degisiklik_uygula(yeni, d)
     return yeni
 
 
@@ -249,14 +407,23 @@ def _secim(liste):
 
 
 def _ref_metin(ref):
+    """REF'in kısa yazımı: D12 | B3/k1 | B-3 @ Saçak | KANAT-B:C-2 @ ±0.00 | (X, Y, Z)."""
+    if isinstance(ref, (int, float)) and not isinstance(ref, bool):
+        return f"D{ref}"
     if isinstance(ref, dict):
         if "dugum" in ref:
             return f"D{ref['dugum']}"
         if "aks" in ref:
-            a = ref.get("aks") or ["?", "?"]
-            return f"{a[0]}{a[1]}/k{ref.get('kat', '?')}"
+            a = list(ref.get("aks") or []) + ["?", "?"]
+            sis = _sistem_adi(ref.get("sistem"))
+            on = f"{sis}:" if sis else ""
+            if ref.get("z") is not None:
+                return f"{on}{a[0]}-{a[1]} @ {ref['z']}"
+            return f"{on}{a[0]}{a[1]}/k{ref.get('kat', 1)}"
         if "X" in ref:
             return f"({_n(ref.get('X'))}, {_n(ref.get('Y'))}, {_n(ref.get('Z'))})"
+    if isinstance(ref, (list, tuple)) and len(ref) == 3:
+        return f"({_n(ref[0])}, {_n(ref[1])}, {_n(ref[2])})"
     return json.dumps(ref, ensure_ascii=False)
 
 
@@ -293,33 +460,262 @@ class _Baglam:
                 self.tasarim[(e.get("tur"), e.get("no"))] = e
         self.metraj_ayar = self.ham.get("metraj") if isinstance(self.ham.get("metraj"), dict) else {}
 
-    # --- düğüm koordinatı (aks–kat ve serbest düğümler) ---
-    def ref_koordinat(self, ref):
-        B = self.B
+    # --- aks sistemleri (§19) ---
+    def _aks_listesi_oku(self, liste):
+        sonuc = []
+        for a in liste or []:
+            if not isinstance(a, dict):
+                continue
+            try:
+                konum = float(a.get("konum"))
+            except (TypeError, ValueError):
+                konum = None
+            sonuc.append({"ad": str(a.get("ad", "")).strip(), "konum": konum, "ham": a})
+        return sonuc
+
+    @property
+    def katlar_ham(self):
+        """[(no, ad, kot)] — yapi okuması varsa ondan, yoksa ham katlardan; akslar.z[i].kat = n kat kotunu belirler (§19.1)."""
+        if "_katlar_ham" in self.__dict__:
+            return self._katlar_ham
+        katlar = {}
+        if self.B is not None:
+            for kt in self.B.katlar:
+                katlar[kt["no"]] = [kt["no"], kt["ad"], kt["kot"]]
+        else:
+            for i, kt in enumerate(self.ham.get("katlar") or []):
+                if isinstance(kt, dict):
+                    no = kt.get("no", i)
+                    try:
+                        kot = float(kt.get("kot"))
+                    except (TypeError, ValueError):
+                        kot = None
+                    katlar[no] = [no, str(kt.get("ad") or (f"{no}. kat" if no else "Temel")), kot]
+        for z in self.z_ham:
+            k = z["ham"].get("kat")
+            if isinstance(k, int) and not isinstance(k, bool):
+                if k in katlar:
+                    if self.B is None and z["konum"] is not None:
+                        katlar[k][2] = z["konum"]
+                else:
+                    katlar[k] = [k, z["ad"], z["konum"]]
+        self._katlar_ham = [tuple(v) for _, v in sorted(katlar.items(), key=lambda x: x[0] if isinstance(x[0], (int, float)) else 0)]
+        return self._katlar_ham
+
+    @property
+    def z_ham(self):
+        """Ham ``akslar.z`` listesi (okunmuş); yoksa boş."""
+        if "_z_ham" not in self.__dict__:
+            ak = self.ham.get("akslar") if isinstance(self.ham.get("akslar"), dict) else {}
+            self._z_ham = self._aks_listesi_oku(ak.get("z")) if isinstance(ak.get("z"), list) else []
+        return self._z_ham
+
+    @property
+    def z_akslar(self):
+        """GLOBAL Z aksları: ``akslar.z`` varsa o, yoksa katlardan türetilir ({"ad": kat adı, "konum": kot, "kat": no, "turetildi"})."""
+        if "_z_akslar" not in self.__dict__:
+            if self.z_ham:
+                self._z_akslar = [dict(z, kat=z["ham"].get("kat"), turetildi=False) for z in self.z_ham]
+            else:
+                self._z_akslar = [{"ad": ad, "konum": kot, "kat": no, "turetildi": True, "ham": None} for no, ad, kot in self.katlar_ham]
+        return self._z_akslar
+
+    def kat_kotu(self, k):
+        for no, _, kot in self.katlar_ham:
+            if _esit(no, k):
+                return kot
+        return None
+
+    def global_aks(self, yon):
+        if self.B is not None and yon in ("x", "y"):
+            return [{"ad": a["ad"], "konum": a["konum"]} for a in self.B.akslar[yon]]
+        if yon == "z":
+            return self.z_akslar
+        ak = self.ham.get("akslar") if isinstance(self.ham.get("akslar"), dict) else {}
+        return self._aks_listesi_oku(ak.get(yon))
+
+    @property
+    def sistemler(self):
+        """Ek aks sistemleri: {ad: {"ad", "tur", "orijin", "aci", "u", "v", "z" (None = GLOBAL), "ham", "sira"}}."""
+        if "_sistemler" not in self.__dict__:
+            self._sistemler = {}
+            for i, s in enumerate(self.ham.get("aks_sistemleri") or []):
+                if not isinstance(s, dict):
+                    continue
+                ad = str(s.get("ad") or f"SİSTEM-{i + 1}")
+                tur = "silindirik" if str(s.get("tur", "kartezyen")).lower() == "silindirik" else "kartezyen"
+                o = list(s.get("orijin") or []) + [0, 0, 0]
+                try:
+                    orijin = [float(o[0] or 0), float(o[1] or 0), float(o[2] or 0)]
+                except (TypeError, ValueError):
+                    orijin = [0.0, 0.0, 0.0]
+                try:
+                    aci = float(s.get("aci") or 0.0)
+                except (TypeError, ValueError):
+                    aci = 0.0
+                z = self._aks_listesi_oku(s.get("z")) if isinstance(s.get("z"), list) and s.get("z") else None
+                self._sistemler[ad] = {"ad": ad, "tur": tur, "orijin": orijin, "aci": aci, "sira": i, "ham": s,
+                                       "u": self._aks_listesi_oku(s.get("r" if tur == "silindirik" else "x")),
+                                       "v": self._aks_listesi_oku(s.get("teta" if tur == "silindirik" else "y")), "z": z}
+        return self._sistemler
+
+    @staticmethod
+    def _bul(liste, ad):
+        ad = str(ad).strip()
+        for a in liste or []:
+            if a["ad"] == ad:
+                return a["konum"]
+        return None
+
+    def sistem_xy(self, S, u, v):
+        x, y = u, v
+        if S["tur"] == "silindirik":
+            t = math.radians(v)
+            x, y = u * math.cos(t), u * math.sin(t)
+        a = math.radians(S["aci"])
+        c, s_ = math.cos(a), math.sin(a)
+        return S["orijin"][0] + c * x - s_ * y, S["orijin"][1] + s_ * x + c * y
+
+    def z_seviye(self, ref, S=None):
+        """REF'in Z'si: {"kat": k} | {"z": ad} (sistemin kendi Z aksları varsa onlar, yoksa GLOBAL) | {"z": sayı} | yok → kat 1."""
+        if ref.get("kat") is not None:
+            return self.kat_kotu(ref.get("kat"))
+        z = ref.get("z")
+        if z is not None:
+            if S is not None and S["z"]:
+                k = self._bul(S["z"], z)
+                if k is not None:
+                    return S["orijin"][2] + k
+            else:
+                k = self._bul(self.z_akslar, z)
+                if k is not None:
+                    return k
+            if isinstance(z, (int, float)) and not isinstance(z, bool):
+                return float(z) + (S["orijin"][2] if S is not None and S["z"] else 0.0)
+            return None
+        return self.kat_kotu(1)
+
+    # --- düğüm koordinatı (aks–kat, §19 aks REF'i, bölme/kesişim ve serbest düğümler) ---
+    def ref_koordinat(self, ref, _derinlik=0):
+        if _derinlik > 32:
+            return None
+        if isinstance(ref, (int, float)) and not isinstance(ref, bool):
+            ref = {"dugum": ref}
+        elif isinstance(ref, (list, tuple)) and len(ref) == 3:
+            ref = {"X": ref[0], "Y": ref[1], "Z": ref[2]}
         if not isinstance(ref, dict):
             return None
+        if "dugum" in ref and ref["dugum"] is not None:
+            if isinstance(ref["dugum"], dict):
+                return self.ref_koordinat(ref["dugum"], _derinlik + 1)
+            for d in self.ham.get("dugumler") or []:
+                if isinstance(d, dict) and _esit(d.get("no"), ref["dugum"]):
+                    return self.dugum_koordinat(d, _derinlik + 1)
+            if self.veri:
+                for d in (self.veri.get("ag") or {}).get("dugumler") or []:
+                    if _esit(d.get("no"), ref["dugum"]):
+                        return d["X"], d["Y"], d["Z"]
+            try:
+                no = int(ref["dugum"])
+            except (TypeError, ValueError):
+                return None
+            if 0 < no < 100000:      # aks–kat düğüm numarası: 1000·kat + 20·ix + iy + 1
+                kat, kalan = divmod(no, 1000)
+                ix, iy = divmod(kalan - 1, 20)
+                gx, gy = self.global_aks("x"), self.global_aks("y")
+                if 0 <= ix < len(gx) and 0 <= iy < len(gy) and self.kat_kotu(kat) is not None:
+                    return gx[ix]["konum"], gy[iy]["konum"], self.kat_kotu(kat)
+            return None
+        if "aks" in ref:
+            a = list(ref.get("aks") or [])
+            if len(a) < 2:
+                return None
+            sis = _sistem_adi(ref.get("sistem"))
+            if sis is None:
+                x, y = self._bul(self.global_aks("x"), a[0]), self._bul(self.global_aks("y"), a[1])
+                z = self.z_seviye(ref)
+                if None in (x, y, z):
+                    return None
+                return x, y, z
+            S = self.sistemler.get(sis)
+            if S is None:
+                return None
+            u, v = self._bul(S["u"], a[0]), self._bul(S["v"], a[1])
+            z = self.z_seviye(ref, S)
+            if None in (u, v, z):
+                return None
+            X, Y = self.sistem_xy(S, u, v)
+            return X, Y, z
         if all(a in ref for a in ("X", "Y", "Z")):
             try:
                 return float(ref["X"]), float(ref["Y"]), float(ref["Z"])
             except (TypeError, ValueError):
                 return None
-        if "dugum" in ref:
-            for d in self.ham.get("dugumler") or []:
-                if isinstance(d, dict) and _esit(d.get("no"), ref["dugum"]):
-                    return self.ref_koordinat(d)
-            if self.veri:
-                for d in (self.veri.get("ag") or {}).get("dugumler") or []:
-                    if _esit(d.get("no"), ref["dugum"]):
-                        return d["X"], d["Y"], d["Z"]
-            return None
-        if "aks" in ref and B is not None:
-            a = ref.get("aks") or []
-            try:
-                ix, iy = B.ax[str(a[0])], B.ay[str(a[1])]
-                return B.xk[ix], B.yk[iy], B.kat[int(ref.get("kat", 0))]["kot"]
-            except (KeyError, IndexError, TypeError, ValueError):
-                return None
         return None
+
+    def dugum_koordinat(self, d, _derinlik=0):
+        """``dugumler`` kaydının konumu: koordinatlı, aks REF'li, "bolme" (ana çubuk uçlarına göre oran) ya da "kesisim"."""
+        tur = str(d.get("tur") or "").lower()
+        if tur == "bolme":
+            p, q = self.ref_koordinat(d.get("cubuk_i"), _derinlik + 1), self.ref_koordinat(d.get("cubuk_j"), _derinlik + 1)
+            if p is None or q is None:
+                return None
+            try:
+                t = float(d.get("oran", 0.5))
+            except (TypeError, ValueError):
+                t = 0.5
+            return tuple(a + (b - a) * t for a, b in zip(p, q))
+        if tur == "kesisim":
+            a = [self.ref_koordinat(r, _derinlik + 1) for r in (d.get("a") or [])]
+            b = [self.ref_koordinat(r, _derinlik + 1) for r in (d.get("b") or [])]
+            if len(a) < 2 or len(b) < 2 or any(p is None for p in a + b):
+                return None
+            return _kesisim(a[0], a[1], b[0], b[1])
+        if "aks" in d or d.get("sistem") is not None:
+            return self.ref_koordinat({k: d.get(k) for k in ("aks", "sistem", "kat", "z") if d.get(k) is not None}, _derinlik + 1)
+        if all(a in d for a in ("X", "Y", "Z")):
+            return self.ref_koordinat(d, _derinlik + 1)
+        return None
+
+    def aks_adresi(self, X, Y, Z, tol=1e-3):
+        """Koordinattaki GLOBAL aks kesişimi: "B-3 @ Saçak" (Z aksı adı); kesişim değilse None."""
+        if None in (X, Y, Z):
+            return None
+        ax = next((a["ad"] for a in self.global_aks("x") if a["konum"] is not None and abs(a["konum"] - X) <= tol), None)
+        ay = next((a["ad"] for a in self.global_aks("y") if a["konum"] is not None and abs(a["konum"] - Y) <= tol), None)
+        az = next((a["ad"] for a in self.z_akslar if a["konum"] is not None and abs(a["konum"] - Z) <= tol), None)
+        if ax is not None and ay is not None and az is not None:
+            return f"{ax}-{ay} @ {az}"
+        for S in self.sistemler.values():
+            zl = S["z"] or self.z_akslar
+            oz = S["orijin"][2] if S["z"] else 0.0
+            zz = next((a["ad"] for a in zl if a["konum"] is not None and abs(a["konum"] + oz - Z) <= tol), None)
+            if zz is None:
+                continue
+            for u in S["u"]:
+                for v in S["v"]:
+                    if u["konum"] is None or v["konum"] is None:
+                        continue
+                    px, py = self.sistem_xy(S, u["konum"], v["konum"])
+                    if abs(px - X) <= tol and abs(py - Y) <= tol:
+                        return f"{S['ad']}:{u['ad']}-{v['ad']} @ {zz}"
+        return None
+
+
+def _kesisim(A1, A2, B1, B2):
+    """İki doğrunun (A1A2, B1B2) en yakın noktalarının ortası; paralelse None."""
+    u = [a - b for a, b in zip(A2, A1)]
+    v = [a - b for a, b in zip(B2, B1)]
+    w = [a - b for a, b in zip(A1, B1)]
+    a, b, c = sum(x * x for x in u), sum(x * y for x, y in zip(u, v)), sum(x * x for x in v)
+    d, e = sum(x * y for x, y in zip(u, w)), sum(x * y for x, y in zip(v, w))
+    D = a * c - b * b
+    if abs(D) < 1e-12 * max(1.0, a * c):
+        return None
+    s_, t = (b * e - c * d) / D, (a * e - b * d) / D
+    P = [p + s_ * x for p, x in zip(A1, u)]
+    Q = [q + t * x for q, x in zip(B1, v)]
+    return tuple((p + q) / 2 for p, q in zip(P, Q))
 
 
 def _baglanti_payi(c):
@@ -384,14 +780,26 @@ def _t_genel(c):
               "TS 500 md. 6.2.6; ÇYTHYE 5.3; TBDY 2018 md. 4.4.4, 4.5.8")
 
 
+def _kat_kot_yolu(c, no):
+    """Kat kotunun yazılacağı yer(ler): katlar[n].kot; kat seviyesi olan Z aksı varsa onun konumu da (tek kaynak, §19.1)."""
+    kp = _liste_yolu(c.ham, "katlar", no, "kot", ilk=0)
+    zp = None
+    for z in c.z_ham:
+        if _esit(z["ham"].get("kat"), no) and not isinstance(z["ham"].get("kat"), bool):
+            zp = ["akslar", "z", {"ad": z["ham"].get("ad")}, "konum"]
+            break
+    if kp and zp:
+        return [kp, zp]
+    return kp or zp
+
+
 def _t_katlar(c):
     ham, B = c.ham, c.B
     satirlar = []
     if B:
         for kt in B.katlar:
             satirlar.append(_R({"no": kt["no"], "ad": kt["ad"], "kot": kt["kot"], "h": kt["h"] if kt["no"] else None},
-                               {"ad": _liste_yolu(ham, "katlar", kt["no"], "ad", ilk=0),
-                                "kot": _liste_yolu(ham, "katlar", kt["no"], "kot", ilk=0)}))
+                               {"ad": _liste_yolu(ham, "katlar", kt["no"], "ad", ilk=0), "kot": _kat_kot_yolu(c, kt["no"])}))
     else:
         onceki = None
         for i, kt in enumerate(ham.get("katlar") or []):
@@ -401,7 +809,7 @@ def _t_katlar(c):
             kot = kt.get("kot")
             h = (kot - onceki) if isinstance(kot, (int, float)) and isinstance(onceki, (int, float)) else None
             satirlar.append(_R({"no": no, "ad": kt.get("ad") or "", "kot": kot, "h": h},
-                               {"ad": _liste_yolu(ham, "katlar", no, "ad", ilk=0), "kot": _liste_yolu(ham, "katlar", no, "kot", ilk=0)}))
+                               {"ad": _liste_yolu(ham, "katlar", no, "ad", ilk=0), "kot": _kat_kot_yolu(c, no)}))
             onceki = kot
     return _T("katlar", "Katlar", "Model",
               [_S("no", "Kat", tur="sayi", ondalik=0), _S("ad", "Ad", tur="metin", duzenlenebilir=True),
@@ -410,27 +818,158 @@ def _t_katlar(c):
                         "(üst katların kotları ayrı ayrı girilir).", "")
 
 
-def _t_akslar(c):
-    ham, B = c.ham, c.B
+def _aks_sayaci(ham):
+    """Aks başvuru sayaçları: {(sistem | None, yon, ad): adet} — aks yeniden adlandırmasının güncelleyeceği yerler (tek geçiş)."""
+    sayac = {}
+    silindirik = {str(s.get("ad")) for s in ham.get("aks_sistemleri") or []
+                  if isinstance(s, dict) and str(s.get("tur", "")).lower() == "silindirik"}
+    z_ortak = {str(s.get("ad")) for s in ham.get("aks_sistemleri") or []
+               if isinstance(s, dict) and not (isinstance(s.get("z"), list) and s.get("z"))}
+
+    def say(anahtar):
+        sayac[anahtar] = sayac.get(anahtar, 0) + 1
+
+    def yurut(o, kok):
+        if isinstance(o, dict):
+            rs = _sistem_adi(o.get("sistem"))
+            a = o.get("aks")
+            if isinstance(a, list):
+                yonler = ("r", "teta") if rs in silindirik else ("x", "y")
+                for i, yon in enumerate(yonler):
+                    if len(a) > i and not isinstance(a[i], (dict, list)):
+                        say((rs, yon, str(a[i]).strip()))
+                if isinstance(o.get("z"), str):
+                    say((None if (rs is None or rs in z_ortak) else rs, "z", o["z"].strip()))
+            if rs is None:
+                for k in ("bas", "son"):
+                    b = o.get(k)
+                    if isinstance(b, list) and len(b) == 2 and not any(isinstance(x, (dict, list)) for x in b):
+                        say((None, "x", str(b[0]).strip()))
+                        say((None, "y", str(b[1]).strip()))
+                kose = o.get("kose")
+                if isinstance(kose, list):
+                    for kk in kose:
+                        if isinstance(kk, list) and len(kk) == 2 and not any(isinstance(x, (dict, list)) for x in kk):
+                            say((None, "x", str(kk[0]).strip()))
+                            say((None, "y", str(kk[1]).strip()))
+            for k, v in o.items():
+                if not (kok and k in ("akslar", "aks_sistemleri")):
+                    yurut(v, False)
+        elif isinstance(o, list):
+            for v in o:
+                yurut(v, False)
+
+    yurut(ham, True)
+    return sayac
+
+
+def _aks_satirlari(c, ham_liste, okunan, yon, sistem, ham_yol, birim_aci=False, z_kat_yolu=False):
+    """Bir aks listesinin satırları. okunan: konuma göre sıralı [{"ad", "konum", "ham"}]."""
     satirlar = []
-    if B:
-        for yon in ("x", "y"):
-            liste = B.akslar[yon]
-            for i, a in enumerate(liste):
-                aralik = liste[i + 1]["konum"] - a["konum"] if i + 1 < len(liste) else None
-                satirlar.append(_R({"yon": yon.upper(), "ad": a["ad"], "konum": a["konum"], "aralik": aralik},
-                                   {"konum": _aks_yolu(ham, yon, a["ad"], "konum")}))
-    else:
-        for yon in ("x", "y"):
-            for a in ((ham.get("akslar") or {}).get(yon) or []):
-                if isinstance(a, dict):
-                    satirlar.append(_R({"yon": yon.upper(), "ad": str(a.get("ad", "")), "konum": a.get("konum"), "aralik": None},
-                                       {"konum": _aks_yolu(ham, yon, str(a.get("ad", "")), "konum")}))
-    return _T("akslar", "Akslar", "Model",
-              [_S("yon", "Doğrultu", tur="metin"), _S("ad", "Aks", tur="metin"), _S("konum", "Konum", "m", duzenlenebilir=True, ondalik=2),
-               _S("aralik", "Sonraki aksa aralık", "m", ondalik=2)],
-              satirlar, "X doğrultusu harfli akslar (A, B, …), Y doğrultusu sayılı akslar (1, 2, …). Aks konumu değişince bütün "
-                        "kolon, kiriş ve döşemeler yeni konuma taşınır.", "")
+    sirali = sorted([a for a in okunan if a.get("konum") is not None], key=lambda a: a["konum"]) + [a for a in okunan if a.get("konum") is None]
+    onceki = None
+    if "_sayac" not in c.__dict__:
+        c._sayac = _aks_sayaci(c.ham)
+    for a in sirali:
+        ad = a["ad"]
+        h = a.get("ham") if isinstance(a.get("ham"), dict) else None
+        if h is None and isinstance(ham_liste, list):
+            h = next((e for e in ham_liste if isinstance(e, dict) and str(e.get("ad", "")).strip() == ad), None)
+        aralik = (a["konum"] - onceki) if (a["konum"] is not None and onceki is not None) else None
+        onceki = a["konum"] if a["konum"] is not None else onceki
+        yol, bag = {}, {}
+        if h is not None:
+            sec = list(ham_yol) + [{"ad": h.get("ad")}]
+            yol["konum"] = sec + ["konum"]
+            k = h.get("kat")
+            if z_kat_yolu and isinstance(k, int) and not isinstance(k, bool):
+                kp = _liste_yolu(c.ham, "katlar", k, "kot", ilk=0)
+                if kp:
+                    yol["konum"] = [sec + ["konum"], kp]
+            yol["ad"] = sec + ["ad"]
+            bag["ad"] = {"islem": "aks_ad", "yon": yon, "sistem": sistem}
+            for alan in ("tur", "gorunur", "balon"):
+                yol[alan] = sec + [alan]
+        deg = {"sistem": sistem or "GLOBAL", "yon": {"teta": "θ"}.get(yon, yon.upper()), "ad": ad, "konum": a["konum"], "aralik": aralik,
+               "tur": (h or {}).get("tur", "ana"), "gorunur": bool((h or {}).get("gorunur", True)),
+               "balon": (h or {}).get("balon", "bas" if yon != "z" else "yok"), "kat": (h or {}).get("kat") if yon == "z" else None,
+               "bagli": c._sayac.get((sistem, yon, ad), 0) if h is not None else None}
+        ek = {"bag": bag} if bag else {}
+        if birim_aci:
+            ek["hucre"] = {"konum": {"birim": "°", "ondalik": 2}, "aralik": {"birim": "°", "ondalik": 2}}
+        satirlar.append(_R(deg, yol, **ek))
+    return satirlar
+
+
+def _t_akslar(c):
+    """Akslar (X/Y/Z) — §19: GLOBAL X, Y, Z aksları ve ek sistemlerin aksları; ad ve konum düzenlenebilir (ad değişince bağlı
+    elemanlar ve REF'ler de güncellenir). Z aksları ``akslar.z`` yoksa katlardan türetilir (konum = kat kotu)."""
+    ham = c.ham
+    ak = ham.get("akslar") if isinstance(ham.get("akslar"), dict) else {}
+    satirlar = []
+    for yon in ("x", "y"):
+        okunan = []
+        hamlar = {str(a.get("ad", "")).strip(): a for a in (ak.get(yon) or []) if isinstance(a, dict)}
+        for a in c.global_aks(yon):
+            okunan.append({"ad": a["ad"], "konum": a["konum"], "ham": hamlar.get(a["ad"])})
+        satirlar += _aks_satirlari(c, ak.get(yon), okunan, yon, None, ["akslar", yon])
+    if c.z_ham:
+        satirlar += _aks_satirlari(c, ak.get("z"), c.z_ham, "z", None, ["akslar", "z"], z_kat_yolu=True)
+    else:                                   # katlardan türetilen Z aksları: ad/kot katlar listesine yazılır (başvuru kat no'su ile)
+        onceki = None
+        for no, ad, kot in c.katlar_ham:
+            aralik = (kot - onceki) if (kot is not None and onceki is not None) else None
+            onceki = kot if kot is not None else onceki
+            satirlar.append(_R({"sistem": "GLOBAL", "yon": "Z", "ad": ad, "konum": kot, "aralik": aralik, "tur": "ana", "gorunur": True,
+                                "balon": "yok", "kat": no, "bagli": None},
+                               {"ad": _liste_yolu(ham, "katlar", no, "ad", ilk=0), "konum": _liste_yolu(ham, "katlar", no, "kot", ilk=0)}))
+    for S in sorted(c.sistemler.values(), key=lambda x: x["sira"]):
+        taban = ["aks_sistemleri", {"ad": S["ham"].get("ad")}]
+        if S["tur"] == "silindirik":
+            satirlar += _aks_satirlari(c, S["ham"].get("r"), S["u"], "r", S["ad"], taban + ["r"])
+            satirlar += _aks_satirlari(c, S["ham"].get("teta"), S["v"], "teta", S["ad"], taban + ["teta"], birim_aci=True)
+        else:
+            satirlar += _aks_satirlari(c, S["ham"].get("x"), S["u"], "x", S["ad"], taban + ["x"])
+            satirlar += _aks_satirlari(c, S["ham"].get("y"), S["v"], "y", S["ad"], taban + ["y"])
+        if S["z"]:
+            satirlar += _aks_satirlari(c, S["ham"].get("z"), S["z"], "z", S["ad"], taban + ["z"])
+    return _T("akslar", "Akslar (X/Y/Z)", "Model",
+              [_S("sistem", "Aks sistemi", tur="metin"), _S("yon", "Doğrultu", tur="metin"),
+               _S("ad", "Aks adı", tur="metin", duzenlenebilir=True), _S("konum", "Konum", "m", duzenlenebilir=True, ondalik=3),
+               _S("aralik", "Önceki aksa aralık", "m", ondalik=3),
+               _S("tur", "Tür", tur="secim", duzenlenebilir=True, secenekler=["ana", "ikincil"]),
+               _S("gorunur", "Görünür", tur="bool", duzenlenebilir=True),
+               _S("balon", "Balon", tur="secim", duzenlenebilir=True, secenekler=["bas", "son", "iki", "yok"]),
+               _S("kat", "Kat seviyesi", ondalik=0), _S("bagli", "Bağlı başvuru", ondalik=0)],
+              satirlar, "Bütün düğümler aks kesişimidir (X aksı × Y aksı × Z aksı). Konum değişince o aksa bağlı düğümler ve elemanlar "
+                        "birlikte taşınır; ad değişince kolon/kiriş/döşeme aks adları ve bütün düğüm başvuruları (REF) da güncellenir. "
+                        "Z aksı bir kat seviyesiyse (Kat seviyesi sütunu) konumu o katın kotudur. Silindirik sistemde R yarıçap (m), "
+                        "θ açı (°).", "Aks sistemi tabanlı modelleme (§19)")
+
+
+def _t_aks_sistemleri(c):
+    """Aks sistemleri: GLOBAL ve ek (kartezyen döndürülmüş/ötelenmiş, silindirik) sistemler; ad, orijin ve açı düzenlenebilir."""
+    gx, gy = c.global_aks("x"), c.global_aks("y")
+    satirlar = [_R({"ad": "GLOBAL", "tur": "kartezyen", "oX": 0.0, "oY": 0.0, "oZ": 0.0, "aci": 0.0, "n_u": len(gx), "n_v": len(gy),
+                    "n_z": len(c.z_akslar), "z": "kendi (Z aksları)" if c.z_ham else "katlardan", "aciklama": "bina koordinatı"})]
+    for S in sorted(c.sistemler.values(), key=lambda x: x["sira"]):
+        sec = ["aks_sistemleri", {"ad": S["ham"].get("ad")}]
+        yol = {"ad": sec + ["ad"], "aci": sec + ["aci"]}
+        if isinstance(S["ham"].get("orijin"), list) and len(S["ham"]["orijin"]) >= 3:
+            yol.update({"oX": sec + ["orijin", 0], "oY": sec + ["orijin", 1], "oZ": sec + ["orijin", 2]})
+        satirlar.append(_R({"ad": S["ad"], "tur": S["tur"], "oX": S["orijin"][0], "oY": S["orijin"][1], "oZ": S["orijin"][2], "aci": S["aci"],
+                            "n_u": len(S["u"]), "n_v": len(S["v"]), "n_z": len(S["z"]) if S["z"] else None,
+                            "z": "kendi" if S["z"] else "GLOBAL", "aciklama": "R × θ" if S["tur"] == "silindirik" else "x × y"},
+                           yol, bag={"ad": {"islem": "sistem_ad"}}))
+    return _T("aks_sistemleri", "Aks Sistemleri", "Model",
+              [_S("ad", "Sistem", tur="metin", duzenlenebilir=True), _S("tur", "Tür", tur="metin"),
+               _S("oX", "Orijin X", "m", duzenlenebilir=True, ondalik=3), _S("oY", "Orijin Y", "m", duzenlenebilir=True, ondalik=3),
+               _S("oZ", "Orijin Z", "m", duzenlenebilir=True, ondalik=3), _S("aci", "Dönme (Z etrafında)", "°", duzenlenebilir=True, ondalik=2),
+               _S("n_u", "X / R aksı", ondalik=0), _S("n_v", "Y / θ aksı", ondalik=0), _S("n_z", "Z aksı", ondalik=0),
+               _S("z", "Z seviyeleri", tur="metin"), _S("aciklama", "Eksenler", tur="metin")],
+              satirlar, "GLOBAL sistem bina koordinatıdır (X sağa, Y derinlik, Z yukarı). Ek sistemler orijine ötelenir ve Z etrafında "
+                        "döndürülür; Z aksı verilmeyen sistem GLOBAL Z akslarını kullanır. Sistem adı değişince o sistemi kullanan bütün "
+                        "düğüm başvuruları güncellenir.", "Aks sistemi tabanlı modelleme (§19.1)")
 
 
 def _ag_dugumleri(c):
@@ -454,6 +993,23 @@ def _ag_dugumleri(c):
     return sonuc
 
 
+def _dugum_turu_ve_adresi(c, d):
+    """Ham düğüm kaydının türü ve aks adresi metni."""
+    tur = str(d.get("tur") or "").lower()
+    if tur == "bolme":
+        try:
+            oran = float(d.get("oran", 0.5))
+        except (TypeError, ValueError):
+            oran = None
+        return "bölme", f"{_ref_metin(d.get('cubuk_i'))} → {_ref_metin(d.get('cubuk_j'))}, t = {_n(oran)}"
+    if tur == "kesisim":
+        a, b = d.get("a") or [], d.get("b") or []
+        return "kesişim", f"[{' – '.join(_ref_metin(r) for r in a)}] × [{' – '.join(_ref_metin(r) for r in b)}]"
+    if "aks" in d:
+        return "aks REF", _ref_metin({k: d.get(k) for k in ("aks", "sistem", "kat", "z") if d.get(k) is not None})
+    return "serbest", None
+
+
 def _t_dugumler(c):
     ham = c.ham
     satirlar = []
@@ -461,24 +1017,37 @@ def _t_dugumler(c):
     gorulen = set()
     for no, adres, X, Y, Z, kat, aks in _ag_dugumleri(c):
         yol = {}
+        tur, aks_adr = "aks–kat", c.aks_adresi(X, Y, Z)
         if no in serbest:
             gorulen.add(no)
-            yol = {a: _liste_yolu(ham, "dugumler", no, a) for a in ("X", "Y", "Z")}
-        satirlar.append(_R({"no": no, "adres": adres, "X": X, "Y": Y, "Z": Z, "kat": kat,
-                            "tur": "serbest" if no in serbest else "aks–kat"}, yol))
+            d = serbest[no][1]
+            tur, ref_adr = _dugum_turu_ve_adresi(c, d)
+            aks_adr = aks_adr or ref_adr
+            if tur == "serbest":
+                yol = {a: _liste_yolu(ham, "dugumler", no, a) for a in ("X", "Y", "Z")}
+        satirlar.append(_R({"no": no, "adres": adres, "aks_adresi": aks_adr or "—", "X": X, "Y": Y, "Z": Z, "kat": kat, "tur": tur}, yol))
     for no, (i, d) in serbest.items():
         if no in gorulen:
             continue
-        satirlar.append(_R({"no": no, "adres": str(d.get("ad") or f"D{no}"), "X": d.get("X"), "Y": d.get("Y"), "Z": d.get("Z"),
-                            "kat": d.get("kat"), "tur": "serbest"},
-                           {a: _liste_yolu(ham, "dugumler", no, a) for a in ("X", "Y", "Z")}))
-    return _T("dugumler", "Düğüm Koordinatları", "Model",
-              [_S("no", "Düğüm", ondalik=0), _S("adres", "Adres", tur="metin"), _S("X", "X", "m", duzenlenebilir=True, ondalik=3),
-               _S("Y", "Y", "m", duzenlenebilir=True, ondalik=3), _S("Z", "Z", "m", duzenlenebilir=True, ondalik=3),
-               _S("kat", "Kat", ondalik=0), _S("tur", "Tür", tur="metin")],
-              satirlar, "Bina koordinatı: X sağa, Y plan derinliği, Z yukarı. Aks–kat düğümleri (no = 1000·kat + 20·i_x + i_y + 1) aks "
-                        "konumlarından ve kat kotlarından gelir (Akslar / Katlar tablosundan düzenlenir); serbest düğümler (≥ 100000) "
-                        "burada düzenlenir.", "")
+        P = c.dugum_koordinat(d) or (d.get("X"), d.get("Y"), d.get("Z"))
+        tur, ref_adr = _dugum_turu_ve_adresi(c, d)
+        aks_adr = c.aks_adresi(*P) if None not in P else None
+        yol = {a: _liste_yolu(ham, "dugumler", no, a) for a in ("X", "Y", "Z")} if tur == "serbest" else {}
+        if tur == "bölme":
+            yol["oran"] = _liste_yolu(ham, "dugumler", no, "oran")
+        satirlar.append(_R({"no": no, "adres": str(d.get("ad") or f"D{no}"), "aks_adresi": aks_adr or ref_adr or "—",
+                            "X": P[0], "Y": P[1], "Z": P[2], "kat": d.get("kat"), "tur": tur,
+                            "oran": d.get("oran") if tur == "bölme" else None}, yol))
+    sut = [_S("no", "Düğüm", ondalik=0), _S("adres", "Adres", tur="metin"), _S("aks_adresi", "Aks adresi", tur="metin"),
+           _S("X", "X", "m", duzenlenebilir=True, ondalik=3), _S("Y", "Y", "m", duzenlenebilir=True, ondalik=3),
+           _S("Z", "Z", "m", duzenlenebilir=True, ondalik=3), _S("kat", "Kat", ondalik=0), _S("tur", "Tür", tur="metin")]
+    if any(r["degerler"].get("tur") == "bölme" for r in satirlar):
+        sut.append(_S("oran", "Bölme oranı t", duzenlenebilir=True, ondalik=4, bos_olur=True))
+    return _T("dugumler", "Düğüm Koordinatları", "Model", sut,
+              satirlar, "Bina koordinatı: X sağa, Y plan derinliği, Z yukarı. Aks adresi: X aksı-Y aksı @ Z aksı (aks kesişimi; ek sistemde "
+                        "'SİSTEM:' önekiyle). Aks–kat düğümleri (no = 1000·kat + 20·i_x + i_y + 1) aks konumlarından gelir — Akslar "
+                        "tablosundan taşınır; bölme düğümleri ana çubuğa oranla bağlıdır; yalnız koordinatlı (eski) serbest düğümler "
+                        "burada X/Y/Z ile düzenlenir.", "Aks sistemi tabanlı modelleme (§19.2)")
 
 
 def _uzunluk(p, q):
@@ -744,6 +1313,8 @@ def _temel_listesi(c):
 
 
 def _t_temeller(c):
+    if c.B is not None and str(c.B.temeller.get("tip", "tekil")).strip().lower() != "tekil":
+        return None             # mütemadi / radye: boyutlar Temel ve Zemin Parametreleri tablosunda
     satirlar = []
     for t in _temel_listesi(c):
         sec = {"aks": t["aks"], "_olustur": True}
@@ -1684,6 +2255,7 @@ def _metraj_hesap(c):
             beton.append({"tur": "temel", "no": t["kolon_no"], "adres": f"T-{t['aks'][0]}{t['aks'][1]}", "kat": 0, "sinif": beton_sinif or "",
                           "olcu": f"{_n(t['B'])}×{_n(t['L'])}×{_n(h)} m", "uzunluk": None, "alan": t["B"] * t["L"], "beton": V,
                           "kalip": 2 * (t["B"] + t["L"]) * h, "donati": V * oran, "donati_kaynak": f"yaklaşık {_n(oran)} kg/m³"})
+    _surekli_radye_metraji(c, beton, beton_sinif)
     # serbest çubuklar ve paneller (surum 3)
     for cb in _cubuk_kayitlari(c):
         if cb["liste"] != "cubuklar" or not cb["L"]:
@@ -1726,6 +2298,101 @@ def _metraj_hesap(c):
         e["cevre"] = _profil_cevresi(p, ks)
         e["boya"] = e["cevre"] * e["L"] if e["cevre"] else None
     return beton, celik, diger
+
+
+def _sayi_al(d, a, vars_):
+    try:
+        v = float(d.get(a))
+        return v if math.isfinite(v) else vars_
+    except (TypeError, ValueError):
+        return vars_
+
+
+def _surekli_radye_metraji(c, beton, beton_sinif):
+    """Mütemadi (sürekli) temel ve radye metrajı (§13, yaklaşık): temel kirişi boyu = aks çizgisi üzerindeki uç kolonlar arası +
+    2·taşma; ters T kesit V = (B·h_tabla + b_gövde·h_gövde)·L, xy'de kesişim hacmi bir kez düşülür. Radye: kolonları çevreleyen
+    dikdörtgen + taşma, V = alan·h; kirişli radyede aks çizgisi kirişlerinin plak üstünde kalan kısmı eklenir."""
+    B, ham = c.B, c.ham
+    t = ham.get("temeller") if isinstance(ham.get("temeller"), dict) else {}
+    tip = str(t.get("tip") or "tekil").strip().lower()
+    if tip not in ("surekli", "radye"):
+        return
+    tabanlar = [(col["ix"], col["iy"]) for col in B.kolonlar if col["kat"] == 1]
+    if not tabanlar:
+        return
+    oran = _donati_orani(c, "temel")
+    kaynak = f"yaklaşık {_n(oran)} kg/m³"
+    if tip == "surekli":
+        s = t.get("surekli") if isinstance(t.get("surekli"), dict) else {}
+        Bt, ht = _sayi_al(s, "B", 1.2), _sayi_al(s, "h_tabla", 0.40)
+        bg, hg = _sayi_al(s, "b_govde", 0.50), _sayi_al(s, "h_govde", 1.00)
+        tasma = _sayi_al(s, "tasma", 0.5)
+        yon = str(s.get("yon") or "xy").lower()
+        secili = s.get("akslar", "tum")
+        secili = None if secili in (None, "tum") else {str(a) for a in secili}
+        hatlar = []          # (yön, sabit indeks, bas konum, son konum)
+        if "x" in yon:
+            for iy in sorted({iy for _, iy in tabanlar}):
+                if secili is None or B.yad[iy] in secili:
+                    xs = [B.xk[ix] for ix, jy in tabanlar if jy == iy]
+                    hatlar.append(("x", iy, min(xs) - tasma, max(xs) + tasma))
+        if "y" in yon:
+            for ix in sorted({ix for ix, _ in tabanlar}):
+                if secili is None or B.xad[ix] in secili:
+                    ys = [B.yk[iy] for jx, iy in tabanlar if jx == ix]
+                    hatlar.append(("y", ix, min(ys) - tasma, max(ys) + tasma))
+        A_kesit = Bt * ht + bg * hg
+        for k, (yn, sabit, a0, a1) in enumerate(hatlar, start=1):
+            L = a1 - a0
+            V = A_kesit * L
+            dus = 0.0
+            if yn == "y":       # kesişimler y hatlarından düşülür (bir kez)
+                X = B.xk[sabit]
+                for yn2, s2, b0, b1 in hatlar:
+                    if yn2 == "x" and b0 <= X <= b1 and a0 <= B.yk[s2] <= a1:
+                        dus += Bt * Bt * ht + bg * bg * hg
+            V = max(V - dus, 0.0)
+            ad = B.yad[sabit] if yn == "x" else B.xad[sabit]
+            beton.append({"tur": "temel", "no": k, "adres": f"TK-{ad} ({yn.upper()} doğr.)", "kat": 0, "sinif": beton_sinif or "",
+                          "olcu": f"tabla {_n(Bt)}×{_n(ht)} + gövde {_n(bg)}×{_n(hg)} m", "uzunluk": L, "alan": Bt * L, "beton": V,
+                          "kalip": 2 * (ht + hg) * L, "donati": V * oran, "donati_kaynak": kaynak})
+    else:
+        r = t.get("radye") if isinstance(t.get("radye"), dict) else {}
+        h = _sayi_al(r, "h", 0.80)
+        tasma = _sayi_al(r, "tasma", 1.0)
+        xs = [B.xk[ix] for ix, _ in tabanlar]
+        ys = [B.yk[iy] for _, iy in tabanlar]
+        Lx, Ly = max(xs) - min(xs) + 2 * tasma, max(ys) - min(ys) + 2 * tasma
+        alan = Lx * Ly
+        V = alan * h
+        beton.append({"tur": "temel", "no": 1, "adres": "Radye", "kat": 0, "sinif": beton_sinif or "",
+                      "olcu": f"{_n(Lx)}×{_n(Ly)} m, h = {_n(h * 100)} cm", "uzunluk": None, "alan": alan, "beton": V,
+                      "kalip": 2 * (Lx + Ly) * h, "donati": V * oran, "donati_kaynak": kaynak})
+        kir = r.get("kiris") if isinstance(r.get("kiris"), dict) else None
+        if kir:
+            bk, hk = _sayi_al(kir, "b", 0.5), _sayi_al(kir, "h", 1.2)
+            ust = max(hk - h, 0.0)
+            no = 2
+            for iy in sorted({iy for _, iy in tabanlar}):
+                xx = [B.xk[ix] for ix, jy in tabanlar if jy == iy]
+                L = max(xx) - min(xx)
+                if L > 0:
+                    beton.append({"tur": "temel", "no": no, "adres": f"Radye kirişi {B.yad[iy]} (X)", "kat": 0, "sinif": beton_sinif or "",
+                                  "olcu": f"{_n(bk * 100)}×{_n(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
+                                  "kalip": 2 * ust * L, "donati": bk * ust * L * oran, "donati_kaynak": kaynak})
+                    no += 1
+            for ix in sorted({ix for ix, _ in tabanlar}):
+                yy = [B.yk[iy] for jx, iy in tabanlar if jx == ix]
+                X = B.xk[ix]
+                kesisen = sum(1 for jy in {iy for _, iy in tabanlar}
+                              if min(yy) <= B.yk[jy] <= max(yy)
+                              and min(B.xk[i] for i, k in tabanlar if k == jy) <= X <= max(B.xk[i] for i, k in tabanlar if k == jy))
+                L = max(yy) - min(yy) - bk * kesisen          # kesişim hacmi X kirişlerinde sayıldı
+                if L > 0:
+                    beton.append({"tur": "temel", "no": no, "adres": f"Radye kirişi {B.xad[ix]} (Y)", "kat": 0, "sinif": beton_sinif or "",
+                                  "olcu": f"{_n(bk * 100)}×{_n(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
+                                  "kalip": 2 * ust * L, "donati": bk * ust * L * oran, "donati_kaynak": kaynak})
+                    no += 1
 
 
 def _t_metraj_betonarme(c, mh):
@@ -1877,7 +2544,7 @@ def bina_tablolari(bina, veri=None, *, kati=False):
         if t is not None:
             tablolar.append(t)
 
-    for fn in (_t_genel, _t_katlar, _t_akslar, _t_dugumler, _t_cubuklar, _t_kesitler, _t_malzemeler, _t_dosemeler, _t_paneller,
+    for fn in (_t_genel, _t_katlar, _t_akslar, _t_aks_sistemleri, _t_dugumler, _t_cubuklar, _t_kesitler, _t_malzemeler, _t_dosemeler, _t_paneller,
                _t_mesnetler, _t_temeller,
                _t_yuk_durumlari, _t_doseme_yukleri, _t_duvar_yukleri, _t_kar_ruzgar, _t_ek_yukler, _t_eleman_yukleri, _t_kat_agirliklari,
                _t_kombinasyonlar):
@@ -1920,3 +2587,51 @@ def tablo(tablolar, ad):
 def metraj_ozeti(bina, veri=None):
     """Rapor için kısayol: yalnız 'metraj_ozet' tablosu."""
     return tablo(bina_tablolari(bina, veri), "metraj_ozet")
+
+
+def secili_tablolar(tablolar, adlar, filtre=None):
+    """Rapor için seçim: ``adlar`` sırasıyla tablolar (bilinmeyen ad atlanır); ``filtre`` = {ad: {"satirlar": [indeks, ...]}}
+    verilen tablolarda yalnız o satırlar kalır (toplam satırı süzülen satırlardan yeniden hesaplanır). Girdi değiştirilmez."""
+    sonuc = []
+    for ad in adlar or []:
+        t = tablo(tablolar, ad)
+        if t is None:
+            continue
+        f = (filtre or {}).get(ad) if isinstance(filtre, dict) else None
+        if isinstance(f, dict) and isinstance(f.get("satirlar"), list):
+            t = dict(t)
+            n = len(t["satirlar"])
+            t["satirlar"] = [t["satirlar"][i] for i in f["satirlar"] if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n]
+            if t.get("toplam"):
+                t["toplam"] = {a: _n(v) if isinstance(v, float) else v for a, v in _topla(t["satirlar"], *t["toplam"]).items()}
+            t["suzuldu"] = True
+        sonuc.append(t)
+    return sonuc
+
+
+def hucre_metni(deger, sutun, ondalik_virgul=False, hucre=None):
+    """Hücre değerinin görüntü metni (arayüzdeki MatrisTablo._ic.bicimle ile aynı kural): None → "", bool → "✓"/"–",
+    sayı → ``ondalik`` basamak (yoksa en çok 4 anlamlı ondalık), seçim → seçenek etiketi; ``ondalik_virgul`` ile 3,14."""
+    s_ = dict(sutun or {})
+    s_.update(hucre or {})
+    if deger is None:
+        return ""
+    if isinstance(deger, bool):
+        return "✓" if deger else "–"
+    for o in s_.get("secenekler") or []:
+        if isinstance(o, dict) and _esit(o.get("deger"), deger):
+            return str(o.get("etiket", deger))
+    if isinstance(deger, (int, float)):
+        od = s_.get("ondalik")
+        if isinstance(deger, int) and od is None:
+            m = str(deger)
+        elif od is not None:
+            m = f"{deger:.{int(od)}f}"
+            if float(m) == 0:
+                m = m.lstrip("-")
+        else:
+            m = f"{deger:.4f}".rstrip("0").rstrip(".") if abs(deger) >= 1e-4 or deger == 0 else f"{deger:.3e}"
+            if m in ("-0", ""):
+                m = "0"
+        return m.replace(".", ",") if ondalik_virgul else m
+    return str(deger)
