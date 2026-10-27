@@ -310,7 +310,7 @@ kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkile
 `yapi.py` bir binayı aks–kat sistemiyle tanımlar, TS 498:2021 yüklerini kurar, döşeme yükünü TS 500 md. 11.4.3'teki
 45° kuralıyla kirişlere dağıtır (kısa kenara üçgen, uzun kenara trapez; gerçek şekil parçalı doğrusal yük olarak
 motora gider), binayı `cerceve3b` ağına çevirip G ve Q durumlarını tek seferde çözer (`se.coz_coklu`), 1,4G + 1,6Q ve
-G + Q kombinasyonlarını süperpozisyonla toplar ve yük akışını (kiriş → kolon → temel → zemin) tablo, şema ve beş sayılık
+G + Q kombinasyonlarını (Dilim 2'de bütün TS 500 / ÇYTHYE / TBDY kümesini) süperpozisyonla toplar ve yük akışını (kiriş → kolon → temel → zemin) tablo, şema ve beş sayılık
 korunum sağlamasıyla anlatır. Kütüphane değerleri (`yapi_veri.py`: beton, donatı, çelik, IPE/HEA/HEB, TS 498 Çizelge 6
 hareketli yükler, birim ağırlıklar, duvar ve kaplama takımları, Çizelge 7 azaltma, TS 500/ÇYTHYE/TBDY kombinasyon listeleri)
 her kayıtta `kaynak` ve `dogrulandi` taşır.
@@ -318,13 +318,14 @@ her kayıtta `kaynak` ve `dogrulandi` taşır.
 ```python
 import yapi
 b = yapi.bina_sablon("betonarme-2kat-3x2")          # 5 şablon: yapi.bina_sablonlar()
-r = yapi.bina_coz(b)                                # 11 adımlı anlatım + bağımsız numpy betiği
+r = yapi.bina_coz(b)                                # 12 adımlı anlatım + bağımsız numpy betiği
 v = r.veri
 v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden üçgen/trapez pay (tepe, q_eM, q_eV, toplam kN)
 v["akis"]["kolonlar"]                               # kat kat N (FE) ve yük alanı (tributary) karşılaştırması, fark %
 v["akis"]["temeller"]                               # N, M_X, M_Y, σ_max/min, e/B, D/C
 v["akis"]["korunum"]["G"]                           # döşeme + duvar + öz = Σ kolon taban N = Σ temel tepkisi
 v["sonuclar"]["1.4G+1.6Q"]["elemanlar"][0]["M"]     # kombinasyon diyagramları (ortak istasyonlarda süperpozisyon; u yazılmaz)
+yapi.kombinasyon_kisa(r.ic, "G+Q")                  # yanıtta olmayan kombinasyonun tam kaydı (G+Q = G ve Q'nun toplamı)
 v["zarf"]                                           # her eleman için en büyük / en küçük ve belirleyen kombinasyon
 yapi.yuk_yolu(b, v, {"tur": "doseme", "no": 1, "durum": "G+Q"})   # tek nesneden zemine adım adım zincir
 ```
@@ -336,9 +337,51 @@ komşu olmayan akslar arasında verilirse ara kesişimlerde bölünür), `doseme
 ya da `q`, `g_ek` kaplama), `duvarlar`, `ek_yukler`, `temeller` (B, L, q_em, `mesnet`: ankastre / mafsal / elastik). Bina
 koordinatı X sağa, Y derinlik, Z yukarı; motor dönüşümü (`x_m = X, y_m = Z, z_m = −Y`) tek yerde yapılır ve sonuçlar
 bina koordinatında döner. Sınırlar: 12×12 aks, 12 kat, 1500 SD; hatalar öğreticidir (yüzen döşeme, kolonsuz kat, bilinmeyen
-kesit, model çok büyük…). Dilim 1'de yalnız G ve Q çözülür; S, W, E içeren kombinasyonlar listede `uygulandi: false` olarak
-kalır. `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü bunları yanıtın
-`ozet.uyarilar` alanına yazar. Köprü işlemleri: `bina_coz`, `bina_kutuphane`, `bina_sablonlar`, `bina_sablon`, `bina_yuk_yolu`.
+kesit, model çok büyük…). `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü
+bunları yanıtın `ozet.uyarilar` alanına yazar.
+
+**Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları SAP2000'deki "load pattern" gibi ayrı ayrı kurulur ve tek
+K ile birlikte çözülür: G, Q, S (kar, TS 498:2021 md. 11 Çizelge 3: s = μ1·S_k, çatı döşemelerine 45° kuralıyla), W+X / W−X /
+W+Y / W−Y (rüzgâr, md. 14: W_i = C·q(z_i)·B_cephe·kat payı, Çizelge 4 basamakları) ve TBDY 2018 eşdeğer deprem yükü EX+, EX−,
+EY+, EY− (± %5 dışmerkezlik) ile EZ = (2/3)·S_DS·G. Deprem açıksa her kata kütle merkezinde bir efendi düğüm konur (rijit
+diyafram, `deprem.diyafram: "esnek"` ile kapatılır).
+
+```python
+b = yapi.bina_sablon("betonarme-2kat-3x2")
+b["yuk_durumlari"]["S"] = {"acik": True, "bolge": 4, "rakim": 900, "mu": 0.8}      # S_k = 1,10 kN/m² (Çizelge 3)
+b["yuk_durumlari"]["W"] = {"acik": True, "C": 1.2}                                  # Çizelge 5, kapalı bina
+b["yuk_durumlari"]["E"] = {"acik": True}
+b["deprem"].update({"SS": 1.2, "S1": 0.35, "SS_DD3": 0.45, "S1_DD3": 0.13,          # AFAD TDTH (DD-2 ve DD-3)
+                    "zemin_sinifi": "ZD", "BKS": 3, "tasiyici": "betonarme-cerceve-yuksek",   # A11: R = 8, D = 3
+                    "periyot": "rayleigh", "dolgu": "bitisik"})
+b["analiz"]["catlamis_rijitlik"] = True                     # Tablo 4.2: kolon 0,70·EI, kiriş 0,35·EI
+r = yapi.bina_coz(b)
+d = r.veri["deprem"]
+d["SDS"], d["SD1"], d["DTS"], d["BYS"]                      # spektrum ve sınıflar (kaynaklar: d["kaynaklar"]["SDS"] …)
+d["TpA"], d["X"]["Tp_rayleigh"], d["Tp"]                    # ampirik ve Rayleigh periyodu (≤ 1,4·T_pA)
+d["VtE"], d["VtE_min"], d["dFN"]                            # taban kesme (≥ 0,04·m_t·I·S_DS·g), tepe ek kuvveti
+[(k["kat"], k["F_x"], k["V_x"], k["Mb_x"]) for k in d["katlar"]]          # kat kuvveti, kesme, dışmerkezlik momenti
+[(k["kat"], k["delta_x"], k["oran_x"], k["eta_bx"], k["theta_x"], k["uygun"]) for k in d["katlar"]]   # Δ (m), λδ/h, η_bi, θ_II
+r.veri["ruzgar"]["katlar"], r.veri["kar"]["S_toplam"], r.veri["kutle_merkezi"]
+[k["ad"] for k in r.veri["kombinasyonlar"] if k["uygulandi"]][:4]
+# ['1.4G+1.6Q', 'G+1.3Q+1.3W+X', 'G+1.3Q+1.3W-X', ...]  ad katsayılardan: 'G+Q+0.2S+EX++0.3EY++0.3EZ', '0.9G+EX-+0.3EY+-0.3EZ'
+r.veri["zarf"]["kombinasyon_sayisi"]                        # öteleme (drift) birleşimleri zarfa ve sayıma girmez
+tam = yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")   # tek kombinasyonun tam diyagramları (yeniden çözüm yok)
+yapi.deprem_onizleme(b)                                     # çözümsüz hızlı önizleme (spektrum, V_tE, F_i)
+yapi.tasiyici_sistemler()                                   # Tablo 4.1 alt kümesi: ad, etiket, R, D, BYS_izin, kaynak
+```
+
+Kombinasyon kümeleri `kombinasyon_kumesi` ile seçilir: `ts500` (TS 500 Denk. 6.3–6.6, 6.9–6.10 + TBDY Denk. 4.11/4.12),
+`cythye_ydkt` (ÇYTHYE 5.3.1, rüzgâr 1,6W; deprem satırında TBDY 9.2.5.1: 1,2G), `cythye_gkt` (ÇYTHYE 5.3.2 + TBDY 9.1a–c).
+Rüzgâr dört yöne, E_d(H) Denk. (4.9)'a göre ±EX ± 0,3EY ve ±0,3EX ± EY ile ± dışmerkezliğe (32 varyant) açılır; varlık
+nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırlarında S), ikincil terim yoksa sıfır alınır
+(4.11'de 0,2S, 4.12'de H). Kombinasyonlar yeniden çözülmez, durum sonuçlarının katsayılı toplamıdır (SAP2000 de böyle yapar).
+Yanıt boyutu için `durumlar` içinde yalnız G ve Q tam diyagramlıdır; S, W, E durumları uç kuvvetleri ve `enb` taşır
+(`diyagram: false`), `sonuclar` yalnız ilk dayanım kombinasyonunu içerir (büyük modelde o da tembel kalır, `ozet.sonuclar_tembel`).
+
+Köprü işlemleri: `bina_coz`, `bina_kutuphane` (`tasiyici_sistemler` dahil), `bina_sablonlar`, `bina_sablon`, `bina_yuk_yolu`,
+`bina_deprem` (girdi `{bina}` → `{deprem}`: çözümsüz önizleme) ve `bina_kombinasyon` (girdi `{cozum_kimligi, ad, katsayilar}`
+→ `{ad, sonuc}`: tam kayıt; köprü son 3 çözümü bellekte tutar, kimlik yoksa `bina` verilirse yeniden çözer).
 
 ---
 
