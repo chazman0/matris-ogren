@@ -35,6 +35,8 @@ Etkileşimleri tek başına görmek için: `docs/galeri.html` ya da `docs/galeri
 | 19 | `19-uzay-yapilar.md` | uzay kafes $c_x, c_y, c_z$ ve 6×6; uzay çerçeve 12×12, $\boldsymbol\lambda$ ve yerel eksen kuralı, burulma, kiriş ızgarası |
 | 20 | `20-temel-sistemleri.md` | elastik mesnet $K_{ii}\mathrel{+}=k$, Winkler zemini $(k_sL/420)[\ldots]$ ve $\beta$, mesnet çökmesi $K_{ff}u_f=F_f-K_{fs}u_s$, kolon–kiriş–temel sistemi |
 | 21 | `21-yuk-akisi.md` | yük akışı: TS 498:2021 yükleri, $m=l_u/l_k$, TS 500 md. 11.4.3 45° kuralı (üçgen/trapez, tepe $wl_k/2$), $q_{eM}$, $q_{eV}$, kiriş tepkileri el ↔ FE, kolon birikimi ve yük alanı, $\sigma=N/A\pm6M/BL^2$, $e\le B/6$, korunum |
+| 22 | `22-yuk-durumlari-kombinasyonlar.md` | yük durumları G, Q, S, W, E; SAP2000 load pattern → case → combination → envelope; süperpozisyon; TS 500 md. 6.2.6, TBDY 4.4.4 (4.9–4.12), ÇYTHYE 5.3.1/5.3.2, TBDY 9.2.5; yön ve işaret çoğaltımı; zarf, belirleyen kombinasyon, kolonda eş zamanlı $(N,M)$; rüzgâr kat kuvveti ve kar |
+| 23 | `23-tbdy-esdeger-deprem.md` | TBDY 2018 eşdeğer deprem yükü: DD-1…4, $S_S$, $S_1$, $F_S$, $F_1$ ara değeri, $S_{ae}(T)$, BKS/I, DTS, BYS, $R$, $D$, $R_a$, $w_i=w_G+nw_Q$, $T_{pA}$ ve Rayleigh, $V_{tE}$, $\Delta F_{NE}$, $F_{iE}$, ±%5 dışmerkezlik, $\eta_{bi}$, göreli kat ötelemesi, $\theta_{II}$, Tablo 4.2 ve 4.4 |
 
 ## 2. Ön bilgi
 
@@ -218,8 +220,10 @@ Statik çizim. İçerik ham SVG'dir; en çok 8000 karakter, `viewBox` zorunlu, g
 
 Sonlu eleman modeli çözen örnekler `se.se_coz(model)` kullanır; model §8.3 şemasındadır. Bina örnekleri
 `yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))` ile çözülür; `r.veri` alanları (`yukler.dosemeler[].paylar`,
-`yukler.kirisler[].el_hesabi`, `durumlar.G.elemanlar`, `akis.kolonlar`, `akis.temeller`, `akis.korunum`) `kontrol`
-ifadesinde okunur. Şablonlar: `yapi.bina_sablonlar()`.
+`yukler.kirisler[].el_hesabi`, `durumlar.G.elemanlar`, `akis.kolonlar`, `akis.temeller`, `akis.korunum`, `kombinasyonlar`, `zarf.elemanlar`, `deprem`, `ruzgar`, `kar`) `kontrol`
+ifadesinde okunur. Tek kombinasyonun tam kaydı `yapi.kombinasyon_kisa(r.ic, ad)` (sözlük; `kontrol` içinde çağrılabilir), çözümsüz deprem
+önizlemesi `yapi.deprem_onizleme(bina)` (sözlük) ile alınır; son satır yine `Sonuc` olmalıdır (gerekirse `mo.transpoz([[...]])`).
+Şablonlar: `yapi.bina_sablonlar()`.
 
 ## 6. Etkileşim kataloğu
 
@@ -263,6 +267,10 @@ Parametreler isteğe bağlıdır; verilmeyenler varsayılanı alır. Her çizim 
 |---|---|---|
 | `doseme-dagilimi` | `lx`, `ly`, `w`, `dagitim`: `otomatik`\|`cift`\|`tek` | Plan karesi; köşelerden 45° çizgiler ($m\le2$) ve kenar kirişleri üstüne üçgen (kısa kenar, mavi) ve trapez (uzun kenar, turuncu) yük şekilleri; $m>2$'de uzun kenarlara düzgün yük, kısa kenarlar boş; tepe $p=wl_k/2$, her kenarın payı kN, $q_{eM}$ ve $q_{eV}$ formülleri ve korunum $\sum=wl_kl_u$ canlı; $l_x$, $l_y$, $w$ kaydırıcıları, hazır paneller |
 | `kolon-birikimi` | `kat`: 1–8, `g`, `q`, `lx`, `ly`, `konum`: `ic`\|`kenar`\|`kose`, `beta`: true\|false | Solda plan ve kolonun yük alanı (iç: $l_xl_y$, kenar: yarısı, köşe: çeyreği); sağda kolon şeridi: her kat düzeyinde gelen $G$ ve $Q$ okları, aşağı inerken kalınlaşan kümülatif $N$ çubuğu ve sayıları; TS 498:2021 Çizelge 7 $\beta$ azaltması (üçten çok kat) seçilebilir; $A_{\text{trib}}$, $N_{\text{taban}}$ ve $\sigma=N/A$ için gerekli temel alanı formülü |
+| `deprem-spektrumu` | `SS`, `S1`, `zemin`: `ZA`…`ZE`, `R`, `I`: 1\|1.2\|1.5, `D`, `Tp` | TBDY 2018 yatay elastik tasarım spektrumu $S_{ae}(T)$ (Denk. 2.2) ve azaltılmış $S_{aR}=S_{ae}/R_a$ (Denk. 4.1, 4.8); Tablo 2.1/2.2 ara değerli $F_S$, $F_1$; $T_A$, $T_B$ kesikli çizgiler; $T_p$ noktasında iki eğrinin değeri ve formüller canlı; hazır parseller |
+| `kombinasyon-zarfi` | `G`, `Q`, `E` (istasyon değerleri, kN·m), `L`, `gG`, `gQ`, `gE`, `SDS`, `x` | Üst panelde $G$ (mavi), $Q$ (turuncu), $E$ (yeşil) moment diyagramları; altta $1.4G+1.6Q$, TBDY (4.11) $G+Q\pm E+0.3E_Z$ ve (4.12) $0.9G\pm E-0.3E_Z$ zarfı: en büyük ve en küçük eğri her bölgede belirleyen ailenin renginde (−E kesikli), aradaki bant gri; $\gamma_G$, $\gamma_Q$, $\gamma_E$ kaydırıcılarıyla kendi kombinasyonun; $S_{DS}$ deprem satırlarındaki $G$ katsayısını değiştirir; kesit kaydırıcısında $M=\sum\gamma_iM_i$ ve zarf; uçlar ve orta için belirleyen tablosu. Varsayılan: ders binası eleman 30 |
+| `ruzgar-kat-kuvveti` | `kat`: 1–30, `h`, `B`, `C`: 1.2\|1.6, `sarp` | TS 498:2021 md. 14: solda Çizelge 4 $q(z)$ basamakları, ortada cephe ve kat düzeylerinde $F_i=C\,q(z_i)\,B\,h_{\text{pay}}$ okları, sağda kat kesmesi $V_i$ basamakları; $V_t$ ve $M_o$ formülü; sarp yamaçta $q\ge1.1$ |
+| `kat-kuvvetleri` | `N`: 1–12, `w`, `wN`, `h`, `SDS`, `SD1`, `R`, `D`, `I`, `Tp` (0: $T_{pA}$) | TBDY 2018 md. 4.7: $T_{pA}=0.1H_N^{3/4}$ ya da elle $T_p$, $S_{ae}$, $R_a$, $S_{aR}$, $V_{tE}\ge0.04IS_{DS}W_t$; cephede ters üçgen $F_{iE}$ okları (mavi), tepede $\Delta F_{NE}$ (kırmızı), kütle noktaları; sağda kat kesmesi $V_i$; $\sum F+\Delta F=V_{tE}$ denetimi canlı |
 
 ## 7. Alıştırma kataloğu
 
@@ -286,6 +294,8 @@ Her alıştırma rastgele soru üretir, cevabı tam kesirle denetler (ondalık y
 | `sinir-kosulu` | `zorluk` | Mesnetli sistemde bilinmeyen yer değiştirmeler |
 | `yay-seri` | `zorluk` | Seri yaylarda düğüm yer değiştirmeleri ve tepki |
 | `doseme-esdeger` | `zorluk` | Döşeme payı: $m$ ve tepe $p=wl_k/2$ (1), üçgen $q_{eM}$ ya da $q_{eV}$ (2), trapez $q_{eM}$ ya da $q_{eV}$ (3) |
+| `kombinasyon` | `zorluk` | Durum momentlerinden $1.4G+1.6Q$ (1); TBDY (4.11) ya da (4.12), $0.3E_d^{(Z)}=0.2S_{DS}G$ dahil (2); TS 500 rüzgâr ya da TBDY deprem birleşimlerinin zarfında $M_{\max}$ ve $M_{\min}$ (3) |
+| `deprem-vt` | `zorluk` | $S_{DS}$, $S_{D1}$, $T_p$, $R$, $D$, $I$, $m_t$ ile $V_{tE}$: $T_p>T_B$ (1), platoda $R_a=D+(R/I-D)T_p/T_B$ (2), karışık ve alt sınır, ayrıca $\Delta F_{NE}$ (3) |
 
 ## 8. Pedagoji kuralları
 

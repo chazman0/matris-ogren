@@ -10,8 +10,12 @@
  *                    TS 498:2021 Çizelge 7 hareketli yük azaltması β
  *   deprem-spektrumu TBDY 2018 yatay elastik tasarım spektrumu S_ae(T) ve azaltılmış S_aR(T) = S_ae/R_a:
  *                    S_S, S_1, zemin sınıfı (Tablo 2.1/2.2 → F_S, F_1), R, I, D kaydırıcıları → S_DS, S_D1, T_A, T_B, T_p noktası
+ *   kombinasyon-zarfi  G, Q, E moment diyagramları (istasyon değerleri), katsayı kaydırıcıları, kendi kombinasyonun, TS 500 (6.3) ve
+ *                    TBDY (4.11)/(4.12) zarfı; en büyük / en küçük eğriler belirleyen ailenin renginde, kesit tablosu
+ *   ruzgar-kat-kuvveti TS 498:2021 md. 14: q(z) Çizelge 4 basamakları, F_i = C·q(z_i)·B·h_pay, kat kesmesi, devrilme momenti
+ *   kat-kuvvetleri   TBDY 2018 md. 4.7: T_pA, S_aR, V_tE ≥ 0,04·I·S_DS·W_t, ΔF_NE, ters üçgen F_iE (m_i·H_i), kat kesmesi V_i
  *
- * ALIŞTIRMALAR (BICIM.md 7): alistirma:doseme-esdeger
+ * ALIŞTIRMALAR (BICIM.md 7): alistirma:doseme-esdeger, alistirma:kombinasyon, alistirma:deprem-vt
  *
  * Birimler: kN, m, kN/m, kN/m². Döşeme yükü w kN/m²; kısa kenar l_k, uzun kenar l_u, m = l_u / l_k.
  */
@@ -41,6 +45,9 @@
     ".ky-bilgi{margin:0;padding:8px 12px;border-radius:10px;background:var(--ana-acik,#e4ebfa);color:var(--metin,#15213a);font-size:.93em}",
     ".ky-not{margin:0;color:var(--soluk,#5b6b85);font-size:.88em}",
     ".kx-kok svg text.ky-halo{paint-order:stroke;stroke:var(--kart,#fff);stroke-width:3px;stroke-linejoin:round}",
+    ".ky-tablo{border-collapse:collapse;width:100%;font-size:.88em;font-variant-numeric:tabular-nums}",
+    ".ky-tablo th,.ky-tablo td{padding:3px 6px;border-bottom:1px solid var(--cizgi,#d9e1ee);text-align:left;vertical-align:top}",
+    ".ky-tablo th{color:var(--soluk,#5b6b85);font-weight:600}",
     "@media (prefers-reduced-motion:reduce){.ky-kap *{transition:none!important}}"
   ].join("\n");
 
@@ -522,6 +529,454 @@
     varsayilan: { SS: 1.0, S1: 0.3, zemin: "ZC", R: 8, I: 1.0, D: 3, Tp: 0.4 }
   });
 
+  /* ================================================================== 4. kombinasyon-zarfi */
+
+  /* Varsayılan diyagramlar: 3 katlı ders binasının (betonarme-3kat-3x3) K-A2→B2/k1 kirişi (eleman 30), yapi.bina_coz
+     istasyon değerleri, kN·m; pozitif = alt lif çekme. E = EX+ durumu (TBDY eşdeğer deprem, +X, +%5 dışmerkezlik). */
+  const KZ_G = [-32.24, -13.886, 2.297, 14.995, 22.896, 24.906, 20.807, 10.818, -3.969, -22.24, -42.682];
+  const KZ_Q = [-10.399, -4.741, 0.417, 4.576, 7.234, 7.976, 6.717, 3.542, -1.133, -6.808, -12.983];
+  const KZ_E = [67.016, 54.345, 41.675, 29.004, 16.334, 3.663, -9.007, -21.678, -34.349, -47.019, -59.69];
+  const KZ_AILE_AD = { a: "1,4G + 1,6Q (TS 500 Denk. 6.3)", sil: "G + Q ± E + 0,3E_Z (TBDY Denk. 4.11)", c: "0,9G ± E − 0,3E_Z (TBDY Denk. 4.12)" };
+
+  function diziP(v, vars) {
+    let a = v;
+    if (typeof a === "string") a = a.split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (!Array.isArray(a) || a.length < 2 || a.length > 101 || a.some(x => !isFinite(Number(x)))) return vars.slice();
+    return a.map(Number);
+  }
+  /* Zarfa giren birleşimler: TBDY 4.4.4.1'de 0,3·E_d(Z) = 0,3·(2/3)·S_DS·G = 0,2·S_DS·G (Denk. 4.10), kar ve EY bu kirişte yok. */
+  function kzKombinasyonlar(SDS) {
+    const kz = 0.2 * SDS;
+    const g1 = 1 + kz, g2 = 0.9 - kz;
+    return [
+      { ad: "1.4G+1.6Q", g: 1.4, q: 1.6, e: 0, aile: "a" },
+      { ad: f(g1, 3) + "G+Q+E", g: g1, q: 1, e: 1, aile: "sil" },
+      { ad: f(g1, 3) + "G+Q−E", g: g1, q: 1, e: -1, aile: "sil" },
+      { ad: f(g2, 3) + "G+E", g: g2, q: 0, e: 1, aile: "c" },
+      { ad: f(g2, 3) + "G−E", g: g2, q: 0, e: -1, aile: "c" }
+    ];
+  }
+  function cizgiYol(pts) { return "M" + nokta(pts); }
+
+  E.kaydet("kombinasyon-zarfi", function (kok, p) {
+    const kap = kur(kok);
+    let Gd = diziP(p.G, KZ_G), Qd = diziP(p.Q, KZ_Q), Ed = diziP(p.E, KZ_E);
+    if (!(Gd.length === Qd.length && Qd.length === Ed.length)) { Gd = KZ_G.slice(); Qd = KZ_Q.slice(); Ed = KZ_E.slice(); }
+    const n = Gd.length, L = sayiP(p.L, 5, 0.5, 30);
+    let gG = sayiP(p.gG, 1.4, -1, 2), gQ = sayiP(p.gQ, 1.6, -1, 2), gE = sayiP(p.gE, 0, -1.5, 1.5);
+    let SDS = sayiP(p.SDS, 1.2, 0, 2.5), xK = sayiP(p.x, L, 0, L);
+    const ara = (d, x) => {
+      const t = Math.min(n - 1, Math.max(0, x / L * (n - 1)));
+      const i = Math.min(n - 2, Math.floor(t)), u = t - i;
+      return d[i] + u * (d[i + 1] - d[i]);
+    };
+    const W = 440, PL = 44, PR = 14, NS = 100;
+    const X = x => PL + x / L * (W - PL - PR);
+    const s1 = sv(W, 190, "Yük durumlarının moment diyagramları: G, Q ve E");
+    const d1 = svg("g"); s1.appendChild(d1);
+    const s2 = sv(W, 274, "Kombinasyonlar, zarf ve belirleyen bölgeler");
+    const d2 = svg("g"); s2.appendChild(d2);
+    const tablo = el("div", { class: "ky-formul" });
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sG, sQ, sE, sS, sX;
+
+    function eksen(d, y0, ust, alt, Y, Mmax, birimYaz) {
+      d.appendChild(cizgi(PL, y0, W - PR, y0, { renk: "metin", kal: 1.6 }));
+      d.appendChild(cizgi(PL, ust, PL, alt, { renk: "soluk", kal: 1 }));
+      [Mmax, -Mmax].forEach(v => {
+        d.appendChild(cizgi(PL - 3, Y(v), PL, Y(v), { renk: "soluk", kal: 1 }));
+        d.appendChild(yaziH(PL - 5, Y(v), f(v, 3), { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+      });
+      for (let i = 0; i <= 4; i++) {
+        const x = L * i / 4;
+        d.appendChild(yaziH(X(x), alt + 10, f(x, 3), { boyut: 9.5, renk: "soluk" }));
+      }
+      if (birimYaz) d.appendChild(yaziH(W - PR, alt + 10, "x (m)", { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+    }
+
+    function ciz() {
+      const komb = kzKombinasyonlar(SDS);
+      const xs = [], vals = [];
+      for (let j = 0; j <= NS; j++) {
+        const x = L * j / NS;
+        const g = ara(Gd, x), q = ara(Qd, x), e = ara(Ed, x);
+        xs.push(x);
+        vals.push({ g, q, e, k: komb.map(c => c.g * g + c.q * q + c.e * e), oz: gG * g + gQ * q + gE * e });
+      }
+      const mx = vals.map(v => { let b = 0; v.k.forEach((t, i) => { if (t > v.k[b]) b = i; }); return b; });
+      const mn = vals.map(v => { let b = 0; v.k.forEach((t, i) => { if (t < v.k[b]) b = i; }); return b; });
+
+      /* 1. panel: durumlar */
+      bos(d1);
+      const M1 = Math.max(1e-9, ...vals.map(v => Math.max(Math.abs(v.g), Math.abs(v.q), Math.abs(v.e))));
+      const y01 = 92, Y1 = v => y01 + v / M1 * 70;
+      eksen(d1, y01, 18, 166, Y1, M1, true);
+      [["g", "a", "G"], ["q", "b", "Q"], ["e", "c", "E (EX+)"]].forEach(([a, aile, ad]) => {
+        const pts = vals.map((v, j) => [X(xs[j]), Y1(v[a])]);
+        d1.appendChild(yol(cizgiYol(pts), { renk: aile, kal: 2.2 }));
+        const son = vals[NS][a];
+        d1.appendChild(yaziH(X(L) - 4, Y1(son) + (son >= 0 ? 10 : -10), ad + " " + f(son, 4), { boyut: 10, renk: aile, kalin: true, hiza: "sag" }));
+      });
+      d1.appendChild(yaziH(PL + 4, 10, "yük durumları (load case), kN·m; pozitif aşağı (alt lif çekme)", { boyut: 10, renk: "soluk", hiza: "sol" }));
+
+      /* 2. panel: kombinasyonlar ve zarf */
+      bos(d2);
+      const tum = vals.reduce((a, v) => a.concat(v.k, [v.oz]), []);
+      const M2 = Math.max(1e-9, ...tum.map(Math.abs));
+      const y02 = 128, Y2 = v => y02 + v / M2 * 98;
+      // zarf bandı
+      const ust = vals.map((v, j) => [X(xs[j]), Y2(v.k[mx[j]])]);
+      const alt = vals.map((v, j) => [X(xs[j]), Y2(v.k[mn[j]])]).reverse();
+      d2.appendChild(yol("M" + nokta(ust.concat(alt)) + " Z", { dolgu: "cizgi", renk: null }));
+      eksen(d2, y02, 24, 232, Y2, M2, true);
+      // belirleyen bölgeler: max ve min eğrileri, belirleyen ailenin renginde parça parça
+      [mx, mn].forEach(ind => {
+        let bas = 0;
+        for (let j = 1; j <= NS + 1; j++) {
+          if (j === NS + 1 || ind[j] !== ind[bas]) {
+            const pts = [];
+            for (let t = bas; t <= Math.min(j, NS); t++) pts.push([X(xs[t]), Y2(vals[t].k[ind[t]])]);
+            const c = komb[ind[bas]];
+            d2.appendChild(yol(cizgiYol(pts), { renk: c.aile, kal: 3.2, kesik: c.e < 0 }));
+            bas = j;
+          }
+        }
+      });
+      // kendi kombinasyonun
+      d2.appendChild(yol(cizgiYol(vals.map((v, j) => [X(xs[j]), Y2(v.oz)])), { renk: "metin", kal: 1.6 }));
+      // kesit (prob) çizgisi
+      const vx = { g: ara(Gd, xK), q: ara(Qd, xK), e: ara(Ed, xK) };
+      const kx = komb.map(c => c.g * vx.g + c.q * vx.q + c.e * vx.e), oz = gG * vx.g + gQ * vx.q + gE * vx.e;
+      let iMx = 0, iMn = 0;
+      kx.forEach((t, i) => { if (t > kx[iMx]) iMx = i; if (t < kx[iMn]) iMn = i; });
+      d2.appendChild(cizgi(X(xK), 24, X(xK), 232, { renk: "soluk", kal: 1, kesik: "3 3" }));
+      d2.appendChild(svg("circle", { cx: r2(X(xK)), cy: r2(Y2(kx[iMx])), r: 4.5, fill: renk(komb[iMx].aile), stroke: renk("kart"), "stroke-width": 1.5 }));
+      d2.appendChild(svg("circle", { cx: r2(X(xK)), cy: r2(Y2(kx[iMn])), r: 4.5, fill: renk(komb[iMn].aile), stroke: renk("kart"), "stroke-width": 1.5 }));
+      d2.appendChild(svg("circle", { cx: r2(X(xK)), cy: r2(Y2(oz)), r: 4, fill: renk("kart"), stroke: renk("metin"), "stroke-width": 2 }));
+      // gösterge
+      [["a", false, "1,4G+1,6Q"], ["sil", false, "4.11 (+E)"], ["sil", true, "4.11 (−E)"], ["c", false, "4.12 (+E)"], ["c", true, "4.12 (−E)"]].forEach((g, i) => {
+        const gx = PL - 30 + i * 80, gy = 10;
+        d2.appendChild(cizgi(gx, gy, gx + 18, gy, { renk: g[0], kal: 3, kesik: g[1] ? "5 4" : false }));
+        d2.appendChild(yaziH(gx + 21, gy, g[2], { boyut: 9.5, renk: g[0], hiza: "sol" }));
+      });
+      d2.appendChild(yaziH(PL, 264, "ince koyu çizgi: kendi kombinasyonun; boş daire: kesitteki değeri", { boyut: 9.5, renk: "soluk", hiza: "sol" }));
+
+      /* tablo: iki uç ve orta */
+      bos(tablo);
+      const tb = el("table", { class: "ky-tablo" });
+      tb.appendChild(el("tr", null, el("th", null, "Kesit"), el("th", null, "M_max, belirleyen"), el("th", null, "M_min, belirleyen")));
+      [[0, "sol uç"], [L / 2, "orta"], [L, "sağ uç"]].forEach(([x, ad]) => {
+        const g = ara(Gd, x), q = ara(Qd, x), e = ara(Ed, x);
+        const k = komb.map(c => c.g * g + c.q * q + c.e * e);
+        let a = 0, b = 0;
+        k.forEach((t, i) => { if (t > k[a]) a = i; if (t < k[b]) b = i; });
+        tb.appendChild(el("tr", null, el("td", null, ad, el("br"), "x = " + f(x, 3) + " m"),
+          el("td", { style: "color:" + renk(komb[a].aile) }, el("b", null, f(k[a], 4)), el("br"), komb[a].ad),
+          el("td", { style: "color:" + renk(komb[b].aile) }, el("b", null, f(k[b], 4)), el("br"), komb[b].ad)));
+      });
+      tablo.appendChild(tb);
+
+      /* formül */
+      const kz = 0.2 * SDS;
+      texYaz(formul, "\\begin{aligned}" +
+        "x&=" + ft(xK) + "\\ \\text{m}:\\quad \\ka{M_G}=" + ft(vx.g) + ",\\ \\kb{M_Q}=" + ft(vx.q) + ",\\ \\kc{M_E}=" + ft(vx.e) + "\\ \\text{kN·m}\\\\" +
+        "M&=" + ft(gG) + "\\,\\ka{M_G}" + (gQ < 0 ? "" : "+") + ft(gQ) + "\\,\\kb{M_Q}" + (gE < 0 ? "" : "+") + ft(gE) + "\\,\\kc{M_E}=\\boldsymbol{" + ft(oz) + "}\\ \\text{kN·m}\\\\" +
+        "0.3E_d^{(Z)}&=0.3\\cdot\\tfrac{2}{3}S_{DS}\\,G=" + ft(kz) + "\\,G\\quad(S_{DS}=" + ft(SDS) + ")\\\\" +
+        "\\text{zarf:}\\ & M_{\\max}=" + ft(kx[iMx]) + "\\ (" + komb[iMx].ad.replace("−", "-") + "),\\quad M_{\\min}=" + ft(kx[iMn]) + "\\ (" + komb[iMn].ad.replace("−", "-") + ")" +
+        "\\end{aligned}");
+      const ucB = komb[mn[NS]].aile, ortaB = komb[mx[NS / 2]].aile;
+      bilgi.textContent = "Kombinasyon yeniden çözüm değildir: her kesitte γ_G·M_G + γ_Q·M_Q + γ_E·M_E toplanır. Zarf her kesitte en büyük ve en küçük değeri ayrı ayrı seçer; " +
+        "burada sağ uçta M_min'i " + KZ_AILE_AD[ucB] + ", ortada M_max'ı " + KZ_AILE_AD[ortaB] + " belirliyor. " +
+        "Kirişte donatı her kesitte zarfa göre konur; kolonda ise aynı kombinasyondan gelen (N, M) çiftine bakılır.";
+    }
+
+    sG = sl("$\\gamma_G$", -1, 2, 0.05, gG, "", v => { gG = v; ciz(); });
+    sQ = sl("$\\gamma_Q$", -1, 2, 0.05, gQ, "", v => { gQ = v; ciz(); });
+    sE = sl("$\\gamma_E$", -1.5, 1.5, 0.05, gE, "", v => { gE = v; ciz(); });
+    sS = sl("$S_{DS}$ (düşey deprem $E_Z$ için)", 0, 2, 0.05, SDS, "", v => { SDS = v; ciz(); });
+    sX = sl("kesit $x$", 0, L, L / 50, xK, "m", v => { xK = v; ciz(); });
+    function ayarla(g, q, e) {
+      gG = g; gQ = q; gE = e;
+      sG.ayarla(gG, true); sQ.ayarla(gQ, true); sE.ayarla(gE, true);
+      ciz();
+    }
+    kap.appendChild(kart(s1));
+    kap.appendChild(kart(s2));
+    kap.appendChild(satir(
+      dugme("1,4G + 1,6Q", () => ayarla(1.4, 1.6, 0), { baslik: "TS 500 Denk. (6.3)" }),
+      dugme("G + Q + E (4.11)", () => ayarla(r2(1 + 0.2 * SDS), 1, 1), { baslik: "TBDY Denk. (4.11): G + Q + 0,2S + E_d(H) + 0,3E_d(Z)" }),
+      dugme("0,9G − E (4.12)", () => ayarla(r2(0.9 - 0.2 * SDS), 0, -1), { baslik: "TBDY Denk. (4.12): 0,9G + H + E_d(H) − 0,3E_d(Z)" }),
+      dugme("Servis G + Q", () => ayarla(1, 1, 0), { baslik: "TS 500 md. 6.2.6(f): kullanılabilirlik" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sG.kok, sQ.kok, sE.kok, sS.kok, sX.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(tablo);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "Varsayılan diyagramlar 3 katlı ders binasının K-A2→B2/k1 kirişinin (eleman 30) motor çıktısıdır; E, +X yönündeki eşdeğer deprem durumudur (EX+). " +
+      "Deprem birleşimlerinde E'nin işareti iki yönlü alınır; kesikli çizgiler −E'li birleşimlerdir. Bu kirişte kar ve EY momenti sıfıra yakın olduğundan zarfa yazılmadı."));
+    ciz();
+  }, {
+    baslik: "Kombinasyon ve zarf",
+    aciklama: "G, Q ve E moment diyagramlarını katsayılarla topla; zarfın en büyük ve en küçük eğrileri belirleyen kombinasyonun renginde çizilir.",
+    varsayilan: { L: 5, gG: 1.4, gQ: 1.6, gE: 0, SDS: 1.2, x: 5 }
+  });
+
+  /* ================================================================== 5. ruzgar-kat-kuvveti */
+
+  /* TS 498:2021 md. 14 Çizelge 4: zeminden yükseklik → emme basıncı q (kN/m²); md. 14.3 yüksekte ve sarp yamaçta q ≥ 1,1;
+     Çizelge 5 (1.1.1): kapalı bina C = 1,2, kule tipi 1,6. Kat kuvveti F_i = C·q(z_i)·B·h_pay (yapi._ruzgar_durumlari ile aynı). */
+  const RUZ_Q = [[8, 0.5, 28], [20, 0.8, 36], [100, 1.1, 42], [Infinity, 1.3, 46]];
+  function ruzQ(z) {
+    for (const s of RUZ_Q) if (z <= s[0] + 1e-9) return s[1];
+    return 1.3;
+  }
+
+  E.kaydet("ruzgar-kat-kuvveti", function (kok, p) {
+    const kap = kur(kok);
+    let kat = Math.round(sayiP(p.kat, 3, 1, 30)), h = sayiP(p.h, 3.2, 2.5, 5), B = sayiP(p.B, 8, 2, 60);
+    let C = Number(p.C) === 1.6 ? 1.6 : 1.2, sarp = p.sarp === true || p.sarp === "true";
+    const W = 520, H = 360, YU = 30, YA = 320;
+    const sd = sv(W, H, "Rüzgâr: q(z) basamakları, kat kuvvetleri ve kat kesmesi");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sK, sH, sB, secC, secS;
+
+    function hesap() {
+      const katlar = [];
+      for (let i = 1; i <= kat; i++) {
+        const z = i * h;
+        let q = ruzQ(z);
+        if (sarp) q = Math.max(q, 1.1);
+        const hp = h / 2 + (i < kat ? h / 2 : 0);
+        katlar.push({ i, z, q, hp, A: B * hp, F: C * q * B * hp });
+      }
+      let V = 0;
+      for (let j = katlar.length - 1; j >= 0; j--) { V += katlar[j].F; katlar[j].V = V; }
+      const Mo = katlar.reduce((s, k) => s + k.F * k.z, 0);
+      return { katlar, Vt: V, Mo, Ht: kat * h };
+    }
+
+    function ciz() {
+      const hs = hesap();
+      bos(dyn);
+      const zmax = hs.Ht;
+      const Z = z => YA - z / zmax * (YA - YU);
+      // q(z) profili (sol)
+      const QX0 = 30, QX1 = 130, qmax = 1.4, QX = q => QX0 + q / qmax * (QX1 - QX0);
+      dyn.appendChild(cizgi(QX0, YA, QX0, YU - 6, { renk: "soluk", kal: 1 }));
+      dyn.appendChild(cizgi(QX0, YA, QX1 + 6, YA, { renk: "metin", kal: 1.4 }));
+      const pr = [];
+      let zAlt = 0;
+      for (const s of RUZ_Q) {
+        if (zAlt >= zmax) break;
+        const zUst = Math.min(s[0], zmax);
+        const q = sarp ? Math.max(s[1], 1.1) : s[1];
+        pr.push([QX(q), Z(zAlt)], [QX(q), Z(zUst)]);
+        if (zUst < zmax) dyn.appendChild(yaziH(QX0 - 4, Z(zUst), f(zUst, 3), { boyut: 9, renk: "soluk", hiza: "sag" }));
+        dyn.appendChild(yaziH(QX(q) + 3, Z((zAlt + zUst) / 2), "q = " + f(q, 2), { boyut: 9.5, renk: "b", hiza: "sol" }));
+        zAlt = zUst;
+      }
+      dyn.appendChild(yol("M" + QX0 + " " + YA + " L" + nokta(pr) + " L" + QX0 + " " + r2(Z(zmax)) + " Z", { dolgu: "b", renk: "b", kal: 1.6 }));
+      dyn.appendChild(yaziH(QX0, YU - 14, "q(z) kN/m²", { boyut: 10, renk: "b", hiza: "sol" }));
+      // bina cephesi (orta)
+      const BX0 = 210, BX1 = 300;
+      dyn.appendChild(dikdortgen(BX0, Z(hs.Ht), BX1 - BX0, YA - Z(hs.Ht), { dolgu: "cizgi", renk: "metin", kal: 1.6 }));
+      dyn.appendChild(cizgi(BX0 - 30, YA, BX1 + 30, YA, { renk: "metin", kal: 1.6 }));
+      const Fmax = Math.max(...hs.katlar.map(k => k.F)) || 1;
+      const adim = Math.ceil(kat / 10);
+      hs.katlar.forEach(k => {
+        const y = Z(k.z);
+        dyn.appendChild(cizgi(BX0, y, BX1, y, { renk: "metin", kal: 1 }));
+        const uz = 14 + 50 * k.F / Fmax;
+        dyn.appendChild(ok(BX0 - 4 - uz, y, BX0 - 3, y, { renk: "a", kalinlik: 2, bas: 6 }));
+        if ((kat - k.i) % adim === 0) dyn.appendChild(yaziH(BX0 - 8 - uz, y, f(k.F, 4), { boyut: 9.5, renk: "a", hiza: "sag" }));
+      });
+      dyn.appendChild(yaziH((BX0 + BX1) / 2, YA + 12, "B = " + f(B, 3) + " m cephe", { boyut: 9.5, renk: "soluk" }));
+      dyn.appendChild(yaziH(BX0 - 40, YU - 14, "F_i (kN)", { boyut: 10, renk: "a" }));
+      // kat kesmesi (sağ)
+      const VX0 = 340, VX1 = 500, VX = v => VX0 + v / (hs.Vt || 1) * (VX1 - VX0);
+      dyn.appendChild(cizgi(VX0, YA, VX0, Z(hs.Ht) - 6, { renk: "soluk", kal: 1 }));
+      const vp = [[VX0, Z(hs.Ht)]];
+      for (let j = hs.katlar.length - 1; j >= 0; j--) {
+        const k = hs.katlar[j], yU = Z(k.z), yA = Z(k.z - h);
+        vp.push([VX(k.V), yU], [VX(k.V), yA]);
+        if ((kat - k.i) % adim === 0) dyn.appendChild(yaziH(VX(k.V) + 3, (yU + yA) / 2, f(k.V, 4), { boyut: 9.5, renk: "c", hiza: "sol" }));
+      }
+      vp.push([VX0, YA]);
+      dyn.appendChild(yol("M" + nokta(vp) + " Z", { dolgu: "c", renk: "c", kal: 1.6 }));
+      dyn.appendChild(yaziH(VX0, YU - 14, "kat kesmesi V_i (kN)", { boyut: 10, renk: "c", hiza: "sol" }));
+
+      const ust = hs.katlar[kat - 1], ilk = hs.katlar[0];
+      texYaz(formul, "\\begin{aligned}" +
+        "\\ka{F_i}&=C\\,q(z_i)\\,B\\,h_{\\text{pay}},\\qquad h_{\\text{pay}}=\\tfrac{h_i}{2}+\\tfrac{h_{i+1}}{2}\\\\" +
+        "\\text{kat }1:\\ & " + ft(C) + "\\cdot" + ft(ilk.q) + "\\cdot" + ft(B) + "\\cdot" + ft(ilk.hp) + "=" + ft(ilk.F) + "\\ \\text{kN}\\quad(z=" + ft(ilk.z) + "\\ \\text{m})\\\\" +
+        (kat > 1 ? "\\text{kat }" + kat + "\\ (\\text{tepe}):\\ & " + ft(C) + "\\cdot" + ft(ust.q) + "\\cdot" + ft(B) + "\\cdot" + ft(ust.hp) + "=" + ft(ust.F) + "\\ \\text{kN}\\quad(z=" + ft(ust.z) + "\\ \\text{m})\\\\" : "") +
+        "\\kc{V_t}&=\\sum F_i=\\kutuc{" + ft(hs.Vt) + "}\\ \\text{kN},\\qquad M_o=\\sum F_i\\,z_i=" + ft(hs.Mo) + "\\ \\text{kN·m}" +
+        "\\end{aligned}");
+      bilgi.textContent = "TS 498:2021 md. 14: W = C·q·A. q, zeminden yüksekliğe göre Çizelge 4 basamaklarından (≤ 8 m: 0,5; 8–20 m: 0,8; 20–100 m: 1,1; > 100 m: 1,3 kN/m²; q = v²/1600) alınır; " +
+        "C = 1,2 kapalı binada rüzgâra bakan yüzün basıncı (+0,8q) ile arka yüzün emmesinin (−0,4q) toplamıdır (Çizelge 5). " +
+        (sarp ? "Sarp yamaç: q en az 1,1 kN/m² (md. 14.3). " : "") +
+        "Bu araç ve motor kat payının tamamına kat düzeyindeki q'yu uygular.";
+    }
+
+    sK = sl("kat sayısı $N$", 1, 30, 1, kat, "", v => { kat = Math.round(v); ciz(); }, v => String(Math.round(v)));
+    sH = sl("kat yüksekliği $h$", 2.5, 5, 0.1, h, "m", v => { h = v; ciz(); });
+    sB = sl("cephe genişliği $B$", 2, 60, 1, B, "m", v => { B = v; ciz(); });
+    secC = secici([{ deger: 1.2, etiket: "C = 1,2 (kapalı bina)" }, { deger: 1.6, etiket: "C = 1,6 (kule tipi)" }], C, v => { C = v; ciz(); });
+    secS = secici([{ deger: false, etiket: "normal arazi" }, { deger: true, etiket: "sarp yamaç (q ≥ 1,1)" }], sarp, v => { sarp = v; ciz(); });
+    function ayarla(nk, nh, nB, nC) {
+      kat = nk; h = nh; B = nB; C = nC;
+      sK.ayarla(kat, true); sH.ayarla(h, true); sB.ayarla(B, true); secC.ayarla(C, true);
+      ciz();
+    }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("Ders binası (3 kat, B = 8 m)", () => ayarla(3, 3.2, 8, 1.2), { baslik: "W+X durumu: 15,36 + 15,36 + 12,288 = 43,008 kN" }),
+      dugme("10 katlı konut", () => ayarla(10, 3, 20, 1.2), { baslik: "z > 20 m'de q = 1,1 kN/m²" }),
+      dugme("Kule (30 kat, C = 1,6)", () => ayarla(30, 3.5, 12, 1.6), { baslik: "z > 100 m'de q = 1,3 kN/m²" }),
+      secC.kok, secS.kok));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sK.kok, sH.kok, sB.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "Rüzgâr dört yönde ayrı yük durumudur (W+X, W−X, W+Y, W−Y); X yönündeki rüzgâr Y doğrultusundaki cepheye çarpar, B o cephenin genişliğidir. " +
+      "Kat kuvveti o kattaki cephe düğümlerine aks payıyla dağıtılır. Aynı ders binasında deprem taban kesmesi V_tE ≈ 321 kN, rüzgârınki 43 kN: alçak betonarme binada rüzgâr nadiren belirler."));
+    ciz();
+  }, {
+    baslik: "Rüzgâr kat kuvvetleri (TS 498:2021 md. 14)",
+    aciklama: "Kat sayısı, kat yüksekliği, cephe genişliği ve C katsayısını değiştir; q(z) basamakları, kat kuvvetleri ve kat kesmesi canlı güncellenir.",
+    varsayilan: { kat: 3, h: 3.2, B: 8, C: 1.2, sarp: false }
+  });
+
+  /* ================================================================== 6. kat-kuvvetleri */
+
+  /* TBDY 2018 md. 4.7: T_pA = C_t·H_N^(3/4) (Denk. 4.27, C_t = 0,1 betonarme çerçeve), S_ae (Denk. 2.2), R_a (4.1),
+     V_tE = m_t·S_aR·g ≥ 0,04·m_t·I·S_DS·g (4.19), ΔF_NE = 0,0075·N·V_tE (4.22), F_iE = (V_tE − ΔF_NE)·m_iH_i/Σm_jH_j (4.23). */
+  E.kaydet("kat-kuvvetleri", function (kok, p) {
+    const kap = kur(kok);
+    let N = Math.round(sayiP(p.N, 3, 1, 12)), w = sayiP(p.w, 1057, 100, 5000), wN = sayiP(p.wN, 998.5, 100, 5000), h = sayiP(p.h, 3.2, 2.5, 5);
+    let SDS = sayiP(p.SDS, 1.2, 0.1, 2.5), SD1 = sayiP(p.SD1, 0.45, 0.02, 1.5), R = sayiP(p.R, 8, 1, 8), D = sayiP(p.D, 3, 1, 3);
+    let I = [1.0, 1.2, 1.5].indexOf(Number(p.I)) >= 0 ? Number(p.I) : 1.0;
+    let Tel = sayiP(p.Tp, 0, 0, 4), mod = Tel > 0 ? "elle" : "ampirik";
+    const Ct = 0.1, W = 520, H = 372, YU = 54, YA = 330;
+    const sd = sv(W, H, "Eşdeğer deprem yükü: ters üçgen kat kuvvetleri, tepe ek kuvveti ve kat kesmesi");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sN, sW, sWN, sH, sSDS, sSD1, sR, sT, secI, secM;
+
+    function hesap() {
+      const HN = N * h, TpA = Ct * Math.pow(HN, 0.75);
+      const Tp = mod === "elle" && Tel > 0 ? Tel : TpA;
+      const TA = 0.2 * SD1 / SDS, TB = SD1 / SDS, TL = 6;
+      const Sae = Tp <= TA ? (0.4 + 0.6 * Tp / TA) * SDS : Tp <= TB ? SDS : Tp <= TL ? SD1 / Tp : SD1 * TL / (Tp * Tp);
+      const Ra = Tp > TB ? R / I : D + (R / I - D) * Tp / TB;
+      const SaR = Sae / Ra;
+      const katlar = [];
+      for (let i = 1; i <= N; i++) katlar.push({ i, H: i * h, w: i === N ? wN : w });
+      const Wt = katlar.reduce((s, k) => s + k.w, 0);
+      const Vh = Wt * SaR, Vmin = 0.04 * Wt * I * SDS, Vt = Math.max(Vh, Vmin);
+      const dF = 0.0075 * N * Vt;
+      const top = katlar.reduce((s, k) => s + k.w * k.H, 0);
+      katlar.forEach(k => { k.F = (Vt - dF) * k.w * k.H / top; });
+      let V = 0;
+      for (let j = N - 1; j >= 0; j--) { V += katlar[j].F + (j === N - 1 ? dF : 0); katlar[j].V = V; }
+      const Mo = katlar.reduce((s, k) => s + k.F * k.H, 0) + dF * HN;
+      return { HN, TpA, Tp, TA, TB, Sae, Ra, SaR, katlar, Wt, mt: Wt / 9.81, Vh, Vmin, Vt, dF, top, Mo };
+    }
+
+    function ciz() {
+      const s = hesap();
+      bos(dyn);
+      const Z = z => YA - z / s.HN * (YA - YU);
+      const BX0 = 190, BX1 = 270;
+      dyn.appendChild(dikdortgen(BX0, YU, BX1 - BX0, YA - YU, { dolgu: "cizgi", renk: "metin", kal: 1.6 }));
+      dyn.appendChild(cizgi(BX0 - 150, YA, BX1 + 40, YA, { renk: "metin", kal: 1.6 }));
+      for (let x = BX0 - 146; x <= BX1 + 36; x += 12) dyn.appendChild(cizgi(x, YA, x - 6, YA + 7, { renk: "soluk", kal: 1 }));
+      const Fmax = Math.max(...s.katlar.map(k => k.F), s.dF) || 1, OL = 120;
+      const adim = Math.ceil(N / 8);
+      // ters üçgen zarfı (kesikli)
+      dyn.appendChild(yol("M" + BX0 + " " + YA + " L" + r2(BX0 - OL * s.katlar[N - 1].F / Fmax) + " " + r2(Z(s.HN)), { renk: "a", kal: 1, kesik: true }));
+      s.katlar.forEach(k => {
+        const y = Z(k.H), uz = Math.max(6, OL * k.F / Fmax);
+        dyn.appendChild(cizgi(BX0, y, BX1, y, { renk: "metin", kal: 1 }));
+        dyn.appendChild(ok(BX0 - 3 - uz, y, BX0 - 3, y, { renk: "a", kalinlik: 2.2, bas: 6 }));
+        if ((N - k.i) % adim === 0) dyn.appendChild(yaziH(BX0 - 7 - uz, y + (k.i === N ? 8 : 0), "F" + k.i + " = " + f(k.F, 4), { boyut: 9.5, renk: "a", hiza: "sag" }));
+      });
+      // ΔF_N tepe ek kuvveti
+      const yN = Z(s.HN) - 14, uzN = Math.max(8, OL * s.dF / Fmax);
+      dyn.appendChild(ok(BX0 - 3 - uzN, yN, BX0 - 3, Z(s.HN) - 2, { renk: "sil", kalinlik: 2.2, bas: 6 }));
+      dyn.appendChild(yaziH(BX0 - 7 - uzN, yN - 4, "ΔF_N = " + f(s.dF, 4), { boyut: 9.5, renk: "sil", hiza: "sag" }));
+      // kütle noktaları
+      s.katlar.forEach(k => dyn.appendChild(svg("circle", { cx: (BX0 + BX1) / 2, cy: r2(Z(k.H)), r: 3 + 3 * k.w / Math.max(w, wN), fill: renk("metin"), opacity: 0.55 })));
+      dyn.appendChild(yaziH((BX0 + BX1) / 2, YA + 18, "H_N = " + f(s.HN, 3) + " m", { boyut: 9.5, renk: "soluk" }));
+      // kat kesmesi (sağ)
+      const VX0 = 320, VX1 = 492, VX = v => VX0 + v / (s.Vt || 1) * (VX1 - VX0);
+      const vp = [[VX0, Z(s.HN)]];
+      for (let j = N - 1; j >= 0; j--) {
+        const k = s.katlar[j], yU = Z(k.H), yA = Z(k.H - h);
+        vp.push([VX(k.V), yU], [VX(k.V), yA]);
+        if ((N - k.i) % adim === 0) dyn.appendChild(yaziH(Math.min(VX(k.V) + 3, VX1 - 2), (yU + yA) / 2, "V" + k.i + " = " + f(k.V, 4), { boyut: 9.5, renk: "c", hiza: VX(k.V) + 60 > W ? "sag" : "sol" }));
+      }
+      vp.push([VX0, YA]);
+      dyn.appendChild(yol("M" + nokta(vp) + " Z", { dolgu: "c", renk: "c", kal: 1.6 }));
+      dyn.appendChild(cizgi(VX0, YA, VX0, YU - 4, { renk: "soluk", kal: 1 }));
+      dyn.appendChild(yaziH(VX0, 12, "kat kesmesi V_i (kN)", { boyut: 10, renk: "c", hiza: "sol" }));
+      dyn.appendChild(yaziH(20, 12, "F_iE: ters üçgen (m_i·H_i ile)", { boyut: 10, renk: "a", hiza: "sol" }));
+
+      const k1 = s.katlar[0], kN = s.katlar[N - 1];
+      const bolge = s.Tp <= s.TA ? "(0.4+0.6\\tfrac{T_p}{T_A})S_{DS}" : s.Tp <= s.TB ? "S_{DS}" : "\\tfrac{S_{D1}}{T_p}";
+      texYaz(formul, "\\begin{aligned}" +
+        "T_{pA}&=C_t\\,H_N^{3/4}=0.1\\cdot" + ft(s.HN) + "^{0.75}=" + ft(s.TpA) + "\\ \\text{s}" + (mod === "elle" ? ",\\quad T_p=" + ft(s.Tp) + "\\ \\text{s (elle)}" : "") + "\\\\" +
+        "S_{ae}(T_p)&=" + bolge + "=" + ft(s.Sae) + ",\\quad R_a=" + ft(s.Ra) + ",\\quad S_{aR}=" + ft(s.SaR) + "\\\\" +
+        "\\kutua{V_{tE}}&=W_t\\,S_{aR}=" + ft(s.Wt) + "\\cdot" + ft(s.SaR) + "=" + ft(s.Vh) + (s.Vmin > s.Vh ? "\\ <\\ " : "\\ \\ge\\ ") + "0.04\\,I\\,S_{DS}W_t=" + ft(s.Vmin) +
+        "\\ \\Rightarrow\\ \\boldsymbol{" + ft(s.Vt) + "}\\ \\text{kN}\\\\" +
+        "\\ksil{\\Delta F_{NE}}&=0.0075\\,N\\,V_{tE}=0.0075\\cdot" + N + "\\cdot" + ft(s.Vt) + "=" + ft(s.dF) + "\\ \\text{kN}\\\\" +
+        "\\ka{F_{1E}}&=(V_{tE}-\\Delta F_{NE})\\tfrac{w_1H_1}{\\sum w_jH_j}=" + ft(s.Vt - s.dF) + "\\cdot\\tfrac{" + ft(k1.w * k1.H) + "}{" + ft(s.top) + "}=" + ft(k1.F) + "\\ \\text{kN}\\\\" +
+        (N > 1 ? "\\ka{F_{" + N + "E}}&=" + ft(s.Vt - s.dF) + "\\cdot\\tfrac{" + ft(kN.w * kN.H) + "}{" + ft(s.top) + "}=" + ft(kN.F) + "\\ \\text{kN}\\\\" : "") +
+        "\\kc{V_1}&=\\sum F_{iE}+\\Delta F_{NE}=\\kutuc{" + ft(s.katlar[0].V) + "}=V_{tE}\\ \\checkmark,\\qquad M_o=" + ft(s.Mo) + "\\ \\text{kN·m}" +
+        "\\end{aligned}");
+      bilgi.textContent = "m_t = W_t/g = " + f(s.mt, 4) + " t. " +
+        (s.Vmin > s.Vh ? "Alt sınır belirledi: 0,04·I·S_DS·W_t > W_t·S_aR (Denk. 4.19); uzun periyotlu ya da büyük R'li binada olur. " : "") +
+        (s.Tp > s.TB ? "T_p > T_B: R_a = R/I, S_ae = S_D1/T_p (inen kol). " : s.Tp >= s.TA ? "T_p platoda: S_ae = S_DS, R_a = D + (R/I − D)·T_p/T_B (Denk. 4.1b). " : "T_p < T_A: çok rijit bina. ") +
+        "Kat kuvveti m_i·H_i ile orantılıdır (birinci mod ters üçgen varsayımı); ΔF_N yüksek modların etkisini tepe kata ekler.";
+    }
+
+    sN = sl("kat sayısı $N$", 1, 12, 1, N, "", v => { N = Math.round(v); ciz(); }, v => String(Math.round(v)));
+    sW = sl("kat ağırlığı $w_i=w_G+n\\,w_Q$", 100, 5000, 1, w, "kN", v => { w = v; ciz(); });
+    sWN = sl("çatı katı $w_N$", 100, 5000, 1, wN, "kN", v => { wN = v; ciz(); });
+    sH = sl("kat yüksekliği $h$", 2.5, 5, 0.1, h, "m", v => { h = v; ciz(); });
+    sSDS = sl("$S_{DS}$", 0.1, 2.5, 0.01, SDS, "", v => { SDS = v; ciz(); });
+    sSD1 = sl("$S_{D1}$", 0.02, 1.5, 0.01, SD1, "", v => { SD1 = v; ciz(); });
+    sR = sl("$R$ (Tablo 4.1)", 1, 8, 0.5, R, "", v => { R = v; ciz(); });
+    sT = sl("$T_p$ (elle)", 0.05, 4, 0.01, Tel > 0 ? Tel : 0.5, "s", v => { Tel = v; if (mod !== "elle") { mod = "elle"; secM.ayarla("elle", true); } ciz(); });
+    secI = secici([{ deger: 1.0, etiket: "I = 1,0" }, { deger: 1.2, etiket: "I = 1,2" }, { deger: 1.5, etiket: "I = 1,5" }], I, v => { I = v; ciz(); });
+    secM = secici([{ deger: "ampirik", etiket: "T_p = T_pA" }, { deger: "elle", etiket: "T_p elle" }], mod, v => { mod = v; if (v === "elle" && !(Tel > 0)) Tel = sT.deger(); ciz(); });
+    function ayarla(o) {
+      N = o.N; w = o.w; wN = o.wN; h = o.h; SDS = o.SDS; SD1 = o.SD1; R = o.R; D = o.D; I = o.I; mod = o.mod; if (o.Tp) Tel = o.Tp;
+      sN.ayarla(N, true); sW.ayarla(w, true); sWN.ayarla(wN, true); sH.ayarla(h, true); sSDS.ayarla(SDS, true); sSD1.ayarla(SD1, true); sR.ayarla(R, true);
+      if (o.Tp) sT.ayarla(o.Tp, true);
+      secI.ayarla(I, true); secM.ayarla(mod, true);
+      ciz();
+    }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("Ders binası (3 kat)", () => ayarla({ N: 3, w: 1057.005, wN: 998.505, h: 3.2, SDS: 1.2, SD1: 0.45, R: 8, D: 3, I: 1.0, mod: "ampirik" }), { baslik: "betonarme-3kat-3x3: V_tE = 321,02 kN (T_pA ile)" }),
+      dugme("Rayleigh, çatlamış (T_p = 0,544)", () => ayarla({ N: 3, w: 1057.005, wN: 998.505, h: 3.2, SDS: 1.2, SD1: 0.45, R: 8, D: 3, I: 1.0, mod: "elle", Tp: 0.544 }), { baslik: "Tablo 4.2 rijitlikleriyle Rayleigh periyodu" }),
+      dugme("8 katlı", () => ayarla({ N: 8, w: 2500, wN: 2200, h: 3, SDS: 1.0, SD1: 0.35, R: 8, D: 3, I: 1.0, mod: "ampirik" }), { baslik: "ΔF_N = 0,06·V_tE" }),
+      secI.kok, secM.kok));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sN.kok, sW.kok, sWN.kok, sH.kok, sSDS.kok, sSD1.kok, sR.kok, sT.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "D = " + f(D, 2) + " (Tablo 4.1, A11 için 3), C_t = 0,1 (betonarme çerçeve, Denk. 4.27). Kat ağırlıkları TBDY Tablo 4.3 ile w_i = w_G + n·w_Q (konut ve büroda n = 0,3; çatıda karın %30'u). " +
+      "Kat kuvvetleri rijit diyaframda kütle merkezine, ±%5 dışmerkezlikle (M_ib = F_iE·0,05·B_i) etkir."));
+    ciz();
+  }, {
+    baslik: "Eşdeğer deprem yükü: kat kuvvetleri",
+    aciklama: "Kat sayısı, kat ağırlığı, kat yüksekliği ve spektrum değerlerini değiştir; V_tE, ΔF_N, ters üçgen F_iE ve kat kesmesi canlı güncellenir.",
+    varsayilan: { N: 3, w: 1057, wN: 998.5, h: 3.2, SDS: 1.2, SD1: 0.45, R: 8, D: 3, I: 1.0 }
+  });
+
   /* ================================================================== alıştırma: doseme-esdeger */
 
   const zorlukOku = p => kenet(Math.round(Number(p && p.zorluk) || 1), 1, 3);
@@ -586,4 +1041,156 @@
       };
     });
   }, { baslik: "Döşeme payı ve eşdeğer yük", aciklama: "Verilen l_k, l_u ve w ile tepe p, üçgen ya da trapez için q_eM / q_eV.", varsayilan: { zorluk: 2 } });
+
+  /* ================================================================== alıştırma: kombinasyon */
+
+  const Kd = x => E.sayiTex(K(x).sayi(), 6);          // ondalık TeX (cevap ondalık yazılır)
+  const ondalik6 = x => E.sayi(x, 6);
+  const isaretli = x => (K(x).isaret() < 0 ? "-" : "+") + Kd(K(x).mutlak());
+
+  E.kaydet("alistirma:kombinasyon", function (kok, p) {
+    return E.alistirmaKur(kok, p, (rnd, pp) => {
+      const z = zorlukOku(pp);
+      const isr = rnd.sayi() < 0.5 ? -1 : 1;
+      const kesit = isr < 0 ? "bir kirişin mesnet kesitinde" : "bir kirişin açıklık kesitinde";
+      const G = K(isr * rnd.tam(20, 90)), Q = K(isr * rnd.tam(5, 35));
+      const durum = "$M_G=" + Kd(G) + "$, $M_Q=" + Kd(Q) + "$";
+      if (z === 1) {
+        const c = K("1.4").carp(G).topla(K("1.6").carp(Q));
+        return {
+          metin: "Yük durumlarının " + kesit + " verdiği momentler " + durum + " kN·m. TS 500 Denk. (6.3) birleşimi $1.4G+1.6Q$ için tasarım momenti $M_d$ kaç kN·m?",
+          etiket: "M_d =", cevap: new Mat([[c]]), tolerans: "tam", bicim: ondalik6,
+          ipucu: ["Kombinasyon yeniden çözüm değildir: her durumun sonucu katsayısıyla çarpılıp toplanır.", "$M_d=1.4\\,M_G+1.6\\,M_Q$; işaretleri koru."],
+          aciklama: "Doğrusal çözümde süperpozisyon geçerlidir: $M(1.4G+1.6Q)=1.4\\,M(G)+1.6\\,M(Q)$. SAP2000'de \"Linear Add\" kombinasyonu da yalnız bu toplamı yapar.",
+          adimlar: [{ metin: "Katsayılı toplam.", tex: "\\kutuc{M_d}=1.4\\cdot(" + Kd(G) + ")+1.6\\cdot(" + Kd(Q) + ")=" + Kd(K("1.4").carp(G)) + isaretli(K("1.6").carp(Q)) + "=\\kutuc{" + Kd(c) + "}\\ \\text{kN·m}" }]
+        };
+      }
+      const SDS = K(rnd.sec(["0.6", "0.8", "1", "1.2", "1.5"]));
+      const kz = K("0.2").carp(SDS);                          // 0,3·(2/3)·S_DS
+      const Em = K(rnd.sifirsiz(-9, 9) * 10 + rnd.tam(-4, 4));
+      if (z === 2) {
+        const S = K(isr * rnd.tam(0, 12));
+        const ilk = rnd.sayi() < 0.55;
+        const cevap = ilk
+          ? G.topla(Q).topla(K("0.2").carp(S)).topla(Em).topla(kz.carp(G))
+          : K("0.9").carp(G).topla(Em).cikar(kz.carp(G));
+        const gKat = ilk ? K(1).topla(kz) : K("0.9").cikar(kz);
+        return {
+          metin: "Yük durumlarının " + kesit + " verdiği momentler " + durum + ", $M_S=" + Kd(S) + "$ (kar) ve yatay deprem $E_d^{(H)}$ için $M_E=" + Kd(Em) +
+            "$ kN·m; $S_{DS}=" + Kd(SDS) + "$. TBDY 2018 Denk. " + (ilk ? "(4.11) $G+Q+0.2S+E_d^{(H)}+0.3E_d^{(Z)}$" : "(4.12) $0.9G+H+E_d^{(H)}-0.3E_d^{(Z)}$ ($H=0$)") +
+            " birleşiminin momenti kaç kN·m? Düşey deprem $E_d^{(Z)}=\\tfrac{2}{3}S_{DS}\\,G$ (Denk. 4.10).",
+          etiket: "M =", cevap: new Mat([[cevap]]), tolerans: "tam", bicim: ondalik6,
+          ipucu: ["$0.3E_d^{(Z)}=0.3\\cdot\\tfrac{2}{3}S_{DS}\\,G=0.2\\,S_{DS}\\,G$: düşey deprem $G$'nin katsayısını değiştirir.",
+            ilk ? "$G$'nin toplam katsayısı $1+0.2\\,S_{DS}$; kar $0.2$ ile girer." : "$G$'nin toplam katsayısı $0.9-0.2\\,S_{DS}$; hareketli yük ve kar bu birleşimde yoktur."],
+          aciklama: "TBDY md. 4.4.4.1: (4.11) düşey yükü büyüten, (4.12) azaltan deprem birleşimidir. $E_d^{(H)}$ iki yönlü ($\\pm$) alındığından her ikisi de işaret değiştirerek zarfa girer.",
+          adimlar: [
+            { metin: "Düşey deprem payı.", tex: "0.3E_d^{(Z)}=0.2\\,S_{DS}\\,G=0.2\\cdot" + Kd(SDS) + "\\cdot G=" + Kd(kz) + "\\,G" },
+            ilk
+              ? { metin: "Denk. (4.11) toplamı.", tex: "\\kutuc{M}=" + Kd(gKat) + "\\cdot(" + Kd(G) + ")" + isaretli(Q) + "+0.2\\cdot(" + Kd(S) + ")" + isaretli(Em) + "=\\kutuc{" + Kd(cevap) + "}\\ \\text{kN·m}" }
+              : { metin: "Denk. (4.12) toplamı.", tex: "\\kutuc{M}=" + Kd(gKat) + "\\cdot(" + Kd(G) + ")" + isaretli(Em) + "=\\kutuc{" + Kd(cevap) + "}\\ \\text{kN·m}" }]
+        };
+      }
+      // zorluk 3: zarf (en büyük ve en küçük)
+      const ruzgar = rnd.sayi() < 0.5;
+      let liste, giris;
+      if (ruzgar) {
+        const Wm = K(rnd.tam(10, 70));
+        liste = [
+          { ad: "1.4G+1.6Q", v: K("1.4").carp(G).topla(K("1.6").carp(Q)) },
+          { ad: "G+1.3Q+1.3W", v: G.topla(K("1.3").carp(Q)).topla(K("1.3").carp(Wm)) },
+          { ad: "G+1.3Q-1.3W", v: G.topla(K("1.3").carp(Q)).cikar(K("1.3").carp(Wm)) },
+          { ad: "0.9G+1.3W", v: K("0.9").carp(G).topla(K("1.3").carp(Wm)) },
+          { ad: "0.9G-1.3W", v: K("0.9").carp(G).cikar(K("1.3").carp(Wm)) }];
+        giris = "Yük durumlarının " + kesit + " verdiği momentler " + durum + " ve rüzgâr için $M_W=\\pm" + Kd(Wm) + "$ kN·m (rüzgâr iki yönden eser). " +
+          "TS 500 Denk. (6.3), (6.5) ve (6.6) birleşimlerinin zarfında en büyük ve en küçük moment nedir?";
+      } else {
+        const Ea = Em.mutlak();
+        const g1 = K(1).topla(kz), g2 = K("0.9").cikar(kz);
+        liste = [
+          { ad: "1.4G+1.6Q", v: K("1.4").carp(G).topla(K("1.6").carp(Q)) },
+          { ad: Kd(g1) + "G+Q+E", v: g1.carp(G).topla(Q).topla(Ea) },
+          { ad: Kd(g1) + "G+Q-E", v: g1.carp(G).topla(Q).cikar(Ea) },
+          { ad: Kd(g2) + "G+E", v: g2.carp(G).topla(Ea) },
+          { ad: Kd(g2) + "G-E", v: g2.carp(G).cikar(Ea) }];
+        giris = "Yük durumlarının " + kesit + " verdiği momentler " + durum + " ve yatay deprem için $M_E=\\pm" + Kd(Ea) + "$ kN·m; $S_{DS}=" + Kd(SDS) +
+          "$, kar ve toprak itkisi yok. TS 500 Denk. (6.3) ile TBDY Denk. (4.11) ve (4.12) birleşimlerinin ($0.3E_d^{(Z)}=0.2S_{DS}G$ dahil) zarfında en büyük ve en küçük moment nedir?";
+      }
+      let iMx = 0, iMn = 0;
+      liste.forEach((k, i) => { if (k.v.karsilastir(liste[iMx].v) > 0) iMx = i; if (k.v.karsilastir(liste[iMn].v) < 0) iMn = i; });
+      return {
+        metin: giris, alanlar: ["M_max =", "M_min ="], cevap: new Mat([[liste[iMx].v, liste[iMn].v]]), tolerans: "tam", bicim: ondalik6,
+        ipucu: ["Her birleşimi ayrı hesapla; rüzgâr ya da deprem işareti hem + hem − alınır.", "Zarf, beş değerin en büyüğü ve en küçüğüdür; ikisi farklı birleşimlerden gelebilir."],
+        aciklama: "Zarf her büyüklük için ayrı seçilir: en büyük " + liste[iMx].ad + ", en küçük " + liste[iMn].ad + " birleşiminden. Kolon gibi iki büyüklüğün (N, M) birlikte denetlendiği elemanda zarf değerleri aynı anda oluşmayabilir.",
+        adimlar: liste.map((k, i) => ({ metin: (i === iMx ? "**en büyük** " : i === iMn ? "**en küçük** " : "") + "$" + k.ad.replace(/-/g, "-") + "$", tex: "M=" + Kd(k.v) + "\\ \\text{kN·m}" }))
+      };
+    });
+  }, { baslik: "Kombinasyon ve zarf", aciklama: "Yük durumu momentlerinden TS 500 / TBDY birleşimi (1, 2) ya da zarfın en büyük ve en küçük değeri (3).", varsayilan: { zorluk: 2 } });
+
+  /* ================================================================== alıştırma: deprem-vt */
+
+  /* Tablo 4.1 satırları (R, D) ve Tablo 3.1 I değerleri araştırma dosyasından (TBDY 2018); g = 9,81 m/s². */
+  const DVT_SIS = [{ kod: "A11", R: "8", D: "3" }, { kod: "A12", R: "7", D: "2.5" }, { kod: "A13", R: "6", D: "2.5" }, { kod: "A15", R: "7", D: "2.5" }, { kod: "C13", R: "5", D: "2" }];
+  const DVT_SDS = ["0.6", "0.8", "1", "1.2", "1.5"], DVT_SD1 = ["0.25", "0.3", "0.4", "0.45", "0.6"], DVT_I = ["1", "1", "1.2", "1.5"];
+  const DVT_MT = [180, 240, 320, 400, 520, 650, 800, 1000];
+
+  function dvtHesap(o) {
+    const TA = K("0.2").carp(o.SD1).bol(o.SDS), TB = o.SD1.bol(o.SDS);
+    let Sae, bolge;
+    if (o.Tp.karsilastir(TA) <= 0) { Sae = K("0.4").topla(K("0.6").carp(o.Tp).bol(TA)).carp(o.SDS); bolge = "T_p\\le T_A"; }
+    else if (o.Tp.karsilastir(TB) <= 0) { Sae = o.SDS; bolge = "T_A\\le T_p\\le T_B"; }
+    else { Sae = o.SD1.bol(o.Tp); bolge = "T_B<T_p\\le T_L"; }
+    const RI = o.R.bol(o.I);
+    const Ra = o.Tp.karsilastir(TB) > 0 ? RI : o.D.topla(RI.cikar(o.D).carp(o.Tp).bol(TB));
+    const SaR = Sae.bol(Ra), g = K("9.81");
+    const V = o.mt.carp(SaR).carp(g), Vmin = K("0.04").carp(o.mt).carp(o.I).carp(o.SDS).carp(g);
+    const Vt = V.karsilastir(Vmin) >= 0 ? V : Vmin;
+    return { TA, TB, Sae, bolge, RI, Ra, SaR, V, Vmin, Vt };
+  }
+
+  E.kaydet("alistirma:deprem-vt", function (kok, p) {
+    return E.alistirmaKur(kok, p, (rnd, pp) => {
+      const z = zorlukOku(pp);
+      const sis = rnd.sec(DVT_SIS);
+      const o = { SDS: K(rnd.sec(DVT_SDS)), SD1: K(rnd.sec(DVT_SD1)), R: K(sis.R), D: K(sis.D), I: K(rnd.sec(DVT_I)), mt: K(rnd.sec(DVT_MT)) };
+      const TB = o.SD1.bol(o.SDS).sayi();
+      let Tp;
+      if (z === 1) {
+        const aday = [0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4, 1.6, 2].filter(t => t > TB + 0.02);
+        if (!aday.length) return null;
+        Tp = rnd.sec(aday);
+      } else if (z === 2) {
+        Tp = Math.round(TB * rnd.sec([0.45, 0.55, 0.65, 0.75, 0.85]) * 100) / 100;
+        if (Tp <= 0.2 * TB + 0.005 || Tp >= TB) return null;
+      } else {
+        Tp = rnd.sec([0.25, 0.4, 0.5, 0.7, 1, 1.5, 2, 2.5, 3]);
+      }
+      o.Tp = K(String(Tp));
+      const h = dvtHesap(o);
+      const N = rnd.tam(2, 10);
+      const dF = K("0.0075").carp(N).carp(h.Vt);
+      const veri = "$S_{DS}=" + Kd(o.SDS) + "$, $S_{D1}=" + Kd(o.SD1) + "$, $T_p=" + Kd(o.Tp) + "$ s, " + sis.kod + " sistemi ($R=" + Kd(o.R) + "$, $D=" + Kd(o.D) +
+        "$), $I=" + Kd(o.I) + "$, toplam kütle $m_t=" + Kd(o.mt) + "$ t ($g=9.81$ m/s²)";
+      const adimlar = [
+        { metin: "Köşe periyotları (Denk. 2.3).", tex: "T_A=0.2\\tfrac{S_{D1}}{S_{DS}}=" + Kd(h.TA) + ",\\qquad T_B=\\tfrac{S_{D1}}{S_{DS}}=" + Kd(h.TB) + "\\ \\text{s}" },
+        { metin: "Elastik spektral ivme (Denk. 2.2), $" + h.bolge + "$.", tex: "S_{ae}(T_p)=" + Kd(h.Sae) },
+        { metin: "Deprem yükü azaltma katsayısı (Denk. 4.1).", tex: "R_a=" + (o.Tp.karsilastir(h.TB) > 0 ? "\\tfrac{R}{I}=" : "D+\\big(\\tfrac{R}{I}-D\\big)\\tfrac{T_p}{T_B}=") + Kd(h.Ra) + ",\\qquad S_{aR}=\\tfrac{S_{ae}}{R_a}=" + Kd(h.SaR) },
+        { metin: "Taban kesme kuvveti ve alt sınır (Denk. 4.19).", tex: "m_t\\,S_{aR}\\,g=" + Kd(h.V) + ",\\quad 0.04\\,m_t\\,I\\,S_{DS}\\,g=" + Kd(h.Vmin) + "\\ \\Rightarrow\\ \\kutuc{V_{tE}=" + Kd(h.Vt) + "}\\ \\text{kN}" }];
+      const ipucu = ["Önce $T_B=S_{D1}/S_{DS}$: $T_p$ spektrumun hangi kolunda?", "$R_a=R/I$ yalnız $T_p>T_B$ iken; platoda $D$'den $R/I$'ya doğrusal artar.", "$V_{tE}=m_tS_{aR}g$ ama $0.04\\,m_t\\,I\\,S_{DS}\\,g$'den az olamaz."];
+      if (z < 3) {
+        return {
+          metin: veri + ". TBDY 2018 eşdeğer deprem yükü yöntemiyle toplam deprem yükü (taban kesme kuvveti) $V_{tE}$ kaç kN?",
+          etiket: "V_tE =", cevap: new Mat([[h.Vt]]), tolerans: "yaklasik", bicim: ondalik6, ipucu,
+          aciklama: "$V_{tE}=m_t\\,S_{aR}(T_p)\\,g\\ge0.04\\,m_t\\,I\\,S_{DS}\\,g$ (Denk. 4.19); $S_{aR}=S_{ae}/R_a$ (Denk. 4.8).",
+          adimlar
+        };
+      }
+      return {
+        metin: veri + ", kat sayısı $N=" + N + "$. Taban kesme kuvveti $V_{tE}$ ve tepe kata eklenen $\\Delta F_{NE}$ kaç kN?",
+        alanlar: ["V_tE =", "ΔF_NE ="], cevap: new Mat([[h.Vt, dF]]), tolerans: "yaklasik", bicim: ondalik6, ipucu,
+        aciklama: "$\\Delta F_{NE}=0.0075\\,N\\,V_{tE}$ (Denk. 4.22); kalan $V_{tE}-\\Delta F_{NE}$ katlara $m_iH_i$ ile dağıtılır (Denk. 4.23)." +
+          (h.Vmin.karsilastir(h.V) > 0 ? " Bu soruda alt sınır belirledi." : ""),
+        adimlar: adimlar.concat([{ metin: "Tepe ek kuvveti (Denk. 4.22).", tex: "\\Delta F_{NE}=0.0075\\cdot" + N + "\\cdot" + Kd(h.Vt) + "=\\kutuc{" + Kd(dF) + "}\\ \\text{kN}" }])
+      };
+    });
+  }, { baslik: "Taban kesme kuvveti V_tE", aciklama: "S_DS, S_D1, T_p, R, D, I ve m_t ile V_tE (1: T_p > T_B, 2: platoda, 3: karışık ve ΔF_NE).", varsayilan: { zorluk: 2 } });
 })();
