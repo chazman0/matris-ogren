@@ -74,12 +74,13 @@ def test_genellestir_motor_agiyla_ayni(ad):
     B = yapi._bina_oku(bina)
     ag, _model = yapi._ag_olustur(B, None)
     # eleman uç düğümleri (yön dahil: kolon alt→üst, kiriş küçük akstan büyüğe)
-    py = Counter((e["tur"], e["dugumler"][0], e["dugumler"][1]) for e in ag["elemanlar"])
+    # (mütemadi / radye temel elemanları motorun ekidir — temel.py; JS üst yapı modeli bunları taşımaz)
+    py = Counter((e["tur"], e["dugumler"][0], e["dugumler"][1]) for e in ag["elemanlar"] if e["tur"] in ("kolon", "kiris"))
     jsc = Counter((c["tur"], c["i"], c["j"]) for c in js["cubuklar"])
     assert jsc == py
     # düğüm konumları
     for dg in ag["dugumler"]:
-        if dg.get("efendi"):
+        if dg.get("efendi") or (dg.get("temel") and dg["key"] is None):     # temel ara düğümleri (50001…) yalnız motorda
             continue
         assert js["dugumler"][str(dg["no"])] == pytest.approx([dg["X"], dg["Y"], dg["Z"]])
     # kolon yönü ↔ aci; kesit ve kaynak eşlemesi

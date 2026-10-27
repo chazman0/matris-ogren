@@ -240,7 +240,7 @@ def test_y_yonu_kirisi_de_dusey_yuk_tasir():
 # ---------------------------------------------------------------------------
 def test_sablon_listesi():
     liste = yapi.bina_sablonlar()
-    assert [s["ad"] for s in liste][:len(SABLONLAR)] == SABLONLAR and len(SABLONLAR) == 5
+    assert [s["ad"] for s in liste][:len(SABLONLAR)] == SABLONLAR and len(SABLONLAR) == 7
     assert "betonarme-2kat-3x2" in SABLONLAR and "celik-1kat-depo" in SABLONLAR
     b = yapi.bina_sablon("betonarme-2kat-3x2")
     b["kolonlar"] = []
@@ -263,19 +263,25 @@ def test_sablon_cozulur_ve_json(cozumler, ad):
     assert v["ozet"]["sd_sayisi"] == 6 * sum(1 for d in v["ag"]["dugumler"] if not d["efendi"])   # efendi düğümler sanal
     assert len(v["durumlar"]["G"]["u"]) == 6 * len(v["ag"]["dugumler"])
     assert r.deger.shape == (len(v["durumlar"]["G"]["u"]), 1)
-    for e in v["ag"]["elemanlar"]:
-        assert e["tur"] in ("kolon", "kiris") and len(e["lam"]) == 3 and "kaynak_no" in e and "parca" in e
+    tur = {}
+    for e in v["ag"]["elemanlar"]:          # temel-kirisi / radye-serit: mütemadi ve radye temel (temel.py)
+        assert e["tur"] in ("kolon", "kiris", "temel-kirisi", "radye-serit") and len(e["lam"]) == 3 and "kaynak_no" in e and "parca" in e
+        tur[e["no"]] = e["tur"]
     tam = [("G", v["durumlar"]["G"]), ("Q", v["durumlar"]["Q"])] + list(v["sonuclar"].items())
     for ad_, k in tam:
         assert set(k) == {"u", "diyagram", "dugumler", "tepkiler", "elemanlar", "denge", "yaylar"} and k["diyagram"] is True
         for e in k["elemanlar"]:
-            n = len(e["x"])
-            assert n >= 11 and all(len(e[a]) == n for a in ("N", "V", "M", "Vz", "My", "T")) and len(e["uc_kuvvetleri"]) == 12
-            assert set(e["enb"]) == {"N", "V", "M", "Vz", "My", "T"}
+            if tur[e["no"]] == "radye-serit":      # radye şeridi: yalnız enb (taban basıncı ve şerit momentleri veri.temel'de)
+                assert set(e) == {"no", "diyagram", "enb"} and e["diyagram"] is False
+                continue
+            n = len(e["x"])                       # temel kirişi parçası (a ≈ 0,5 m) 3 noktalı: uçlar + orta
+            assert n >= (3 if tur[e["no"]] == "temel-kirisi" else 11) and all(len(e[a]) == n for a in ("N", "V", "M", "Vz", "My", "T"))
+            assert len(e["uc_kuvvetleri"]) == 12 and set(e["enb"]) == {"N", "V", "M", "Vz", "My", "T"}
     for ad_, k in v["durumlar"].items():
         if ad_ not in ("G", "Q"):          # S, W, E: yalnız uç kuvvetleri + enb (tam dizi bina_kombinasyon ile tembel)
             assert k["diyagram"] is False and k["u"] is None
-            assert all(set(e) == {"no", "uc_kuvvetleri", "enb"} and len(e["uc_kuvvetleri"]) == 12 for e in k["elemanlar"])
+            assert all((set(e) == {"no", "diyagram"} if tur[e["no"]] == "radye-serit" else
+                        set(e) == {"no", "uc_kuvvetleri", "enb"} and len(e["uc_kuvvetleri"]) == 12) for e in k["elemanlar"])
         assert all(abs(x) < 1e-6 for x in k["denge"].values()), (ad_, k["denge"])
     for ad_, k in v["sonuclar"].items():
         assert all(abs(x) < 1e-6 for x in k["denge"].values())
@@ -310,10 +316,11 @@ def test_korunum_bes_sayi(cozumler, ad):
     for durum in ("G", "Q"):
         p = v["akis"]["korunum"][durum]
         assert yakin(p["toplam"], v["yukler"]["toplam"][durum], 1e-6)
-        assert yakin(p["kolon_taban"], p["toplam"], 1e-6), (ad, durum, p)
-        assert yakin(p["temel"] + p["yay"], p["toplam"], 1e-6)
+        # mütemadi / radye: temel öz ağırlığı kat 0'da (kolonlardan geçmez; korunumda temel_oz)
+        assert yakin(p["kolon_taban"] + p.get("temel_oz", 0.0), p["toplam"], 1e-6), (ad, durum, p)
+        assert yakin(p["temel"], p["toplam"], 1e-6) and yakin(p["tepki"] + p["yay"], p["temel"], 1e-9)   # temel = tepki + yay
         if durum == "G":
-            assert yakin(p["dosemeler"] + p["duvarlar"] + p["kiris_oz"] + p["kolon_oz"] + p["ek"], p["toplam"], 1e-9)
+            assert yakin(p["dosemeler"] + p["duvarlar"] + p["kiris_oz"] + p["kolon_oz"] + p["ek"] + p.get("temel_oz", 0.0), p["toplam"], 1e-9)
     # python betiği aynı toplamı veriyor
     satir = next(s for s in cozumler[ad].python_ciktisi.splitlines() if s.startswith("Σ kolon taban N"))
     assert abs(float(satir.split("=")[1].split()[0]) - v["akis"]["korunum"]["G"]["kolon_taban"]) < 0.02
@@ -326,7 +333,8 @@ def test_tributary_fe_farki_makul(cozumler, ad):
         assert k["N_kum_G"] > 0 and k["N_trib_G"] > 0 and k["N_G"] > 0
     kol = cozumler[ad].veri["akis"]["kolonlar"]
     trib = sum(k["N_trib_G"] for k in kol if k["kat"] == 1)
-    assert yakin(trib, cozumler[ad].veri["yukler"]["toplam"]["G"], 1e-6)   # yük alanları toplamı = toplam yük
+    temel_oz = cozumler[ad].veri["akis"]["korunum"]["G"].get("temel_oz", 0.0)     # mütemadi / radye öz ağırlığı kolonlardan geçmez
+    assert yakin(trib + temel_oz, cozumler[ad].veri["yukler"]["toplam"]["G"], 1e-6)   # yük alanları toplamı = toplam yük
 
 
 def test_simetrik_bina_simetrik(cozumler):

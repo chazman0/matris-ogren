@@ -3,7 +3,7 @@
    CDN önbelleği (Pyodide, sympy/numpy tekerlekleri, KaTeX, marked) ayrı tutulur; sürümler değişmedikçe kalır. */
 "use strict";
 
-const SURUM = "541da0b5ac";
+const SURUM = "fe6b589d4a";
 const PYODIDE_SURUM = "314.0.7";
 const KATEX_SURUM = "0.19.0";
 const MARKED_SURUM = "18.1.0";
@@ -14,8 +14,8 @@ const CDN = "https://cdn.jsdelivr.net/";
 
 const KABUK = [
   "./", "./index.html", "./style.css", "./app.js", "./motor.worker.js", "./web_kopru.py", "./matris_ogren.py",
-  "./sonlu_eleman.py", "./yapi.py", "./yapi_veri.py", "./tasarim.py", "./yapi_serbest.py", "./etkilesim.js", "./etkilesim_matris.js", "./etkilesim_se.js", "./etkilesim_yapi.js", "./se.js",
-  "./model_ops.js", "./cizim3b.js", "./bina.js", "./galeri.html",
+  "./sonlu_eleman.py", "./yapi.py", "./yapi_veri.py", "./tasarim.py", "./rapor.py", "./temel.py", "./tablolar.py", "./yapi_serbest.py", "./etkilesim.js", "./etkilesim_matris.js", "./etkilesim_se.js", "./etkilesim_yapi.js", "./se.js",
+  "./model_ops.js", "./aks_sistemi.js", "./cizim3b.js", "./ifc_disari.js", "./tablo_editoru.js", "./bina.js", "./galeri.html",
   "./dersler.json", "./surum.json", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",
