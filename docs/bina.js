@@ -1316,7 +1316,7 @@
       return '<div class="bn-anahtar"><label class="bn-onay"><input type="checkbox" data-yd="' + k + '" data-yd-alan="acik"' + (yd[k].acik ? " checked" : "") + (k === "G" ? " disabled" : "") + "> <b>" + kacis(YUK_DURUM_AD[k]) + "</b></label>" +
         (ipucu ? '<span class="not">' + kacis(ipucu) + "</span>" : "") + (ek || "") + "</div>";
     };
-    let h = '<h3 class="bn-pbaslik">Yük durumları</h3>';
+    let h = '<h3 class="bn-pbaslik">Yük durumları (her biri ayrı çözülen yük deseni)</h3>';
     h += anahtar("G", "", "Öz ağırlık, döşeme kaplaması, duvarlar (TS 498:2021 md. 5–9).");
     h += anahtar("Q", "", "Kullanım sınıfından (Çizelge 6) ya da döşeme q değerinden.");
     h += anahtar("S", '<div class="bn-uc bn-anahtar-alan"' + (yd.S.acik ? "" : ' style="display:none"') + ">" +
