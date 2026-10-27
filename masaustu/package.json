@@ -1,0 +1,143 @@
+{
+  "name": "matris-ogren",
+  "productName": "Matris Öğren",
+  "version": "1.0.0",
+  "description": "Sonlu elemanlar, matris yöntemleri ve yapı analizi için öğretici, çevrimdışı masaüstü programı.",
+  "homepage": "https://chazman0.github.io/matris-ogren/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chazman0/matris-ogren.git"
+  },
+  "author": {
+    "name": "Matris Öğren",
+    "email": "matris-ogren@users.noreply.github.com"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "desktopName": "matris-ogren.desktop",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "hazirla": "node hazirla.js",
+    "denetle": "node --check main.js && node --check preload.js && node --check hazirla.js && node --check lib/menu.js && node --check lib/sunucu.js && node --check lib/yardimci.js",
+    "onizle": "node hazirla.js --sunucu",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:dir": "electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.matrisogren.app",
+    "productName": "Matris Öğren",
+    "executableName": "MatrisOgren",
+    "copyright": "Matris Öğren",
+    "artifactName": "Matris-Ogren-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "uygulama/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "publish": null,
+    "electronLanguages": [
+      "tr",
+      "en-US"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "matris",
+        "name": "Matris Öğren projesi",
+        "description": "Matris Öğren proje dosyası",
+        "mimeType": "application/x-matris-ogren",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Matris Öğren",
+      "uninstallDisplayName": "Matris Öğren",
+      "installerLanguages": [
+        "tr_TR"
+      ],
+      "language": "1055",
+      "artifactName": "Matris-Ogren-Kurulum-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Matris-Ogren-Tasinabilir-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.education",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Matris Öğren ${version}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Education",
+      "icon": "build/icon.png",
+      "maintainer": "Matris Öğren <matris-ogren@users.noreply.github.com>",
+      "synopsis": "Sonlu elemanlar ve yapı analizi öğrenme programı",
+      "syncDesktopName": true
+    }
+  }
+}
