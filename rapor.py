@@ -2038,7 +2038,7 @@ class _Rapor:
         ])
         h += self._temel_geometri(tm)
         temel = v.get("temel")
-        if isinstance(temel, dict) and temel:
+        if isinstance(temel, dict) and temel.get("tip") in ("surekli", "radye"):
             return h + self._temel_analizi(temel)
         tem = [t for t in _liste(_g(v, "akis", "temeller")) if isinstance(t, dict)]
         if not tem:
