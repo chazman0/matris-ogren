@@ -2,7 +2,8 @@
 """docs\\ içindeki web uygulamasını (PWA) derler.
 
 Yaptıkları:
-  1. matris_ogren.py motorunu docs\\ altına kopyalar (uygulama bu dosyayı Pyodide içinde çalıştırır).
+  1. matris_ogren.py motorunu docs\\ altına kopyalar (uygulama bu dosyayı Pyodide içinde çalıştırır);
+     sonlu_eleman.py, yapi.py, yapi_veri.py ve tasarim.py de (varsa) aynı biçimde kopyalanır.
   2. Matris_Ogren.ipynb defterinin markdown hücrelerini docs\\dersler.json olarak çıkarır (Dersler sekmesi).
   3. İkon PNG'lerini icon.svg / icon-maskable.svg'den üretir (pymupdf varsa; yoksa mevcut PNG'ler kalır).
   4. docs\\ dosyalarının içeriğinden bir sürüm damgası hesaplar, sw.js içindeki SURUM satırına ve surum.json'a yazar
@@ -41,6 +42,19 @@ def se_kopyala() -> str:
         return "yok (atlandı)"
     shutil.copyfile(kaynak, DOCS / "sonlu_eleman.py")
     return f"{(DOCS / 'sonlu_eleman.py').stat().st_size:,} bayt"
+
+
+def yapi_kopyala() -> str:
+    """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py, varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir."""
+    bilgi = []
+    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py"):
+        kaynak = KOK / ad
+        if not kaynak.exists():
+            bilgi.append(f"{ad}: yok (atlandı)")
+            continue
+        shutil.copyfile(kaynak, DOCS / ad)
+        bilgi.append(f"{ad}: {(DOCS / ad).stat().st_size:,} bayt")
+    return ", ".join(bilgi)
 
 
 def ders_derle_yukle():
@@ -148,6 +162,7 @@ def main() -> None:
     else:
         print(f"dersler.json: {dersler_cikar()} bölüm (defter)")
     print(f"sonlu_eleman.py: {se_kopyala()}")
+    print(f"bina modülü: {yapi_kopyala()}")
     print(f"ikonlar: {ikonlar()}")
     print(f"sürüm damgası: {surum_damgala()}")
     print("✅ docs hazır")

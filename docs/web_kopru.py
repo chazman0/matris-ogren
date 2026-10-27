@@ -24,6 +24,26 @@ Sonlu eleman işlemleri (sonlu_eleman.py):
                  yay, cubuk, kafes, kiris, cerceve, kafes3b, cerceve3b; isteğe bağlı yaylar, cokmeler ve eleman zemin'i.
   "se_ornekler": → {"ornekler": [{ad, baslik, tip, aciklama}], "hata": null}
   "se_ornek":    girdi {"ad": "kafes-iki-cubuk"} → {"ad", "model": {...}, "hata": null}
+
+Bina işlemleri (yapi.py + yapi_veri.py):
+  "bina_coz":       girdi {"bina": {...} | "JSON metni"} → {"ad": "bina", "bloklar", "veri" (yapi.bina_coz şeması: bina, ag,
+                    yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model, deprem, ruzgar, kar, kutle_merkezi,
+                    cozum_kimligi), "sonuc_metin", "zincir": false, "hata"}; çözümün iç paketi tembel kombinasyonlar için
+                    önbelleğe alınır
+  "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
+                    "sablonlar", "dogrulanmamis", ..., "hata": null}
+  "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}
+  "bina_sablon":    girdi {"ad": "betonarme-2kat-3x2"} → {"ad", "bina": {...}, "hata": null}
+  "bina_yuk_yolu":  girdi {"bina", "veri", "hedef": {"tur": "doseme"|"kiris"|"kolon", "no", "durum"}} → {"adimlar": [...], "hata": null}
+  "bina_deprem":    girdi {"bina"} → {"deprem": (veri.deprem şeması, çözümsüz önizleme: spektrum, V_tE, F_i, V_i; "tahmin": true),
+                    "hata": null}
+  "bina_kombinasyon": girdi {"cozum_kimligi", "ad", "katsayilar"?, "bina"?} → {"ad", "cozum_kimligi", "sonuc": KISA (tam diziler),
+                    "hata": null}. Son çözümler (en çok BINA_ONBELLEK_EN_FAZLA) bellekte tutulur; kimlik önbellekte yoksa ve
+                    "bina" verilmişse bina anlatımsız yeniden çözülür, yoksa öğretici hata.
+  "bina_eleman_tasarim": girdi {"cozum_kimligi", "tur": "kiris"|"kolon", "no" (bina eleman no'su), "bina"?} → {"ad", "bloklar"
+                    (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
+                    kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
+                    "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
 """
 from __future__ import annotations
 
@@ -32,6 +52,7 @@ import importlib
 import json
 import sys
 import traceback
+from collections import OrderedDict
 
 import sympy as sp
 
@@ -250,13 +271,29 @@ def _se_modulu():
         return None
 
 
+def _yapi_modulu():
+    """yapi.py (bina analizi) varsa (tembel) içe aktarır; yoksa None. sonlu_eleman.py'ye bağımlıdır."""
+    try:
+        return importlib.import_module("yapi")
+    except ImportError:
+        return None
+
+
+def _tasarim_modulu():
+    """tasarim.py (TS 500 / ÇYTHYE kesit tahkikleri) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("tasarim")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
 
 def _kod_calistir(kod: str):
     """Ders örneği kodunu çalıştırır; son satırdaki ifadenin değerini döndürür (testler/test_dersler.calistir ile aynı):
-    son deyim ayrılır, kalanı exec edilir, son ifade eval edilir. Ad alanı: mo, sp ve varsa se."""
+    son deyim ayrılır, kalanı exec edilir, son ifade eval edilir. Ad alanı: mo, sp ve varsa se, yapi, tasarim."""
     agac = ast.parse(kod)
     if not agac.body:
         raise mo.MatrisHatasi("Örnek kodu boş.")
@@ -267,6 +304,12 @@ def _kod_calistir(kod: str):
     se = _se_modulu()
     if se is not None:
         ad_alani["se"] = se
+    yapi = _yapi_modulu()
+    if yapi is not None:
+        ad_alani["yapi"] = yapi
+    tasarim = _tasarim_modulu()
+    if tasarim is not None:
+        ad_alani["tasarim"] = tasarim
     exec(compile(agac, "<ornek>", "exec"), ad_alani)
     return eval(compile(ast.Expression(son.value), "<ornek>", "eval"), ad_alani)
 
@@ -370,6 +413,129 @@ def _se_islem(islem: str, girdi: dict) -> dict:
     return {"ad": ad, "model": se.ornek_model(ad), "hata": None}
 
 
+# ---------------------------------------------------------------------------
+# bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
+# "bina_kombinasyon", "bina_eleman_tasarim")
+# ---------------------------------------------------------------------------
+BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
+                 "bina_eleman_tasarim"}
+BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
+BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
+_BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
+
+
+def _onbellege_koy(ic: dict) -> None:
+    kimlik = ic.get("kimlik")
+    if not kimlik:
+        return
+    _BINA_ONBELLEK.pop(kimlik, None)
+    _BINA_ONBELLEK[kimlik] = ic
+    while len(_BINA_ONBELLEK) > BINA_ONBELLEK_EN_FAZLA:
+        _BINA_ONBELLEK.popitem(last=False)
+
+
+def _yapi_zorunlu():
+    yapi = _yapi_modulu()
+    if yapi is None:
+        raise mo.MatrisHatasi("Bina modülü (yapi.py / yapi_veri.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    return yapi
+
+
+def _bina_girdisi(girdi: dict):
+    bina = girdi.get("bina")
+    if bina is None or (isinstance(bina, str) and not bina.strip()):
+        raise mo.MatrisHatasi("Bina modeli boş: akslar, katlar, kolon/kiriş/döşeme tanımlayın ya da bir şablon seçin.")
+    if isinstance(bina, str) and len(bina) > BINA_EN_FAZLA:
+        raise mo.MatrisHatasi(f"Bina metni çok uzun ({len(bina)} karakter; en fazla {BINA_EN_FAZLA}).")
+    return bina
+
+
+def _bina_coz_yaniti(girdi: dict) -> dict:
+    yapi = _yapi_zorunlu()
+    r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
+    _onbellege_koy(getattr(r, "ic", None) or {})
+    veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
+    return {
+        "ad": "bina", "bloklar": _bloklar(r.anlatim),
+        "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
+        "sonuc_metin": f"{veri['ozet']['sd_sayisi']} SD, {veri['ozet']['kombinasyon_sayisi']} kombinasyon; "
+                       f"G = {veri['ozet']['toplam_G']} kN, Q = {veri['ozet']['toplam_Q']} kN",
+        "zincir": False, "hata": None, "veri": veri,
+    }
+
+
+def _bina_kombinasyon_yaniti(girdi: dict) -> dict:
+    """Tek kombinasyonun tam KISA'sı: önce önbellekteki çözüm (cozum_kimligi), yoksa girdi.bina anlatımsız yeniden çözülür."""
+    yapi = _yapi_zorunlu()
+    ad = str(girdi.get("ad") or "").strip()
+    if not ad:
+        raise mo.MatrisHatasi("Kombinasyon adı (ad) boş; örn. \"1.4G+1.6Q\" ya da \"G+Q+0.2S+EX++0.3EY++0.3EZ\".")
+    katsayilar = girdi.get("katsayilar")
+    if katsayilar is not None and not isinstance(katsayilar, dict):
+        raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    ic = _bina_ic(yapi, girdi)
+    sonuc = yapi.kombinasyon_kisa(ic, ad, katsayilar)
+    return {"ad": ad, "cozum_kimligi": ic.get("kimlik"), "sonuc": _sonlu_sayilar(sonuc), "hata": None}
+
+
+def _bina_ic(yapi, girdi: dict) -> dict:
+    """Önbellekteki çözüm paketi (cozum_kimligi); yoksa girdi.bina anlatımsız yeniden çözülür ve önbelleğe konur."""
+    kimlik = girdi.get("cozum_kimligi")
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+    elif girdi.get("bina") is not None:
+        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        ic = r.ic
+        _onbellege_koy(ic)
+    else:
+        raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
+                              + " çözümün dışında kaldı). Binayı yeniden çözün; kombinasyonlar ve kesit tahkikleri, çözümde hesaplanan "
+                              "G, Q, S, W ve E durumlarının katsayılı toplamından kurulur (yeniden çözüm gerekmez, ama durumların "
+                              "bellekte olması gerekir).")
+    return ic
+
+
+def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
+    """Tek bina elemanının anlatımlı kesit tahkiki (tasarim.py): önbellekteki çözümden, yoksa girdi.bina yeniden çözülür."""
+    yapi = _yapi_zorunlu()
+    if not hasattr(yapi, "eleman_tasarim"):
+        raise mo.MatrisHatasi("Bu kurulumdaki bina modülü kesit tahkiki içermiyor; uygulamayı yenileyin.")
+    tur = str(girdi.get("tur") or "").strip().lower()
+    if tur not in ("kiris", "kolon"):
+        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
+    if girdi.get("no") is None:
+        raise mo.MatrisHatasi("Eleman numarası (no) verilmedi: bina kirişinin ya da kolonunun no'su.")
+    ic = _bina_ic(yapi, girdi)
+    r = yapi.eleman_tasarim(ic, tur, girdi.get("no"), goster="yok")
+    return {"ad": r.ad, "bloklar": _bloklar(r.anlatim), "sonuc": _sonlu_sayilar(r.veri), "cozum_kimligi": ic.get("kimlik"),
+            "hata": None}
+
+
+def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_coz":
+        return _bina_coz_yaniti(girdi)
+    if islem == "bina_kombinasyon":
+        return _bina_kombinasyon_yaniti(girdi)
+    if islem == "bina_eleman_tasarim":
+        return _bina_eleman_tasarim_yaniti(girdi)
+    yapi = _yapi_zorunlu()
+    if islem == "bina_deprem":
+        return {"deprem": _sonlu_sayilar(yapi.deprem_onizleme(_bina_girdisi(girdi))), "hata": None}
+    if islem == "bina_kutuphane":
+        return dict(_sonlu_sayilar(yapi.kutuphane()), hata=None)
+    if islem == "bina_sablonlar":
+        return {"sablonlar": yapi.bina_sablonlar(), "hata": None}
+    if islem == "bina_sablon":
+        ad = str(girdi.get("ad", "")).strip()
+        return {"ad": ad, "bina": yapi.bina_sablon(ad), "hata": None}
+    veri = girdi.get("veri")
+    if not isinstance(veri, dict):
+        raise mo.MatrisHatasi("Yük yolu için önce binayı çözün; 'veri' alanı bina_coz yanıtının 'veri' sözlüğü olmalı.")
+    yol = yapi.yuk_yolu(_bina_girdisi(girdi), veri, girdi.get("hedef") or {})
+    return dict(_sonlu_sayilar(yol), hata=None)
+
+
 def calistir(istek_json: str) -> str:
     try:
         istek = json.loads(istek_json)
@@ -389,6 +555,8 @@ def calistir(istek_json: str) -> str:
             return json.dumps(_ders_calistir(istek.get("girdi") or {}), ensure_ascii=False)
         if islem in SE_ISLEMLER:
             return json.dumps(_se_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
+        if islem in BINA_ISLEMLER:
+            return json.dumps(_bina_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
         if islem not in ISLEMLER:
             raise mo.MatrisHatasi(f"Bilinmeyen işlem: {islem!r}")
         if islem == "yardim":

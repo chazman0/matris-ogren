@@ -48,6 +48,20 @@ def _se_modulu():
         return None
 
 
+def _yapi_modulu():
+    try:
+        return importlib.import_module("yapi")
+    except ImportError:
+        return None
+
+
+def _tasarim_modulu():
+    try:
+        return importlib.import_module("tasarim")
+    except ImportError:
+        return None
+
+
 def calistir(kod: str, ad_alani: dict):
     """Örnek kodunu çalıştırır ve son satırdaki ifadenin değerini döndürür (BICIM.md §5)."""
     agac = ast.parse(kod)
@@ -63,6 +77,16 @@ def _ad_alani(kod: str) -> dict:
         ad_alani["se"] = se
     elif re.search(r"\bse\.", kod):
         pytest.skip("sonlu_eleman.py henüz yok")
+    yapi = _yapi_modulu()
+    if yapi is not None:
+        ad_alani["yapi"] = yapi
+    elif re.search(r"\byapi\.", kod):
+        pytest.skip("yapi.py henüz yok")
+    tasarim = _tasarim_modulu()
+    if tasarim is not None:
+        ad_alani["tasarim"] = tasarim
+    elif re.search(r"\btasarim\.", kod):
+        pytest.skip("tasarim.py henüz yok")
     return ad_alani
 
 
@@ -103,7 +127,7 @@ KATALOG = [(ad, ad) for ad in dd.ETKILESIMLER] + [(ad, "alistirma:" + ad) for ad
 
 @pytest.mark.parametrize("ad,anahtar", KATALOG, ids=[k for _, k in KATALOG])
 def test_katalog_js_de_kayitli(ad, anahtar):
-    js = DOCS / f"etkilesim_{'se' if ad in dd.SE_GRUBU else 'matris'}.js"
+    js = DOCS / dd.etkilesim_dosyasi(ad)
     if not js.exists():
         pytest.skip(f"{js.name} henüz yok")
     metin = js.read_text(encoding="utf-8")
@@ -112,7 +136,9 @@ def test_katalog_js_de_kayitli(ad, anahtar):
 
 
 def test_se_grubu_katalogda():
-    assert dd.SE_GRUBU <= set(dd.ETKILESIMLER) | set(dd.ALISTIRMALAR)
+    katalog = set(dd.ETKILESIMLER) | set(dd.ALISTIRMALAR)
+    assert dd.SE_GRUBU <= katalog and dd.YAPI_GRUBU <= katalog
+    assert not (dd.SE_GRUBU & dd.YAPI_GRUBU)
 
 
 # ---------------------------------------------------------------- derleyicinin kendisi (yapay ders)
@@ -242,10 +268,17 @@ def test_derleyici_hatayi_yakalar(tmp_path, govde, beklenen):
         dd.derle(tmp_path)
 
 
-def test_numara_bolum_uyumu(tmp_path):
-    _yaz(tmp_path, "Metin\n", ad="11-deneme.md", bolum="matris")
+@pytest.mark.parametrize("ad,bolum", [("11-deneme.md", "matris"), ("21-deneme.md", "se"), ("05-deneme.md", "yapi")])
+def test_numara_bolum_uyumu(tmp_path, ad, bolum):
+    _yaz(tmp_path, "Metin\n", ad=ad, bolum=bolum)
     with pytest.raises(dd.DersHatasi, match="uyuşmuyor"):
         dd.derle(tmp_path)
+
+
+def test_yapi_bolumu_kabul(tmp_path):
+    _yaz(tmp_path, "Metin\n", ad="21-deneme.md", bolum="yapi")
+    (ders,) = dd.derle(tmp_path)
+    assert ders["bolum_adi"] == "Yapı analizi"
 
 
 def test_ayni_numara_iki_kez(tmp_path):
