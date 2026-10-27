@@ -832,7 +832,7 @@ def _radye_meta(ic):
     if not dug or not k0:
         return None
     q_em = ((tem.get("zemin") or {}).get("q_em")) if isinstance(tem, dict) else None
-    return tip, float(k0), [(int(a), float(x), float(y)) for a, x, y in dug], q_em
+    return tip, float(k0), [(int(r[0]), float(r[1]), float(r[2])) for r in dug], q_em      # temel.basinc_meta: (no, X, Y, hx, hy)
 
 
 def radye_alani(ic, durum, *, katsayilar=None):
