@@ -32,8 +32,9 @@ async function hazirla() {
   bildir("durum", { metin: "matris_ogren hazırlanıyor…", oran: 85 });
   // İsteğe bağlı modüller (eski kurulumlarda yok): alınamazsa motor onlarsız çalışır (ders örnekleri "se" adını,
   // Bina sayfası "bina_*" işlemlerini bulamaz; arayüz yerleşik şablon/kütüphaneyle çizilir). tasarim.py: kesit tahkikleri
-  // (TS 500, ÇYTHYE); rapor.py: statik hesap raporu (bina_rapor); temel.py: mütemadi ve radye temel (Winkler).
-  const ISTEGE_BAGLI = ["sonlu_eleman.py", "yapi_veri.py", "yapi.py", "tasarim.py", "rapor.py", "temel.py"];
+  // (TS 500, ÇYTHYE); rapor.py: statik hesap raporu (bina_rapor); temel.py: mütemadi ve radye temel (Winkler);
+  // tablolar.py: tablo editörü ve metraj (bina_tablolar).
+  const ISTEGE_BAGLI = ["sonlu_eleman.py", "yapi_veri.py", "yapi.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py"];
   const istege = function (ad) { return dosyaAl(ad).catch(function () { return null; }); };
   const dosyalar = await Promise.all([dosyaAl("matris_ogren.py"), dosyaAl("web_kopru.py")].concat(ISTEGE_BAGLI.map(istege)));
   pyodide.FS.writeFile("/home/pyodide/matris_ogren.py", dosyalar[0], { encoding: "utf8" });
