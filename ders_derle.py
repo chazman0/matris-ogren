@@ -54,6 +54,11 @@ ETKILESIMLER = {
     "kombinasyon-zarfi": "Kombinasyon ve zarf",
     "ruzgar-kat-kuvveti": "Rüzgâr kat kuvvetleri (TS 498:2021 md. 14)",
     "kat-kuvvetleri": "Eşdeğer deprem yükü: kat kuvvetleri",
+    "kiris-donati": "Kiriş donatısı: basınç bloğu ve A_s",
+    "kolon-nm": "Kolon N–M etkileşim eğrisi",
+    "celik-burkulma": "Çelik basınç elemanı: F_cr eğrisi",
+    "celik-yanal-burulma": "Yanal burulmalı burkulma: M_n – L_b",
+    "rijit-diyafram": "Rijit diyafram: öteleme, dönme ve kolon payları",
 }
 ALISTIRMALAR = {
     "boyut": "Boyut ve indis",
@@ -73,6 +78,8 @@ ALISTIRMALAR = {
     "doseme-esdeger": "Döşeme payı ve eşdeğer yük",
     "kombinasyon": "Kombinasyon ve zarf",
     "deprem-vt": "Taban kesme kuvveti V_tE",
+    "kiris-as": "Kiriş donatısı A_s",
+    "celik-mn": "Çelik kirişte M_n",
 }
 # SE_GRUBU docs/etkilesim_se.js, YAPI_GRUBU docs/etkilesim_yapi.js içinde, ötekiler docs/etkilesim_matris.js içinde
 # kaydedilir. Alıştırmalar kayıtta "alistirma:<ad>" adını taşır.
@@ -84,7 +91,8 @@ SE_GRUBU = frozenset({
 })
 YAPI_GRUBU = frozenset({
     "doseme-dagilimi", "kolon-birikimi", "deprem-spektrumu", "kombinasyon-zarfi", "ruzgar-kat-kuvveti", "kat-kuvvetleri",
-    "doseme-esdeger", "kombinasyon", "deprem-vt",
+    "kiris-donati", "kolon-nm", "celik-burkulma", "celik-yanal-burulma", "rijit-diyafram",
+    "doseme-esdeger", "kombinasyon", "deprem-vt", "kiris-as", "celik-mn",
 })
 
 
@@ -207,7 +215,7 @@ def _kod_denetle(kod: str, yer: str) -> None:
         raise DersHatasi(f"{yer}: kodun son satırı Sonuc döndüren bir ifade olmalı (ör. mo.carp(A, B))")
     for d in ast.walk(agac):
         if isinstance(d, (ast.Import, ast.ImportFrom)):
-            raise DersHatasi(f"{yer}: kodda import yazılmaz; mo, sp, se ve yapi hazır")
+            raise DersHatasi(f"{yer}: kodda import yazılmaz; mo, sp, se, yapi ve tasarim hazır")
         if isinstance(d, ast.Attribute) and d.attr.startswith("__"):
             raise DersHatasi(f"{yer}: kodda çift alt çizgili öznitelik kullanılmaz: {d.attr}")
         if isinstance(d, ast.Name) and (d.id in _YASAK_ADLAR or d.id.startswith("__")):

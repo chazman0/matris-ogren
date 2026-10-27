@@ -15,7 +15,17 @@
  *   ruzgar-kat-kuvveti TS 498:2021 md. 14: q(z) Çizelge 4 basamakları, F_i = C·q(z_i)·B·h_pay, kat kesmesi, devrilme momenti
  *   kat-kuvvetleri   TBDY 2018 md. 4.7: T_pA, S_aR, V_tE ≥ 0,04·I·S_DS·W_t, ΔF_NE, ters üçgen F_iE (m_i·H_i), kat kesmesi V_i
  *
- * ALIŞTIRMALAR (BICIM.md 7): alistirma:doseme-esdeger, alistirma:kombinasyon, alistirma:deprem-vt
+ *   kiris-donati     TS 500 kiriş: M_d, b, h, beton → eşdeğer blok a, tarafsız eksen c, A_s (tek / çift donatı), ρ_min, ρ_max,
+ *                    çubuk önerisi (tek sıra), M_r ve birim uzama dağılımı (tasarim.kiris_egilme ile aynı kurallar)
+ *   kolon-nm         TS 500 kolon N–M etkileşim eğrisi (b, h, ρ, beton), sürüklenebilir (N, M) noktası, e_min, radyal D/C,
+ *                    0,9 f_cd A_c ve TBDY 0,40 f_ck A_c çizgileri, dengeli nokta
+ *   celik-burkulma   ÇYTHYE Bölüm 8: KL/i ve F_y → F_cr eğrisi (Denk. 8.2/8.3), Euler F_e, 4,71√(E/F_y) geçişi, P_c
+ *   celik-yanal-burulma ÇYTHYE 9.2: profil, F_y, C_b, L_b → M_n üç bölge (L_p, L_r), başlık yerel burkulması (9.9)
+ *   rijit-diyafram   dört kolonlu kat: k_i, F, dışmerkezlik → K = Σ k_i T_iᵀ T_i, efendi düğüm ötelemesi ve dönmesi,
+ *                    rijitlik merkezi, kolon kesme payları
+ *
+ * ALIŞTIRMALAR (BICIM.md 7): alistirma:doseme-esdeger, alistirma:kombinasyon, alistirma:deprem-vt, alistirma:kiris-as,
+ *   alistirma:celik-mn
  *
  * Birimler: kN, m, kN/m, kN/m². Döşeme yükü w kN/m²; kısa kenar l_k, uzun kenar l_u, m = l_u / l_k.
  */
@@ -439,7 +449,7 @@
     const kap = kur(kok);
     let SS = sayiP(p.SS, 1.0, 0.1, 2.5), S1 = sayiP(p.S1, 0.3, 0.02, 1.0), Tp = sayiP(p.Tp, 0.4, 0.05, 4), R = sayiP(p.R, 8, 1, 8), D = sayiP(p.D, 3, 1, 3);
     let zemin = TBDY_FS[p.zemin] ? p.zemin : "ZC", I = [1.0, 1.2, 1.5].indexOf(Number(p.I)) >= 0 ? Number(p.I) : 1.0;
-    const W = 520, H = 320, PL = 52, PR = 16, PU = 22, PA = 40, TMAX = 3;
+    const W = 520, H = 320, PL = 52, PR = 16, PU = 22, PA = 40, TMAX0 = 3;
     const sd = sv(W, H, "TBDY 2018 yatay elastik tasarım spektrumu S_ae(T) ve azaltılmış spektrum S_aR(T)");
     const dyn = svg("g");
     sd.appendChild(dyn);
@@ -450,7 +460,7 @@
     function ciz() {
       const s = spektrum(SS, S1, zemin, R, I, D);
       const Smax = Math.max(s.SDS, 0.2) * 1.12;
-      const X = T => PL + T / TMAX * (W - PL - PR), Y = v => H - PA - v / Smax * (H - PA - PU);
+      const TMAX = Math.max(TMAX0, Math.ceil((Tp + 0.3) * 2) / 2), X = T => PL + T / TMAX * (W - PL - PR), Y = v => H - PA - v / Smax * (H - PA - PU);
       bos(dyn);
       // eksenler ve ızgara
       dyn.appendChild(cizgi(PL, Y(0), W - PR, Y(0), { renk: "metin", kal: 1.4 }));
@@ -476,14 +486,16 @@
       dyn.appendChild(cizgi(X(Tp), Y(0), X(Tp), Y(sT), { renk: "sil", kal: 1.2, kesik: true }));
       dyn.appendChild(svg("circle", { cx: r2(X(Tp)), cy: r2(Y(sT)), r: 5, fill: renk("a"), stroke: renk("kart"), "stroke-width": 1.5 }));
       dyn.appendChild(svg("circle", { cx: r2(X(Tp)), cy: r2(Y(rT)), r: 5, fill: renk("b"), stroke: renk("kart"), "stroke-width": 1.5 }));
-      const sag = Tp > 2.1;
+      const sag = X(Tp) > W - 170;
       dyn.appendChild(yaziH(X(Tp) + (sag ? -8 : 8), Y(sT) - 10, "S_ae(T_p) = " + f(sT, 3), { boyut: 11, renk: "a", kalin: true, hiza: sag ? "sag" : "sol" }));
       dyn.appendChild(yaziH(X(Tp) + (sag ? -10 : 10), Math.min(Y(rT) + 22, Y(0) - 8), "S_aR(T_p) = " + f(rT, 3), { boyut: 11, renk: "b", kalin: true, hiza: sag ? "sag" : "sol" }));
       // gösterge
-      dyn.appendChild(cizgi(W - PR - 150, PU + 30, W - PR - 126, PU + 30, { renk: "a", kal: 2.4 }));
-      dyn.appendChild(yaziH(W - PR - 120, PU + 30, "S_ae(T): elastik (Denk. 2.2)", { boyut: 10.5, hiza: "sol" }));
-      dyn.appendChild(cizgi(W - PR - 150, PU + 46, W - PR - 126, PU + 46, { renk: "b", kal: 2.4 }));
-      dyn.appendChild(yaziH(W - PR - 120, PU + 46, "S_aR(T) = S_ae / R_a(T) (Denk. 4.8)", { boyut: 10.5, hiza: "sol" }));
+      // gösterge: yazılar sağa hizalı, çizgi örneği solunda; dar ekranda viewBox dışına taşmaz
+      const GX = W - PR - 4;
+      dyn.appendChild(yaziH(GX, PU + 30, "S_ae(T): elastik (Denk. 2.2)", { boyut: 10.5, hiza: "sag" }));
+      dyn.appendChild(cizgi(GX - 186, PU + 30, GX - 162, PU + 30, { renk: "a", kal: 2.4 }));
+      dyn.appendChild(yaziH(GX, PU + 46, "S_aR = S_ae / R_a (Denk. 4.8)", { boyut: 10.5, hiza: "sag" }));
+      dyn.appendChild(cizgi(GX - 186, PU + 46, GX - 162, PU + 46, { renk: "b", kal: 2.4 }));
       // formüller
       const bolge = Tp <= s.TA ? "0 \\le T_p \\le T_A" : Tp <= s.TB ? "T_A \\le T_p \\le T_B" : Tp <= TBDY_TL ? "T_B \\le T_p \\le T_L" : "T_p \\ge T_L";
       const saeTex = Tp <= s.TA ? "\\big(0.4+0.6\\tfrac{T_p}{T_A}\\big)S_{DS}" : Tp <= s.TB ? "S_{DS}" : Tp <= TBDY_TL ? "\\tfrac{S_{D1}}{T_p}" : "\\tfrac{S_{D1}T_L}{T_p^2}";
@@ -1193,4 +1205,817 @@
       };
     });
   }, { baslik: "Taban kesme kuvveti V_tE", aciklama: "S_DS, S_D1, T_p, R, D, I ve m_t ile V_tE (1: T_p > T_B, 2: platoda, 3: karışık ve ΔF_NE).", varsayilan: { zorluk: 2 } });
+  /* ================================================================== TS 500 betonarme kesit yardımcıları */
+
+  const surukle = E.surukle;
+
+  /* TS 500 Çizelge 3.2 (f_ck, f_ctk, MPa) ve Çizelge 7.1 (k_1); γ_mc = 1,5, γ_ms = 1,15 (md. 6.2.5); B420C: f_yk = 420 MPa.
+     Hesaplar tasarim.py ile aynı kurallardır (kiris_egilme, _cubuk_oner, _kiris_Mr, kolon_etkilesim). */
+  const TS_BETON = {
+    C20: { fck: 20, fctk: 1.6, k1: 0.85 }, C25: { fck: 25, fctk: 1.8, k1: 0.85 }, C30: { fck: 30, fctk: 1.9, k1: 0.82 },
+    C35: { fck: 35, fctk: 2.1, k1: 0.79 }, C40: { fck: 40, fctk: 2.2, k1: 0.76 }, C45: { fck: 45, fctk: 2.3, k1: 0.73 },
+    C50: { fck: 50, fctk: 2.5, k1: 0.70 }
+  };
+  const TS_FYD = 420 / 1.15, TS_ES = 200000, TS_ECU = 0.003, TS_EYD = TS_FYD / TS_ES;
+  const TS_CAPLAR = [12, 14, 16, 18, 20, 22, 24, 26];
+  function tsBeton(ad) {
+    const k = TS_BETON[ad] || TS_BETON.C30;
+    return { ad: TS_BETON[ad] ? ad : "C30", fck: k.fck, fcd: k.fck / 1.5, fctd: k.fctk / 1.5, k1: k.k1 };
+  }
+  const cubukA = c => Math.PI * c * c / 4;
+  const cubukMetin = l => l.filter(q => q[0] > 0).map(q => q[0] + "Φ" + q[1]).join(" + ");
+
+  /* As (mm²) için çubuk önerisi: tek çap ya da 2Φbüyük + kΦküçük, tek sıra sığma denetimi (tasarim._cubuk_oner). */
+  function cubukOner(As, b, pas) {
+    const ad = [];
+    TS_CAPLAR.forEach(c => { const n = Math.max(2, Math.ceil(As / cubukA(c) - 1e-9)); ad.push([[[n, c]], n * cubukA(c)]); });
+    TS_CAPLAR.forEach((bu, i) => {
+      TS_CAPLAR.slice(0, i).filter(c => c >= bu - 6).forEach(ku => {
+        for (let k = 1; k <= 6; k++) { const a = 2 * cubukA(bu) + k * cubukA(ku); if (a >= As - 1e-9) { ad.push([[[2, bu], [k, ku]], a]); break; } }
+      });
+    });
+    const bilgi = ad.filter(x => x[1] >= As - 1e-9).map(x => {
+      const n = x[0].reduce((s, q) => s + q[0], 0), cm = Math.max.apply(null, x[0].map(q => q[1]));
+      const net = n > 1 ? (b - 2 * pas) / (n - 1) - cm : b - 2 * pas, ger = Math.max(20, cm);
+      return { cubuklar: x[0], metin: cubukMetin(x[0]), As: x[1], adet: n, net, ger, sigar: net >= ger - 1e-9 };
+    });
+    const sigan = bilgi.filter(x => x.sigar), havuz = sigan.length ? sigan : bilgi;
+    const enaz = Math.min.apply(null, havuz.map(x => x.As));
+    const yakin = havuz.filter(x => x.As <= enaz * 1.02 + 1e-9);
+    yakin.sort((p, q) => p.adet - q.adet || p.cubuklar.length - q.cubuklar.length || p.As - q.As);
+    return yakin[0];
+  }
+
+  /* Şekil değiştirme uygunluğuyla M_r (N·mm): c ikiye bölmeyle (tasarim._kiris_Mr). */
+  function kirisMr(As, As2, b, d, d2, bt) {
+    const kuv = c => {
+      const a = bt.k1 * c, Cc = 0.85 * bt.fcd * b * a;
+      const es2 = TS_ECU * (c - d2) / c, ss2 = kenet(TS_ES * es2, -TS_FYD, TS_FYD);
+      const es = TS_ECU * (d - c) / c, ss = kenet(TS_ES * es, -TS_FYD, TS_FYD);
+      return { a, Cc, Cs: As2 * ss2, T: As * ss, es, ss };
+    };
+    let lo = 1e-6, hi = Math.max(d, 1);
+    const fn = c => { const k = kuv(c); return k.Cc + k.Cs - k.T; };
+    while (fn(hi) < 0) hi *= 2;
+    for (let i = 0; i < 100; i++) { const o = 0.5 * (lo + hi); if (fn(o) > 0) hi = o; else lo = o; }
+    const c = 0.5 * (lo + hi), k = kuv(c);
+    return { Mr: k.Cc * (d - k.a / 2) + k.Cs * (d - d2), c, a: k.a, es: k.es, ss: k.ss };
+  }
+
+  /* TS 500 dikdörtgen kiriş eğilme tasarımı (Md kN·m, b, h, pas mm). */
+  function kirisHesap(Md, b, h, pas, bt) {
+    const d = h - pas, d2 = pas, M = Math.abs(Md) * 1e6, R = 0.85 * bt.fcd * b;
+    const rb = 0.85 * bt.k1 * bt.fcd / TS_FYD * (TS_ECU * TS_ES) / (TS_ECU * TS_ES + TS_FYD);
+    const r085 = 0.85 * rb, rmin = 0.8 * bt.fctd / TS_FYD, rlim = Math.min(r085, 0.02);
+    const AsLim = rlim * b * d, aLim = AsLim * TS_FYD / R, MLim = AsLim * TS_FYD * (d - aLim / 2);
+    const o = { d, d2, M, R, rb, r085, rmin, rlim, AsLim, aLim, MLim, tek: M <= MLim * (1 + 1e-12), As2: 0, sig2: null, kucuk: false };
+    if (o.tek) {
+      o.a = d - Math.sqrt(Math.max(d * d - 2 * M / R, 0));
+      o.As = R * o.a / TS_FYD;
+      o.c = o.a / bt.k1;
+    } else {
+      o.a = aLim; o.c = aLim / bt.k1;
+      const es2 = TS_ECU * (o.c - d2) / o.c;
+      o.sig2 = Math.min(TS_ES * es2, TS_FYD); o.akar = TS_ES * es2 >= TS_FYD;
+      if (o.sig2 <= 0) { o.kucuk = true; o.As = Infinity; o.As2 = Infinity; }
+      else { o.As2 = (M - MLim) / (o.sig2 * (d - d2)); o.As = AsLim + o.As2 * o.sig2 / TS_FYD; }
+    }
+    o.minBelirledi = !o.kucuk && o.As < rmin * b * d;
+    o.AsG = o.kucuk ? Infinity : Math.max(o.As, rmin * b * d);
+    o.rhoG = o.AsG / (b * d);
+    if (o.rhoG > 0.02 + 1e-12) o.kucuk = true;
+    if (!o.kucuk) {
+      o.oneri = cubukOner(o.AsG, b, pas);
+      o.oneriUst = o.As2 > 0 ? cubukOner(o.As2, b, d2) : null;
+      const r = kirisMr(o.oneri.As, o.oneriUst ? o.oneriUst.As : 0, b, d, d2, bt);
+      o.Mr = r.Mr; o.cr = r.c; o.ar = r.a; o.esr = r.es;
+    }
+    return o;
+  }
+
+  /* Kolon çubukları (dört yüze dağıtılmış n çubuk; tasarim._kolon_cubuklari) ve x ekseni etrafında eğilme katmanları. */
+  function kolonKatmanlar(bx, by, As, pas, n) {
+    const xa = bx / 2 - pas, ya = by / 2 - pas, ek = (n - 4) / 2, eb = Math.round(ek * bx / (bx + by)), eh = ek - eb;
+    const nk = [[-xa, ya], [xa, ya], [-xa, -ya], [xa, -ya]];
+    for (let i = 1; i <= eb; i++) { const x = -xa + 2 * xa * i / (eb + 1); nk.push([x, ya], [x, -ya]); }
+    for (let i = 1; i <= eh; i++) { const y = -ya + 2 * ya * i / (eh + 1); nk.push([-xa, y], [xa, y]); }
+    const A1 = As / nk.length, kat = new Map();
+    nk.forEach(q => { const dd = Math.round((by / 2 - q[1]) * 1e6) / 1e6; const k = kat.get(dd) || { dd, A: 0, n: 0 }; k.A += A1; k.n++; kat.set(dd, k); });
+    return { cubuklar: nk, katman: Array.from(kat.values()).sort((p, q) => p.dd - q.dd), cap: Math.sqrt(4 * A1 / Math.PI) };
+  }
+  function nmNokta(c, gen, yuk, K, bt) {
+    const a = Math.min(bt.k1 * c, yuk), Cc = 0.85 * bt.fcd * gen * a;
+    let N = Cc, M = Cc * (yuk / 2 - a / 2);
+    K.katman.forEach(k => {
+      const eps = TS_ECU * (c - k.dd) / c, sig = kenet(TS_ES * eps, -TS_FYD, TS_FYD);
+      const oran = kenet((a - (k.dd - K.cap / 2)) / K.cap, 0, 1);
+      const F = k.A * sig - oran * 0.85 * bt.fcd * k.A;
+      N += F; M += F * (yuk / 2 - k.dd);
+    });
+    return { N, M, a };
+  }
+  /* N–M eğrisi (N kN basınç +, M kN·m), uç noktalar ve dengeli nokta (tasarim._egri). */
+  function kolonEgri(b, h, As, pas, bt) {
+    const K = kolonKatmanlar(b, h, As, pas, 8), gen = b, yuk = h;
+    const N0 = 0.85 * bt.fcd * (gen * yuk - As) + As * TS_FYD, Nt = -As * TS_FYD;
+    const dmax = K.katman[K.katman.length - 1].dd, dmin = K.katman[0].dd;
+    const cb = TS_ECU * dmax / (TS_ECU + TS_EYD);
+    let cDolu = Math.max(yuk / bt.k1, TS_ECU * dmax / (TS_ECU - TS_EYD));
+    cDolu = Math.max(cDolu, 0.6 * yuk * 1.01, dmin);
+    const cs = [];
+    for (let i = 0; i < 30; i++) cs.push(yuk * 0.01 * Math.pow(60, i / 29));
+    for (let i = 1; i < 31; i++) cs.push(0.6 * yuk + (cDolu - 0.6 * yuk) * i / 31);
+    cs.push(cb);
+    cs.sort((p, q) => p - q);
+    const nok = [{ N: Nt / 1e3, M: 0 }];
+    cs.forEach(c => { const q = nmNokta(c, gen, yuk, K, bt); if (q.N > Nt + 1e-6 && q.N < N0 - 1e-6) nok.push({ N: q.N / 1e3, M: q.M / 1e6 }); });
+    nok.push({ N: N0 / 1e3, M: 0 });
+    nok.sort((p, q) => p.N - q.N);
+    const db = nmNokta(cb, gen, yuk, K, bt);
+    return { nok, N0: N0 / 1e3, Nt: Nt / 1e3, denge: { N: db.N / 1e3, M: db.M / 1e6, c: cb }, K };
+  }
+  /* Orijinden (N, M) yönündeki ışının eğriyi kestiği nokta: D/C = |OP| / |OQ| (tasarim._isin_kesisim). */
+  function isinKesisim(nok, Nd, Md) {
+    Md = Math.abs(Md);
+    if (Math.abs(Nd) < 1e-12 && Md < 1e-12) return { dc: 0, N: null, M: null };
+    for (let i = 0; i < nok.length - 1; i++) {
+      const n1 = nok[i].N, m1 = nok[i].M, dx = nok[i + 1].N - n1, dy = nok[i + 1].M - m1;
+      const D = Nd * (-dy) + dx * Md;
+      if (Math.abs(D) < 1e-15) continue;
+      const t = (n1 * (-dy) + dx * m1) / D, u = (Nd * m1 - Md * n1) / D;
+      if (u >= -1e-9 && u <= 1 + 1e-9 && t > 0) return { dc: 1 / t, N: n1 + u * dx, M: m1 + u * dy };
+    }
+    return { dc: 99, N: null, M: null };
+  }
+
+  /* ================================================================== kiris-donati */
+
+  E.kaydet("kiris-donati", function (kok, p) {
+    const kap = kur(kok);
+    let Md = sayiP(p.Md, 125.59, 5, 700), b = sayiP(p.b, 0.25, 0.2, 0.6), h = sayiP(p.h, 0.55, 0.3, 0.9);
+    let sinif = TS_BETON[p.beton] ? p.beton : "C30";
+    const PAS = 50, W = 520, H = 330;
+    const sd = sv(W, H, "Kiriş kesiti: eşdeğer basınç bloğu, tarafsız eksen, donatı ve birim uzama dağılımı");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sM, sB, sH, secB;
+
+    function ciz() {
+      const bt = tsBeton(sinif), bmm = b * 1000, hmm = h * 1000;
+      const o = kirisHesap(Md, bmm, hmm, PAS, bt);
+      bos(dyn);
+      const s = 250 / 900, X0 = 34, Y0 = 34, bw = bmm * s, hh = hmm * s;
+      // kesit, blok, tarafsız eksen
+      dyn.appendChild(yaziH(X0 + bw / 2, 16, "kesit " + f(bmm, 3) + "×" + f(hmm, 3) + " mm", { boyut: 10.5, renk: "soluk" }));
+      dyn.appendChild(dikdortgen(X0, Y0, bw, hh, { dolgu: "cizgi", renk: "metin", kal: 1.6 }));
+      const aG = o.kucuk ? o.aLim : (o.ar || o.a), cG = o.kucuk ? o.c : (o.cr || o.c);
+      dyn.appendChild(dikdortgen(X0, Y0, bw, Math.min(aG, hmm) * s, { dolgu: "b", renk: "b", kal: 1.4 }));
+      dyn.appendChild(cizgi(X0 - 8, Y0 + cG * s, X0 + bw + 8, Y0 + cG * s, { renk: "soluk", kal: 1.2, kesik: true }));
+      dyn.appendChild(yaziH(X0 + bw + 10, Y0 + aG * s / 2, "a = " + f(aG, 3), { boyut: 10, renk: "b", hiza: "sol" }));
+      dyn.appendChild(yaziH(X0 + bw + 10, Y0 + cG * s + 10, "c = " + f(cG, 3), { boyut: 10, renk: "soluk", hiza: "sol" }));
+      // çubuklar
+      const cubukCiz = (on, y) => {
+        if (!on) return;
+        const l = []; on.cubuklar.forEach(q => { for (let i = 0; i < q[0]; i++) l.push(q[1]); });
+        l.sort((p2, q2) => q2 - p2);
+        const sira = [];
+        l.forEach((c, i) => { if (i % 2 === 0) sira.push(c); else sira.unshift(c); });
+        const n = sira.length, x1 = X0 + PAS * s, x2 = X0 + bw - PAS * s;
+        sira.forEach((c, i) => dyn.appendChild(svg("circle", { cx: r2(n > 1 ? x1 + (x2 - x1) * i / (n - 1) : (x1 + x2) / 2), cy: r2(y), r: Math.max(2.4, c * s / 2 * 1.4), fill: renk("a") })));
+      };
+      if (!o.kucuk) { cubukCiz(o.oneri, Y0 + o.d * s); cubukCiz(o.oneriUst, Y0 + PAS * s); }
+      dyn.appendChild(cizgi(X0 - 14, Y0, X0 - 14, Y0 + o.d * s, { renk: "soluk", kal: 1 }));
+      dyn.appendChild(yaziH(X0 - 18, Y0 + o.d * s / 2, "d", { boyut: 10.5, renk: "soluk", hiza: "sag" }));
+      // birim uzama dağılımı
+      const SX = 232, SW = 70, ems = o.kucuk ? 0.01 : Math.max(o.esr || TS_EYD, TS_EYD) * 1.05, ex = e => SX + e / Math.max(ems, TS_ECU) * SW;
+      dyn.appendChild(cizgi(SX, Y0, SX, Y0 + hh, { renk: "soluk", kal: 1 }));
+      dyn.appendChild(yaziH(SX, 16, "birim uzama", { boyut: 10.5, renk: "soluk" }));
+      if (!o.kucuk) {
+        const es = o.esr, yN = Y0 + o.cr * s, yD = Y0 + o.d * s;
+        dyn.appendChild(yol("M" + nokta([[SX - TS_ECU / Math.max(ems, TS_ECU) * SW, Y0], [SX, yN], [ex(es), yD], [SX, yD]]), { renk: "c", dolgu: "c", kal: 1.6 }));
+        dyn.appendChild(cizgi(SX - TS_ECU / Math.max(ems, TS_ECU) * SW, Y0, SX, Y0, { renk: "b", kal: 2 }));
+        dyn.appendChild(yaziH(SX - 4, Y0 - 6, "ε_cu = 0.003", { boyut: 9.5, renk: "b", hiza: "sag" }));
+        dyn.appendChild(cizgi(ex(TS_EYD), yD - 14, ex(TS_EYD), yD + 6, { renk: "sil", kal: 1.2, kesik: true }));
+        dyn.appendChild(yaziH(ex(es) + 4, yD + 14, "ε_s = " + f(es, 3), { boyut: 9.5, renk: "c", hiza: "sol" }));
+        dyn.appendChild(yaziH(ex(TS_EYD), yD - 18, "ε_yd", { boyut: 9.5, renk: "sil" }));
+      }
+      // kuvvet çifti
+      const FX = 360;
+      if (!o.kucuk) {
+        const yC = Y0 + o.ar * s / 2, yT = Y0 + o.d * s;
+        dyn.appendChild(ok(FX + 50, yC, FX, yC, { renk: "b", kalinlik: 2.2, bas: 6 }));
+        dyn.appendChild(ok(FX, yT, FX + 50, yT, { renk: "a", kalinlik: 2.2, bas: 6 }));
+        dyn.appendChild(yaziH(FX + 56, yC, "C = 0.85 f_cd b a", { boyut: 9.5, renk: "b", hiza: "sol" }));
+        dyn.appendChild(yaziH(FX + 56, yT, "T = A_s f_yd", { boyut: 9.5, renk: "a", hiza: "sol" }));
+        dyn.appendChild(cizgi(FX - 6, yC, FX - 6, yT, { renk: "soluk", kal: 1 }));
+        dyn.appendChild(yaziH(FX - 10, (yC + yT) / 2, "z = d − a/2", { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+      }
+      // ρ ölçeği
+      const RY = H - 30, RX0 = 40, RX1 = W - 30, RM = 0.03, RX = r => RX0 + Math.min(r, RM) / RM * (RX1 - RX0);
+      dyn.appendChild(dikdortgen(RX(o.rmin), RY - 6, RX(o.rlim) - RX(o.rmin), 12, { dolgu: "c", renk: null }));
+      dyn.appendChild(cizgi(RX0, RY, RX1, RY, { renk: "soluk", kal: 1.2 }));
+      [0, 0.01, 0.02, 0.03].forEach(r => { dyn.appendChild(cizgi(RX(r), RY - 3, RX(r), RY + 3, { renk: "soluk", kal: 1 })); dyn.appendChild(yaziH(RX(r), RY + 16, f(r, 2), { boyut: 9.5, renk: "soluk" })); });
+      dyn.appendChild(yaziH(RX(o.rmin), RY - 12, "ρ_min", { boyut: 9.5, renk: "sil" }));
+      dyn.appendChild(yaziH(RX(o.rlim), RY - 12, o.rlim < 0.02 ? "0.85ρ_b" : "0.02", { boyut: 9.5, renk: "sil" }));
+      const rG = o.kucuk ? Math.min(o.rhoG, RM) : o.oneri.As / (bmm * o.d);
+      dyn.appendChild(svg("circle", { cx: r2(RX(rG)), cy: RY, r: 5.5, fill: renk(o.kucuk ? "sil" : "c"), stroke: renk("kart"), "stroke-width": 1.5 }));
+      dyn.appendChild(yaziH(RX0, RY - 24, "donatı oranı ρ = A_s / (b d)", { boyut: 9.5, renk: "soluk", hiza: "sol" }));
+      if (o.kucuk) dyn.appendChild(yaziH(X0 + bw / 2, Y0 + hh / 2, "kesit büyüt", { boyut: 13, renk: "sil", kalin: true }));
+
+      const Rt = ft(o.R / 1000);
+      let tex = "\\begin{aligned}" +
+        "f_{cd}&=\\tfrac{" + ft(bt.fck) + "}{1.5}=" + ft(bt.fcd) + ",\\quad f_{ctd}=\\tfrac{f_{ctk}}{1.5}=" + ft(bt.fctd) + ",\\quad f_{yd}=\\tfrac{420}{1.15}=" + ft(TS_FYD) + "\\ \\text{MPa},\\quad k_1=" + ft(bt.k1) + "\\\\" +
+        "\\rho_b&=0.85\\,k_1\\tfrac{f_{cd}}{f_{yd}}\\tfrac{600}{600+f_{yd}}=" + ft(o.rb) + ",\\quad \\rho_{min}=0.8\\tfrac{f_{ctd}}{f_{yd}}=" + ft(o.rmin) + ",\\quad \\rho_{max}=\\min(0.85\\rho_b;\\,0.02)=" + ft(o.rlim) + "\\\\" +
+        "M_{lim}&=A_{s,lim}f_{yd}\\big(d-\\tfrac{a_{lim}}{2}\\big)=" + ft(o.MLim / 1e6) + "\\ \\text{kN·m}\\quad(A_{s,lim}=\\rho_{max}bd=" + ft(o.AsLim) + "\\ \\text{mm}^2)\\\\";
+      if (o.tek) {
+        tex += "\\kutub{a}&=d-\\sqrt{d^2-\\tfrac{2M_d}{0.85f_{cd}b}}=" + ft(o.d) + "-\\sqrt{" + ft(o.d) + "^2-\\tfrac{2\\cdot" + ft(Md) + "\\cdot10^6}{" + Rt + "\\cdot10^3}}=" + ft(o.a) + "\\ \\text{mm}\\\\" +
+          "\\kutua{A_s}&=\\tfrac{0.85f_{cd}\\,b\\,a}{f_{yd}}=" + ft(o.As) + "\\ \\text{mm}^2" + (o.minBelirledi ? "<\\rho_{min}bd=" + ft(o.AsG) + "\\Rightarrow\\ \\ksil{\\rho_{min}\\ \\text{belirler}}" : "") + "\\\\";
+      } else if (o.sig2 > 0) {
+        tex += "M_d&>M_{lim}:\\ \\text{çift donatı},\\quad c=\\tfrac{a_{lim}}{k_1}=" + ft(o.c) + ",\\ \\sigma_s'=\\min\\big(E_s\\,0.003\\tfrac{c-d'}{c},f_{yd}\\big)=" + ft(o.sig2) + "\\\\" +
+          "\\kutub{A_s'}&=\\tfrac{M_d-M_{lim}}{\\sigma_s'(d-d')}=" + ft(o.As2) + ",\\quad \\kutua{A_s}=A_{s,lim}+A_s'\\tfrac{\\sigma_s'}{f_{yd}}=" + ft(o.As) + "\\ \\text{mm}^2\\\\";
+      }
+      if (!o.kucuk) {
+        tex += "\\text{öneri}&:\\ " + o.oneri.metin.replace(/Φ/g, "\\phi") + "=" + ft(o.oneri.As) + "\\ \\text{mm}^2" + (o.oneriUst ? ",\\ \\text{üst } " + o.oneriUst.metin.replace(/Φ/g, "\\phi") : "") +
+          ",\\qquad \\kutuc{M_r}=" + ft(o.Mr / 1e6) + "\\ \\text{kN·m},\\quad \\tfrac{M_d}{M_r}=" + ft(Md / (o.Mr / 1e6)) + "\\end{aligned}";
+      } else {
+        tex += "\\ksil{\\rho}&\\ksil{=" + (isFinite(o.rhoG) ? ft(o.rhoG) : "\\infty") + ">0.02}\\ \\Rightarrow\\ \\text{kesit büyütülmeli (TS 500 Denk. 7.5)}\\end{aligned}";
+      }
+      texYaz(formul, tex);
+      bilgi.textContent = o.kucuk ? "Gerekli donatı ρ ≤ 0,02 sınırını aşıyor: kesiti (özellikle h'yi) büyüt. Çift donatı ancak ρ − ρ′ ≤ 0,85ρ_b ile ρ ≤ 0,02 arasında kalan bölgede işe yarar." :
+        (o.tek ? (o.minBelirledi ? "Moment küçük: hesap donatısı en az donatıdan az, ρ_min = 0,8 f_ctd / f_yd belirledi (gevrek kırılmayı önler). " : "Tek donatılı kesit yeterli (M_d ≤ M_lim). ") :
+          "M_d > M_lim: basınç donatısı A_s′ fazla momenti taşır; basınç donatısı " + (o.akar ? "akıyor (σ_s′ = f_yd). " : "akmıyor (σ_s′ < f_yd). ")) +
+        (o.kucuk ? "" : "ε_s = " + f(o.esr, 3) + (o.esr >= TS_EYD ? " ≥ ε_yd: çelik akıyor, sünek kırılma. " : " < ε_yd: çelik akmıyor! ") +
+          (o.oneri.sigar ? "Öneri tek sıraya sığıyor (net aralık " + f(o.oneri.net, 3) + " mm ≥ " + f(o.oneri.ger, 3) + " mm)." : "Öneri tek sıraya sığmıyor (net aralık " + f(o.oneri.net, 3) + " mm): iki sıra ya da daha geniş kesit."));
+    }
+
+    sM = sl("tasarım momenti $M_d$", 5, 700, 0.01, Md, "kN·m", v => { Md = v; ciz(); });
+    sB = sl("genişlik $b$", 0.2, 0.6, 0.05, b, "m", v => { b = v; ciz(); });
+    sH = sl("yükseklik $h$", 0.3, 0.9, 0.05, h, "m", v => { h = v; ciz(); });
+    secB = secici(Object.keys(TS_BETON).map(k => ({ deger: k, etiket: k })), sinif, v => { sinif = v; ciz(); });
+    function ayarla(m, bb, hh, sn) {
+      Md = m; b = bb; h = hh; sinif = sn;
+      sM.ayarla(Md, true); sB.ayarla(b, true); sH.ayarla(h, true); secB.ayarla(sinif, true);
+      ciz();
+    }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("Ders binası kirişi", () => ayarla(125.59, 0.25, 0.55, "C30"), { baslik: "betonarme-3kat-3x3, K-A2→B2/k1 mesnet momenti" }),
+      dugme("Az moment: ρ_min", () => ayarla(25, 0.25, 0.55, "C30"), { baslik: "En az donatı belirler" }),
+      dugme("Çift donatı", () => ayarla(480, 0.3, 0.6, "C25"), { baslik: "M_d > M_lim: basınç donatısı gerekir" }),
+      dugme("Kesit yetmez", () => ayarla(420, 0.25, 0.55, "C30"), { baslik: "ρ > 0,02" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sM.kok, sB.kok, sH.kok, el("div", { class: "ky-satir" }, secB.kok)));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "TS 500 md. 7.1: düzlem kesit, ε_cu = 0,003, beton çekmesi ihmal, blok 0,85 f_cd × a = k₁c (Çizelge 7.1); B420C, d′ = 50 mm (paspayı + etriye + çubuk yarıçapı). " +
+      "Sınırlar Denk. 7.3–7.5; ρ_b md. 7.1 varsayımlarından türetilir. Çubuk önerisi tek sıra, net aralık ≥ max(20 mm, Φ); M_r önerilen donatıyla şekil değiştirme uygunluğundan bulunur."));
+    ciz();
+  }, {
+    baslik: "Kiriş donatısı: basınç bloğu ve A_s",
+    aciklama: "M_d, b, h ve beton sınıfını değiştir; blok derinliği a, gerekli A_s, ρ sınırları, çubuk önerisi ve M_r canlı güncellenir.",
+    varsayilan: { Md: 125.59, b: 0.25, h: 0.55, beton: "C30" }
+  });
+
+  /* ================================================================== kolon-nm */
+
+  E.kaydet("kolon-nm", function (kok, p) {
+    const kap = kur(kok);
+    let b = sayiP(p.b, 0.45, 0.25, 0.8), h = sayiP(p.h, 0.45, 0.25, 0.8), rho = sayiP(p.rho, 0.01, 0.005, 0.045);
+    let sinif = TS_BETON[p.beton] ? p.beton : "C30";
+    let Nd = sayiP(p.N, 386.63, -3000, 15000), Mdd = sayiP(p.M, 85.4, 0, 3000);
+    const PAS = 50, W = 520, H = 360, PL = 56, PR = 16, PU = 18, PA = 34;
+    const sd = sv(W, H, "Kolon N–M etkileşim eğrisi, sürüklenebilir (N, M) noktası ve radyal D/C");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const tut = svg("circle", { r: 8, fill: renk("c"), stroke: renk("kart"), "stroke-width": 2 });
+    sd.appendChild(tut);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sB, sH, sR, secB, sN, sMm, olcek = null;
+
+    function hesap() {
+      const bt = tsBeton(sinif), bmm = b * 1000, hmm = h * 1000, As = rho * bmm * hmm;
+      const e = kolonEgri(bmm, hmm, As, PAS, bt);
+      return { bt, bmm, hmm, As, e };
+    }
+    function ciz() {
+      const s = hesap(), e = s.e, Ac = s.bmm * s.hmm;
+      const Mmax = Math.max.apply(null, e.nok.map(q => q.M)) * 1.18, Nust = e.N0 * 1.06, Nalt = e.Nt * 1.25;
+      const X = M => PL + M / Mmax * (W - PL - PR), Y = N => PU + (Nust - N) / (Nust - Nalt) * (H - PU - PA);
+      olcek = { X, Y, Mmax, Nust, Nalt };
+      bos(dyn);
+      // eksenler
+      dyn.appendChild(cizgi(PL, Y(0), W - PR, Y(0), { renk: "metin", kal: 1.4 }));
+      dyn.appendChild(cizgi(PL, PU, PL, H - PA, { renk: "metin", kal: 1.4 }));
+      const adimN = Math.pow(10, Math.floor(Math.log10(Nust))) * (Nust / Math.pow(10, Math.floor(Math.log10(Nust))) > 4 ? 1 : 0.5);
+      for (let n = Math.ceil(Nalt / adimN) * adimN; n <= Nust; n += adimN) {
+        dyn.appendChild(cizgi(PL, Y(n), W - PR, Y(n), { renk: "kenar", kal: 0.8 }));
+        dyn.appendChild(yaziH(PL - 5, Y(n), f(n, 4), { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+      }
+      const adimM = Math.pow(10, Math.floor(Math.log10(Mmax))) * (Mmax / Math.pow(10, Math.floor(Math.log10(Mmax))) > 4 ? 1 : 0.5);
+      for (let m = adimM; m <= Mmax; m += adimM) dyn.appendChild(yaziH(X(m), H - PA + 14, f(m, 4), { boyut: 9.5, renk: "soluk" }));
+      dyn.appendChild(yaziH(W - PR, H - 6, "M (kN·m)", { boyut: 10.5, renk: "soluk", hiza: "sag" }));
+      dyn.appendChild(yaziH(PL + 6, PU + 4, "N (kN), basınç +", { boyut: 10.5, renk: "soluk", hiza: "sol" }));
+      // sınır çizgileri
+      const N09 = 0.9 * s.bt.fcd * Ac / 1e3, N04 = 0.4 * s.bt.fck * Ac / 1e3;
+      dyn.appendChild(cizgi(PL, Y(N09), W - PR, Y(N09), { renk: "sil", kal: 1.2, kesik: true }));
+      dyn.appendChild(yaziH(W - PR - 2, Y(N09) - 6, "0.9 f_cd A_c (TS 500)", { boyut: 9.5, renk: "sil", hiza: "sag" }));
+      dyn.appendChild(cizgi(PL, Y(N04), W - PR, Y(N04), { renk: "b", kal: 1.2, kesik: true }));
+      dyn.appendChild(yaziH(W - PR - 2, Y(N04) - 6, "0.40 f_ck A_c (TBDY)", { boyut: 9.5, renk: "b", hiza: "sag" }));
+      // eğri
+      dyn.appendChild(yol("M" + nokta(e.nok.map(q => [X(q.M), Y(q.N)])), { renk: "a", dolgu: "a", kal: 2.4 }));
+      dyn.appendChild(svg("circle", { cx: r2(X(e.denge.M)), cy: r2(Y(e.denge.N)), r: 4.5, fill: renk("b") }));
+      dyn.appendChild(yaziH(X(e.denge.M) - 7, Y(e.denge.N) - 10, "dengeli (" + f(e.denge.M, 4) + "; " + f(e.denge.N, 4) + ")", { boyut: 9.5, renk: "b", hiza: "sag" }));
+      dyn.appendChild(yaziH(PL + 6, Y(e.N0) + 12, "N_0 = " + f(e.N0, 4), { boyut: 9.5, renk: "a", hiza: "sol" }));
+      dyn.appendChild(yaziH(PL + 6, Y(e.Nt) + 12, "N_t = " + f(e.Nt, 4), { boyut: 9.5, renk: "a", hiza: "sol" }));
+      // talep noktası, e_min, ışın
+      const emin = 15 + 0.03 * s.hmm, Mt = Nd > 0 ? Math.max(Mdd, Nd * emin / 1e3) : Mdd;
+      const k = isinKesisim(e.nok, Nd, Mt);
+      if (k.N !== null) {
+        dyn.appendChild(cizgi(X(0), Y(0), X(k.M), Y(k.N), { renk: "soluk", kal: 1.2, kesik: true }));
+        dyn.appendChild(svg("rect", { x: r2(X(k.M) - 5), y: r2(Y(k.N) - 5), width: 10, height: 10, fill: "none", stroke: renk("c"), "stroke-width": 2 }));
+      }
+      if (Mt > Mdd + 1e-9) {
+        dyn.appendChild(svg("circle", { cx: r2(X(Mt)), cy: r2(Y(Nd)), r: 4, fill: "none", stroke: renk("c"), "stroke-width": 1.6 }));
+        dyn.appendChild(cizgi(X(Mdd), Y(Nd), X(Mt), Y(Nd), { renk: "c", kal: 1, kesik: true }));
+      }
+      const tx = kenet(X(Mdd), PL, W - PR), ty = kenet(Y(Nd), PU, H - PA);
+      tut.setAttribute("cx", r2(tx)); tut.setAttribute("cy", r2(ty));
+      tut.style.fill = renk(k.dc > 1 ? "sil" : "c");
+      dyn.appendChild(yaziH(tx + (tx > W - 110 ? -12 : 12), ty + (ty < PU + 30 ? 16 : -10), "D/C = " + f(k.dc, 3), { boyut: 11, renk: k.dc > 1 ? "sil" : "c", kalin: true, hiza: tx > W - 110 ? "sag" : "sol" }));
+
+      const dg = e.denge;
+      texYaz(formul, "\\begin{aligned}" +
+        "A_s&=\\rho\\,b\\,h=" + ft(rho) + "\\cdot" + ft(s.bmm) + "\\cdot" + ft(s.hmm) + "=" + ft(s.As) + "\\ \\text{mm}^2\\ (8\\ \\text{çubuk}),\\quad f_{cd}=" + ft(s.bt.fcd) + ",\\ f_{yd}=" + ft(TS_FYD) + "\\\\" +
+        "\\ka{N_0}&=0.85f_{cd}(A_c-A_s)+A_sf_{yd}=" + ft(e.N0) + "\\ \\text{kN},\\qquad \\ka{N_t}=-A_sf_{yd}=" + ft(e.Nt) + "\\ \\text{kN}\\\\" +
+        "\\kb{c_b}&=\\tfrac{0.003\\,d}{0.003+\\varepsilon_{yd}}=" + ft(dg.c) + "\\ \\text{mm}\\ \\Rightarrow\\ (N_b,M_b)=(" + ft(dg.N) + ";\\ " + ft(dg.M) + ")\\\\" +
+        "e_{min}&=15+0.03h=" + ft(emin) + "\\ \\text{mm},\\quad M_d=\\max(M,\\,N_de_{min})=" + ft(Mt) + "\\ \\text{kN·m}\\\\" +
+        "\\kutuc{\\text{D/C}}&=\\tfrac{|OP|}{|OQ|}=" + (k.N !== null ? "\\tfrac{" + ft(Mt) + "}{" + ft(k.M) + "}=" : "") + ft(k.dc) + ",\\qquad N_d\\le0.9f_{cd}A_c=" + ft(N09) + ",\\ \\ N_{dm}\\le0.40f_{ck}A_c=" + ft(N04) + "\\end{aligned}");
+      const rhoUy = rho < 0.01 - 1e-9 ? " ρ < 0,01: TS 500 Denk. 7.8 ve TBDY 7.3.2 sağlanmıyor." : rho > 0.04 + 1e-9 ? " ρ > 0,04: Denk. 7.9 aşıldı." : "";
+      bilgi.textContent = "Noktayı sürükle ya da N_d, M_d kaydırıcılarını kullan. " +
+        (k.dc > 1 ? "Nokta eğrinin dışında: kesit bu kombinasyonu taşımıyor. " : "Nokta eğrinin içinde. ") +
+        (Nd > dg.N ? "N_d > N_b: basınç kırılması bölgesi (çelik akmadan beton ezilir). " : Nd >= 0 ? "N_d < N_b: çekme kırılması bölgesi; az basınç momente dayanımı düşürür. " : "Çekme altında. ") +
+        (Nd > N04 ? "TBDY sınırı 0,40 f_ck A_c aşıldı (deprem birleşiminde kesit büyütülmeli). " : "") + rhoUy;
+    }
+
+    function noktaAyarla(N, M) {
+      Nd = Math.round(N * 10) / 10; Mdd = Math.max(0, Math.round(M * 10) / 10);
+      sN.ayarla(Nd, true); sMm.ayarla(Mdd, true); ciz();
+    }
+    surukle(tut, {
+      svg: sd,
+      tasi: q => { if (!olcek) return; const M = (q.x - PL) / (W - PL - PR) * olcek.Mmax; const N = olcek.Nust - (q.y - PU) / (H - PU - PA) * (olcek.Nust - olcek.Nalt); noktaAyarla(kenet(N, olcek.Nalt, olcek.Nust), kenet(M, 0, olcek.Mmax)); },
+      klavye: (dx, dy) => noktaAyarla(Nd - dy * 20, Mdd + dx * 5)
+    });
+    sB = sl("genişlik $b$", 0.25, 0.8, 0.05, b, "m", v => { b = v; ciz(); });
+    sH = sl("derinlik $h$ (eğilme doğrultusu)", 0.25, 0.8, 0.05, h, "m", v => { h = v; ciz(); });
+    sR = sl("boyuna donatı oranı $\\rho$", 0.005, 0.045, 0.0025, rho, "", v => { rho = v; ciz(); });
+    sN = sl("$N_d$ (basınç +)", -3000, 15000, 1, Nd, "kN", v => { Nd = v; ciz(); });
+    sMm = sl("$M_d$", 0, 3000, 0.1, Mdd, "kN·m", v => { Mdd = v; ciz(); });
+    secB = secici(Object.keys(TS_BETON).map(k => ({ deger: k, etiket: k })), sinif, v => { sinif = v; ciz(); });
+    function kesit(bb, hh, rr, sn) { b = bb; h = hh; rho = rr; sinif = sn; sB.ayarla(b, true); sH.ayarla(h, true); sR.ayarla(rho, true); secB.ayarla(sinif, true); }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("A1: N_min kombinasyonu", () => { kesit(0.45, 0.45, 0.01, "C30"); noktaAyarla(447.54, 24.82); }, { baslik: "G+Q+0.2S−0.3EX+−EY−+0.3EZ" }),
+      dugme("A1: M_max kombinasyonu", () => { kesit(0.45, 0.45, 0.01, "C30"); noktaAyarla(386.63, 85.4); }, { baslik: "G+Q+0.2S−EX−+0.3EY−+0.3EZ" }),
+      dugme("A1: az basınç 0,9G − E", () => { kesit(0.45, 0.45, 0.01, "C30"); noktaAyarla(79.07, 10.9); }, { baslik: "0.9G+0.3EX++EY−−0.3EZ" }),
+      dugme("Zarf köşesi (yanlış)", () => { kesit(0.45, 0.45, 0.01, "C30"); noktaAyarla(447.54, 85.4); }, { baslik: "N_min ve M_max aynı anda oluşmaz" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sB.kok, sH.kok, sR.kok, sN.kok, sMm.kok, el("div", { class: "ky-satir" }, secB.kok)));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "Eğri TS 500 md. 7.1 varsayımlarıyla, tarafsız eksen derinliği c taranarak çizilir (dört yüze dağıtılmış 8 çubuk, d′ = 50 mm, B420C; bloktaki çubuğun yerini aldığı beton düşülür). " +
+      "D/C orijinden noktaya çizilen ışın boyunca ölçülür (SAP2000 ve ETABS'taki kapasite oranıyla aynı fikir). e_min TS 500 md. 6.3.10 Denk. 6.16; içi boş daire e_min ile büyütülmüş noktadır. Narinlik etkisi yok."));
+    ciz();
+  }, {
+    baslik: "Kolon N–M etkileşim eğrisi",
+    aciklama: "b, h, ρ ve beton sınıfıyla N–M eğrisini çiz; (N, M) noktasını sürükle, radyal D/C'yi ve TS 500 / TBDY eksenel sınırlarını gör.",
+    varsayilan: { b: 0.45, h: 0.45, rho: 0.01, beton: "C30", N: 386.63, M: 85.4 }
+  });
+
+  /* ================================================================== ÇYTHYE çelik yardımcıları */
+
+  /* ArcelorMittal katalog değerleri (yapi_veri.PROFILLER): h, b, tw, tf, r (mm); A (cm²); Iy (cm⁴); Wel,y, Wpl,y (cm³);
+     iy (cm); Iz (cm⁴); Wel,z, Wpl,z (cm³); iz (cm); It (cm⁴); Iw (×10³ cm⁶). */
+  const PROFIL = {
+    "IPE 200": [200, 100, 5.6, 8.5, 12, 28.48, 1943, 194.3, 220.6, 8.26, 142.4, 28.47, 44.61, 2.24, 6.98, 12.99],
+    "IPE 240": [240, 120, 6.2, 9.8, 15, 39.12, 3892, 324.3, 366.6, 9.97, 283.6, 47.27, 73.92, 2.69, 12.88, 37.39],
+    "IPE 300": [300, 150, 7.1, 10.7, 15, 53.81, 8356, 557.1, 628.4, 12.46, 603.8, 80.5, 125.2, 3.35, 20.12, 125.9],
+    "IPE 360": [360, 170, 8, 12.7, 18, 72.73, 16270, 903.6, 1019, 14.95, 1043, 122.8, 191.1, 3.79, 37.32, 313.6],
+    "IPE 400": [400, 180, 8.6, 13.5, 21, 84.46, 23130, 1156, 1307, 16.55, 1318, 146.4, 229, 3.95, 51.08, 490],
+    "HEA 200": [190, 200, 6.5, 10, 18, 53.83, 3692, 388.6, 429.5, 8.28, 1336, 133.6, 203.8, 4.98, 20.98, 108],
+    "HEB 200": [200, 200, 9, 15, 18, 78.08, 5696, 569.6, 642.5, 8.54, 2003, 200.3, 305.8, 5.07, 59.28, 171.1],
+    "HEB 240": [240, 240, 10, 17, 21, 106, 11260, 938.3, 1053, 10.31, 3923, 326.9, 498.4, 6.08, 102.7, 486.9],
+    "HEB 300": [300, 300, 11, 19, 27, 149.1, 25170, 1678, 1869, 12.99, 8563, 570.9, 870.1, 7.58, 185, 1688]
+  };
+  const CE = 200000;
+  function profil(ad) {
+    const v = PROFIL[ad] || PROFIL["IPE 300"];
+    return { ad: PROFIL[ad] ? ad : "IPE 300", h: v[0], b: v[1], tw: v[2], tf: v[3], r: v[4], A: v[5] * 100, Iy: v[6] * 1e4, Wely: v[7] * 1e3, Wply: v[8] * 1e3,
+      iy: v[9] * 10, Iz: v[10] * 1e4, Welz: v[11] * 1e3, Wplz: v[12] * 1e3, iz: v[13] * 10, It: v[14] * 1e4, Iw: v[15] * 1e9 };
+  }
+  /* ÇYTHYE Bölüm 8: F_cr (Denk. 8.2 / 8.3), F_e (Denk. 8.4). */
+  function fcrBasinc(Fy, KLr) {
+    const Fe = Math.PI * Math.PI * CE / (KLr * KLr), sinir = 4.71 * Math.sqrt(CE / Fy);
+    return KLr <= sinir ? { Fe, Fcr: Math.pow(0.658, Fy / Fe) * Fy, elastik: false, sinir } : { Fe, Fcr: 0.877 * Fe, elastik: true, sinir };
+  }
+  /* ÇYTHYE 9.2: M_p, L_p (9.6a), L_r (9.6b), YBB üç bölge (9.3, 9.4–9.5), başlık yerel burkulması (9.9). Lb mm, M N·mm. */
+  function ybb(p, Fy, Lb, Cb) {
+    const Mp = Fy * p.Wply, Lp = 1.76 * p.iz * Math.sqrt(CE / Fy), ho = p.h - p.tf;
+    const its = Math.sqrt(Math.sqrt(p.Iz * p.Iw) / p.Wely), jc = p.It / (p.Wely * ho);
+    const Lr = 1.95 * its * CE / (0.7 * Fy) * Math.sqrt(jc + Math.sqrt(jc * jc + 6.76 * Math.pow(0.7 * Fy / CE, 2)));
+    let Mn, bolge, Fcr = null;
+    if (Lb <= Lp) { Mn = Mp; bolge = 0; }
+    else if (Lb <= Lr) { Mn = Math.min(Cb * (Mp - (Mp - 0.7 * Fy * p.Wely) * (Lb - Lp) / (Lr - Lp)), Mp); bolge = 1; }
+    else { Fcr = Cb * Math.PI * Math.PI * CE / Math.pow(Lb / its, 2) * Math.sqrt(1 + 0.078 * jc * Math.pow(Lb / its, 2)); Mn = Math.min(Fcr * p.Wely, Mp); bolge = 2; }
+    const lf = p.b / (2 * p.tf), lp = 0.38 * Math.sqrt(CE / Fy), lr = Math.sqrt(CE / Fy);
+    const Mflb = lf > lp ? Mp - (Mp - 0.7 * Fy * p.Wely) * (lf - lp) / (lr - lp) : null;
+    return { Mp, Lp, Lr, ho, its, jc, Mn: Mflb !== null ? Math.min(Mn, Mflb) : Mn, MnYBB: Mn, Mflb, bolge, Fcr, lf, lp, lr };
+  }
+  const YBB_AD = ["akma (L_b ≤ L_p)", "elastik olmayan YBB (L_p < L_b ≤ L_r)", "elastik YBB (L_b > L_r)"];
+
+  /* ================================================================== celik-burkulma */
+
+  E.kaydet("celik-burkulma", function (kok, p) {
+    const kap = kur(kok);
+    let KLr = sayiP(p.KLr, 82.24, 5, 250), Fy = [235, 275, 355].indexOf(Number(p.Fy)) >= 0 ? Number(p.Fy) : 275;
+    let pad = PROFIL[p.profil] ? p.profil : "HEB 240";
+    const W = 520, H = 320, PL = 50, PR = 16, PU = 20, PA = 36, LMAX = 250;
+    const sd = sv(W, H, "Basınç elemanında kritik gerilme F_cr ve Euler gerilmesi F_e, narinliğe göre");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const tut = svg("circle", { r: 8, fill: renk("c"), stroke: renk("kart"), "stroke-width": 2 });
+    sd.appendChild(tut);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sL, secF, secP;
+    const SMAX = 400;
+    const X = l => PL + l / LMAX * (W - PL - PR), Y = s => PU + (1 - Math.min(s, SMAX) / SMAX) * (H - PU - PA);
+
+    function ciz() {
+      const pr = profil(pad), r = fcrBasinc(Fy, KLr), Pc = 0.9 * r.Fcr * pr.A / 1e3;
+      bos(dyn);
+      dyn.appendChild(cizgi(PL, Y(0), W - PR, Y(0), { renk: "metin", kal: 1.4 }));
+      dyn.appendChild(cizgi(PL, Y(0), PL, PU, { renk: "metin", kal: 1.4 }));
+      for (let s = 100; s <= SMAX; s += 100) { dyn.appendChild(cizgi(PL, Y(s), W - PR, Y(s), { renk: "kenar", kal: 0.8 })); dyn.appendChild(yaziH(PL - 5, Y(s), String(s), { boyut: 9.5, renk: "soluk", hiza: "sag" })); }
+      for (let l = 50; l <= LMAX; l += 50) dyn.appendChild(yaziH(X(l), Y(0) + 14, String(l), { boyut: 9.5, renk: "soluk" }));
+      dyn.appendChild(yaziH(W - PR, H - 6, "KL / i", { boyut: 10.5, renk: "soluk", hiza: "sag" }));
+      dyn.appendChild(yaziH(PL + 4, PU - 6, "gerilme (MPa)", { boyut: 10.5, renk: "soluk", hiza: "sol" }));
+      // Fy, sınır, 200
+      dyn.appendChild(cizgi(PL, Y(Fy), W - PR, Y(Fy), { renk: "soluk", kal: 1, kesik: true }));
+      dyn.appendChild(yaziH(W - PR - 2, Y(Fy) - 6, "F_y = " + Fy, { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+      dyn.appendChild(cizgi(X(r.sinir), Y(0), X(r.sinir), PU, { renk: "b", kal: 1.2, kesik: true }));
+      dyn.appendChild(yaziH(X(r.sinir) + 4, PU + 10, "4.71√(E/F_y) = " + f(r.sinir, 4), { boyut: 9.5, renk: "b", hiza: "sol" }));
+      dyn.appendChild(svg("rect", { x: r2(X(200)), y: PU, width: r2(X(LMAX) - X(200)), height: r2(Y(0) - PU), fill: zemin("sil") }));
+      dyn.appendChild(yaziH((X(200) + X(LMAX)) / 2, Y(0) - 8, "KL/i > 200", { boyut: 9.5, renk: "sil" }));
+      // eğriler
+      const ePts = [], cPts = [];
+      for (let l = 5; l <= LMAX; l += 1) {
+        const q = fcrBasinc(Fy, l);
+        if (q.Fe <= SMAX * 1.02) ePts.push([X(l), Y(q.Fe)]);
+        cPts.push([X(l), Y(q.Fcr)]);
+      }
+      if (ePts.length > 1) dyn.appendChild(yol("M" + nokta(ePts), { renk: "sil", kal: 1.8, kesik: true }));
+      dyn.appendChild(yol("M" + nokta(cPts), { renk: "a", kal: 2.6 }));
+      dyn.appendChild(yaziH(X(170), Y(fcrBasinc(Fy, 170).Fe) - 12, "Euler F_e", { boyut: 10, renk: "sil", hiza: "sol" }));
+      dyn.appendChild(yaziH(X(32), Y(fcrBasinc(Fy, 30).Fcr) - 10, "F_cr", { boyut: 10.5, renk: "a", kalin: true, hiza: "sol" }));
+      // nokta
+      dyn.appendChild(cizgi(X(KLr), Y(0), X(KLr), Y(r.Fcr), { renk: "c", kal: 1, kesik: true }));
+      if (r.Fe <= SMAX) dyn.appendChild(svg("circle", { cx: r2(X(KLr)), cy: r2(Y(r.Fe)), r: 4, fill: renk("sil") }));
+      tut.setAttribute("cx", r2(X(KLr))); tut.setAttribute("cy", r2(Y(r.Fcr)));
+      dyn.appendChild(yaziH(X(KLr) + (KLr > 190 ? -12 : 12), Y(r.Fcr) - 12, "F_cr = " + f(r.Fcr, 4), { boyut: 11, renk: "c", kalin: true, hiza: KLr > 190 ? "sag" : "sol" }));
+      texYaz(formul, "\\begin{aligned}" +
+        "\\ksil{F_e}&=\\frac{\\pi^2E}{(KL/i)^2}=\\frac{\\pi^2\\cdot200000}{" + ft(KLr) + "^2}=" + ft(r.Fe) + "\\ \\text{MPa}\\quad(\\text{Denk. 8.4})\\\\" +
+        "\\tfrac{KL}{i}=" + ft(KLr) + "&" + (r.elastik ? ">" : "\\le") + "4.71\\sqrt{E/F_y}=" + ft(r.sinir) + "\\ \\Rightarrow\\ \\kutua{F_{cr}}=" +
+        (r.elastik ? "0.877F_e=" : "0.658^{F_y/F_e}F_y=0.658^{" + ft(Fy / r.Fe) + "}\\cdot" + Fy + "=") + ft(r.Fcr) + "\\ \\text{MPa}\\quad(\\text{Denk. " + (r.elastik ? "8.3" : "8.2") + "})\\\\" +
+        "\\kutuc{P_c}&=\\phi_cF_{cr}A_g=0.90\\cdot" + ft(r.Fcr) + "\\cdot" + ft(pr.A) + "=" + ft(Pc) + "\\ \\text{kN}\\quad(" + pr.ad + ",\\ \\text{Denk. 8.1})\\end{aligned}");
+      bilgi.textContent = (r.elastik ? "Elastik burkulma bölgesi: F_cr Euler gerilmesinin 0,877 katı (başlangıç kusurları). " : "Elastik olmayan bölge: kısa çubukta akma, uzunda burkulma etkileşir; F_cr/F_y = " + f(r.Fcr / Fy, 3) + ". ") +
+        "Euler eğrisi kısa çubukta F_y'yi aşar ama gerçek dayanım hiçbir zaman F_y'den büyük olamaz. " + (KLr > 200 ? "KL/i > 200: ÇYTHYE md. 8.1.1 sınırı aşıldı." : "") +
+        " " + pr.ad + " için KL/i = " + f(KLr, 4) + " → zayıf eksende KL = " + f(KLr * pr.iz / 1000, 3) + " m, güçlü eksende " + f(KLr * pr.iy / 1000, 3) + " m.";
+    }
+    surukle(tut, { svg: sd, tasi: q => { KLr = Math.round(kenet((q.x - PL) / (W - PL - PR) * LMAX, 5, LMAX)); sL.ayarla(KLr, true); ciz(); }, klavye: dx => { KLr = kenet(KLr + dx, 5, LMAX); sL.ayarla(KLr, true); ciz(); } });
+    sL = sl("narinlik $KL/i$", 5, LMAX, 1, KLr, "", v => { KLr = v; ciz(); });
+    secF = secici([{ deger: 235, etiket: "S235" }, { deger: 275, etiket: "S275" }, { deger: 355, etiket: "S355" }], Fy, v => { Fy = Number(v); ciz(); });
+    secP = secici(Object.keys(PROFIL).map(k => ({ deger: k, etiket: k })), pad, v => { pad = v; ciz(); });
+    function ayarla(l, fy, pp) { KLr = l; Fy = fy; pad = pp; sL.ayarla(KLr, true); secF.ayarla(Fy, true); secP.ayarla(pad, true); ciz(); }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("HEB 240, KL = 5 m", () => ayarla(Math.round(5000 / 60.8 * 100) / 100, 275, "HEB 240"), { baslik: "Zayıf eksen: KL/i_z = 5000/60,8 = 82,24" }),
+      dugme("HEB 240, K = 2 (konsol)", () => ayarla(Math.round(10000 / 60.8 * 100) / 100, 275, "HEB 240"), { baslik: "KL = 10 m: elastik bölge" }),
+      dugme("IPE 300 kiriş, 6 m", () => ayarla(Math.round(6000 / 33.5 * 100) / 100, 275, "IPE 300"), { baslik: "Depo şablonunun kirişi: KL/i = 179" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sL.kok, el("div", { class: "ky-satir" }, secF.kok)));
+    kap.appendChild(el("div", { class: "ky-satir" }, secP.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "ÇYTHYE 2018 Bölüm 8: eğilmeli burkulma (Denk. 8.2–8.4), φ_c = 0,90; E = 200000 MPa. Burulmalı burkulma (Denk. 8.5) çift simetrili I kesitlerde çoğunlukla belirleyici değildir ve bu çizimde yoktur; " +
+      "motor (tasarim.celik_basinc) onu da hesaplar. K = 1 iki ucu mafsallı (ya da yanal ötelenmesi önlenmiş) çubuk içindir."));
+    ciz();
+  }, {
+    baslik: "Çelik basınç elemanı: F_cr eğrisi",
+    aciklama: "KL/i ve F_y'yi değiştir ya da noktayı sürükle; ÇYTHYE F_cr eğrisini Euler gerilmesiyle karşılaştır, 4,71√(E/F_y) geçişini gör.",
+    varsayilan: { KLr: 82.24, Fy: 275, profil: "HEB 240" }
+  });
+
+  /* ================================================================== celik-yanal-burulma */
+
+  E.kaydet("celik-yanal-burulma", function (kok, p) {
+    const kap = kur(kok);
+    let pad = PROFIL[p.profil] ? p.profil : "IPE 300", Fy = [235, 275, 355].indexOf(Number(p.Fy)) >= 0 ? Number(p.Fy) : 275;
+    let Lb = sayiP(p.Lb, 3, 0, 12), Cb = sayiP(p.Cb, 1, 1, 2.3);
+    const W = 520, H = 300, PL = 50, PR = 16, PU = 22, PA = 36, LMAX = 12;
+    const sd = sv(W, H, "Yanal burulmalı burkulma: desteksiz boy L_b ile nominal moment M_n, üç bölge");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const tut = svg("circle", { r: 8, fill: renk("c"), stroke: renk("kart"), "stroke-width": 2 });
+    sd.appendChild(tut);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sLb, sCb, secF, secP;
+    const X = l => PL + l / LMAX * (W - PL - PR);
+
+    function ciz() {
+      const pr = profil(pad), r = ybb(pr, Fy, Lb * 1000, Cb);
+      const Mp = r.Mp / 1e6, Ymax = Mp * 1.15, Y = m => PU + (1 - m / Ymax) * (H - PU - PA);
+      bos(dyn);
+      const lp = r.Lp / 1000, lr = r.Lr / 1000;
+      dyn.appendChild(svg("rect", { x: PL, y: PU, width: r2(X(Math.min(lp, LMAX)) - PL), height: r2(Y(0) - PU), fill: zemin("c") }));
+      dyn.appendChild(svg("rect", { x: r2(X(lp)), y: PU, width: r2(Math.max(0, X(Math.min(lr, LMAX)) - X(lp))), height: r2(Y(0) - PU), fill: zemin("b") }));
+      if (lr < LMAX) dyn.appendChild(svg("rect", { x: r2(X(lr)), y: PU, width: r2(X(LMAX) - X(lr)), height: r2(Y(0) - PU), fill: zemin("sil") }));
+      dyn.appendChild(cizgi(PL, Y(0), W - PR, Y(0), { renk: "metin", kal: 1.4 }));
+      dyn.appendChild(cizgi(PL, Y(0), PL, PU, { renk: "metin", kal: 1.4 }));
+      for (let l = 2; l <= LMAX; l += 2) dyn.appendChild(yaziH(X(l), Y(0) + 14, String(l), { boyut: 9.5, renk: "soluk" }));
+      dyn.appendChild(yaziH(W - PR, H - 6, "L_b (m)", { boyut: 10.5, renk: "soluk", hiza: "sag" }));
+      dyn.appendChild(yaziH(PL + 4, PU - 8, "M_n (kN·m), " + pr.ad + ", F_y = " + Fy + ", C_b = " + f(Cb, 3), { boyut: 10.5, renk: "soluk", hiza: "sol" }));
+      [[Mp, "M_p = " + f(Mp, 4)], [0.7 * Fy * pr.Wely / 1e6, "0.7F_yW_el = " + f(0.7 * Fy * pr.Wely / 1e6, 4)]].forEach(q => {
+        dyn.appendChild(cizgi(PL, Y(q[0]), W - PR, Y(q[0]), { renk: "soluk", kal: 1, kesik: true }));
+        dyn.appendChild(yaziH(W - PR - 2, Y(q[0]) - 6, q[1], { boyut: 9.5, renk: "soluk", hiza: "sag" }));
+      });
+      [[lp, "L_p = " + f(lp, 3)], [lr, "L_r = " + f(lr, 3)]].forEach((q, i) => {
+        if (q[0] > LMAX) return;
+        dyn.appendChild(cizgi(X(q[0]), Y(0), X(q[0]), PU, { renk: i ? "sil" : "b", kal: 1.2, kesik: true }));
+        dyn.appendChild(yaziH(X(q[0]) + 4, Y(0) - 10 - 14 * i, q[1] + " m", { boyut: 9.5, renk: i ? "sil" : "b", hiza: "sol" }));
+      });
+      const pts = [];
+      for (let l = 0; l <= LMAX + 1e-9; l += 0.05) pts.push([X(l), Y(ybb(pr, Fy, l * 1000, Cb).Mn / 1e6)]);
+      dyn.appendChild(yol("M" + nokta(pts), { renk: "a", kal: 2.6 }));
+      if (Cb > 1) {
+        const p1 = [];
+        for (let l = 0; l <= LMAX + 1e-9; l += 0.05) p1.push([X(l), Y(ybb(pr, Fy, l * 1000, 1).Mn / 1e6)]);
+        dyn.appendChild(yol("M" + nokta(p1), { renk: "soluk", kal: 1.2, kesik: true }));
+      }
+      const Mn = r.Mn / 1e6, Mc = 0.9 * Mn;
+      tut.setAttribute("cx", r2(X(Lb))); tut.setAttribute("cy", r2(Y(Mn)));
+      dyn.appendChild(yaziH(X(Lb) + (Lb > 8 ? -12 : 12), Y(Mn) - 12, "M_n = " + f(Mn, 4), { boyut: 11, renk: "c", kalin: true, hiza: Lb > 8 ? "sag" : "sol" }));
+      let t = "\\begin{aligned}M_p&=F_yW_{pl,y}=" + Fy + "\\cdot" + ft(pr.Wply) + "=" + ft(Mp) + "\\ \\text{kN·m},\\quad L_p=1.76\\,i_z\\sqrt{E/F_y}=" + ft(lp) + "\\ \\text{m}\\\\" +
+        "i_{ts}&=\\sqrt{\\sqrt{I_zC_w}/W_{el,y}}=" + ft(r.its) + "\\ \\text{mm},\\quad \\tfrac{Jc}{W_{el,y}h_o}=" + ft(r.jc) + ",\\quad L_r=" + ft(lr) + "\\ \\text{m}\\ (\\text{Denk. 9.6b})\\\\";
+      if (r.bolge === 0) t += "L_b&\\le L_p:\\ \\kutua{M_n=M_p=" + ft(r.MnYBB / 1e6) + "}\\ \\text{kN·m}";
+      else if (r.bolge === 1) t += "L_p<L_b&\\le L_r:\\ \\kutub{M_n=C_b\\Big[M_p-(M_p-0.7F_yW_{el})\\tfrac{L_b-L_p}{L_r-L_p}\\Big]=" + ft(r.MnYBB / 1e6) + "}\\le M_p\\ (\\text{Denk. 9.3})";
+      else t += "L_b&>L_r:\\ F_{cr}=\\tfrac{C_b\\pi^2E}{(L_b/i_{ts})^2}\\sqrt{1+0.078\\tfrac{Jc}{W_{el}h_o}\\big(\\tfrac{L_b}{i_{ts}}\\big)^2}=" + ft(r.Fcr) + ",\\ \\ksil{M_n=F_{cr}W_{el,y}=" + ft(r.MnYBB / 1e6) + "}\\ (\\text{Denk. 9.4, 9.5})";
+      if (r.Mflb !== null) t += "\\\\ \\lambda_f&=" + ft(r.lf) + ">\\lambda_p=" + ft(r.lp) + ":\\ M_{n,FLB}=" + ft(r.Mflb / 1e6) + "\\ (\\text{Denk. 9.9})";
+      t += "\\\\ \\kutuc{M_c}&=\\phi_bM_n=0.90\\cdot" + ft(Mn) + "=" + ft(Mc) + "\\ \\text{kN·m}\\end{aligned}";
+      texYaz(formul, t);
+      bilgi.textContent = YBB_AD[r.bolge] + ". " + (r.bolge === 0 ? "Basınç başlığı yeterince sık tutulmuş: kesit tam plastik momente ulaşır. " : r.bolge === 1 ? "Kısmen plastikleşmiş kesitte yanal burulmalı burkulma: M_n doğrusal azalır. " : "Elastik yanal burulmalı burkulma: dayanım L_b büyüdükçe hızla düşer. ") +
+        (Cb > 1 ? "C_b > 1 moment değişken olduğunda kazancı gösterir (kesikli: C_b = 1); M_n yine M_p'yi aşamaz. " : "") + (r.Mflb !== null ? "Başlık kompakt değil: yerel burkulma da M_n'yi sınırlar." : "");
+    }
+    surukle(tut, { svg: sd, tasi: q => { Lb = Math.round(kenet((q.x - PL) / (W - PL - PR) * LMAX, 0, LMAX) * 10) / 10; sLb.ayarla(Lb, true); ciz(); }, klavye: dx => { Lb = kenet(Math.round((Lb + dx * 0.1) * 10) / 10, 0, LMAX); sLb.ayarla(Lb, true); ciz(); } });
+    sLb = sl("yanal desteksiz boy $L_b$", 0, LMAX, 0.1, Lb, "m", v => { Lb = v; ciz(); });
+    sCb = sl("$C_b$ (Denk. 9.1)", 1, 2.3, 0.01, Cb, "", v => { Cb = v; ciz(); });
+    secF = secici([{ deger: 235, etiket: "S235" }, { deger: 275, etiket: "S275" }, { deger: 355, etiket: "S355" }], Fy, v => { Fy = Number(v); ciz(); });
+    secP = secici(Object.keys(PROFIL).map(k => ({ deger: k, etiket: k })), pad, v => { pad = v; ciz(); });
+    function ayarla(pp, fy, lb, cb) { pad = pp; Fy = fy; Lb = lb; Cb = cb; secP.ayarla(pad, true); secF.ayarla(Fy, true); sLb.ayarla(Lb, true); sCb.ayarla(Cb, true); ciz(); }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("IPE 300, L_b = 3 m", () => ayarla("IPE 300", 275, 3, 1), { baslik: "Elastik olmayan bölge" }),
+      dugme("IPE 300, L_b = 6 m", () => ayarla("IPE 300", 275, 6, 1), { baslik: "Elastik bölge" }),
+      dugme("Düzgün yük, C_b = 1,14", () => ayarla("IPE 300", 275, 6, 1.14), { baslik: "M_A = M_C = 0,75 M, M_B = M" }),
+      dugme("HEA 200, S355", () => ayarla("HEA 200", 355, 2, 1), { baslik: "Başlık kompakt değil (Denk. 9.9)" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sLb.kok, sCb.kok, el("div", { class: "ky-satir" }, secF.kok)));
+    kap.appendChild(el("div", { class: "ky-satir" }, secP.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "ÇYTHYE 2018 md. 9.2: M_p (Denk. 9.2), L_p ve L_r (Denk. 9.6a/b, c = 1, h_o = d − t_f, i_ts Denk. 9.8a), bölgeler Denk. 9.3–9.5; φ_b = 0,90. " +
+      "Yeşil: akma, turuncu: elastik olmayan, kırmızı: elastik yanal burulmalı burkulma. Döşemeye bağlı üst başlıkta L_b = 0 alınabilir (şablonlarda varsayılan)."));
+    ciz();
+  }, {
+    baslik: "Yanal burulmalı burkulma: M_n – L_b",
+    aciklama: "Profil, F_y, C_b ve L_b ile M_n eğrisinin üç bölgesini gör; L_p ve L_r sınırlarını ve noktayı sürükle.",
+    varsayilan: { profil: "IPE 300", Fy: 275, Lb: 3, Cb: 1 }
+  });
+
+  /* ================================================================== rijit-diyafram */
+
+  /* Rijit diyafram: kat düğümleri efendi düğümün (kütle merkezi) üç serbestliğine bağlıdır:
+     u_x,i = u_x − θ (y_i − y_m), u_y,i = u_y + θ (x_i − x_m) → T_i = [[1, 0, −(y_i − y_m)], [0, 1, x_i − x_m]].
+     Kolon i her iki doğrultuda k_i yanal rijitliğindedir; K = Σ k_i T_iᵀ T_i (3×3), F = [F_x, F_y, M_z]. */
+  function cozum3(K, F) {
+    const A = K.map((r, i) => r.concat([F[i]]));
+    for (let i = 0; i < 3; i++) {
+      let p = i;
+      for (let j = i + 1; j < 3; j++) if (Math.abs(A[j][i]) > Math.abs(A[p][i])) p = j;
+      [A[i], A[p]] = [A[p], A[i]];
+      for (let j = i + 1; j < 3; j++) { const m = A[j][i] / A[i][i]; for (let k = i; k < 4; k++) A[j][k] -= m * A[i][k]; }
+    }
+    const x = [0, 0, 0];
+    for (let i = 2; i >= 0; i--) { let s = A[i][3]; for (let k = i + 1; k < 3; k++) s -= A[i][k] * x[k]; x[i] = s / A[i][i]; }
+    return x;
+  }
+
+  E.kaydet("rijit-diyafram", function (kok, p) {
+    const kap = kur(kok);
+    const L = 6, B = 4, xm = L / 2, ym = B / 2;
+    const XY = [[0, 0], [L, 0], [0, B], [L, B]];
+    const kv = Array.isArray(p.k) && p.k.length === 4 ? p.k.map(v => sayiP(v, 1, 0.2, 4)) : [1, 1, 1, 1];
+    let F = sayiP(p.F, 60, 0, 300), e = sayiP(p.e, 0, -1.5, 1.5);
+    const W = 520, H = 330, OX = 120, OY = 285, S = 48;
+    const sd = sv(W, H, "Rijit diyafram planı: dört kolon, efendi düğüm, rijitlik merkezi, öteleme ve dönme, kolon kesmeleri");
+    const dyn = svg("g"); sd.appendChild(dyn);
+    const formul = formulKutu();
+    const tablo = el("div", { class: "ky-formul" });
+    const bilgi = el("p", { class: "ky-bilgi" });
+    const sk = [];
+    let sF, sE;
+    const P = (x, y) => [OX + x * S, OY - y * S];
+
+    function hesap() {
+      const K = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      XY.forEach((q, i) => {
+        const T = [[1, 0, -(q[1] - ym)], [0, 1, q[0] - xm]];
+        for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) K[a][b] += kv[i] * (T[0][a] * T[0][b] + T[1][a] * T[1][b]);
+      });
+      const Fv = [0, F, F * e], u = cozum3(K, Fv);
+      const sk2 = kv.reduce((s, v) => s + v, 0);
+      const xr = XY.reduce((s, q, i) => s + kv[i] * q[0], 0) / sk2, yr = XY.reduce((s, q, i) => s + kv[i] * q[1], 0) / sk2;
+      const V = XY.map((q, i) => ({ x: kv[i] * (u[0] - u[2] * (q[1] - ym)), y: kv[i] * (u[1] + u[2] * (q[0] - xm)) }));
+      return { K, Fv, u, xr, yr, V, sk: sk2 };
+    }
+    function ciz() {
+      const h = hesap();
+      bos(dyn);
+      const umax = Math.max(Math.abs(h.u[1]) + Math.abs(h.u[2]) * 3, 1e-9), olc = 1.1 / umax;   // ötelemeyi 1,1 m'ye ölçekle
+      const ux = (x, y) => h.u[0] - h.u[2] * (y - ym), uy = (x, y) => h.u[1] + h.u[2] * (x - xm);
+      const kose = [[0, 0], [L, 0], [L, B], [0, B]];
+      dyn.appendChild(yol("M" + nokta(kose.map(q => P(q[0], q[1]))) + " Z", { renk: "soluk", kal: 1.2, kesik: true }));
+      dyn.appendChild(yol("M" + nokta(kose.map(q => P(q[0] + ux(q[0], q[1]) * olc, q[1] + uy(q[0], q[1]) * olc))) + " Z", { renk: "a", dolgu: "a", kal: 2 }));
+      // kolonlar ve kesmeler
+      const Vmax = Math.max.apply(null, h.V.map(v => Math.hypot(v.x, v.y))) || 1;
+      XY.forEach((q, i) => {
+        const c = P(q[0], q[1]), a = 6 + 5 * Math.sqrt(kv[i]);
+        dyn.appendChild(dikdortgen(c[0] - a / 2, c[1] - a / 2, a, a, { dolgu: "metin", renk: "metin", kal: 1 }));
+        dyn.appendChild(yaziH(c[0] + (q[0] > 0 ? 12 : -12), c[1] + (q[1] > 0 ? -10 : 18), "S" + (i + 1) + " k=" + f(kv[i], 3), { boyut: 9.5, renk: "soluk", hiza: q[0] > 0 ? "sol" : "sag" }));
+        const v = h.V[i], uz = 46 / Vmax;
+        if (Math.abs(v.y) > 1e-9) dyn.appendChild(ok(c[0], c[1], c[0], c[1] - v.y * uz, { renk: "c", kalinlik: 2.2, bas: 6 }));
+        if (Math.abs(v.x) > 1e-6 * Vmax) dyn.appendChild(ok(c[0], c[1], c[0] + v.x * uz, c[1], { renk: "b", kalinlik: 2, bas: 5 }));
+        dyn.appendChild(yaziH(c[0] + (q[0] > 0 ? 10 : -10), c[1] - Math.max(v.y * uz, 0) / 2 + (q[1] > 0 ? -22 : 30), "V_y = " + f(v.y, 4), { boyut: 9.5, renk: "c", kalin: true, hiza: q[0] > 0 ? "sol" : "sag" }));
+      });
+      // efendi düğüm, rijitlik merkezi, kuvvet
+      const m = P(xm, ym), rm = P(h.xr, h.yr), fx = P(xm + e, ym);
+      dyn.appendChild(svg("circle", { cx: r2(m[0]), cy: r2(m[1]), r: 6, fill: renk("a"), stroke: renk("kart"), "stroke-width": 1.5 }));
+      dyn.appendChild(yaziH(m[0] + 10, m[1] + 18, "KM (efendi)", { boyut: 9.5, renk: "a", hiza: "sol" }));
+      dyn.appendChild(svg("rect", { x: r2(rm[0] - 5), y: r2(rm[1] - 5), width: 10, height: 10, fill: renk("sil"), transform: "rotate(45 " + r2(rm[0]) + " " + r2(rm[1]) + ")" }));
+      dyn.appendChild(yaziH(rm[0] - 8, rm[1] - 12, "RM", { boyut: 9.5, renk: "sil", kalin: true, hiza: "sag" }));
+      if (F > 0) {
+        dyn.appendChild(ok(fx[0], fx[1] + 60, fx[0], fx[1] + 4, { renk: "b", kalinlik: 2.6, bas: 7 }));
+        dyn.appendChild(yaziH(fx[0] + 6, fx[1] + 52, "F = " + f(F, 4) + " kN", { boyut: 10, renk: "b", kalin: true, hiza: "sol" }));
+      }
+      dyn.appendChild(yaziH(10, 14, "plan " + L + " × " + B + " m; öteleme abartılı", { boyut: 9.5, renk: "soluk", hiza: "sol" }));
+      const K = h.K;
+      const mt = M => "\\begin{bmatrix}" + M.map(r => r.map(v => ft(Math.abs(v) < 1e-12 ? 0 : v)).join("&")).join("\\\\") + "\\end{bmatrix}";
+      texYaz(formul, "\\begin{aligned}" +
+        "\\mathbf T_i&=\\begin{bmatrix}1&0&-(y_i-y_m)\\\\0&1&x_i-x_m\\end{bmatrix},\\qquad \\mathbf K=\\sum_i k_i\\,\\mathbf T_i^{T}\\mathbf T_i\\\\" +
+        "\\underbrace{" + mt(K) + "}_{\\mathbf K}\\begin{bmatrix}u_x\\\\u_y\\\\\\theta\\end{bmatrix}&=\\begin{bmatrix}0\\\\" + ft(F) + "\\\\" + ft(F * e) + "\\end{bmatrix}" +
+        "\\ \\Rightarrow\\ \\kutua{u_y=" + ft(h.u[1]) + "},\\ \\kutub{\\theta=" + ft(h.u[2]) + "},\\ u_x=" + ft(Math.abs(h.u[0]) < 1e-12 ? 0 : h.u[0]) + "\\\\" +
+        "x_r&=\\tfrac{\\sum k_ix_i}{\\sum k_i}=" + ft(h.xr) + "\\ \\text{m},\\quad \\ksil{e_r=x_F-x_r=" + ft(xm + e - h.xr) + "\\ \\text{m}},\\quad \\kc{V_{y,i}=k_i\\,[u_y+\\theta(x_i-x_m)]}\\end{aligned}");
+      tablo.textContent = "";
+      const t = el("table", { class: "ky-tablo" });
+      t.appendChild(el("tr", null, el("th", { text: "Kolon" }), el("th", { text: "k" }), el("th", { text: "V_y (kN)" }), el("th", { text: "V_x (kN)" }), el("th", { text: "pay %" }), el("th", { text: "k payı %" })));
+      h.V.forEach((v, i) => t.appendChild(el("tr", null, el("td", { text: "S" + (i + 1) }), el("td", { text: f(kv[i], 3) }), el("td", { text: f(v.y, 4) }), el("td", { text: f(Math.abs(v.x) < 1e-9 ? 0 : v.x, 4) }),
+        el("td", { text: F > 0 ? f(100 * v.y / F, 3) : "–" }), el("td", { text: f(100 * kv[i] / h.sk, 3) }))));
+      tablo.appendChild(t);
+      bilgi.textContent = "Birimler: k kN/mm, F kN → u mm, θ mm/m (10⁻³ rad). " +
+        (Math.abs(xm + e - h.xr) < 1e-9 ? "Kuvvet rijitlik merkezinden geçiyor: kat dönmeden ötelenir, kesme k_i ile orantılı dağılır. " :
+          "Kuvvet rijitlik merkezinden " + f(Math.abs(xm + e - h.xr), 3) + " m uzakta: burulma momenti F·e_r katı döndürür; rijitlik merkezinden uzak kolonların kesmesi artar. ") +
+        "ΣV_y = " + f(h.V.reduce((s, v) => s + v.y, 0), 4) + " kN = F (denge); V_x'ler yalnız bir kuvvet çifti oluşturur.";
+    }
+
+    ["S1 (0; 0)", "S2 (6; 0)", "S3 (0; 4)", "S4 (6; 4)"].forEach((ad, i) => sk.push(sl("$k$ " + ad, 0.2, 4, 0.1, kv[i], "kN/mm", v => { kv[i] = v; ciz(); })));
+    sF = sl("kat kuvveti $F_y$", 0, 300, 1, F, "kN", v => { F = v; ciz(); });
+    sE = sl("dışmerkezlik $e$ (X yönünde)", -1.5, 1.5, 0.05, e, "m", v => { e = v; ciz(); });
+    function ayarla(k, ff, ee) { k.forEach((v, i) => { kv[i] = v; sk[i].ayarla(v, true); }); F = ff; e = ee; sF.ayarla(F, true); sE.ayarla(e, true); ciz(); }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("Simetrik", () => ayarla([1, 1, 1, 1], 60, 0), { baslik: "RM = KM: yalnız öteleme" }),
+      dugme("Ders örneği", () => ayarla([2, 1, 2, 1], 60, 0), { baslik: "Sol kolonlar iki kat rijit: x_r = 2 m" }),
+      dugme("±%5 dışmerkezlik", () => ayarla([1, 1, 1, 1], 60, 0.3), { baslik: "e = 0,05·6 = 0,30 m (TBDY md. 4.5.10.2)" }),
+      dugme("Burulmaya açık", () => ayarla([3, 0.3, 3, 0.3], 60, 0.3), { baslik: "Rijitlik bir kenarda toplanmış" })));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sk[0].kok, sk[1].kok, sk[2].kok, sk[3].kok, sF.kok, sE.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(tablo);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "Rijit diyaframda kattaki bütün düğümler efendi düğümün (kütle merkezi KM) üç serbestliğine (u_x, u_y, θ) bağlanır; SAP2000'de \"Diaphragm constraint\", bu uygulamada " +
+      "kütle merkezindeki efendi düğümdür. Kolon kesmesi kolonun yanal rijitliği k_i = 12EI/h³ (iki ucu ankastre) ile ötelemesinin çarpımıdır. RM: rijitlik merkezi."));
+    ciz();
+  }, {
+    baslik: "Rijit diyafram: öteleme, dönme ve kolon payları",
+    aciklama: "Dört kolonun rijitliklerini, kat kuvvetini ve dışmerkezliği değiştir; efendi düğümün ötelemesi ve dönmesi, rijitlik merkezi ve kolon kesme payları canlı güncellenir.",
+    varsayilan: { k: [1, 1, 1, 1], F: 60, e: 0 }
+  });
+
+  /* ================================================================== alıştırma: kiris-as */
+
+  const KAS_B = [250, 300, 350], KAS_H = [500, 550, 600], KAS_S = ["C25", "C30", "C35"];
+  const yuv = (x, b) => Kesir.al(x.toFixed(b === undefined ? 4 : b));
+
+  E.kaydet("alistirma:kiris-as", function (kok, p) {
+    return E.alistirmaKur(kok, p, (rnd, pp) => {
+      const z = zorlukOku(pp);
+      const bmm = rnd.sec(KAS_B), hmm = rnd.sec(KAS_H), sn = rnd.sec(KAS_S), bt = tsBeton(sn), d = hmm - 50;
+      const R = 0.85 * bt.fcd * bmm;
+      const giris = "Dikdörtgen kiriş $b=" + bmm + "$ mm, $h=" + hmm + "$ mm, $d=" + d + "$ mm; " + sn + " ($f_{cd}=" + ft(bt.fcd) + "$ MPa, $f_{ctd}=" + ft(bt.fctd) + "$ MPa, $k_1=" + ft(bt.k1) + "$), B420C ($f_{yd}=365.22$ MPa). ";
+      if (z === 1) {
+        const cap = rnd.sec([14, 16, 18, 20]), n = rnd.tam(3, 4), As = n * cubukA(cap);
+        const a = As * TS_FYD / R, Mr = As * TS_FYD * (d - a / 2) / 1e6;
+        return {
+          metin: giris + "Çekme donatısı $" + n + "\\phi" + cap + "$ ($A_s=" + ft(As) + "$ mm²). Çeliğin aktığını kabul ederek basınç bloğu derinliği $a$ (mm) ve taşıma gücü momenti $M_r$ (kN·m) nedir?",
+          alanlar: ["a (mm) =", "M_r (kN·m) ="], cevap: new Mat([[yuv(a), yuv(Mr)]]), tolerans: 0.005,
+          ipucu: ["Kuvvet dengesi: $0.85f_{cd}\\,b\\,a=A_sf_{yd}$.", "Moment kolu $z=d-a/2$: $M_r=A_sf_{yd}(d-a/2)$; N·mm'yi $10^6$'ya böl."],
+          aciklama: "Eşdeğer dikdörtgen blok (TS 500 md. 7.1): beton basıncı $0.85f_{cd}$ şiddetinde $a=k_1c$ derinliğinde; çelik akıyorsa çekme $A_sf_{yd}$. Bunu $\\varepsilon_s=0.003(d-c)/c\\ge\\varepsilon_{yd}$ ile doğrula.",
+          adimlar: [
+            { metin: "Kuvvet dengesi.", tex: "\\kutub{a}=\\frac{A_sf_{yd}}{0.85f_{cd}b}=\\frac{" + ft(As) + "\\cdot365.22}{0.85\\cdot" + ft(bt.fcd) + "\\cdot" + bmm + "}=" + ft(a) + "\\ \\text{mm}" },
+            { metin: "Moment.", tex: "\\kutuc{M_r}=A_sf_{yd}\\Big(d-\\frac{a}{2}\\Big)=" + ft(As * TS_FYD) + "\\cdot(" + d + "-" + ft(a / 2) + ")=" + ft(Mr) + "\\ \\text{kN·m}" },
+            { metin: "Akma denetimi.", tex: "c=\\tfrac{a}{k_1}=" + ft(a / bt.k1) + ",\\quad \\varepsilon_s=0.003\\tfrac{d-c}{c}=" + ft(TS_ECU * (d - a / bt.k1) / (a / bt.k1)) + "\\ge\\varepsilon_{yd}=0.00183\\ \\checkmark" }]
+        };
+      }
+      const o0 = kirisHesap(1, bmm, hmm, 50, bt);
+      const enAz = z === 3 && rnd.sayi() < 0.3;
+      const Md = enAz ? Math.round(0.5 * o0.rmin * bmm * d * TS_FYD * d * 0.9 / 1e6) : Math.round(o0.MLim / 1e6 * rnd.sec([0.35, 0.45, 0.55, 0.65, 0.75]));
+      const o = kirisHesap(Md, bmm, hmm, 50, bt);
+      if (!o.tek) return null;
+      const adim = [
+        { metin: "Blok derinliği (denge + moment birlikte).", tex: "\\kutub{a}=d-\\sqrt{d^2-\\frac{2M_d}{0.85f_{cd}b}}=" + d + "-\\sqrt{" + d + "^2-\\frac{2\\cdot" + Md + "\\cdot10^6}{" + ft(R) + "}}=" + ft(o.a) + "\\ \\text{mm}" },
+        { metin: "Donatı alanı.", tex: "A_s=\\frac{0.85f_{cd}\\,b\\,a}{f_{yd}}=\\frac{" + ft(R) + "\\cdot" + ft(o.a) + "}{365.22}=" + ft(o.As) + "\\ \\text{mm}^2" },
+        { metin: "En az donatı (Denk. 7.3).", tex: "\\rho_{min}=0.8\\tfrac{f_{ctd}}{f_{yd}}=" + ft(o.rmin) + ",\\ \\rho_{min}bd=" + ft(o.rmin * bmm * d) + "\\ \\text{mm}^2\\ \\Rightarrow\\ \\kutuc{A_s=" + ft(o.AsG) + "\\ \\text{mm}^2}" }];
+      if (z === 2) {
+        return {
+          metin: giris + "Tasarım momenti $M_d=" + Md + "$ kN·m. Tek donatılı kesit için gerekli çekme donatısı $A_s$ kaç mm²?",
+          etiket: "A_s (mm²) =", cevap: new Mat([[yuv(o.AsG)]]), tolerans: 0.005,
+          ipucu: ["$a=d-\\sqrt{d^2-2M_d/(0.85f_{cd}b)}$ (M_d N·mm).", "$A_s=0.85f_{cd}ba/f_{yd}$; sonra $\\rho_{min}bd$ ile karşılaştır."],
+          aciklama: "Denge $0.85f_{cd}ba=A_sf_{yd}$ ve $M_d=A_sf_{yd}(d-a/2)$ birlikte çözülünce $a$ için ikinci derece denklem çıkar. Sonuç $\\rho_{min}\\le\\rho\\le\\rho_{max}$ aralığında olmalı.",
+          adimlar: adim
+        };
+      }
+      return {
+        metin: giris + "Tasarım momenti $M_d=" + Md + "$ kN·m. Blok derinliği $a$ (mm) ve en az donatı koşulu da gözetilerek gerekli $A_s$ (mm²) nedir?",
+        alanlar: ["a (mm) =", "A_s (mm²) ="], cevap: new Mat([[yuv(o.a), yuv(o.AsG)]]), tolerans: 0.005,
+        ipucu: ["$a=d-\\sqrt{d^2-2M_d/(0.85f_{cd}b)}$.", "$\\rho_{min}=0.8f_{ctd}/f_{yd}$: hesap donatısı bundan azsa $\\rho_{min}bd$ konur."],
+        aciklama: (o.minBelirledi ? "Bu soruda moment küçük: en az donatı belirledi. " : "") + "TS 500 Denk. 7.3: $\\rho\\ge0.8f_{ctd}/f_{yd}$ çatlama momentinden önce donatının kopmamasını sağlar.",
+        adimlar: adim
+      };
+    });
+  }, { baslik: "Kiriş donatısı A_s", aciklama: "TS 500 eşdeğer blokla a ve M_r (1), gerekli A_s (2), a ve ρ_min denetimli A_s (3).", varsayilan: { zorluk: 2 } });
+
+  /* ================================================================== alıştırma: celik-mn */
+
+  const CMN_P = ["IPE 200", "IPE 240", "IPE 300", "IPE 360", "IPE 400", "HEB 200", "HEB 240"];
+
+  E.kaydet("alistirma:celik-mn", function (kok, p) {
+    return E.alistirmaKur(kok, p, (rnd, pp) => {
+      const z = zorlukOku(pp);
+      const pa = rnd.sec(CMN_P), pr = profil(pa), Fy = rnd.sec([235, 275]);
+      const r0 = ybb(pr, Fy, 0, 1), lp = r0.Lp / 1000, lr = r0.Lr / 1000;
+      let Lb, Cb = 1;
+      if (z === 1) Lb = Math.round(lp * rnd.sec([0.3, 0.5, 0.8]) * 10) / 10;
+      else if (z === 2) Lb = Math.round((lp + (lr - lp) * rnd.sec([0.25, 0.4, 0.6, 0.8])) * 10) / 10;
+      else { Lb = Math.round(lr * rnd.sec([1.15, 1.3, 1.6]) * 2) / 2; Cb = rnd.sec([1, 1, 1.14]); }
+      const r = ybb(pr, Fy, Lb * 1000, Cb);
+      if (r.bolge !== z - 1 || r.Mflb !== null) return null;
+      const Mp = r.Mp / 1e6, Mn = r.Mn / 1e6;
+      const veri = pa + " ($W_{pl,y}=" + ft(pr.Wply / 1e3) + "$ cm³, $W_{el,y}=" + ft(pr.Wely / 1e3) + "$ cm³, $i_z=" + ft(pr.iz / 10) + "$ cm), S" + Fy + " ($F_y=" + Fy + "$ MPa), kompakt kesit, $L_b=" + ft(Lb) + "$ m, $C_b=" + ft(Cb) + "$";
+      if (z === 1) {
+        return {
+          metin: veri + ". Güçlü eksen nominal eğilme dayanımı $M_n$ ve tasarım dayanımı $\\phi_bM_n$ kaç kN·m? ($E=200000$ MPa)",
+          alanlar: ["M_n (kN·m) =", "φ_b M_n (kN·m) ="], cevap: new Mat([[yuv(Mn), yuv(0.9 * Mn)]]), tolerans: 0.005,
+          ipucu: ["Önce $L_p=1.76\\,i_z\\sqrt{E/F_y}$ ile $L_b$'yi karşılaştır.", "$L_b\\le L_p$ ise $M_n=M_p=F_yW_{pl,y}$; $\\phi_b=0.90$."],
+          aciklama: "ÇYTHYE md. 9.2.1: yanal desteksiz boy $L_p$'den kısaysa yanal burulmalı burkulma oluşmaz, kesit plastik momente ulaşır (Denk. 9.2).",
+          adimlar: [{ metin: "Sınır boy (Denk. 9.6a).", tex: "L_p=1.76\\cdot" + ft(pr.iz) + "\\sqrt{200000/" + Fy + "}=" + ft(r.Lp) + "\\ \\text{mm}\\ \\ge L_b=" + ft(Lb * 1000) },
+            { metin: "Plastik moment.", tex: "\\kutua{M_n=M_p=F_yW_{pl,y}}=" + Fy + "\\cdot" + ft(pr.Wply) + "=" + ft(Mp) + "\\ \\text{kN·m},\\quad \\phi_bM_n=" + ft(0.9 * Mn) }]
+        };
+      }
+      if (z === 2) {
+        return {
+          metin: veri + "; bu profil için $L_p=" + ft(lp) + "$ m ve $L_r=" + ft(lr) + "$ m. Nominal eğilme dayanımı $M_n$ kaç kN·m?",
+          etiket: "M_n (kN·m) =", cevap: new Mat([[yuv(Mn)]]), tolerans: 0.005,
+          ipucu: ["$L_p<L_b\\le L_r$: elastik olmayan yanal burulmalı burkulma (Denk. 9.3).", "$M_n=C_b[M_p-(M_p-0.7F_yW_{el,y})(L_b-L_p)/(L_r-L_p)]\\le M_p$."],
+          aciklama: "İki uç arasında doğrusal geçiş: $L_p$'de $M_p$, $L_r$'de $0.7F_yW_{el,y}$ (artık gerilmeler nedeniyle elastik sınır).",
+          adimlar: [{ metin: "Uç değerler.", tex: "M_p=" + ft(Mp) + ",\\quad 0.7F_yW_{el,y}=" + ft(0.7 * Fy * pr.Wely / 1e6) + "\\ \\text{kN·m}" },
+            { metin: "Doğrusal ara değer.", tex: "\\kutub{M_n}=" + ft(Mp) + "-(" + ft(Mp) + "-" + ft(0.7 * Fy * pr.Wely / 1e6) + ")\\tfrac{" + ft(Lb) + "-" + ft(lp) + "}{" + ft(lr) + "-" + ft(lp) + "}=" + ft(Mn) + "\\ \\text{kN·m}" }]
+        };
+      }
+      return {
+        metin: veri + "; $L_r=" + ft(lr) + "$ m, $i_{ts}=" + ft(r.its) + "$ mm, $\\tfrac{Jc}{W_{el,y}h_o}=" + ft(r.jc) + "$. Kritik gerilme $F_{cr}$ (MPa) ve $M_n$ (kN·m) nedir?",
+        alanlar: ["F_cr (MPa) =", "M_n (kN·m) ="], cevap: new Mat([[yuv(r.Fcr), yuv(Mn)]]), tolerans: 0.005,
+        ipucu: ["$L_b>L_r$: elastik bölge, Denk. 9.5.", "$F_{cr}=\\tfrac{C_b\\pi^2E}{(L_b/i_{ts})^2}\\sqrt{1+0.078\\tfrac{Jc}{W_{el}h_o}(L_b/i_{ts})^2}$, $M_n=F_{cr}W_{el,y}\\le M_p$."],
+        aciklama: "Elastik yanal burulmalı burkulmada dayanım $L_b^2$ ile ters orantılıya yaklaşır; burada desteksiz boyu kısaltmak (aşık, yanal bağ) profil büyütmekten daha etkilidir.",
+        adimlar: [{ metin: "Narinlik.", tex: "L_b/i_{ts}=" + ft(Lb * 1000) + "/" + ft(r.its) + "=" + ft(Lb * 1000 / r.its) },
+          { metin: "Kritik gerilme (Denk. 9.5).", tex: "\\kutusil{F_{cr}}=" + ft(r.Fcr) + "\\ \\text{MPa}" },
+          { metin: "Nominal moment.", tex: "\\kutuc{M_n}=F_{cr}W_{el,y}=" + ft(r.Fcr) + "\\cdot" + ft(pr.Wely) + "=" + ft(Mn) + "\\ \\text{kN·m}\\le M_p=" + ft(Mp) }]
+      };
+    });
+  }, { baslik: "Çelik kirişte M_n", aciklama: "ÇYTHYE 9.2: L_b ≤ L_p (1), elastik olmayan YBB (2), elastik YBB ve F_cr (3).", varsayilan: { zorluk: 2 } });
+
 })();

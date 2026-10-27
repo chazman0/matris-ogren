@@ -55,6 +55,13 @@ def _yapi_modulu():
         return None
 
 
+def _tasarim_modulu():
+    try:
+        return importlib.import_module("tasarim")
+    except ImportError:
+        return None
+
+
 def calistir(kod: str, ad_alani: dict):
     """Örnek kodunu çalıştırır ve son satırdaki ifadenin değerini döndürür (BICIM.md §5)."""
     agac = ast.parse(kod)
@@ -75,6 +82,11 @@ def _ad_alani(kod: str) -> dict:
         ad_alani["yapi"] = yapi
     elif re.search(r"\byapi\.", kod):
         pytest.skip("yapi.py henüz yok")
+    tasarim = _tasarim_modulu()
+    if tasarim is not None:
+        ad_alani["tasarim"] = tasarim
+    elif re.search(r"\btasarim\.", kod):
+        pytest.skip("tasarim.py henüz yok")
     return ad_alani
 
 
