@@ -294,8 +294,8 @@ def test_yanit_boyutu(cozumler):
     boy = lambda v: len(json.dumps(v, ensure_ascii=False))  # noqa: E731
     assert boy(cozumler["betonarme-2kat-3x2"].veri) < 300_000
     assert boy(cozumler["betonarme-3kat-3x3"].veri) < 800_000          # S, W, E açık şablon
-    assert boy(cozumler["betonarme-4kat-4x3"].veri) < 900_000
-    for ad, sinir in (("betonarme-2kat-3x2", 450_000), ("betonarme-4kat-4x3", 1_100_000)):
+    assert boy(cozumler["betonarme-4kat-4x3"].veri) < 1_000_000        # Dilim 3: veri.tasarim (116 eleman) dahil
+    for ad, sinir in (("betonarme-2kat-3x2", 450_000), ("betonarme-4kat-4x3", 1_300_000)):
         b = yapi.bina_sablon(ad)
         for d in ("S", "W", "E"):
             b["yuk_durumlari"][d]["acik"] = True
