@@ -1,15 +1,15 @@
 ---
-baslik: Yük durumları, kombinasyonlar ve zarf (SAP2000 akışı)
+baslik: Yük durumları, kombinasyonlar ve zarf (programların iş akışı)
 bolum: yapi
-ozet: G, Q, S, W ve E yük durumları; SAP2000'in load pattern → load case → combination → envelope zinciri; süperpozisyonla kombinasyon, TS 500 md. 6.2.6, TBDY 4.4.4, ÇYTHYE 5.3 birleşimleri, yön ve işaret çoğaltımı, zarf, belirleyen kombinasyon ve kolonda eş zamanlı (N, M) çiftleri; rüzgâr kat kuvveti ve kar.
+ozet: G, Q, S, W ve E yük durumları; yapı analiz programlarının load pattern → load case → combination → envelope zinciri; süperpozisyonla kombinasyon, TS 500 md. 6.2.6, TBDY 4.4.4, ÇYTHYE 5.3 birleşimleri, yön ve işaret çoğaltımı, zarf, belirleyen kombinasyon ve kolonda eş zamanlı (N, M) çiftleri; rüzgâr kat kuvveti ve kar.
 sure: 75
 ---
 
 ## Neden?
 
-Bir kirişin mesnet momentini sorduğunda tek bir sayı beklersin; oysa bina önce on iki ayrı **yük durumu** için çözülür ve kirişin o kesiti yetmiş dört **kombinasyonun** her birinde başka bir moment taşır. Tasarımcının işi bunların içinden en elverişsizini bulmaktır: kiriş donatısı için **zarf** (envelope), kolon için ise aynı anda oluşan eksenel kuvvet ve moment çifti. SAP2000, ETABS ve bu uygulamanın motoru aynı sırayı izler: yükleri ayrı ayrı tanımla, her birini bir kez çöz, sonuçları katsayılarla topla, en kötüsünü seç. Bu derste bu sıranın her halkasını el hesabıyla ve `yapi` motoruyla izleyeceksin.
+Bir kirişin mesnet momentini sorduğunda tek bir sayı beklersin; oysa bina önce on iki ayrı **yük durumu** için çözülür ve kirişin o kesiti yetmiş dört **kombinasyonun** her birinde başka bir moment taşır. Tasarımcının işi bunların içinden en elverişsizini bulmaktır: kiriş donatısı için **zarf** (envelope), kolon için ise aynı anda oluşan eksenel kuvvet ve moment çifti. Yaygın yapı analiz programları ve bu uygulamanın motoru aynı sırayı izler: yükleri ayrı ayrı tanımla, her birini bir kez çöz, sonuçları katsayılarla topla, en kötüsünü seç. Bu derste bu sıranın her halkasını el hesabıyla ve `yapi` motoruyla izleyeceksin.
 
-::: sekil SAP2000 zinciri: yük tanımından tasarım değerine
+::: sekil Analiz zinciri: yük tanımından tasarım değerine
 <svg viewBox="0 0 440 210" width="100%" font-family="system-ui" font-size="11" fill="currentColor">
 <rect x="6" y="20" width="96" height="74" rx="8" fill="var(--sema-a-bg,rgba(59,130,246,.12))" stroke="var(--sema-a,#3b82f6)" stroke-width="1.5"/>
 <text x="54" y="38" text-anchor="middle" font-weight="700" fill="var(--sema-a,#3b82f6)">Load Pattern</text>
@@ -68,11 +68,11 @@ $$
 \kutub{E_d^{(Z)}\approx\tfrac{2}{3}\,S_{DS}\,G}\qquad(S_{DS}=1.2\ \Rightarrow\ E_d^{(Z)}=0.8\,G)
 $$
 
-## SAP2000 zinciri ve bu uygulamadaki karşılığı
+## Programların zinciri ve bu uygulamadaki karşılığı
 
-SAP2000'de **Load Pattern** yükün yerini ve değerini, **Load Case** onun nasıl çözüleceğini (doğrusal statik, modal, spektrum…), **Load Combination** çözülmüş sonuçların katsayılarla nasıl birleştirileceğini, **Envelope** ise birleşimlerin en büyük ve en küçük değerlerini tanımlar. Kombinasyon "Linear Add" türündeyse program yeni bir $K\mathbf{u}=\mathbf{F}$ çözmez; analiz sonrasında sonuçları ölçekleyip toplar.
+Yaygın yapı analiz programlarında **Load Pattern** (yük deseni) yükün yerini ve değerini, **Load Case** (yük durumu) onun nasıl çözüleceğini (doğrusal statik, modal, spektrum…), **Load Combination** (kombinasyon) çözülmüş sonuçların katsayılarla nasıl birleştirileceğini, **Envelope** (zarf) ise birleşimlerin en büyük ve en küçük değerlerini tanımlar. Kombinasyon "Linear Add" türündeyse program yeni bir $K\mathbf{u}=\mathbf{F}$ çözmez; analiz sonrasında sonuçları ölçekleyip toplar.
 
-| SAP2000 | Anlamı | `yapi` motorunda |
+| Program terimi | Anlamı | `yapi` motorunda |
 |---|---|---|
 | Load Pattern (DEAD, LIVE, SNOW, WIND, QUAKE) | yükün dağılımı | `bina["yuk_durumlari"]`: G, Q, S, W, E |
 | Load Case (Linear Static) | $K\mathbf{u}=\mathbf{F}$ çözümü | `se.coz_coklu`: $K$ bir kez ayrıştırılır, her durum bir sağ taraf |
@@ -100,7 +100,7 @@ $$
 Aynı doğrusallık iç kuvvetlere de taşınır: her kesitte $\kutuc{M_{\text{komb}}(x)=\sum_i\gamma_i\,M_i(x)}$. Tepkiler, uç kuvvetleri ve ötelemeler de böyle toplanır.
 
 ::: uyari Süperpozisyonun bittiği yer
-P-Delta, büyük yer değiştirme, çatlayan ya da akan malzeme, yalnız basınç taşıyan zemin yayı gibi **doğrusal olmayan** çözümlerde sonuçlar toplanamaz. SAP2000 belgeleri de doğrusal olmayan analiz sonuçlarının süperpoze edilmemesini, yüklerin bir "nonlinear case" içinde birleştirilmesini söyler. Bu durumda her kombinasyon ayrı bir çözümdür.
+P-Delta, büyük yer değiştirme, çatlayan ya da akan malzeme, yalnız basınç taşıyan zemin yayı gibi **doğrusal olmayan** çözümlerde sonuçlar toplanamaz. Yapı analiz programlarının belgeleri de doğrusal olmayan analiz sonuçlarının süperpoze edilmemesini, yüklerin bir "nonlinear case" (doğrusal olmayan durum) içinde birleştirilmesini söyler. Bu durumda her kombinasyon ayrı bir çözümdür.
 :::
 
 ## Yönetmelik birleşimleri
@@ -186,7 +186,7 @@ Kiriş donatısı her kesitte zarfa göre konabilir: alt donatı $M_{\max}$'a, �
 </svg>
 :::
 
-Doğru yol, her kombinasyonun kendi $(N,M)$ çiftini etkileşim diyagramıyla karşılaştırmaktır. SAP2000 ve ETABS kolon tasarımında bunu yapar: her istasyonda her kombinasyon için $(N_d,M_{d2},M_{d3})$ noktası ayrı denetlenir. Zarfın köşesi güvenli tarafta kalabilir ama gereksiz donatıya yol açar; tersine, az basınçlı $0.9G-E$ çifti zarfın köşesinde hiç görünmez, oysa çoğu zaman belirleyen odur.
+Doğru yol, her kombinasyonun kendi $(N,M)$ çiftini etkileşim diyagramıyla karşılaştırmaktır. Ticari yapı analiz programları kolon tasarımında bunu yapar: her istasyonda her kombinasyon için $(N_d,M_{d2},M_{d3})$ noktası ayrı denetlenir. Zarfın köşesi güvenli tarafta kalabilir ama gereksiz donatıya yol açar; tersine, az basınçlı $0.9G-E$ çifti zarfın köşesinde hiç görünmez, oysa çoğu zaman belirleyen odur.
 
 ## Rüzgâr ve kar
 
@@ -261,7 +261,7 @@ r
 --- kontrol
 all(abs(m - (1.4 * g + 1.6 * q)) < 1e-3 for m, g, q in zip(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["Q"]["elemanlar"] if e["no"] == 30)["M"])) and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"][-1] + 77.344) < 1e-3
 --- yorum
-`yapi.kombinasyon_kisa(r.ic, ad)` istenen kombinasyonun bütün diyagramlarını, tepkilerini ve ötelemelerini **yeniden çözmeden** verir: içeride `_Paket.birlesim` her diziyi $\sum\gamma_i\cdot$ dizi$_i$ olarak toplar. SAP2000'de "Linear Add" kombinasyonunun yaptığı da budur.
+`yapi.kombinasyon_kisa(r.ic, ad)` istenen kombinasyonun bütün diyagramlarını, tepkilerini ve ötelemelerini **yeniden çözmeden** verir: içeride `_Paket.birlesim` her diziyi $\sum\gamma_i\cdot$ dizi$_i$ olarak toplar. Yapı analiz programlarında "Linear Add" (doğrusal toplam) kombinasyonunun yaptığı da budur.
 :::
 
 ::: ornek Deprem kombinasyonu: kolonun eksenel kuvveti
@@ -409,15 +409,15 @@ $$
 Aynı durum değerleri iki kümede farklı tasarım kuvveti verir; kümeyi malzeme ve tasarım yöntemi seçer, karıştırılmaz. ÇYTHYE'de rüzgârın 1.6 ile girmesi hafif çelik yapılarda rüzgârı çoğu zaman belirleyici yapar. Bina kartında `kombinasyon_kumesi: "cythye_ydkt"` seçilirse motor bu satırları kendisi açar.
 :::
 
-::: muhendislik SAP2000'de aynı iş, farklı adlar
-SAP2000'de "Define → Load Patterns" ile G, Q, W, E tanımlanır; her biri için aynı adlı "Linear Static" load case kendiliğinden oluşur. "Define → Load Combinations → Add Default Design Combos" seçilen tasarım koduna göre kombinasyonları üretir; Türkiye'de çoğu kullanıcı TBDY 2018 birleşimlerini elle tanımlar. Kombinasyon türü **Linear Add** toplam, **Envelope** zarftır; spektrum analizinde sonuçlar işaretsiz geldiği için program alt kombinasyonlar üretir. Kolon tasarımında program zarfı değil, her kombinasyonun $(N, M_2, M_3)$ noktasını etkileşim yüzeyiyle karşılaştırır.
+::: muhendislik Programlarda aynı iş, farklı adlar
+Yaygın yapı analiz programlarında önce G, Q, W, E yük desenleri tanımlanır; her biri için aynı adlı doğrusal statik yük durumu ("linear static" load case) kendiliğinden oluşur. Programların varsayılan tasarım kombinasyonu seçeneği seçilen tasarım koduna göre kombinasyonları üretir; Türkiye'de çoğu kullanıcı TBDY 2018 birleşimlerini elle tanımlar. Kombinasyon türü **Linear Add** toplam, **Envelope** zarftır; spektrum analizinde sonuçlar işaretsiz geldiği için program alt kombinasyonlar üretir. Kolon tasarımında program zarfı değil, her kombinasyonun $(N, M_2, M_3)$ noktasını etkileşim yüzeyiyle karşılaştırır.
 
 Tarihi yığma köprüde de aynı mantık geçerlidir ama kombinasyon daha azdır: öz ağırlık ve dolgu ($G$), trafik ($Q$), sıcaklık ve deprem. OMA ile ölçülen modlar sonlu eleman modelini güncellemeye yarar; güncellenen model doğrusal kalırsa her durum bir kez çözülür, kombinasyonlar yine toplanır.
 :::
 
 ::: ozet Özet
 - Yük durumları ayrı ayrı tanımlanır ve çözülür: $G$, $Q$ (TS 498:2021), $S=\mu_1S_k$ (md. 11 Çizelge 3), $W=C\,q(z)\,A$ (md. 14 Çizelge 4, $C=1.2$), $E$: EX±, EY± (±%5 dışmerkezlik) ve $E_d^{(Z)}=\tfrac{2}{3}S_{DS}G$.
-- SAP2000 zinciri: Load Pattern → Load Case ($K$ bir kez, çok sağ taraf) → Combination (Linear Add: $\sum\gamma_i\cdot$ sonuç$_i$, çözüm yok) → Envelope. Süperpozisyon yalnız doğrusal çözümde geçerlidir.
+- Programların zinciri: Load Pattern → Load Case ($K$ bir kez, çok sağ taraf) → Combination (Linear Add: $\sum\gamma_i\cdot$ sonuç$_i$, çözüm yok) → Envelope. Süperpozisyon yalnız doğrusal çözümde geçerlidir.
 - TS 500 md. 6.2.6: $1.4G+1.6Q$, $G+1.3Q\pm1.3W$, $0.9G\pm1.3W$, servis $G+Q$; kar TS 498 md. 3.1 ile hareketli yük ($1.6S$), kar + rüzgâr md. 12.1 ($S/2+W$ ya da $S+W/2$). TBDY 4.4.4: $G+Q+0.2S+E_d^{(H)}+0.3E_d^{(Z)}$ ve $0.9G+H+E_d^{(H)}-0.3E_d^{(Z)}$, $E_d^{(H)}=\pm E_X\pm0.3E_Y$. ÇYTHYE YDKT rüzgârda 1.6, TBDY 9.2.5.1 çelik depremde $1.2G$; GKT katsayıları 1 civarı.
 - Yön ve işaret çoğaltımı: rüzgâr 4, deprem 32 varyant; ders binasında 84 kombinasyon + 4 öteleme birleşimi. Betonarme deprem birleşimleri çatlamış kesitli ikinci bir $K$'den gelir (TBDY 4.5.8.3).
 - Zarf her büyüklük ve kesit için max ve min ile belirleyen kombinasyondur; kiriş donatısı zarftan, kolon denetimi her kombinasyonun eş zamanlı $(N,M)$ çiftinden yapılır.
