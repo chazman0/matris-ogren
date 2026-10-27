@@ -592,3 +592,461 @@ def test_ogretici_hatalar(cagri):
 def test_profil_adi_esnek():
     assert ta.kesit_sinifi("ipe300", 275)["profil"] == "IPE 300"
     assert ta.celik_egilme("IPE 300", "S275", 2.0)["Fy"] == 275
+
+
+# ============================================================================
+# Basit kesitler: kapalı form özellikler (ders kitabı / katalog değerleri)
+# ============================================================================
+def oran_yakin(a, b, oran):
+    return abs(a - b) <= oran * abs(b)
+
+
+def test_kavis_kapali_form_sayisal():
+    """Köşe dolgusu (kare − çeyrek daire): a, c, I_kenar, I_xy kapalı formları sayısal integralle."""
+    import numpy as np
+    r, n = 1.0, 2000
+    x = (np.arange(n) + 0.5) / n
+    X, Y = np.meshgrid(x, x)
+    m = (X - 1) ** 2 + (Y - 1) ** 2 >= 1
+    dA = 1.0 / n ** 2
+    A = m.sum() * dA
+    p = ta._kavis(0, 0, 1, 1, r)
+    assert p["A"] == pytest.approx(A, rel=1e-4)
+    assert p["cx"] == pytest.approx((X * m).sum() * dA / A, rel=1e-4)
+    assert p["Iy0"] + p["A"] * p["cz"] ** 2 == pytest.approx((Y ** 2 * m).sum() * dA, rel=1e-3)
+    assert p["Iyz0"] + p["A"] * p["cx"] * p["cz"] == pytest.approx((X * Y * m).sum() * dA, rel=1e-3)
+
+
+def test_kutu_keskin_kose_arastirma_formulleri():
+    """r = 0: araştırmadaki RHS formülleri birebir (b = 100, h = 200, t = 6)."""
+    k = ta.kesit_ozellik("kutu", {"H": 200, "B": 100, "t": 6, "r_o": 0, "r_i": 0})
+    b, h, t = 100.0, 200.0, 6.0
+    assert k["A"] * 100 == pytest.approx(b * h - (b - 2 * t) * (h - 2 * t))
+    assert k["Iy"] * 1e4 == pytest.approx((b * h ** 3 - (b - 2 * t) * (h - 2 * t) ** 3) / 12)
+    assert k["Iz"] * 1e4 == pytest.approx((h * b ** 3 - (h - 2 * t) * (b - 2 * t) ** 3) / 12)
+    assert k["Wply"] * 1e3 == pytest.approx((b * h ** 2 - (b - 2 * t) * (h - 2 * t) ** 2) / 4, rel=1e-6)
+    assert k["Wplz"] * 1e3 == pytest.approx((h * b ** 2 - (h - 2 * t) * (b - 2 * t) ** 2) / 4, rel=1e-6)
+    bredt = 2 * t * (b - t) ** 2 * (h - t) ** 2 / ((b - t) + (h - t))
+    assert oran_yakin(k["It"] * 1e4, bredt, 0.01)          # + t³p/3 terimi kadar fark
+    assert json_temiz(k)
+
+
+def test_kutu_sicak_katalog():
+    """SHS 100×100×5 (EN 10210-2, r_o = 1,5t, r_i = t): A = 18,7 cm², I = 279 cm⁴, W_el = 55,9, W_pl = 66,4 cm³."""
+    k = ta.kesit_ozellik("KUTU 100x5")
+    assert k["ad"] == "KUTU 100x100x5" and k["r_o"] == 7.5 and k["r_i"] == 5.0
+    for ad, deger in (("A", 18.7), ("Iy", 279.0), ("Iz", 279.0), ("Wely", 55.9), ("Wply", 66.4), ("iy", 3.86)):
+        assert oran_yakin(k[ad], deger, 0.02), (ad, k[ad], deger)
+    s = ta.kesit_ozellik("kutu", {"H": 100, "B": 100, "t": 5, "imalat": "soguk"})
+    assert s["t_tasarim"] == pytest.approx(4.65) and s["A"] < k["A"]          # ÇYTHYE 5.4.2: 0,93t
+
+
+def test_boru_kesin():
+    """CHS 168,3 × 6,3: A = 32,1 cm², I = 1053 cm⁴, W_el = 125, W_pl = 165 cm³, i = 5,73 cm, J = 2I."""
+    k = ta.kesit_ozellik("BORU 168.3x6.3")
+    D, t = 168.3, 6.3
+    d = D - 2 * t
+    assert k["A"] * 100 == pytest.approx(math.pi / 4 * (D ** 2 - d ** 2))
+    assert k["Iy"] * 1e4 == pytest.approx(math.pi / 64 * (D ** 4 - d ** 4))
+    assert k["Wply"] * 1e3 == pytest.approx((D ** 3 - d ** 3) / 6)
+    assert k["It"] == pytest.approx(2 * k["Iy"])
+    for ad, deger in (("A", 32.1), ("Iy", 1053.0), ("Wely", 125.0), ("Wply", 165.0), ("iy", 5.73)):
+        assert oran_yakin(k[ad], deger, 0.02), (ad, k[ad], deger)
+
+
+def test_korniyer_katalog():
+    """L 100×100×10 (EN 10056-1): A = 19,15 cm², Iy = 176,7 cm⁴, iy = 3,04, e = 2,82, Wel = 24,62, Iu = 280,7, i_v = 1,95."""
+    k = ta.kesit_ozellik("L 100x10")
+    assert k["ad"] == "L 100x100x10" and k["r1"] == 12
+    for ad, deger in (("A", 19.15), ("Iy", 176.7), ("Iz", 176.7), ("iy", 3.04), ("e", 2.82), ("Wely", 24.62),
+                      ("Iu", 280.7), ("iv", 1.95), ("iu", 3.83)):
+        assert oran_yakin(k[ad], deger, 0.02), (ad, k[ad], deger)
+    assert k["Iu"] + k["Iv"] == pytest.approx(k["Iy"] + k["Iz"])      # asal eksen dönüşümünde iz korunur
+    assert k["i_min"] == pytest.approx(k["iv"])
+    # keskin köşe: A = t(2b − t)
+    s = ta.kesit_ozellik("L", {"b": 100, "t": 10, "r1": 0, "r2": 0})
+    assert s["A"] * 100 == pytest.approx(10 * 190) and s["e"] * 10 == pytest.approx(54500 / 1900)
+
+
+def test_cift_korniyer_paralel_eksen():
+    """2L 100×10, s = 10 mm: Iz = 2[I_L + A_L(e + s/2)²] (ders kitabı değerleriyle ±%2), iy = tek korniyerin iy'si."""
+    k = ta.kesit_ozellik("2L 100x10 s=10")
+    Iz_el = 2 * (176.7 + 19.15 * (2.82 + 0.5) ** 2)
+    assert oran_yakin(k["Iz"], Iz_el, 0.02)
+    assert oran_yakin(k["iz"], math.sqrt(Iz_el / 38.3), 0.02) and oran_yakin(k["iz"], 4.50, 0.02)
+    assert oran_yakin(k["A"], 2 * 19.15, 0.01) and oran_yakin(k["iy"], 3.04, 0.02)
+    tek = ta.kesit_ozellik("L 100x10")
+    assert k["Iy"] == pytest.approx(2 * tek["Iy"]) and k["i_i"] == pytest.approx(tek["iv"])
+    assert 0 < k["H_ftb"] < 1 and json_temiz(k)
+
+
+def test_upn_katalog():
+    """UPN 200 (konik başlık modellenir): A = 32,2 cm², Iy = 1910, Iz = 148 cm⁴, e = 2,01 cm (±%3)."""
+    k = ta.kesit_ozellik("UPN 200")
+    for ad, deger in (("A", 32.2), ("Iy", 1910.0), ("Iz", 148.0), ("e_ag", 2.01), ("iz", 2.14)):
+        assert oran_yakin(k[ad], deger, 0.03), (ad, k[ad], deger)
+
+
+def test_standart_listeler_ve_adlar():
+    for aile, adlar in ta.STANDART_KESITLER.items():
+        assert len(adlar) >= 10
+        for ad in adlar:
+            k = ta.kesit_ozellik(ad)
+            assert k["ad"] == ad and k["A"] > 0 and k["i_min"] > 0 and json_temiz(k)
+
+
+# ============================================================================
+# Çapraz / kafes çubuğu (ÇYTHYE Bölüm 7–8)
+# ============================================================================
+def _fcr(Fy, Fe):
+    return 0.658 ** (Fy / Fe) * Fy if Fy / Fe <= 2.25 else 0.877 * Fe
+
+
+def test_capraz_kutu_cekme_basinc_el_hesabi():
+    """KUTU 100×5, S275, L = 4 m: Pc = 0,9 Fcr A (eğilmeli), Tc = min(0,9 Fy A, 0,75 Fu U An)."""
+    k = ta.kesit_ozellik("KUTU 100x5")
+    A, i = k["A"] * 100, k["iy"] * 10
+    r = ta.celik_cubuk_kontrol("KUTU 100x5", "S275", 4.0, kuvvetler=[{"ad": "B", "N": 200}, {"ad": "Ç", "N": -300}],
+                               An=15.0, U=0.9)
+    lam = 4000 / i
+    Fe = math.pi ** 2 * E / lam ** 2
+    Pc = 0.9 * _fcr(275, Fe) * A / 1e3
+    assert r["basinc"]["Pc_kN"] == pytest.approx(Pc, rel=1e-9) and Pc == pytest.approx(248.0, abs=0.5)
+    Tc = min(0.9 * 275 * A, 0.75 * 430 * 0.9 * 1500) / 1e3
+    assert r["cekme"]["Tc_kN"] == pytest.approx(Tc) and r["cekme"]["belirleyici"] == "kırılma"
+    b, c = r["kombinasyonlar"]
+    assert b["dc"] == pytest.approx(200 / Pc) and c["dc"] == pytest.approx(300 / Tc)
+    assert r["dc"] == pytest.approx(max(200 / Pc, 300 / Tc, lam / 200, 4000 / i / 300))
+    assert r["sinif"]["basinc"] == "narin olmayan" and json_temiz(r)
+    g = ta.celik_cubuk_kontrol("KUTU 100x5", "S275", 4.0, kuvvetler={"N": 200}, yontem="GKT")
+    assert g["basinc"]["Pc_kN"] == pytest.approx(_fcr(275, Fe) * A / 1e3 / 1.67)
+
+
+def test_capraz_I_profil_celik_basinc_ile_ayni():
+    r = ta.celik_cubuk_kontrol("HEB 200", "S275", 3.5, kuvvetler={"N": 500})
+    b = ta.celik_basinc("HEB 200", 275, 3.5, 3.5)
+    assert r["basinc"]["Pc_kN"] == pytest.approx(b["Pc_kN"]) and r["tip"] == "I"
+
+
+def test_korniyer_basinc_bicimleri():
+    """L 80×8: genel → v ekseni eğilmeli; düzlem kafes → Lc/i = 72 + 0,75 L/i_a (L/i_a ≤ 80) ya da 32 + 1,25 L/i_a."""
+    k = ta.kesit_ozellik("L 80x8")
+    r = ta.celik_cubuk_kontrol("L 80x8", "S275", 2.0, kuvvetler={"N": 50})
+    Fe_v = math.pi ** 2 * E / (2000 / (k["iv"] * 10)) ** 2
+    assert r["basinc"]["Fe_MPa"] <= Fe_v + 1e-9 and "v (zayıf asal)" in r["basinc"]["belirleyen"]
+    assert r["basinc"]["Pc_kN"] == pytest.approx(0.9 * _fcr(275, r["basinc"]["Fe_MPa"]) * k["A"] * 100 / 1e3)
+    assert any("8.3" in u for u in r["uyarilar"])
+    for L in (1.5, 3.0):
+        d = ta.celik_cubuk_kontrol("L 80x8", "S275", L, kuvvetler={"N": 50}, korniyer="duzlem")
+        La = L * 1000 / (k["iy"] * 10)
+        lam = 72 + 0.75 * La if La <= 80 else 32 + 1.25 * La
+        assert d["basinc"]["etkin_narinlik"] == pytest.approx(lam)
+        assert d["basinc"]["Fe_MPa"] == pytest.approx(math.pi ** 2 * E / lam ** 2)
+    u = ta.celik_cubuk_kontrol("L 80x8", "S275", 3.0, kuvvetler={"N": 50}, korniyer="uzay")
+    La = 3000 / (k["iy"] * 10)
+    assert u["basinc"]["etkin_narinlik"] == pytest.approx(60 + 0.8 * La if La <= 75 else 45 + La)
+
+
+def test_cift_korniyer_egilmeli_burulmali_el_hesabi():
+    """2L 70×7: Denk. 8.6 (simetri ekseni + burulma; C_w ihmal, Denk. 8.14) ve yapma etkin narinlik (8.21)."""
+    k = ta.kesit_ozellik("2L 70x7 s=10")
+    L, a = 2500.0, 0.9
+    r = ta.celik_cubuk_kontrol("2L 70x7 s=10", "S275", L / 1000, kuvvetler={"N": 100}, a_bag=a)
+    A, iz, ii = k["A"] * 100, k["iz"] * 10, k["i_i"] * 10
+    lz0 = L / iz
+    ai = a * 1000 / ii
+    lzm = math.sqrt(lz0 ** 2 + (0.5 * ai) ** 2) if ai > 40 else lz0
+    Fez = math.pi ** 2 * E / lzm ** 2
+    Fet = 77200 * k["It"] * 1e4 / (A * (k["io"] * 10) ** 2)
+    H = k["H_ftb"]
+    Fe_ftb = (Fez + Fet) / (2 * H) * (1 - math.sqrt(1 - 4 * Fez * Fet * H / (Fez + Fet) ** 2))
+    Fe_y = math.pi ** 2 * E / (L / (k["iy"] * 10)) ** 2
+    assert r["basinc"]["Fe_MPa"] == pytest.approx(min(Fe_ftb, Fe_y), rel=1e-9)
+    assert Fe_ftb < Fez                                   # burulma etkisi kapasiteyi düşürür
+    assert r["basinc"]["KLr_zm"] == pytest.approx(lzm)
+
+
+def test_upn_egilmeli_burulmali():
+    k = ta.kesit_ozellik("UPN 160")
+    r = ta.celik_cubuk_kontrol("UPN 160", "S275", 2.0, K=(1.0, 0.5), kuvvetler={"N": 100})
+    Fey = math.pi ** 2 * E / (2000 / (k["iy"] * 10)) ** 2
+    ftb = [m for m in r["basinc"]["modlar"] if "burulmalı" in m["ad"]][0]
+    assert ftb["Fe"] < Fey and r["basinc"]["Fe_MPa"] == pytest.approx(min(m["Fe"] for m in r["basinc"]["modlar"]))
+
+
+def test_yalniz_cekme_capraz():
+    r = ta.celik_cubuk_kontrol("BORU 76.1x3.2", "S275", 6.0, kuvvetler=[{"ad": "+X", "N": 80}, {"ad": "-X", "N": -60}],
+                               yalniz_cekme=True)
+    assert r["basinc"] is None and r["narinlik"]["basinc"] is None
+    b, c = r["kombinasyonlar"]
+    assert b["dc"] == 0.0 and "devre dışı" in b["not"]
+    assert c["dc"] == pytest.approx(60 / r["cekme"]["Tc_kN"])
+    assert not any("KL/i ≤ 200" in k["ad"] for k in r["kontroller"])
+    assert any("L/i ≤ 300" in k["ad"] for k in r["kontroller"]) and any("Yalnız çekme" in u for u in r["uyarilar"])
+    assert json_temiz(r)
+    # aynı çubuk basınçta çalışsaydı narinlik 200'ü aşardı
+    n = ta.celik_cubuk_kontrol("BORU 76.1x3.2", "S275", 6.0, kuvvetler=[{"N": 80}])
+    assert n["durum"] == "kesit büyüt"
+
+
+def test_narinlik_kosulu_asimi():
+    k = ta.kesit_ozellik("L 50x5")
+    r = ta.celik_cubuk_kontrol("L 50x5", "S275", 3.0, kuvvetler={"N": 5})
+    oran = 3000 / (k["iv"] * 10)
+    nk = [x for x in r["kontroller"] if x["ad"].startswith("Narinlik KL/i")][0]
+    assert nk["talep"] == pytest.approx(oran) and oran > 200 and not nk["saglandi"]
+    assert r["durum"] == "kesit büyüt" and "8.1.1" in nk["kaynak"]
+    # çekme: L/i ≤ 300; kullanıcı sınırı
+    c = ta.celik_cubuk_kontrol("L 50x5", "S275", 3.0, kuvvetler={"N": -5}, narinlik={"cekme": 250})
+    ck = [x for x in c["kontroller"] if x["ad"].startswith("Narinlik L/i")][0]
+    assert ck["kapasite"] == 250 and ck["talep"] == pytest.approx(oran) and not ck["saglandi"]
+    assert not any(x["ad"].startswith("Narinlik KL/i") for x in c["kontroller"])
+
+
+def test_tbdy_capraz_kosullari():
+    r = ta.celik_cubuk_kontrol("BORU 114.3x4", "S275", 4.0, kuvvetler=[{"N": 100}, {"N": -100}],
+                               tbdy_capraz={"suneklik": "SDS", "duzen": "ters_V"})
+    sinir = [x for x in r["kontroller"] if "4,0√(E/Fy)" in x["ad"]][0]
+    assert sinir["kapasite"] == pytest.approx(4.0 * math.sqrt(E / 275)) and "9.7.3.1" in sinir["kaynak"]
+    t93 = [x for x in r["kontroller"] if "Tablo 9.3" in x["ad"]][0]
+    assert t93["kapasite"] == pytest.approx(0.044 * E / 275)
+    y = ta.celik_cubuk_kontrol("BORU 114.3x4", "S275", 4.0, kuvvetler=[{"N": -100}], yalniz_cekme=True,
+                               tbdy_capraz={"suneklik": "SDY", "duzen": "X"})
+    assert any("9.6.4.3" in x["ad"] and not x["saglandi"] for x in y["kontroller"]) and y["durum"] == "kesit büyüt"
+    kd = ta.celik_cubuk_kontrol("BORU 114.3x4", "S275", 4.0, kuvvetler=[{"N": 10}],
+                                tbdy_capraz={"suneklik": "SDS", "duzen": "K"})
+    assert any("K düzeni" in x["ad"] and not x["saglandi"] for x in kd["kontroller"])
+
+
+def test_basit_kesit_siniflari():
+    q = math.sqrt(E / 275)
+    s = ta.celik_cubuk_kontrol("KUTU 300x300x10", "S275", 3, kuvvetler={"N": 10})["sinif"]
+    assert s["parcalar"][0]["oran"] == pytest.approx((300 - 30) / 10) and s["parcalar"][0]["lambda_r_basinc"] == \
+        pytest.approx(1.40 * q) and s["basinc"] == "narin olmayan"
+    ince = ta.celik_cubuk_kontrol({"tip": "kutu", "H": 300, "B": 300, "t": 5}, "S275", 3, kuvvetler={"N": 10})
+    assert ince["sinif"]["basinc"] == "narin" and any("8.5" in u for u in ince["uyarilar"])
+    s = ta.celik_cubuk_kontrol("L 100x10", "S275", 2, kuvvetler={"N": 10})["sinif"]
+    assert s["parcalar"][0]["lambda_r_basinc"] == pytest.approx(0.45 * q) and s["parcalar"][0]["durum_basinc"] == "Durum 3"
+    s = ta.celik_cubuk_kontrol("BORU 406.4x10", "S355", 2, kuvvetler={"N": 10})["sinif"]
+    assert s["parcalar"][0]["lambda_r_basinc"] == pytest.approx(0.11 * E / 355)
+    s = ta.celik_cubuk_kontrol("2L 100x10 s=0", "S275", 2, kuvvetler={"N": 10})["sinif"]
+    assert s["parcalar"][0]["durum_basinc"] == "Durum 1"
+
+
+# ============================================================================
+# İki eksenli eğilme (aşık, kren kirişi)
+# ============================================================================
+def test_asik_iki_eksenli_etkilesim_el_hesabi():
+    """IPE 200 aşık, eğim 15°, L = 5 m, üst başlık tutulu (Lb = 0): D/C = Mx/Mcx + My/Mcy (Denk. 11.1b, Pr = 0);
+    Mcx = 0,9 Fy Wpl,y (Denk. 9.2), Mcy = 0,9 min(Fy Wpl,z; 1,6 Fy Wel,z) (Denk. 9.39)."""
+    q, a, L = 4.0, math.radians(15), 5.0
+    Mx, My = q * math.cos(a) * L ** 2 / 8, q * math.sin(a) * L ** 2 / 8
+    r = ta.celik_eleman_kontrol("IPE 200", "S275", L, Lb=0.0, kuvvetler={"ad": "G+S", "Mx": Mx, "My": My})
+    Mcx = 0.9 * 275 * 220.6e3 / 1e6
+    Mcy = 0.9 * min(275 * 44.61e3, 1.6 * 275 * 28.47e3) / 1e6
+    c = r["kombinasyonlar"][0]
+    assert c["dal"] == "11.1b" and c["dc_etkilesim"] == pytest.approx(Mx / Mcx + My / Mcy, rel=1e-9)
+    assert not any("Narinlik" in k["ad"] for k in r["kontroller"])      # eksenel kuvvet yok → narinlik koşulu yok
+    # küçük eksenel basınç (Pr/Pc < 0,2): Pr/(2Pc) eklenir
+    r2 = ta.celik_eleman_kontrol("IPE 200", "S275", L, Lb=0.0, kuvvetler={"N": 4, "Mx": Mx, "My": My})
+    c2 = r2["kombinasyonlar"][0]
+    assert c2["dal"] == "11.1b" and 4 / r2["basinc"]["Pc_kN"] < 0.2
+    assert c2["dc_etkilesim"] == pytest.approx(4 / (2 * r2["basinc"]["Pc_kN"]) + Mx / Mcx + My / Mcy, rel=1e-9)
+    assert any("Narinlik KL/i" in k["ad"] for k in r2["kontroller"])
+    # Pr/Pc ≥ 0,2: 11.1a
+    r3 = ta.celik_eleman_kontrol("IPE 200", "S275", L, Lb=0.0, kuvvetler={"N": 30, "Mx": Mx, "My": My})
+    Pc = r3["basinc"]["Pc_kN"]
+    assert r3["kombinasyonlar"][0]["dal"] == "11.1a"
+    assert r3["kombinasyonlar"][0]["dc_etkilesim"] == pytest.approx(30 / Pc + 8 / 9 * (Mx / Mcx + My / Mcy))
+
+
+def test_kren_ust_baslik_yaklasimi():
+    k = {"Mx": 120, "My": 8}
+    a = ta.celik_eleman_kontrol("HEA 300", "S275", 6, Lb=6, kuvvetler=k)
+    b = ta.celik_eleman_kontrol("HEA 300", "S275", 6, Lb=6, kuvvetler=k, kren=True)
+    assert b["Mcy_kullanilan_kNm"] == pytest.approx(a["egilme"]["Mcy_kNm"] / 2)
+    ox = 120 / a["egilme"]["Mc_kNm"]
+    assert b["kombinasyonlar"][0]["dc_etkilesim"] == pytest.approx(ox + 8 / (a["egilme"]["Mcy_kNm"] / 2))
+    assert b["kombinasyonlar"][0]["dc"] > a["kombinasyonlar"][0]["dc"]
+    assert any("Kren" in u for u in b["uyarilar"]) and json_temiz(b)
+
+
+# ============================================================================
+# Kesit önerisi
+# ============================================================================
+@pytest.mark.skipif(not GERCEK_KUTUPHANE, reason="tüm profil kataloğu (yapi_veri.py) gerekli")
+def test_celik_oner_ipe_kiris_monoton():
+    """Lb = 0, Mx = 220 kN·m: IPE 300 (Mc = 155,5) ve IPE 330 (Mc = 199,1) yetmez → IPE 360 (Mc = 252,2)."""
+    kuv = [{"ad": "K1", "Mx": 220, "V": 150}]
+    par = {"L": 6.0, "Lb": 0.0}
+    r = ta.celik_kesit_oner("IPE", "S275", par, kuv, baslangic="IPE 300")
+    assert r["oneri"] == "IPE 360" and r["durum"] == "bulundu" and r["degisim"] == "büyüt"
+    assert r["mevcut"]["ad"] == "IPE 300" and r["mevcut"]["dc"] == pytest.approx(220 / (0.9 * 275 * 628.4e3 / 1e6))
+    assert r["dc"] == pytest.approx(220 / (0.9 * 275 * 1019e3 / 1e6))
+    g = {ad: p["g"] for ad, p in ta.yv.PROFILLER.items()}
+    # bağımsız monotonluk: önerilenden hafif bütün IPE'ler D/C > 1
+    for ad in (a for a in g if a.startswith("IPE ") and g[a] < g["IPE 360"]):
+        assert ta.celik_eleman_kontrol(ad, "S275", 6.0, Lb=0.0, kuvvetler=kuv)["dc"] > 1.0, ad
+    assert [d["ad"] for d in r["denenenler"]][-1] == "IPE 360" and all(not d["yeterli"] for d in r["denenenler"][:-1])
+    w = [d["agirlik_kg_m"] for d in r["denenenler"]]
+    assert w == sorted(w) and r["agirlik_kg_m"] == g["IPE 360"]
+    assert {a["aile"] for a in r["alternatifler"]} == {"HEA", "HEB"} and all(a["oneri"] for a in r["alternatifler"])
+    assert r["aile_degistir"] is None                     # HEA/HEB, IPE 360'tan ağır
+    assert "IPE 330" in " ".join(r["gerekce"]) and json_temiz(r)
+    # aile adı yerine profil adı
+    assert ta.celik_kesit_oner("IPE 300", "S275", par, kuv)["oneri"] == "IPE 360"
+
+
+@pytest.mark.skipif(not GERCEK_KUTUPHANE, reason="tüm profil kataloğu (yapi_veri.py) gerekli")
+def test_celik_oner_aile_degistir():
+    """Mx = 1500 kN·m: IPE 600 bile yetmez (Mc = 869 kN·m) → HEB/HEA önerilir."""
+    r = ta.celik_kesit_oner("IPE", "S275", {"L": 6.0, "Lb": 0.0}, [{"Mx": 1500}])
+    assert r["oneri"] is None and r["durum"] == "ailede yeterli profil yok"
+    assert r["aile_degistir"] is not None and r["aile_degistir"]["aile"] in ("HEA", "HEB")
+    ad = r["aile_degistir"]["oneri"]
+    assert ta.celik_eleman_kontrol(ad, "S275", 6.0, Lb=0.0, kuvvetler=[{"Mx": 1500}])["dc"] <= 1.0
+
+
+def test_celik_oner_eksenel_aileler():
+    kuv = [{"ad": "B", "N": 300}, {"ad": "Ç", "N": -250}]
+    r = ta.celik_kesit_oner("BORU", "S275", {"L": 5.0}, kuv)
+    assert r["kontrol"] == "cubuk" and r["oneri"] is not None
+    liste = ta.STANDART_KESITLER["BORU"]
+    g = {ad: ta.kesit_ozellik(ad)["g"] for ad in liste}
+    for ad in (a for a in liste if g[a] < g[r["oneri"]]):
+        assert ta.celik_cubuk_kontrol(ad, "S275", 5.0, kuvvetler=kuv)["dc"] > 1.0, ad
+    assert {a["aile"] for a in r["alternatifler"]} == {"KUTU", "L", "2L", "UPN"}
+    assert json_temiz(r)
+    # 2L ailesi yalnız çekme parametresiyle
+    y = ta.celik_kesit_oner("2L", "S275", {"L": 5.0, "yalniz_cekme": True, "An_oran": 0.85, "U": 0.85},
+                            [{"N": -250}, {"N": 50}], aile_degistir=False)
+    assert y["oneri"] is not None and y["alternatifler"] == []
+
+
+# ============================================================================
+# Betonarme: eğik eleman ve kesit önerisi
+# ============================================================================
+def test_betonarme_egik_eleman_yol_secimi():
+    kuv = [{"ad": "K1", "N": 50, "Mx": 120, "V": 90}, {"ad": "K2", "N": 600, "Mx": -150, "V": 120}]
+    r = ta.betonarme_eleman_kontrol(0.30, 0.50, 0.04, "C30", "B420C", kuv, tur="egik")
+    assert r["esik_kN"] == pytest.approx(0.1 * 30 * 300 * 500 / 1e3)          # 450 kN
+    k1, k2 = r["kombinasyonlar"]
+    assert k1["yol"] == "eğilme" and k2["yol"] == "N–M"
+    eg = ta.kiris_egilme(120, 0.30, 0.50, 0.04, "C30", "B420C")
+    assert r["egilme_alt"]["As_gerekli_cm2"] == pytest.approx(eg["As_gerekli_cm2"])
+    assert r["kolon"] is not None and r["kolon"]["noktalar"][0]["Nd_kN"] == 600
+    assert r["As_kaynak"].startswith("ρ taraması") and json_temiz(r)
+    # aynı kuvvetler kiriş diye verilirse eksenel koşul aşılır
+    k = ta.betonarme_eleman_kontrol(0.30, 0.50, 0.04, "C30", "B420C", kuv, tur="kiris")
+    assert k["durum"] == "kesit büyüt" and any("kolon gibi" in u for u in k["uyarilar"])
+    # kolon: kolon_kontrol ile aynı N–M sonucu
+    c = ta.betonarme_eleman_kontrol(0.40, 0.50, 0.05, "C30", "B420C", [{"N": 1500, "Mx": 150, "My": 30, "V": 80}],
+                                    tur="kolon", As_toplam=24)
+    kk = ta.kolon_kontrol(1500, 150, 30, 0.40, 0.50, 24, 0.05)
+    assert c["kombinasyonlar"][0]["dc"] >= kk["noktalar"][0]["dc"] - 1e-12 and c["kesme"] is not None
+
+
+def test_betonarme_kolon_oner_el_hesabi():
+    """C30: N_dm = 2000 kN → A_c ≥ 2000·10³/(0,40·30) = 166 667 mm²; N_d = 2400 kN → 2400·10³/(0,9·20) = 133 333 mm².
+    5 cm adımlı, en küçük boyut ≥ 300 mm, en/boy ≤ 3 → en küçük alan 350 × 500 = 175 000 mm²."""
+    kuv = [{"ad": "G+Q", "N": 2400, "Mx": 60, "My": 30, "deprem": False},
+           {"ad": "G+Q+E", "N": 2000, "Mx": 90, "My": 40, "deprem": True}]
+    r = ta.betonarme_kesit_oner("kolon", kuv, {"beton": "C30", "donati": "B420C"})
+    assert r["A_c_TBDY_cm2"] == pytest.approx(2000e3 / 12 / 100) and r["A_c_TS500_cm2"] == pytest.approx(2400e3 / 18 / 100)
+    assert r["A_c_gerekli_cm2"] == pytest.approx(1666.667, abs=1e-3)
+    o = r["oneri"]
+    assert sorted((o["b_mm"], o["h_mm"])) == [350, 500] and o["A_c_cm2"] == 1750
+    assert 0.01 <= o["rho"] <= 0.04
+    kk = ta.kolon_kontrol([2400, 2000], [60, 90], [30, 40], o["b"], o["h"], o["As_cm2"], 0.05, tbdy=True,
+                          deprem=[False, True])
+    assert kk["dc"] <= 1.0 + 1e-9
+    assert any("7.3.1.2" in g for g in r["gerekce"]) and json_temiz(r)
+
+
+def test_betonarme_kolon_oner_nm_belirleyici():
+    kuv = [{"ad": "E", "N": 900, "Mx": 420, "My": 0, "deprem": True}]
+    r = ta.betonarme_kesit_oner("kolon", kuv, kisitlar={"deneme_siniri": 200})
+    o = r["oneri"]
+    assert o is not None and o["A_c_cm2"] >= r["A_c_gerekli_cm2"]
+    alanlar = [d["A_c_cm2"] for d in r["denenenler"]]
+    assert alanlar == sorted(alanlar) and len(alanlar) > 1
+    assert all(not d["yeterli"] for d in r["denenenler"][:-1]) and r["denenenler"][-1]["yeterli"]
+
+
+def test_betonarme_kiris_h_oner_el_hesabi():
+    """C30/B420C, b = 300, paspayı 40: M_d = 180 kN·m. h = 350 (d = 310): ρ = 0,0226 > ρ_max = 0,02 ✗; h = 400 ✓."""
+    kuv = [{"ad": "mesnet", "Mx": -180, "V": 160}, {"ad": "açıklık", "Mx": 120, "V": 100}]
+    r = ta.betonarme_kesit_oner("kiris", kuv, mevcut_b=0.30)
+    fcd, fyd = 20.0, 420 / 1.15
+
+    def rho(d):
+        R = 0.85 * fcd * 300
+        a = d - math.sqrt(d * d - 2 * 180e6 / R)
+        return R * a / fyd / (300 * d)
+
+    assert rho(310) > 0.02 > rho(360)
+    assert r["oneri"]["b_mm"] == 300 and r["oneri"]["h_mm"] == 400 and r["oneri"]["h"] == pytest.approx(0.40)
+    son = r["denenenler"][-1]
+    assert son["rho_gerekli"] == pytest.approx(rho(360)) and son["V_max_kN"] == pytest.approx(0.22 * 20 * 300 * 360 / 1e3)
+    assert r["rho_max"] == pytest.approx(min(0.85 * ta._rho_b(ta.beton_malzeme("C30"), ta.donati_malzeme("B420C")), 0.02))
+    assert r["oneri"]["As_gerekli_cm2"] == pytest.approx(ta.kiris_egilme(180, 0.3, 0.4, 0.04)["As_gerekli_cm2"])
+    # döşeme kalınlığı TBDY h ≥ 3 t_f
+    r2 = ta.betonarme_kesit_oner("kiris", kuv, mevcut_b=0.30, kisitlar={"doseme_kalinligi": 0.15})
+    assert r2["oneri"]["h_mm"] == 450 and r2["h_min_mm"] == 450
+    # dar kiriş: h ≤ 3,5 b → b büyütülür
+    r3 = ta.betonarme_kesit_oner("kiris", [{"Mx": 1300, "V": 300}], kisitlar={"b": 0.25})
+    assert r3["oneri"]["h_mm"] <= 3.5 * r3["oneri"]["b_mm"] + 1e-9 and r3["oneri"]["b_mm"] > 250
+    assert json_temiz(r) and json_temiz(r3)
+
+
+def test_yeni_anlatimli_sarmalayicilar():
+    for s in (ta.celik_cubuk_kontrol_anlatimli("2L 70x7", "S275", 3, kuvvetler=[{"N": 100}, {"N": -80}], goster="yok"),
+              ta.celik_cubuk_kontrol_anlatimli("BORU 114.3x4", "S275", 3, kuvvetler=[{"N": 100}], goster="yok"),
+              ta.betonarme_kesit_oner_anlatimli("kiris", [{"Mx": 180, "V": 160}], goster="yok"),
+              ta.betonarme_kesit_oner_anlatimli("kolon", [{"N": 2000, "Mx": 100}], goster="yok"),
+              ta.betonarme_eleman_kontrol_anlatimli(0.3, 0.5, 0.04, kuvvetler=[{"N": 50, "Mx": 120, "V": 90}],
+                                                    tur="egik", goster="yok")):
+        md = s.anlatim.markdown()
+        assert "Ne yapıyoruz, neden?" in md and len(md) > 800 and json_temiz(s.veri)
+    s = ta.celik_cubuk_kontrol_anlatimli("KUTU 100x5", "S275", 3, kuvvetler=[{"N": 100}], goster="yok")
+    assert any(b[0] == "sema" and "<svg" in b[1]["kareler"][0]["svg"] for b in s.anlatim.bloklar)
+    assert s.veri == ta.celik_cubuk_kontrol("KUTU 100x5", "S275", 3, kuvvetler=[{"N": 100}])
+
+
+@pytest.mark.skipif(not GERCEK_KUTUPHANE, reason="tüm profil kataloğu (yapi_veri.py) gerekli")
+def test_celik_oner_anlatimli_deneme_tablosu():
+    s = ta.celik_kesit_oner_anlatimli("IPE", "S275", {"L": 6.0, "Lb": 0.0}, [{"Mx": 220}], goster="yok")
+    md = s.anlatim.markdown()
+    assert "Deneme tablosu" in md and "IPE 330" in md and "IPE 360" in md and s.veri["oneri"] == "IPE 360"
+
+
+@pytest.mark.parametrize("cagri", [
+    lambda: ta.kesit_ozellik("KUTU 100"),
+    lambda: ta.kesit_ozellik("L 100x80x10"),                 # eşit olmayan kollar
+    lambda: ta.kesit_ozellik("UPN 190"),
+    lambda: ta.kesit_ozellik("kutu", {"H": 100, "B": 100, "t": 60}),
+    lambda: ta.kesit_ozellik("altigen", {"a": 1}),
+    lambda: ta.celik_cubuk_kontrol("L 80x8", "S275", 3, korniyer="egik"),
+    lambda: ta.celik_cubuk_kontrol("L 80x8", "S275", 3, U=1.2),
+    lambda: ta.celik_cubuk_kontrol("L 80x8", "S275", 3, narinlik={"burkulma": 100}),
+    lambda: ta.celik_cubuk_kontrol("BORU 114.3x4", "S275", 3, tbdy_capraz={"suneklik": "SDX"}),
+    lambda: ta.celik_kesit_oner("IPX", "S275", {}, [{"N": 10}]),
+    lambda: ta.celik_kesit_oner("IPE", "S275", {"An": 10}, [{"N": 10}]),
+    lambda: ta.celik_kesit_oner("IPE", "S275", {}, None),
+    lambda: ta.celik_kesit_oner("BORU", "S275", {"kontrol": "eleman"}, [{"N": 10}]),
+    lambda: ta.betonarme_eleman_kontrol(0.3, 0.5, kuvvetler=[{"Mx": 10}], tur="perde"),
+    lambda: ta.betonarme_kesit_oner("doseme", [{"Mx": 10}]),
+    lambda: ta.betonarme_kesit_oner("kiris", [{"Mx": 10}], kisitlar={"genislik": 0.3}),
+])
+def test_yeni_ogretici_hatalar(cagri):
+    with pytest.raises(mo.MatrisHatasi):
+        cagri()
+
+
+@pytest.mark.parametrize("ad", ["UPN 200", "KUTU 100x5", "L 80x8", "2L 70x7 s=12", "BORU 114.3x4"])
+def test_kesit_ozellik_sozlugu_cubuga_verilebilir(ad):
+    k = ta.kesit_ozellik(ad)
+    a = ta.celik_cubuk_kontrol(k, "S275", 3, kuvvetler={"N": 50})
+    b = ta.celik_cubuk_kontrol(ad, "S275", 3, kuvvetler={"N": 50})
+    assert a["profil"] == b["profil"] and a["basinc"]["Pc_kN"] == pytest.approx(b["basinc"]["Pc_kN"])
+    assert a["ozellik"]["A"] == pytest.approx(k["A"])
