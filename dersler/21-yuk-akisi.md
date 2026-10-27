@@ -371,8 +371,8 @@ $$
 Balkon kuralı TS 498:2021'in 1997 baskısına göre tek sayısal değişikliğidir. Kütüphanede `balkon` kaydı 5.0 ile ≤ 10 m² için verilir; büyük balkonda ek yükü `ek_yukler` ile döşemeye girmelisin.
 :::
 
-::: muhendislik SAP2000'de aynı yol
-SAP2000'de döşeme yükünü kirişe aktarmanın karşılığı **"Uniform to Frame"** (shell'e alan yükü verip "one way" ya da "two way" seçmek): program 45° kuralıyla aynı üçgen ve trapezleri üretir ve kirişe parçalı yük olarak yazar; bu derste motorun yaptığı da budur. Yük durumları ("load pattern") G ve Q olarak ayrı tanımlanır, kombinasyon ("load combination") sonradan toplanır; bir sonraki derste bunu ayrıntılı göreceğiz.
+::: muhendislik Yapı analiz programlarında aynı yol
+Yaygın yapı analiz programlarında döşeme yükünü kirişe aktarmanın karşılığı alan yükünü çerçeveye dağıtma seçeneğidir ("uniform to frame": kabuğa alan yükü verip tek ya da iki doğrultuda aktarımı seçmek): program 45° kuralıyla aynı üçgen ve trapezleri üretir ve kirişe parçalı yük olarak yazar; bu derste motorun yaptığı da budur. Yük durumları ("load pattern") G ve Q olarak ayrı tanımlanır, kombinasyon ("load combination") sonradan toplanır; bir sonraki derste bunu ayrıntılı göreceğiz.
 
 Tarihi yığma köprüde yük yolu yine vardır ama kiriş–kolon yerine **tonoz ve ayaklar** üzerinden geçer: dolgu ağırlığı tonoza, tonoz itkisi ayaklara ve temele iner. OMA ile ölçülen frekanslar bu yolun rijitliğine duyarlıdır; dolgu kütlesi $G$'nin büyük parçasıdır ve model güncellemede ilk sorgulanacak sayıdır.
 :::

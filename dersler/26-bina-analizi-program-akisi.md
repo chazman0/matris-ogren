@@ -1,13 +1,13 @@
 ---
-baslik: Bina analizi baştan sona: SAP2000 akışı ve bu uygulama
+baslik: Bina analizi baştan sona: bir yapı analiz programı binayı nasıl çözer
 bolum: yapi
-ozet: Aks–kat sisteminden düğüm ve eleman üretimi, yerel eksenler (SAP2000 1-2-3 ve burada x′y′z′, işaret kuralları), rijit diyafram (efendi–köle, T dönüşümü, rijitlik merkezi); yük → durum → kombinasyon → zarf → tasarım zinciri ve D/C renk bantları; SAP2000 kullanıcılarının sık zorlandığı noktalar ve bu uygulamadaki karşılıkları; sonuç okuma, denge sağlaması ve sık hatalar (birim, diyafram, çatlamış rijitlik, periyot üst sınırı, zarfla kolon kontrolü).
+ozet: Aks–kat sisteminden düğüm ve eleman üretimi, yerel eksenler (programlardaki yaygın 1-2-3 kuralı ve burada x′y′z′, işaret kuralları), rijit diyafram (efendi–köle, T dönüşümü, rijitlik merkezi); yük → durum → kombinasyon → zarf → tasarım zinciri ve D/C renk bantları; yapı analiz programı kullanıcılarının sık zorlandığı noktalar ve bu uygulamadaki karşılıkları; sonuç okuma, denge sağlaması ve sık hatalar (birim, diyafram, çatlamış rijitlik, periyot üst sınırı, zarfla kolon kontrolü).
 sure: 80
 ---
 
 ## Neden?
 
-Bir binayı SAP2000'de modellemek bir hafta, sonuçlara güvenmek ise çoğu zaman daha uzun sürer. Program her düğmeye bir sayı üretir; ama kolon yerel ekseni ters bakıyorsa, öz ağırlık iki kez sayılmışsa ya da diyafram yanlış atanmışsa bu sayılar gerçek binayı anlatmaz. Önceki derslerde zincirin halkalarını tek tek kurdun: yük akışı, durumlar, kombinasyonlar, deprem yükü, kesit tahkiki. Bu ders onları baştan sona tek bir akışta birleştirir ve her adımda "SAP2000'de nerede, burada nerede, nasıl doğrularım?" sorusunu yanıtlar.
+Bir binayı ticari bir yapı analiz programında modellemek bir hafta, sonuçlara güvenmek ise çoğu zaman daha uzun sürer. Program her düğmeye bir sayı üretir; ama kolon yerel ekseni ters bakıyorsa, öz ağırlık iki kez sayılmışsa ya da diyafram yanlış atanmışsa bu sayılar gerçek binayı anlatmaz. Önceki derslerde zincirin halkalarını tek tek kurdun: yük akışı, durumlar, kombinasyonlar, deprem yükü, kesit tahkiki. Bu ders onları baştan sona tek bir akışta birleştirir ve her adımda "bir yapı analiz programı bunu nasıl yapar, burada nerede, nasıl doğrularım?" sorusunu yanıtlar.
 
 ::: sekil Baştan sona: model, çözüm, tasarım
 <svg viewBox="0 0 440 250" width="100%" font-family="system-ui" font-size="11" fill="currentColor">
@@ -50,26 +50,26 @@ Bir binayı SAP2000'de modellemek bir hafta, sonuçlara güvenmek ise çoğu zam
 
 ## Modelleme: akslardan düğüm ve elemana
 
-SAP2000'de model ızgara (grid) çizgileriyle başlar; çubuklar ızgara parçalarına çizilir, düğümler çizimle kendiliğinden oluşur. Bu uygulamada bina bir sözlüktür: **akslar** (X'te A, B, C; Y'de 1, 2, 3), **katlar** (kotlar), kesitler ve elemanların aks adresleri. Motor her aks kesişimi ve her kotta bir düğüm, her kolon ve kiriş parçası için bir **uzay çerçeve elemanı** (12×12, Ders 19) üretir. Ders binasında 3×3 aks ve 4 kot $\Rightarrow$ $9\cdot4=\kutua{36}$ düğüm, $27$ kolon $+\ 36$ kiriş $=\kutub{63}$ eleman ve $36\cdot6=\kutuc{216}$ serbestlik.
+Yaygın yapı analiz programlarında model ızgara (grid) çizgileriyle başlar; çubuklar ızgara parçalarına çizilir, düğümler çizimle kendiliğinden oluşur. Bu uygulamada bina bir sözlüktür: **akslar** (X'te A, B, C; Y'de 1, 2, 3), **katlar** (kotlar), kesitler ve elemanların aks adresleri. Motor her aks kesişimi ve her kotta bir düğüm, her kolon ve kiriş parçası için bir **uzay çerçeve elemanı** (12×12, Ders 19) üretir. Ders binasında 3×3 aks ve 4 kot $\Rightarrow$ $9\cdot4=\kutua{36}$ düğüm, $27$ kolon $+\ 36$ kiriş $=\kutub{63}$ eleman ve $36\cdot6=\kutuc{216}$ serbestlik.
 
 ### Yerel eksenler ve işaretler
 
-Her elemanın iç kuvvetleri kendi **yerel ekseninde** verilir. SAP2000'de 1 ekseni I ucundan J ucuna gider; yatay elemanda 2 yukarı, 3 $=1\times2$ yataydır. Düşey elemanda 2 ekseni $+X$, 3 ekseni $+Y$ alınır. Bu uygulamanın motorunda (Ders 19) $x'$ $i\to j$ yönünde, $y'$ elemanı içeren düşey düzlemde yukarı, $z'=x'\times y'$; düşey elemanda $z'$ motorun yatay ekseni seçilir ve yukarı giden kolonda $y'=-X$ çıkar.
+Her elemanın iç kuvvetleri kendi **yerel ekseninde** verilir. Yapı analiz programlarında yaygın kural şudur: 1 ekseni I ucundan J ucuna gider; yatay elemanda 2 yukarı, 3 $=1\times2$ yataydır. Düşey elemanda 2 ekseni $+X$, 3 ekseni $+Y$ alınır. Bu uygulamanın motorunda (Ders 19) $x'$ $i\to j$ yönünde, $y'$ elemanı içeren düşey düzlemde yukarı, $z'=x'\times y'$; düşey elemanda $z'$ motorun yatay ekseni seçilir ve yukarı giden kolonda $y'=-X$ çıkar.
 
-| Eleman | SAP2000 1 / 2 / 3 | Burada $x'$ / $y'$ / $z'$ (bina ekseninde) | Sonuç |
+| Eleman | Program kuralı 1 / 2 / 3 | Burada $x'$ / $y'$ / $z'$ (bina ekseninde) | Sonuç |
 |---|---|---|---|
 | X doğrultusunda kiriş | $+X$ / $+Z$ / $-Y$ | $+X$ / $+Z$ / $-Y$ | aynı: $M_3\leftrightarrow M_{z'}$ |
 | yukarı giden kolon | $+Z$ / $+X$ / $+Y$ | $+Z$ / $\ksil{-X}$ / $\ksil{-Y}$ | yanal eksenler ters işaretli |
 
-İşaretler (SAP2000 iç kuvvet kuralı): pozitif $P$ **çekmedir**; pozitif $M_3$, $+2$ yüzünde basınç yapar, yani yatay kirişte **alt lif çekme** demektir. Bu motorun kiriş momenti aynı kuralı izler (alt lif çekme +) ve eksenel kuvvette basınç negatiftir; kesit tahkikinde (TS 500 $N_d$) ise basınç pozitif alınır. Kolonda tahkik momentleri bina eksenlerinde verilir: $M_x$ bina $X$ ekseni etrafında, $M_y$ $Y$ ekseni etrafında.
+İşaretler (programlardaki yaygın iç kuvvet kuralı): pozitif $P$ **çekmedir**; pozitif $M_3$, $+2$ yüzünde basınç yapar, yani yatay kirişte **alt lif çekme** demektir. Bu motorun kiriş momenti aynı kuralı izler (alt lif çekme +) ve eksenel kuvvette basınç negatiftir; kesit tahkikinde (TS 500 $N_d$) ise basınç pozitif alınır. Kolonda tahkik momentleri bina eksenlerinde verilir: $M_x$ bina $X$ ekseni etrafında, $M_y$ $Y$ ekseni etrafında.
 
 ::: uyari Çizim yönü ve kolon yönü
-SAP2000'de kiriş B'den A'ya çizilirse 1 ekseni ters döner; $M_3$ işareti değişmez ama $V_2$ işareti ve "sol, sağ uç" etiketleri yer değiştirir. Kolonun güçlü ekseni yerel 2'ye bakar ve gerekirse 90° döndürülür. Bu uygulamada kiriş adresi `bas` → `son` sırasıyla, kolonun güçlü ekseni `yon` (x ya da y) alanıyla verilir.
+1-2-3 kuralını izleyen bir programda kiriş B'den A'ya çizilirse 1 ekseni ters döner; $M_3$ işareti değişmez ama $V_2$ işareti ve "sol, sağ uç" etiketleri yer değiştirir. Kolonun güçlü ekseni yerel 2'ye bakar ve gerekirse 90° döndürülür. Bu uygulamada kiriş adresi `bas` → `son` sırasıyla, kolonun güçlü ekseni `yon` (x ya da y) alanıyla verilir.
 :::
 
 ## Rijit diyafram: efendi ve köle düğümler
 
-Betonarme döşeme kendi düzleminde çok rijittir. **Rijit diyafram** varsayımında kattaki bütün düğümler (köle) bir **efendi düğümün** (master) üç serbestliğine bağlanır: $u_x$, $u_y$ ve düşey eksen etrafında dönme $\theta$. SAP2000 "Diaphragm constraint" ile bu düğümü kütle merkezinde kendisi kurar; bu motor da kütle merkezine efendi düğüm koyar. Köle düğüm $i$'nin ötelemesi efendi düğümünkinden **dönüşüm matrisi** $\mathbf T_i$ ile bulunur:
+Betonarme döşeme kendi düzleminde çok rijittir. **Rijit diyafram** varsayımında kattaki bütün düğümler (köle) bir **efendi düğümün** (master) üç serbestliğine bağlanır: $u_x$, $u_y$ ve düşey eksen etrafında dönme $\theta$. Yapı analiz programları diyafram kısıtı ("diaphragm constraint") ile bu düğümü kütle merkezinde kendiliğinden kurar; bu motor da kütle merkezine efendi düğüm koyar. Köle düğüm $i$'nin ötelemesi efendi düğümünkinden **dönüşüm matrisi** $\mathbf T_i$ ile bulunur:
 
 $$
 \begin{bmatrix}u_{x,i}\\u_{y,i}\end{bmatrix}=
@@ -92,25 +92,25 @@ Yükler **yük desenleri** (G, Q, S, W±X/Y, E) olarak tanımlanır; her desen b
 {"gG": 1.24, "gQ": 1, "gE": 1, "SDS": 1.2, "x": 5}
 :::
 
-Tasarımdan sonra SAP2000 çubukları D/C oranına göre beş renk bandına boyar; bantların eşikleri kullanıcı tanımlıdır ve kırmızı tipik olarak D/C > 1'dir. Bu uygulamanın tasarım özeti elemanları dört banda sayar: $<0.7$ (bol), $0.7$–$0.9$, $0.9$–$1.0$ (sınırda) ve $>1.0$ (yetersiz). D/C'yi okurken **belirleyen kontrol** ve **belirleyen kombinasyon** birlikte okunur: aynı 0.95, kirişte "donatıyı tam tasarladım", kolonda "sınırdayım" anlamına gelebilir.
+Tasarımdan sonra yapı analiz programları çubukları D/C oranına göre genellikle beş renk bandına boyar; bantların eşikleri kullanıcı tanımlıdır ve kırmızı tipik olarak D/C > 1'dir. Bu uygulamanın tasarım özeti elemanları dört banda sayar: $<0.7$ (bol), $0.7$–$0.9$, $0.9$–$1.0$ (sınırda) ve $>1.0$ (yetersiz). D/C'yi okurken **belirleyen kontrol** ve **belirleyen kombinasyon** birlikte okunur: aynı 0.95, kirişte "donatıyı tam tasarladım", kolonda "sınırdayım" anlamına gelebilir.
 
-## SAP2000'de sık zorlanılan noktalar ve buradaki karşılığı
+## Yapı analiz programlarında sık zorlanılan noktalar ve buradaki karşılığı
 
-| SAP2000'de zorluk | Belirtisi | Bu uygulamada |
+| Programda zorluk | Belirtisi | Bu uygulamada |
 |---|---|---|
 | birim seti model boyunca değişir (kN·m, N·mm, kgf·cm) | 1000 kat büyük ya da küçük sonuçlar | birimler sabit: kN, m, kN/m²; kesit 30 cm yerine 0.30 yazılmazsa öğretici hata |
 | grid ve snap, çakışık düğüm | eleman bağlanmaz, kararsızlık uyarısı | düğümler aks kesişiminden üretilir; çakışık düğüm oluşmaz |
 | yerel eksen ve çizim yönü | ters diyagram, yanlış güçlü eksen | kural sabit; kolonda `yon` alanı |
-| Gravity / Global Z işareti | yük yukarı bakar | yük durumları ve döşeme yükleri kartlardan; korunum tablosu yönü doğrular |
-| öz ağırlık iki kez (DEAD çarpanı + Self Mass) | Base Reaction fazla | öz ağırlık yalnız G'de; $\sum$ yük $=\sum$ tepki satırı |
-| Mass Source $G+nQ$ | periyot ve $V_t$ yanlış | TBDY Tablo 4.3 ile $w_i=w_G+n\,w_Q$ kendiliğinden |
+| yerçekimi yönü / global Z işareti | yük yukarı bakar | yük durumları ve döşeme yükleri kartlardan; korunum tablosu yönü doğrular |
+| öz ağırlık iki kez (öz ağırlık çarpanı + ayrıca tanımlı kütle ya da yük) | taban tepkisi fazla | öz ağırlık yalnız G'de; $\sum$ yük $=\sum$ tepki satırı |
+| kütle kaynağı $G+nQ$ | periyot ve $V_t$ yanlış | TBDY Tablo 4.3 ile $w_i=w_G+n\,w_Q$ kendiliğinden |
 | tasarım kombinasyonlarını elle yazmak | eksik işaret ya da yön | 84 kombinasyon şablon satırlarından açılır |
 | $K$, $L_b$, $C_b$ varsayılanları | gizli varsayım | varsayımlar `veri["tasarim"]["varsayimlar"]` içinde yazılı |
-| mesnet unutmak, yüzen eleman | "instability" uyarısı | yüzen döşeme, kolonsuz kat gibi öğretici hatalar |
+| mesnet unutmak, yüzen eleman | kararsızlık ("instability") uyarısı | yüzen döşeme, kolonsuz kat gibi öğretici hatalar |
 
 ## Sonuç okuma ve denge sağlaması
 
-Her çözümden sonra üç sağlama yapılır. **Düşey denge:** $G$ durumunda temel tepkilerinin toplamı toplam sabit yüke eşittir (SAP2000'de "Base Reactions"). **Yatay denge:** deprem durumunda tepkilerin yatay toplamı $-V_{tE}$'dir. **Kombinasyon tutarlılığı:** bir kombinasyonun tepkisi durum tepkilerinin aynı katsayılı toplamıdır. Bunlardan biri tutmuyorsa sonuçlara bakmadan önce model düzeltilir.
+Her çözümden sonra üç sağlama yapılır. **Düşey denge:** $G$ durumunda temel tepkilerinin toplamı toplam sabit yüke eşittir (programlarda taban tepkileri tablosu). **Yatay denge:** deprem durumunda tepkilerin yatay toplamı $-V_{tE}$'dir. **Kombinasyon tutarlılığı:** bir kombinasyonun tepkisi durum tepkilerinin aynı katsayılı toplamıdır. Bunlardan biri tutmuyorsa sonuçlara bakmadan önce model düzeltilir.
 
 ::: hata Birim karışıklığı
 Kesiti mm, yükü kN/m, malzemeyi MPa girip programın birim setini kN·m bırakmak $E$'yi bin kat küçük yapar; ötelemeler bin kat büyür ama iç kuvvetler (statikçe belirli kısımlar) neredeyse doğru görünür, hata gözden kaçar. Bir tek birim seti seç; ötelemeyi bir el hesabıyla (örneğin $\delta=PL^3/3EI$) kabaca sına.
@@ -121,11 +121,11 @@ Diyafram yalnız aynı düzlemdeki düğümlere atanır; çatı eğimli ya da ka
 :::
 
 ::: hata Çatlamış rijitliği ve periyot üst sınırını unutmak
-Deprem hesabında TBDY Tablo 4.2 etkin rijitlikleri kullanılır (kolon $0.70EI$, kiriş $0.35EI$; md. 4.5.8). Brüt kesit periyodu kısa, ötelemeyi küçük gösterir. Bu uygulama betonarme binada deprem açıkken çatlamış kesiti varsayılan alır ve yalnız deprem birleşimlerine uygular (md. 4.5.8.3: ikinci bir $K$); kapatılırsa "TBDY 4.5.8.1’e aykırı" uyarısı verir. SAP2000’de "Property Modifiers" ile verilen çarpanlar bütün durumlara uygulanır; düşey yük tasarımı için ayrı bir model gerekir. Rayleigh periyodu da $1.4\,T_{pA}$'yı geçemez (md. 4.7.3.2): çok yumuşak bir model deprem yükünü sınırsız azaltamaz.
+Deprem hesabında TBDY Tablo 4.2 etkin rijitlikleri kullanılır (kolon $0.70EI$, kiriş $0.35EI$; md. 4.5.8). Brüt kesit periyodu kısa, ötelemeyi küçük gösterir. Bu uygulama betonarme binada deprem açıkken çatlamış kesiti varsayılan alır ve yalnız deprem birleşimlerine uygular (md. 4.5.8.3: ikinci bir $K$); kapatılırsa "TBDY 4.5.8.1’e aykırı" uyarısı verir. Ticari programlarda kesit özelliği çarpanları ("property modifiers") çoğu zaman bütün durumlara uygulanır; düşey yük tasarımı için ayrı bir model gerekir. Rayleigh periyodu da $1.4\,T_{pA}$'yı geçemez (md. 4.7.3.2): çok yumuşak bir model deprem yükünü sınırsız azaltamaz.
 :::
 
 ::: hata Kolonu zarfla denetlemek
-Zarfın $N_{max}$'ı ile $M_{max}$'ı farklı kombinasyonlardandır. SAP2000 kolon tasarımında her kombinasyonun $(P,M_2,M_3)$ noktasını ayrı denetler; zarf tablosundan elle yapılan kontrol az basınçlı $0.9G\pm E$ noktasını kaçırır (Ders 24, son örnek).
+Zarfın $N_{max}$'ı ile $M_{max}$'ı farklı kombinasyonlardandır. Yapı analiz programları kolon tasarımında her kombinasyonun $(P,M_2,M_3)$ noktasını ayrı denetler; zarf tablosundan elle yapılan kontrol az basınçlı $0.9G\pm E$ noktasını kaçırır (Ders 24, son örnek).
 :::
 
 ## Çözümlü örnekler
@@ -150,7 +150,7 @@ r
 --- kontrol
 r.veri["ozet"]["dugum"] == 39 and r.veri["ozet"]["eleman"] == 63 and r.veri["ozet"]["sd_sayisi"] == 216 and r.veri["ozet"]["durum_sayisi"] == 12 and r.veri["ozet"]["kombinasyon_sayisi"] == 84 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["G"]["tepkiler"]) - 2714.76) < 1e-3 and abs(sum(t["FX"] for t in r.veri["durumlar"]["EX+"]["tepkiler"]) + r.veri["deprem"]["VtE"]) < 1e-2
 --- yorum
-`veri["akis"]["korunum"]["G"]` aynı denetimi kalem kalem yazar: döşeme + duvar + öz ağırlık = kolon tabanı = temel tepkisi. Betonarme binada deprem durumları ayrı bir çatlamış kesitli $K$ ile çözülür (TBDY 4.5.8); $G$ ve $Q$ burada brüt $K$'nin sonucudur. SAP2000'de karşılığı "Base Reactions" tablosudur; ilk bakılacak yer orasıdır.
+`veri["akis"]["korunum"]["G"]` aynı denetimi kalem kalem yazar: döşeme + duvar + öz ağırlık = kolon tabanı = temel tepkisi. Betonarme binada deprem durumları ayrı bir çatlamış kesitli $K$ ile çözülür (TBDY 4.5.8); $G$ ve $Q$ burada brüt $K$'nin sonucudur. Yapı analiz programlarında karşılığı taban tepkileri tablosudur; ilk bakılacak yer orasıdır.
 :::
 
 ::: ornek Rijit diyafram elle: dört kolonlu kat
@@ -211,7 +211,7 @@ r
 --- kontrol
 abs(sum(t["FZ"] for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"]) - 4568.664) < 1e-2 and abs(next(t for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"] if t["dugum"] == 1)["FZ"] - 370.064) < 1e-2
 --- yorum
-A1'in tepkisi Ders 22'deki kolon eksenel kuvvetiyle ($-370.1$ kN, basınç) aynıdır: temel düğümünde kolonun taşıdığı her şey zemine iner. SAP2000'de "Joint Reactions" tablosunda kombinasyon seçilerek aynı denetim yapılır.
+A1'in tepkisi Ders 22'deki kolon eksenel kuvvetiyle ($-370.1$ kN, basınç) aynıdır: temel düğümünde kolonun taşıdığı her şey zemine iner. Yapı analiz programlarında düğüm tepkileri tablosunda kombinasyon seçilerek aynı denetim yapılır.
 :::
 
 ::: ornek D/C okuma: dağılım, kritik eleman, belirleyen
@@ -232,7 +232,7 @@ r
 --- kontrol
 r.veri["tasarim"]["dc_dagilimi"] == {"<0.7": 31, "0.7-0.9": 2, "0.9-1.0": 30, ">1.0": 0} and [k["no"] for k in r.veri["tasarim"]["kritik_elemanlar"][:3]] == [19, 20, 23] and abs(max(e["dc"] for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon") - 0.68522) < 1e-4
 --- yorum
-Kiriş donatısı tasarlandığı için D/C $\approx1$ "yetersiz" değil "ekonomik" demektir; kirişte asıl çıktı önerilen çubuklardır. Kolonda donatı varsayılmıştır ($\rho=0.01$), D/C gerçek bir kapasite oranıdır. SAP2000'de de betonarme çerçeve tasarımı kirişte donatı alanı, kolonda (donatı verilmişse) kapasite oranı raporlar.
+Kiriş donatısı tasarlandığı için D/C $\approx1$ "yetersiz" değil "ekonomik" demektir; kirişte asıl çıktı önerilen çubuklardır. Kolonda donatı varsayılmıştır ($\rho=0.01$), D/C gerçek bir kapasite oranıdır. Ticari programlarda da betonarme çerçeve tasarımı kirişte donatı alanı, kolonda (donatı verilmişse) kapasite oranı raporlar.
 :::
 
 ::: ornek Kesiti küçült, yeniden çöz
@@ -255,11 +255,11 @@ r
 --- kontrol
 r.veri["tasarim"]["dc_dagilimi"][">1.0"] == 10 and r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "S-A1/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 1.1426) < 1e-3 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["ozet"]["rho_gerekli"] == 0.0125 and r.veri["tasarim"]["kritik_elemanlar"][0]["kombinasyon"] == "0.9G-0.3EX-+EY--0.3EZ"
 --- yorum
-Kolonlar küçülünce bina yumuşar ve kütle azalır ($V_{tE}$ 289'dan 274 kN'a iner) ama kolon kapasitesi daha hızlı düşer; göreli kat ötelemesi yine sınırın altındadır ($\lambda\delta/h=0.0065$). Belirleyen yine az basınçlı deprem birleşimidir. SAP2000'de bu döngü "analiz kesiti = tasarım kesiti olana kadar" yinelenir; kesit değişince rijitlik ve deprem yükü değiştiği için yeniden analiz şarttır. Bu kesit TBDY'nin 300 mm alt sınırını sağlar ama süneklik ve birleşim bölgesi için genellikle yetersiz kalır.
+Kolonlar küçülünce bina yumuşar ve kütle azalır ($V_{tE}$ 289'dan 274 kN'a iner) ama kolon kapasitesi daha hızlı düşer; göreli kat ötelemesi yine sınırın altındadır ($\lambda\delta/h=0.0065$). Belirleyen yine az basınçlı deprem birleşimidir. Yapı analiz programlarında da bu döngü "analiz kesiti = tasarım kesiti olana kadar" yinelenir; kesit değişince rijitlik ve deprem yükü değiştiği için yeniden analiz şarttır. Bu kesit TBDY'nin 300 mm alt sınırını sağlar ama süneklik ve birleşim bölgesi için genellikle yetersiz kalır.
 :::
 
 ::: ornek Yerel eksen eşlemesi
-SAP2000'de B'den A'ya çizilmiş X doğrultusundaki bir kirişte ve aşağıdan yukarı çizilmiş kolon A1'de 1-2-3 eksenleri nedir? Bu uygulamadaki $x'y'z'$ ile karşılaştır ve kolonun $M_2$, $M_3$ momentlerinin bina eksenlerindeki karşılığını yaz.
+1-2-3 kuralını izleyen bir programda B'den A'ya çizilmiş X doğrultusundaki bir kirişte ve aşağıdan yukarı çizilmiş kolon A1'de 1-2-3 eksenleri nedir? Bu uygulamadaki $x'y'z'$ ile karşılaştır ve kolonun $M_2$, $M_3$ momentlerinin bina eksenlerindeki karşılığını yaz.
 --- ipucu
 Kirişte 2 her zaman yukarı; düşey elemanda 2 $=+X$. Burada düşey elemanda $y'=-X$.
 --- cevap
@@ -271,18 +271,18 @@ M_2\ (2=X\ \text{etrafında})&\leftrightarrow M_x,\qquad M_3\ (3=Y\ \text{etraf�
 \end{aligned}
 $$
 --- yorum
-Ters çizilen kirişte $M_3$ işareti (alt lif çekme +) değişmez, yalnız $V_2$ ve uç adları değişir. Kolonda iki programın yanal eksenleri zıt yönlüdür; değerleri karşılaştırırken mutlak değer ve hangi yüzün basınçta olduğu esas alınır. Tasarımda moment işareti değil büyüklüğü ve eşlik eden $N$ önemlidir.
+Ters çizilen kirişte $M_3$ işareti (alt lif çekme +) değişmez, yalnız $V_2$ ve uç adları değişir. Kolonda iki kuralın yanal eksenleri zıt yönlüdür; değerleri karşılaştırırken mutlak değer ve hangi yüzün basınçta olduğu esas alınır. Tasarımda moment işareti değil büyüklüğü ve eşlik eden $N$ önemlidir.
 :::
 
-::: muhendislik SAP2000'den bu uygulamaya, oradan sahaya
-SAP2000'in modelleme sırası (birim → ızgara → malzeme ve kesit → çizim → atama → desen, durum, kombinasyon → analiz → sonuç → tasarım) bu uygulamada bina kartlarının sırasıdır. Fark, her adımın arkasındaki matrisin görünür olmasıdır: eleman matrisi (Ders 17, 19), birleştirme (Ders 14), diyafram dönüşümü (bu ders), tek $K$ ile çok sağ taraf (Ders 22). Büyük projede SAP2000 ya da ETABS kullanılır; bu uygulamanın amacı onların çıktısını **sınayabilecek** el hesabı ve sezgiyi kazandırmaktır.
+::: muhendislik Yapı analiz programından bu uygulamaya, oradan sahaya
+Yaygın yapı analiz programlarının modelleme sırası (birim → ızgara → malzeme ve kesit → çizim → atama → desen, durum, kombinasyon → analiz → sonuç → tasarım) bu uygulamada bina kartlarının sırasıdır. Fark, her adımın arkasındaki matrisin görünür olmasıdır: eleman matrisi (Ders 17, 19), birleştirme (Ders 14), diyafram dönüşümü (bu ders), tek $K$ ile çok sağ taraf (Ders 22). Büyük projede ticari yapı analiz programları kullanılır; bu uygulamanın amacı onların çıktısını **sınayabilecek** el hesabı ve sezgiyi kazandırmaktır.
 
 Mevcut ve tarihi yapılarda model güncellemesi zinciri tamamlar: ortam titreşimiyle (OMA) ölçülen periyotlar ve mod şekilleri, diyafram varsayımının ve rijitliklerin doğru olup olmadığını gösterir. Yığma köprüde dolgu ve kemer rijitliği, binada dolgu duvarların katkısı ve çatlamış kesit oranı bu karşılaştırmayla kalibre edilir.
 :::
 
 ::: ozet Özet
 - Model: aks × kot düğümleri, her parça için 12×12 uzay çerçeve elemanı; ders binasında 36 (+3 efendi) düğüm, 63 eleman, 216 SD.
-- Yerel eksen: SAP2000 1 (I→J), kirişte 2 yukarı; kolonda 2 = $+X$, 3 = $+Y$. Burada $x'$ (i→j), $y'$ düşey düzlemde yukarı, kolonda $y'=-X$, $z'=-Y$. $P>0$ çekme, kirişte $M>0$ alt lif çekme; tahkikte $N_d>0$ basınç.
+- Yerel eksen: programlarda 1 (I→J), kirişte 2 yukarı; kolonda 2 = $+X$, 3 = $+Y$. Burada $x'$ (i→j), $y'$ düşey düzlemde yukarı, kolonda $y'=-X$, $z'=-Y$. $P>0$ çekme, kirişte $M>0$ alt lif çekme; tahkikte $N_d>0$ basınç.
 - Rijit diyafram: $u_{x,i}=u_x-\theta(y_i-y_m)$, $u_{y,i}=u_y+\theta(x_i-x_m)$; $\mathbf K=\sum k_i\mathbf T_i^T\mathbf T_i$; kuvvet rijitlik merkezinden geçmiyorsa kat döner.
 - Zincir: desen → durum (tek $K$) → kombinasyon ($\sum\gamma_i$·sonuç) → zarf → tasarım; D/C belirleyen kontrol ve kombinasyonla okunur, bantlar $<0.7$, $0.7$–$0.9$, $0.9$–$1.0$, $>1.0$.
 - Sağlamalar: $\sum R_Z(G)=\sum G$, $\sum R_X(E)=-V_{tE}$, kombinasyon tepkisi = katsayılı toplam. Sık hatalar: birim, diyafram, çatlamış rijitlik, $T_p\le1.4T_{pA}$, zarfla kolon kontrolü.

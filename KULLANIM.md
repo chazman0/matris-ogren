@@ -343,7 +343,7 @@ bina koordinatında döner. Sınırlar: 12×12 aks, 12 kat, 1500 SD; hatalar ö�
 kesit, model çok büyük…). `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü
 bunları yanıtın `ozet.uyarilar` alanına yazar.
 
-**Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları SAP2000'deki "load pattern" gibi ayrı ayrı kurulur ve bir
+**Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları yapı analiz programlarındaki "load pattern" gibi ayrı ayrı kurulur ve bir
 K ile birlikte çözülür: G, Q, S (kar, TS 498:2021 md. 11 Çizelge 3: s = μ1·S_k, çatı döşemelerine 45° kuralıyla), W+X / W−X /
 W+Y / W−Y (rüzgâr, md. 14: W_i = C·q(z_i)·B_cephe·kat payı, Çizelge 4 basamakları) ve TBDY 2018 eşdeğer deprem yükü EX+, EX−,
 EY+, EY− (± %5 dışmerkezlik) ile EZ = (2/3)·S_DS·G. Deprem açıksa her kata kütle merkezinde bir efendi düğüm konur (rijit
@@ -386,7 +386,7 @@ G + 1,3Q + 1,3(S/2) + 1,3W ve G + 1,3Q + 1,3S + 1,3(W/2), servis G + Q + S),
 `cythye_ydkt` (ÇYTHYE 5.3.1, rüzgâr 1,6W; deprem satırında TBDY 9.2.5.1: 1,2G), `cythye_gkt` (ÇYTHYE 5.3.2 + TBDY 9.1a–c).
 Rüzgâr dört yöne, E_d(H) Denk. (4.9)'a göre ±EX ± 0,3EY ve ±0,3EX ± EY ile ± dışmerkezliğe (32 varyant) açılır; varlık
 nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırlarında S), ikincil terim yoksa sıfır alınır
-(4.11'de 0,2S, 4.12'de H). Kombinasyonlar yeniden çözülmez, durum sonuçlarının katsayılı toplamıdır (SAP2000 de böyle yapar).
+(4.11'de 0,2S, 4.12'de H). Kombinasyonlar yeniden çözülmez, durum sonuçlarının katsayılı toplamıdır (yaygın yapı analiz programları da böyle yapar).
 Yanıt boyutu için `durumlar` içinde yalnız G ve Q tam diyagramlıdır; S, W, E durumları uç kuvvetleri ve `enb` taşır
 (`diyagram: false`), `sonuclar` yalnız ilk dayanım kombinasyonunu içerir (büyük modelde o da tembel kalır, `ozet.sonuclar_tembel`).
 
