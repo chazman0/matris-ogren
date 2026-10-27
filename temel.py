@@ -10,8 +10,11 @@ iki sürekli temel tipini ``cerceve3b`` ağına ekler ve tasarlar:
 * **Radye** — plak alanı = aks dış zarfı + taşma; iki doğrultulu ızgara (grillage): her çubuk genişliği şerit genişliği
   (kenarda yarım), ``I = b·h³/12``, ``J ≈ b·h³/6``; düğüm yayları ``k_z = k0·A_etki``; isteğe bağlı aks kirişleri.
 
-Yatay kararlılık: temel düğümlerinde bina X ve Y ötelemeleri tutulu (varsayılan, ``yatay: "tutulu"``) ya da yatay yaylar
-(``yatay: "yay"``, ``kh_oran``·k_z; oran geoteknik rapordan). Dönmeler serbesttir (yay ve kiriş/şerit rijitliği taşır).
+Yatay kararlılık: temel düğümlerinde temel düzlemi içindeki hareketler — bina X ve Y ötelemeleri ve düşey eksen etrafında
+dönme — tutulu (varsayılan, ``yatay: "tutulu"``; düğüm başına 3 serbestlik kalır: w, θ_X, θ_Y — klasik ızgara) ya da yatay
+yaylar (``yatay: "yay"``, ``kh_oran``·k_z; oran geoteknik rapordan). Eğilme dönmeleri serbesttir (yay ve kiriş/şerit rijitliği
+taşır). Mütemadi temelde tabla genişliği boyunca zemin, kiriş ekseni etrafındaki dönmeye de direnir: dönme yayı
+``k_θ = k0·B³/12·l_etki`` (tabla kenarlarında basınç ``k0·(w ± θ·B/2)``).
 
 Değerler ve madde numaraları araştırma dosyasından (``arastirma_kar_ruzgar_temel.json``: TBDY 2018 Bölüm 16, TS 500
 md. 8.1.3, 8.3.1, 10.1–10.4) ve TS 500 metninden alınmıştır; bkz. ``KAYNAK``.
@@ -73,6 +76,8 @@ KAYNAK = {
     "basinc_donatisi": "TS 500 md. 10.4.3: eğilmede basınç bölgesinde çekme donatısının ≥ 1/3'ü kadar basınç donatısı",
     "ortu": "TS 500 md. 10.1: temellerde beton örtüsü ≥ 50 mm",
     "kiris": "TS 500 md. 7 (eğilme, tasarim.kiris_egilme) ve md. 8.1 (kesme, tasarim.kiris_kesme)",
+    "oturma": "TBDY 2018 md. 16.8.3.4: oturmalar izin verilebilir sınırda olmalı (sayısal sınır geoteknik rapordan; çerçevelerde "
+              "uygulamada açısal distorsiyon ≈ 1/500 sık kullanılır, yönetmelik değeri değildir)",
 }
 
 _TIP_TAKMA = {"tekil": "tekil", "surekli": "surekli", "sürekli": "surekli", "mutemadi": "surekli", "mütemadi": "surekli",
@@ -167,6 +172,24 @@ def ters_t_kesit(B, h_tabla, b_govde, h_govde):
 # ============================================================================
 # Okuma ve doğrulama
 # ============================================================================
+VARSAYILAN = {
+    "surekli": {"yon": "xy", "akslar": "tum", "B": 1.2, "h_tabla": 0.40, "b_govde": 0.50, "h_govde": 1.00, "tasma": 0.5, "ag": 0.5,
+                "yatay": "tutulu"},
+    "radye": {"h": 0.80, "tasma": 1.0, "ag": 0.5, "kiris": None, "yatay": "tutulu"},
+}
+
+
+def kutuphane_ozeti():
+    """Arayüz için temel tipleri, varsayılan alanlar, en küçük boyutlar ve kaynaklar (yapi.kutuphane → "temel")."""
+    return {"tipler": [{"ad": "tekil", "etiket": "Tekil (kolon başına B × L)"},
+                       {"ad": "surekli", "etiket": "Mütemadi (aks boyunca ters T temel kirişi, Winkler)"},
+                       {"ad": "radye", "etiket": "Radye (plak; ızgara + Winkler, isteğe bağlı aks kirişleri)"}],
+            "varsayilan": {a: dict(v) for a, v in VARSAYILAN.items()},
+            "sinirlar": {"radye_h_min": H_RADYE_MIN, "plak_h_min": H_PLAK_MIN, "kiris_h_oran": KIRIS_ORAN, "ortu": ORTU,
+                         "rho_min": RHO_MIN, "ag_min": EN_KUCUK_AG, "gamma_Rv": GAMMA_RV},
+            "kaynaklar": dict(KAYNAK)}
+
+
 def tip_oku(v):
     """temeller.tip → 'tekil' | 'surekli' | 'radye' (mütemadi/sürekli eş anlamlı)."""
     s = str(v or "tekil").strip().lower()
@@ -232,12 +255,17 @@ def oku(B, t):
     if tip == "tekil":
         return out
     beton, donati, varsayim = _malzeme_sec(B, t)
+    mesnet = str(t.get("mesnet") or "ankastre").strip().lower()
+    if mesnet != "ankastre":
+        varsayim.append(f"temeller.mesnet = {mesnet!r} yalnız tekil temelde kullanılır; mütemadi/radyede kolon tabanı temel düğümüne "
+                        "rijit bağlıdır (kolon–temel birleşimi sürekli).")
     out.update({"beton": beton, "donati": donati, "varsayim": varsayim})
 
     def yatay_oku(d, on):
         yatay = str(d.get("yatay") or "tutulu").strip().lower()
         if yatay not in ("tutulu", "yay"):
-            raise MatrisHatasi(f"{on}.yatay {yatay!r}; 'tutulu' (temel düğümlerinde X ve Y ötelemeleri tutulu, varsayılan) ya da 'yay' "
+            raise MatrisHatasi(f"{on}.yatay {yatay!r}; 'tutulu' (temel düğümlerinde X, Y ötelemeleri ve düşey eksen etrafında dönme tutulu, "
+                               "varsayılan) ya da 'yay' "
                                "(yatay yaylar k_h = kh_oran·k_z) olmalı.")
         kh = None
         if yatay == "yay":
@@ -248,7 +276,9 @@ def oku(B, t):
         return yatay, kh
 
     def ag_oku(d, on, vars_):
-        ag = _sayi(d.get("ag", vars_), f"{on}.ag (eleman bölme aralığı, m)")
+        if d.get("ag") in (None, "", "otomatik", "oto"):
+            return vars_          # otomatik: ag_kur 0,5 m'den başlayıp SD sınırına sığan ilk aralığı seçer
+        ag = _sayi(d.get("ag"), f"{on}.ag (eleman bölme aralığı, m)")
         if ag <= 0:
             raise MatrisHatasi(f"{on}.ag = {ag} m; ağ aralığı pozitif olmalı (0,25–1,0 m önerilir; karakteristik boy 1/β'nın "
                                "üçte birinden küçük seçilir).")
@@ -259,16 +289,17 @@ def oku(B, t):
     if tip == "surekli":
         s = t.get("surekli") if isinstance(t.get("surekli"), dict) else {}
         on = "temeller.surekli"
-        yon = str(s.get("yon") or "xy").strip().lower()
+        V = VARSAYILAN["surekli"]
+        yon = str(s.get("yon") or V["yon"]).strip().lower()
         if yon not in ("x", "y", "xy"):
             raise MatrisHatasi(f"{on}.yon {yon!r}; 'x' (sayılı akslar boyunca, X doğrultusunda kirişler), 'y' (harfli akslar boyunca) "
                                "ya da 'xy' (iki doğrultu, ızgara) olmalı.")
-        Bt = _sayi(s.get("B", 1.2), f"{on}.B (tabla genişliği, m)")
+        Bt = _sayi(s.get("B", V["B"]), f"{on}.B (tabla genişliği, m)")
         if Bt <= 0:
             raise MatrisHatasi(f"{on}.B = {Bt} m; tabla (taban) genişliği pozitif olmalı.")
-        ht = _sayi(s.get("h_tabla", 0.40), f"{on}.h_tabla (tabla kalınlığı, m)")
-        bg = _sayi(s.get("b_govde", 0.50), f"{on}.b_govde (gövde genişliği, m)")
-        hg = _sayi(s.get("h_govde", 1.00), f"{on}.h_govde (toplam kiriş yüksekliği, tabla dahil, m)")
+        ht = _sayi(s.get("h_tabla", V["h_tabla"]), f"{on}.h_tabla (tabla kalınlığı, m)")
+        bg = _sayi(s.get("b_govde", V["b_govde"]), f"{on}.b_govde (gövde genişliği, m)")
+        hg = _sayi(s.get("h_govde", V["h_govde"]), f"{on}.h_govde (toplam kiriş yüksekliği, tabla dahil, m)")
         if ht < 0:
             raise MatrisHatasi(f"{on}.h_tabla = {ht} m negatif olamaz (dikdörtgen kesit için h_tabla = 0, b_govde = B).")
         if bg <= 0 or hg <= 0:
@@ -282,10 +313,10 @@ def oku(B, t):
         if Bt > 6.0 or hg > 4.0:
             raise MatrisHatasi(f"{on}: B = {Bt} m, h_govde = {hg} m çok büyük; boyutlar metre girilir (120 cm → 1.2). Çok geniş "
                                "tabla gerekiyorsa radye düşünün.")
-        tasma = _sayi(s.get("tasma", 0.5), f"{on}.tasma (uç kolondan taşma, m)")
+        tasma = _sayi(s.get("tasma", V["tasma"]), f"{on}.tasma (uç kolondan taşma, m)")
         if tasma < 0:
             raise MatrisHatasi(f"{on}.tasma = {tasma} m; taşma (konsol) negatif olamaz (0 = kiriş uç kolonda biter).")
-        ag = ag_oku(s, on, 0.5)
+        ag = ag_oku(s, on, V["ag"])
         akslar = s.get("akslar", "tum")
         if akslar in (None, "", "tum", "tüm", "hepsi"):
             secili = None
@@ -307,19 +338,21 @@ def oku(B, t):
             varsayim.append(f"Temel kirişi kesiti dikdörtgen ({_f(kesit['B'])} × {_f(hg)} m) olarak alındı (h_tabla = {_f(ht)}, "
                             f"b_govde = {_f(bg)}, B = {_f(Bt)}).")
         out["surekli"] = {"yon": yon, "akslar": "tum" if secili is None else secili, "B": Bt, "h_tabla": ht, "b_govde": bg,
-                          "h_govde": hg, "tasma": tasma, "ag": ag, "yatay": yatay, "kh_oran": kh, "kesit": kesit}
+                          "h_govde": hg, "tasma": tasma, "ag": ag, "ag_oto": s.get("ag") in (None, "", "otomatik", "oto"),
+                          "yatay": yatay, "kh_oran": kh, "kesit": kesit}
     else:
         r = t.get("radye") if isinstance(t.get("radye"), dict) else {}
         on = "temeller.radye"
-        h = _sayi(r.get("h", 0.80), f"{on}.h (plak kalınlığı, m)")
+        V = VARSAYILAN["radye"]
+        h = _sayi(r.get("h", V["h"]), f"{on}.h (plak kalınlığı, m)")
         if h <= 0:
             raise MatrisHatasi(f"{on}.h = {h} m; plak kalınlığı pozitif olmalı (TS 500 md. 10.4.2: kirişsiz radye ≥ 0,30 m).")
         if h > 4.0:
             raise MatrisHatasi(f"{on}.h = {h} m çok büyük; kalınlık metre girilir (80 cm → 0.8).")
-        tasma = _sayi(r.get("tasma", 1.0), f"{on}.tasma (aks dışına taşma, m)")
+        tasma = _sayi(r.get("tasma", V["tasma"]), f"{on}.tasma (aks dışına taşma, m)")
         if tasma < 0:
             raise MatrisHatasi(f"{on}.tasma = {tasma} m; radye taşması negatif olamaz (0 = plak dış akslarda biter).")
-        ag = ag_oku(r, on, 0.5)
+        ag = ag_oku(r, on, V["ag"])
         kiris = r.get("kiris")
         kir = None
         if kiris not in (None, False, "", {}):
@@ -334,7 +367,8 @@ def oku(B, t):
                                    "toplam yüksekliktir.")
             kir = {"b": kb, "h": kh_}
         yatay, khr = yatay_oku(r, on)
-        out["radye"] = {"h": h, "tasma": tasma, "ag": ag, "kiris": kir, "yatay": yatay, "kh_oran": khr}
+        out["radye"] = {"h": h, "tasma": tasma, "ag": ag, "ag_oto": r.get("ag") in (None, "", "otomatik", "oto"), "kiris": kir,
+                        "yatay": yatay, "kh_oran": khr}
     return out
 
 
@@ -423,9 +457,23 @@ class _AgKurucu:
         return rec
 
 
-def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
+def _ag_secimi(cfg, n_ust, en_fazla, sayac):
+    """Verilen (ya da otomatikte 0,5 m) aralıktan başlayarak 0,25 m adımlarla SD sınırına sığan ilk aralık. Dönüş (ag,
+    büyütüldüyse ag yoksa None). sayac(ag) → temel düğümü sayısı; n_ust temel dışı serbestlik sayısı. Hiçbiri sığmazsa
+    verilen aralık döner (yapi.py / sayilar_sd_denetimi öğretici hatayı verir)."""
+    sd_t = 3 if cfg["yatay"] == "tutulu" else 6
+    ag = cfg["ag"]
+    for k in range(40):
+        aday = round(ag + 0.25 * k, 2)
+        if n_ust + sd_t * sayac(aday) <= en_fazla:
+            return aday, (None if k == 0 else aday)
+    return ag, None
+
+
+def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno, en_fazla=1500):
     """Mütemadi ya da radye temel ağını bina ağına ekler. ``dugum(ix, iy, kat)`` yapi.py'nin düğüm kayıt işlevi (aks
     kesişiminde bina numarası); ``dugumler``, ``elemanlar`` (ag, bina koordinatı), ``model_el`` (motor) listelerine ekler.
+    ``ag`` verilmemişse (otomatik) toplam serbestlik ``en_fazla``yı aşmayacak biçimde seçilir.
     Dönüş (yeni eno, info). info: tip, dugumler [{no, X, Y, A (etki alanı), k, kolon, aks}], elemanlar, hatlar / plak,
     model_mesnet, model_yay, yuk_G {"yayili", "yukler"} (motor), W (öz ağırlık, kN), k0."""
     tem = B.temeller
@@ -436,13 +484,14 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
     kot0 = B.kat[0]["kot"]
     info = SimpleNamespace(tip=tip, dugumler=[], elemanlar=[], hatlar=[], plak=None, model_mesnet=[], model_yay=[],
                            yuk_G={"yayili": [], "yukler": []}, W=0.0, k0=k0, E=E, G=G, gamma=gam, varsayim=list(tem.get("varsayim", [])),
-                           notlar=[])
+                           notlar=[], uyarilar=[])
     K = _AgKurucu(B, dugum, dugumler, elemanlar, model_el, eno, kot0, info)
     taban = [c for c in B.kolonlar if c["kat"] == 1]
+    n_ust = 6 * sum(1 for d in dugumler if d["kat"] != 0)      # temel dışı serbestlikler (kat 0 kolon tabanları temel düğümü olur)
     if tip == "surekli":
         cfg = tem["surekli"]
         ks = cfg["kesit"]
-        Bt, ag, tasma = ks["B"], cfg["ag"], cfg["tasma"]
+        Bt, tasma = ks["B"], cfg["tasma"]
         hatlar = []
         if cfg["yon"] in ("x", "xy"):
             for iy, ad in enumerate(B.yad):
@@ -453,7 +502,7 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
                 if cfg["akslar"] == "tum" or ad in cfg["akslar"]:
                     hatlar.append(("y", ix, ad))
         tasinan = set()
-        hat_kayit = []
+        hat_on = []
         for no_h, (yon, sabit, ad) in enumerate(hatlar, start=1):
             if yon == "x":
                 kol = [c for c in taban if c["iy"] == sabit]
@@ -473,13 +522,28 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
                 raise MatrisHatasi(f"temeller.surekli: {ad!r} aksında tek kolon var ve tasma = 0; temel kirişinin boyu sıfır. "
                                    "tasma > 0 verin ya da tekil temel kullanın.")
             kir = _kirilma([bas, son] + [v for v in eksen if bas - 1e-9 <= v <= son + 1e-9])
-            pts = _bolumle(kir, ag)
             sabit_k = B.yk[sabit] if yon == "x" else B.xk[sabit]
-            noktalar = [K.dugum_al(p, sabit_k) if yon == "x" else K.dugum_al(sabit_k, p) for p in pts]
             for c in kol:
                 tasinan.add(c["no"])
-            hat_kayit.append({"ad": ad, "yon": yon, "sabit": sabit_k, "bas": bas, "son": son, "pts": pts, "noktalar": noktalar,
-                              "no": no_h, "kolonlar": [c["no"] for c in kol]})
+            hat_on.append({"ad": ad, "yon": yon, "sabit": sabit_k, "bas": bas, "son": son, "kir": kir, "no": no_h,
+                           "kolonlar": [c["no"] for c in kol]})
+
+        def say(aday):
+            return len({(round(p, 6), round(h["sabit"], 6)) if h["yon"] == "x" else (round(h["sabit"], 6), round(p, 6))
+                        for h in hat_on for p in _bolumle(h["kir"], aday)})
+
+        oto_ilk = cfg["ag"]
+        ag, oto = _ag_secimi(cfg, n_ust, en_fazla, say)
+        cfg["ag"] = ag
+        if oto:
+            (info.notlar if cfg.get("ag_oto") else info.uyarilar).append(f"Ağ aralığı a = {_f(ag)} m'ye büyütüldü: istenen {_f(oto_ilk)} m ile serbestlik sayısı tarayıcı "
+                                 f"sınırını ({en_fazla}) aşıyordu.")
+        hat_kayit = []
+        for h in hat_on:
+            pts = _bolumle(h.pop("kir"), ag)
+            h["pts"] = pts
+            h["noktalar"] = [K.dugum_al(p, h["sabit"]) if h["yon"] == "x" else K.dugum_al(h["sabit"], p) for p in pts]
+            hat_kayit.append(h)
         if not hat_kayit:
             raise MatrisHatasi("temeller.surekli: seçilen akslarda kat 1 kolonu yok; temel kirişi kurulamadı.")
         eksik = [c["adres"] for c in taban if c["no"] not in tasinan]
@@ -502,6 +566,10 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
                 rec["A"] += Bt * (sol + sag)
                 rec["A_govde"] += ks["b_govde"] * (sol + sag)
                 rec.setdefault("hatlar", []).append(h["ad"])
+                # kiriş ekseni etrafında dönme yayı (tabla genişliği boyunca zemin): k_θ = k0·B³/12·l_etki
+                anahtar = "kr_X" if h["yon"] == "x" else "kr_Y"
+                rec[anahtar] = rec.get(anahtar, 0.0) + k0 * Bt ** 3 / 12.0 * (sol + sag)
+                rec["B_tabla"] = Bt
             h["elemanlar"] = []
             for a, b in zip(h["noktalar"], h["noktalar"][1:]):
                 parca += 1
@@ -553,11 +621,18 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
         yatay, kh = cfg["yatay"], cfg["kh_oran"]
     else:
         cfg = tem["radye"]
-        h, tasma, ag = cfg["h"], cfg["tasma"], cfg["ag"]
+        h, tasma = cfg["h"], cfg["tasma"]
         X0, X1 = B.xk[0] - tasma, B.xk[-1] + tasma
         Y0, Y1 = B.yk[0] - tasma, B.yk[-1] + tasma
         if X1 - X0 < 1e-6 or Y1 - Y0 < 1e-6:
             raise MatrisHatasi("Radye: plak alanı sıfır (tek aks ve tasma = 0); tasma > 0 verin.")
+        kx, ky = _kirilma([X0, X1] + list(B.xk)), _kirilma([Y0, Y1] + list(B.yk))
+        oto_ilk = cfg["ag"]
+        ag, oto = _ag_secimi(cfg, n_ust, en_fazla, lambda a: len(_bolumle(kx, a)) * len(_bolumle(ky, a)))
+        cfg["ag"] = ag
+        if oto:
+            (info.notlar if cfg.get("ag_oto") else info.uyarilar).append(f"Izgara aralığı a = {_f(ag)} m'ye büyütüldü: istenen {_f(oto_ilk)} m ile serbestlik sayısı tarayıcı "
+                                 f"sınırını ({en_fazla}) aşıyordu.")
         xs = _bolumle(_kirilma([X0, X1] + list(B.xk)), ag)
         ys = _bolumle(_kirilma([Y0, Y1] + list(B.yk)), ag)
         info.izgara = {"x": xs, "y": ys}
@@ -650,8 +725,14 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
         if rec["A"] <= 0:
             raise MatrisHatasi(f"Temel düğümü {rec['adres']}: etki alanı sıfır; ağ aralığını ya da taşmayı değiştirin.")
         yay = {"dugum": rec["no"], "ky": rec["k"]}
+        # mütemadi: tabla genişliği boyunca zemin, kiriş ekseni etrafındaki dönmeye direnir (bina X → motor x, bina Y → motor −z)
+        if rec.get("kr_X", 0.0) > 0:
+            yay["krx"] = rec["kr_X"]
+        if rec.get("kr_Y", 0.0) > 0:
+            yay["krz"] = rec["kr_Y"]
         if yatay == "tutulu":
-            info.model_mesnet.append({"dugum": rec["no"], "ux": True, "uz": True})
+            # temel düzlemi içindeki hareketler tutulu: X, Y ötelemeleri ve düşey eksen etrafında dönme (motor ux, uz, ry)
+            info.model_mesnet.append({"dugum": rec["no"], "ux": True, "uz": True, "ry": True})
         else:
             yay["kx"] = kh * rec["k"]
             yay["kz"] = kh * rec["k"]
@@ -661,9 +742,11 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno):
             Fy = -rec["dW"] if tip == "radye" else rec["dW"]
             info.yuk_G["yukler"].append({"dugum": rec["no"], "Fx": 0.0, "Fy": Fy, "Fz": 0.0, "Mx": 0.0, "My": 0.0, "Mz": 0.0})
     info.yatay, info.kh_oran = yatay, kh
+    info.tutulu_sd = 3 * len(info.dugumler) if yatay == "tutulu" else 0      # tutulu temel serbestlikleri (SD sayımından düşülür)
     info.dno = {r["no"]: r for r in info.dugumler}
     info.eno = {e["no"]: e for e in info.elemanlar}
-    info.ince = {e["no"] for e in info.elemanlar if e["tur"] == "radye-serit"}
+    info.ince = {e["no"] for e in info.elemanlar if e["tur"] == "radye-serit"}       # veri.durumlar'da diyagramsız
+    info.seyrek = {e["no"] for e in info.elemanlar if e["tur"] == "temel-kirisi"}    # dizileri 3 noktalı (kısa parçalar)
     return K.eno, info
 
 
@@ -681,14 +764,23 @@ def yuk_kaydet(Y, info):
     Y.korunum_parcalari["G"]["toplam"] += W
 
 
-def sayilar_sd_denetimi(B, n_ust, info_sayisi, en_fazla):
+def sd_sayisi(dugumler, info):
+    """Bina + temel ağının serbestlik sayısı: düğüm başına 6; temel düzlemi tutulu temel düğümlerinde 3 (w, θ_X, θ_Y)."""
+    n = 6 * sum(1 for d in dugumler if not d.get("efendi"))
+    return n - (info.tutulu_sd if info is not None else 0)
+
+
+def sayilar_sd_denetimi(B, dugumler, info, en_fazla):
     """SD sınırı aşılırsa ağ aralığını büyütmeyi öneren öğretici hata."""
-    n = 6 * (n_ust + info_sayisi)
+    n = sd_sayisi(dugumler, info)
     if n <= en_fazla:
         return
     tem = B.temeller
     tip = tem["tip"]
     ag = tem[tip]["ag"]
+    sd_t = 3 if info.yatay == "tutulu" else 6
+    n_temel = len(info.dugumler)
+    n_ust = n - sd_t * n_temel                      # temel dışı serbestlikler
     oneri = None
     for aday in [round(ag + 0.25 * k, 2) for k in range(1, 40)]:
         if tip == "radye":
@@ -696,17 +788,13 @@ def sayilar_sd_denetimi(B, n_ust, info_sayisi, en_fazla):
             nx = len(_bolumle(_kirilma([B.xk[0] - t, B.xk[-1] + t] + list(B.xk)), aday))
             ny = len(_bolumle(_kirilma([B.yk[0] - t, B.yk[-1] + t] + list(B.yk)), aday))
             yeni = nx * ny
-            ortak = len(B.xk) * len(B.yk)
-            if 6 * (n_ust - ortak + yeni) <= en_fazla:
-                oneri = aday
-                break
         else:
-            oran = ag / aday
-            if 6 * (n_ust + int(info_sayisi * oran) + 1) <= en_fazla:
-                oneri = aday
-                break
-    raise MatrisHatasi(f"{'Radye' if tip == 'radye' else 'Mütemadi temel'} ağı ile bina {n_ust + info_sayisi} düğüm × 6 = {n} serbestlik "
-                       f"derecesi; tarayıcıda en fazla {en_fazla}. Ağ aralığını büyütün: temeller.{tip}.ag = {ag} m yerine "
+            yeni = int(n_temel * ag / aday) + 1
+        if n_ust + sd_t * yeni <= en_fazla:
+            oneri = aday
+            break
+    raise MatrisHatasi(f"{'Radye' if tip == 'radye' else 'Mütemadi temel'} ağı ile bina {n} serbestlik derecesi ({n_temel} temel düğümü × "
+                       f"{sd_t}); tarayıcıda en fazla {en_fazla}. Ağ aralığını büyütün: temeller.{tip}.ag = {ag} m yerine "
                        + (f"≈ {oneri} m" if oneri else "daha büyük bir değer") + " (karakteristik boy 1/β'nın üçte birinden küçük kaldıkça "
                        "sonuç pek değişmez) ya da aks/kat sayısını azaltın.")
 
@@ -875,6 +963,22 @@ class _Kmb:
         self.didx = {no: i for i, no in enumerate(paket.dugum_no)}
         self.eidx = {no: j for j, no in enumerate(paket.el_no)}
         self.nd = [self.didx[r["no"]] for r in info.dugumler]
+        # mütemadi: tabla yarı genişliği (kiriş ekseni etrafında dönmenin kenar basıncına katkısı); radyede 0
+        self.hx = np.array([r.get("B_tabla", 0.0) / 2.0 if r.get("kr_X", 0.0) > 0 else 0.0 for r in info.dugumler])
+        self.hy = np.array([r.get("B_tabla", 0.0) / 2.0 if r.get("kr_Y", 0.0) > 0 else 0.0 for r in info.dugumler])
+
+    def _dug(self, kat, sutun):
+        out = np.zeros(len(self.nd))
+        for d, g in kat.items():
+            if d in self.p.durum:
+                out += float(g) * self.p.durum[d]["dug"][self.nd, sutun]
+        return out
+
+    def dp(self, kat):
+        """Tabla kenarında basınç artışı k0·max(|θ_X|·B/2, |θ_Y|·B/2) (mütemadi; radyede 0)."""
+        if not (self.hx.any() or self.hy.any()):
+            return np.zeros(len(self.nd))
+        return self.info.k0 * np.maximum(np.abs(self._dug(kat, 3)) * self.hx, np.abs(self._dug(kat, 4)) * self.hy)
 
     def uz(self, kat):
         """Σ γ·u_Z (temel düğümleri, bina Z; m)."""
@@ -903,20 +1007,30 @@ class _Kmb:
 
 
 def basinc_meta(info):
-    """kombinasyon_kisa için küçük meta: düğümler (no, X, Y) ve k0."""
-    return {"k0": info.k0, "dugumler": [(r["no"], r["X"], r["Y"]) for r in info.dugumler]}
+    """kombinasyon_kisa için küçük meta: düğümler (no, X, Y, tabla yarı genişlikleri hx, hy) ve k0."""
+    return {"k0": info.k0, "dugumler": [(r["no"], r["X"], r["Y"], r.get("B_tabla", 0.0) / 2.0 if r.get("kr_X", 0.0) > 0 else 0.0,
+                                         r.get("B_tabla", 0.0) / 2.0 if r.get("kr_Y", 0.0) > 0 else 0.0) for r in info.dugumler],
+            "ince": sorted(info.ince), "seyrek": sorted(info.seyrek)}
 
 
 def basinc(meta, kisa):
-    """Tek kombinasyon/durum KISA'sından (bina koordinatı) temel düğümü oturması ve taban basıncı p = k0·w (tembel yol)."""
-    uZ = {d["no"]: d["uZ"] for d in kisa["dugumler"]}
+    """Tek kombinasyon/durum KISA'sından (bina koordinatı) temel düğümü oturması ve taban basıncı p = k0·w (tembel yol);
+    mütemadide tabla kenarı basınçları k0·(w ± θ·B/2) p_maks/p_min'e girer."""
+    dk = {d["no"]: d for d in kisa["dugumler"]}
     k0 = meta["k0"]
-    dug = []
-    for no, X, Y in meta["dugumler"]:
-        w = -uZ.get(no, 0.0)
-        dug.append({"no": no, "X": _r(X), "Y": _r(Y), "w_mm": _r(w * 1000.0, 5), "p_kNm2": _r(k0 * w, 5)})
-    ps = [d["p_kNm2"] for d in dug] or [0.0]
-    return {"dugumler": dug, "p_maks": max(ps), "p_min": min(ps), "oturma_maks_mm": max((d["w_mm"] for d in dug), default=0.0)}
+    dug, pmax, pmin = [], [], []
+    for no, X, Y, hx, hy in meta["dugumler"]:
+        d = dk.get(no, {})
+        w = -d.get("uZ", 0.0)
+        dp = k0 * max(abs(d.get("rX", 0.0)) * hx, abs(d.get("rY", 0.0)) * hy)
+        kayit = {"no": no, "X": _r(X), "Y": _r(Y), "w_mm": _r(w * 1000.0, 5), "p_kNm2": _r(k0 * w, 5)}
+        if hx or hy:
+            kayit.update({"p_maks_kNm2": _r(k0 * w + dp, 5), "p_min_kNm2": _r(k0 * w - dp, 5)})
+        dug.append(kayit)
+        pmax.append(k0 * w + dp)
+        pmin.append(k0 * w - dp)
+    return {"dugumler": dug, "p_maks": _r(max(pmax, default=0.0), 6), "p_min": _r(min(pmin, default=0.0), 6),
+            "oturma_maks_mm": max((d["w_mm"] for d in dug), default=0.0)}
 
 
 def _komb_satirlari(kombinasyonlar, paket):
@@ -949,6 +1063,7 @@ def _kolon_yuzu_serbest(B, hat, kol_no_listesi):
 
 
 def _kontrol(ad, talep, kapasite, kaynak, birim="", kombinasyon=None, kosul=False, bilgi=False):
+    talep, kapasite = float(talep), float(kapasite)
     dc = 99.0 if kapasite <= 0 else min(max(talep / kapasite, 0.0), 99.0)
     return {"ad": ad, "talep": _r(talep, 5), "kapasite": _r(kapasite, 5), "dc": _r(dc, 5), "birim": birim, "kaynak": kaynak,
             "saglandi": dc <= 1.0 + 1e-9, "kombinasyon": kombinasyon, **({"kosul": True} if kosul else {}), **({"bilgi": True} if bilgi else {})}
@@ -965,18 +1080,21 @@ def sonuclar(B, ag, paket, kombinasyonlar):
     q_k = tem["zemin"].get("q_k")
     km = _Kmb(paket, info)
     tas, ser = _komb_satirlari(kombinasyonlar, paket)
-    uyarilar, notlar = [], list(info.notlar)
+    uyarilar, notlar = list(info.uyarilar), list(info.notlar)
     # --- servis: oturma ve taban basıncı ---
     servis = []
+    kenarli = tip == "surekli"
     for ad, kat, _ in ser:
         w = -km.uz(kat)
-        p = k0 * w
-        servis.append({"ad": ad, "p_maks": float(p.max()), "p_min": float(p.min()), "w_maks_mm": float(w.max() * 1000.0),
-                       "w_min_mm": float(w.min() * 1000.0), "DC": float(p.max()) / q_em, "_w": w, "_p": p})
+        p = k0 * w                      # düğüm ortalama basıncı (yay kuvveti / etki alanı)
+        dp = km.dp(kat)                 # mütemadi: tabla kenarında ± k0·θ·B/2
+        servis.append({"ad": ad, "p_maks": float((p + dp).max()), "p_min": float((p - dp).min()), "w_maks_mm": float(w.max() * 1000.0),
+                       "w_min_mm": float(w.min() * 1000.0), "DC": float((p + dp).max()) / q_em, "_w": w, "_p": p, "_dp": dp})
     gq = servis[0]
     bel = max(servis, key=lambda s: s["p_maks"])
-    w, p = gq["_w"], gq["_p"]
+    w, p, dp = gq["_w"], gq["_p"], gq["_dp"]
     dugumler = [{"no": r["no"], "X": _r(r["X"]), "Y": _r(r["Y"]), "w_mm": _r(w[i] * 1000.0, 5), "p_kNm2": _r(p[i], 5),
+                 **({"p_maks_kNm2": _r(p[i] + dp[i], 5), "p_min_kNm2": _r(p[i] - dp[i], 5)} if kenarli else {}),
                  "A": _r(r["A"], 5), **({"kolon": r["kolon"]} if r["kolon"] else {})} for i, r in enumerate(info.dugumler)]
     if any(s["p_min"] < -1e-9 for s in servis):
         uyarilar.append(f"Servis yükünde taban basıncı negatif (p_min = {_f(min(s['p_min'] for s in servis))} kN/m²): zemin çekme "
@@ -997,6 +1115,20 @@ def sonuclar(B, ag, paket, kombinasyonlar):
             oran = abs(wi - wj) / L if L > 0 else 0.0
             if oran > farkli:
                 farkli, farkli_yer = oran, f"{ri['adres']}–{rj['adres']}"
+    # --- yük akışı: kolon → temel → zemin (servis G+Q) ---
+    kat_gq = {"G": 1.0, "Q": 1.0}
+    kolonlar, N_kolon = [], 0.0
+    for i, r in enumerate(info.dugumler):
+        if r["kolon"] is None:
+            continue
+        c = B.kolon_no[r["kolon"]]
+        N = float(km.uc(kat_gq, c["eleman"])[0])          # kolon alt ucu eksenel kuvveti (basınç +)
+        N_kolon += N
+        kolonlar.append({"kolon_no": c["no"], "aks": c["aks"], "adres": c["adres"], "dugum": r["no"], "N_servis": _r(N, 6),
+                         "w_mm": _r(w[i] * 1000.0, 5), "p_kNm2": _r(p[i], 5)})
+    zemin_F = float(np.dot(p, [r["A"] for r in info.dugumler]))      # Σ p·A = Σ yay kuvveti
+    yuk_akisi = {"kolon_N": _r(N_kolon, 7), "temel_W": _r(info.W, 7), "zemin": _r(zemin_F, 7),
+                 "fark": _r(zemin_F - N_kolon - info.W, 5), "kombinasyon": gq["ad"]}
     # --- TBDY 16.8: katsayılı yüklerle q_o ≤ q_t ---
     q_k_kaynak = "kullanıcı (geoteknik rapor)"
     if q_k is None:
@@ -1007,20 +1139,20 @@ def sonuclar(B, ag, paket, kombinasyonlar):
     P = None
     q_o, q_o_k, p_min_d = 0.0, None, 0.0
     if tas:
-        P = np.array([-k0 * km.uz(kat) for _, kat, _ in tas])          # (nk × nn) kN/m²
-        i, j = np.unravel_index(int(np.argmax(P)), P.shape)
-        q_o, q_o_k = float(P[i, j]), tas[i][0]
-        p_min_d = float(P.min())
+        P = np.array([-k0 * km.uz(kat) for _, kat, _ in tas])          # (nk × nn) kN/m², düğüm ortalaması
+        DP = np.array([km.dp(kat) for _, kat, _ in tas])               # mütemadi tabla kenarı katkısı
+        i, j = np.unravel_index(int(np.argmax(P + DP)), P.shape)
+        q_o, q_o_k = float((P + DP)[i, j]), tas[i][0]
+        p_min_d = float((P - DP).min())
         if p_min_d < -1e-9:
             uyarilar.append(f"Katsayılı kombinasyonda taban basıncı negatif (en küçük p = {_f(p_min_d)} kN/m², "
-                            f"{tas[int(np.unravel_index(int(np.argmin(P)), P.shape)[0])][0]}): zemin çekme alamaz; ayrılma bölgesi oluşur "
-                            "(yineleme yapılmadı).")
+                            f"{tas[int(np.unravel_index(int(np.argmin(P - DP)), P.shape)[0])][0]}): zemin çekme alamaz; ayrılma bölgesi "
+                            "oluşur (yineleme yapılmadı).")
     zemin_kontrolleri = [
         _kontrol(f"TS 500 emniyet (servis {bel['ad']}): p_maks ≤ q_em", bel["p_maks"], q_em, KAYNAK["emniyet"], "kN/m²", bel["ad"]),
         _kontrol("TBDY 16.8: q_o (katsayılı) ≤ q_t = q_k/γ_Rv", q_o, q_t, KAYNAK["tbdy"] + "; q_k: " + q_k_kaynak, "kN/m²", q_o_k),
     ]
-    # --- elemanlar (servis G+Q diyagramları; radye şeridinde yalnız uç kuvvetleri + enb) ---
-    kat_gq = {"G": 1.0, "Q": 1.0}
+    # --- elemanlar (servis G+Q diyagramları; radye şeridinde yalnız enb) ---
     elemanlar = []
     for e in info.elemanlar:
         blok = km.blok(kat_gq, e["no"])
@@ -1028,9 +1160,9 @@ def sonuclar(B, ag, paket, kombinasyonlar):
         j = km.eidx[e["no"]]
         kayit = {"no": e["no"], "tur": e["tur"], "yon": e["yon"], "kaynak": {"tur": "temel", "hat": e["hat"], "parca": e["parca"]},
                  "dugumler": e["dugumler"], "L": _r(e["L"]), "b": _r(e["b"]), "h": _r(e["h"]),
-                 "uc_kuvvetleri": [_r(x, 5) for x in uc],
                  "enb": {a: _r(float(blok[k][np.argmax(np.abs(blok[k]))]), 5) for k, a in enumerate(_DIY)}}
-        if e["tur"] != "radye-serit":
+        if e["tur"] != "radye-serit":       # radye şeridinde yalnız en büyükler (uç kuvvetleri veri.durumlar'da)
+            kayit["uc_kuvvetleri"] = [_r(x, 5) for x in uc]
             kayit["x"] = [_r(x) for x in paket.el_x[j]]
             for k, a in enumerate(_DIY):
                 kayit[a] = [_r(x) for x in blok[k]]
@@ -1061,7 +1193,7 @@ def sonuclar(B, ag, paket, kombinasyonlar):
             return (Ga @ D).reshape(len(tas), 6, n)
 
         bloklar = {e["no"]: kmb_blok(e["no"]) for e in info.elemanlar}
-        p_d_maks = float(P.max()) if P is not None else 0.0
+        p_d_maks = q_o if P is not None else 0.0          # en büyük katsayılı taban basıncı (mütemadide tabla kenarı dahil)
         # ---- temel kirişleri (mütemadi; kirişli radyede aks kirişleri) ----
         for h in info.hatlar:
             el = [info.eno[n] for n in h["elemanlar"]]
@@ -1214,7 +1346,10 @@ def sonuclar(B, ag, paket, kombinasyonlar):
                 kontroller.append(_kontrol("Kirişli radye plak kalınlığı h ≥ 200 mm", H_PLAK_MIN, hR, KAYNAK["plak_h"], "m", kosul=True))
     # --- özet ---
     tasarim_dc = max((t["dc"] for t in tasarim), default=0.0)
-    kosul_dc = max((k["dc"] for k in kontroller if not k["saglandi"]), default=0.0)
+    if farkli > 1e-12:          # bilgi: yönetmelik sayısal sınır vermez (TBDY 16.8.3.4); sınır geoteknik rapordan
+        kontroller.append(_kontrol(f"Farklı oturma (komşu kolonlar) δ/L = {veri_farkli_metin(farkli)} (bilgi: yaygın sınır 1/500)",
+                                   farkli, 1.0 / 500.0, KAYNAK["oturma"], "–", gq["ad"], bilgi=True))
+    kosul_dc = max((k["dc"] for k in kontroller if not k["saglandi"] and not k.get("bilgi")), default=0.0)
     zemin_dc = max(k["dc"] for k in zemin_kontrolleri)
     en_dc = max(tasarim_dc, kosul_dc, zemin_dc)
     oneriler = []
@@ -1226,8 +1361,10 @@ def sonuclar(B, ag, paket, kombinasyonlar):
             yer = t.get("hat") or t.get("adres") or t.get("yon") or ""
             oneriler.append(f"{t['tur']} {yer}: {t['oneri']}")
     for k in kontroller:
-        if not k["saglandi"]:
+        if not k["saglandi"] and not k.get("bilgi"):
             oneriler.append(f"{k['ad']}: sağlanmıyor ({k['kaynak']}).")
+        elif not k["saglandi"]:
+            notlar.append(f"{k['ad']}: aşılıyor; geoteknik raporla karşılaştırın (temel rijitliğini artırmak farkı azaltır).")
     dc_dagilim = {"<0.7": 0, "0.7-0.9": 0, "0.9-1.0": 0, ">1.0": 0}
     for t in tasarim:
         x = t["dc"]
@@ -1261,12 +1398,12 @@ def sonuclar(B, ag, paket, kombinasyonlar):
         "p_maks": _r(gq["p_maks"], 6), "p_min": _r(gq["p_min"], 6),
         "DC_zemin": _r(bel["DC"], 5), "belirleyen_servis": bel["ad"],
         "oturma_maks_mm": _r(gq["w_maks_mm"], 5), "oturma_min_mm": _r(gq["w_min_mm"], 5),
-        "farkli_oturma": _r(farkli, 5), "farkli_oturma_metin": f"1/{_f(1.0 / farkli, 0)}" if farkli > 1e-12 else "–",
+        "farkli_oturma": _r(farkli, 5), "farkli_oturma_metin": veri_farkli_metin(farkli),
         "farkli_oturma_yer": farkli_yer,
         "servis": [{a: (_r(v, 6) if isinstance(v, float) else v) for a, v in s.items() if not a.startswith("_")} for s in servis],
         "q_o": _r(q_o, 6), "q_o_kombinasyon": q_o_k, "p_min_katsayili": _r(p_min_d, 6),
         "zemin_kontrolleri": zemin_kontrolleri, "kontroller": kontroller,
-        "dugumler": dugumler, "elemanlar": elemanlar,
+        "dugumler": dugumler, "elemanlar": elemanlar, "kolonlar": kolonlar, "yuk_akisi": yuk_akisi,
         "hatlar": [{a: (_r(v) if isinstance(v, float) else v) for a, v in hh.items()} for hh in info.hatlar],
         "model": model, "tasarim": tasarim, "en_buyuk_dc": _r(en_dc, 5), "dc_dagilimi": dc_dagilim,
         "uyarilar": uyarilar, "oneriler": oneriler, "notlar": notlar, "varsayimlar": list(info.varsayim),
@@ -1274,6 +1411,11 @@ def sonuclar(B, ag, paket, kombinasyonlar):
     }
     ic.update({"zimbalama": zimb, "kritik_zimbalama": max(zimb, key=lambda z: z["dc"]) if zimb else None})
     return veri, ic
+
+
+def veri_farkli_metin(oran):
+    """Farklı oturma oranı → '1/n' metni."""
+    return f"1/{_f(1.0 / oran, 0)}" if oran > 1e-12 else "–"
 
 
 def tekil_ozet(akis_temeller, q_em):
@@ -1372,8 +1514,17 @@ def anlatim(anl, no, B, ag, veri, ic, toplam_servis=None):
               "birbirinden uzak kalır; büyüdükçe temeller birleşir: önce aks boyunca şeritler (mütemadi), alanın büyük bölümü "
               "gerekiyorsa bütün planı kaplayan radye. Farklı oturmanın sınırlanması ve yumuşak zemin de sürekli temeli öne çıkarır "
               "(uygulamadaki yaygın ölçüt; yönetmelik eşiği değildir).")
-    anl.metin(f"**Model** ({KAYNAK['winkler']}): zemin, temel düğümlerine bağlı birbirinden bağımsız düşey yaylardır "
-              f"(ayrık Winkler). k0 = {_f(m['k0'], 0)} kN/m³; her düğümün yayı k_z = k0·A_etki.")
+    ya = veri["yuk_akisi"]
+    anl.metin(f"**Yük akışı: kolon → temel → zemin** (servis {ya['kombinasyon']}). Zemin kat kolonları yükü temel düğümlerine "
+              f"bırakır: Σ N_kolon = {_f(ya['kolon_N'])} kN. Temel bu yükü kendi ağırlığıyla birlikte ({_f(ya['temel_W'])} kN) kendi "
+              "rijitliğiyle yayar ve zemine her düğümdeki yay kuvveti olarak aktarır; yay kuvveti / etki alanı = taban basıncı. "
+              "Kolon altında temel en çok çöker, aralarda daha az: basınç kolon altlarında yoğunlaşır.")
+    anl.mat(rf"\sum_i p_i A_i = \sum N_{{kolon}} + W_{{temel}} = {_f(ya['kolon_N'])} + {_f(ya['temel_W'])} = {_f(ya['zemin'])}\ \text{{kN}}"
+            rf"\quad(\text{{denge farkı }} {_f(ya['fark'], 6)})")
+    anl.metin(f"**Model — Winkler varsayımı** ({KAYNAK['winkler']}): zemin, temel düğümlerine bağlı birbirinden bağımsız düşey "
+              f"yaylardır (ayrık Winkler): bir noktadaki basınç yalnız o noktanın çökmesine bağlıdır, p = k0·w; komşu noktalar "
+              f"arasında kayma aktarımı yoktur (yay sürekli ortamı yaklaşık temsil eder; k0 geoteknik rapordan, temel boyutuna ve "
+              f"yük düzeyine bağlıdır). k0 = {_f(m['k0'], 0)} kN/m³; her düğümün yayı k_z = k0·A_etki.")
     if tip == "surekli":
         ks = m["kesit"]
         anl.metin(f"Temel kirişleri {m['yon']} doğrultusunda, akslar: {m['akslar']}; ters T kesit B = {_f(ks['B'])} m, h_tabla = "
@@ -1383,7 +1534,11 @@ def anlatim(anl, no, B, ag, veri, ic, toplam_servis=None):
                 r"I = \frac{B t^3}{12} + B t\left(y_c - \tfrac t2\right)^2 + \frac{b_w (h-t)^3}{12} + b_w (h-t)\left(t + \tfrac{h-t}2 - y_c\right)^2")
         anl.mat(rf"A = {_f(ks['A'], 4)}\ \text{{m}}^2,\quad y_c = {_f(ks['y_c'], 3)}\ \text{{m}},\quad I = {_f(ks['I'], 5)}\ \text{{m}}^4,"
                 rf"\quad J \approx \sum \beta a c^3 = {_f(ks['J'], 5)}\ \text{{m}}^4")
-        anl.mat(r"k_{z,i} = k_0\,B\,l_{etki,i},\qquad l_{etki,i} = \tfrac12 (a_{i-1} + a_i)")
+        anl.mat(r"k_{z,i} = k_0\,B\,l_{etki,i},\qquad l_{etki,i} = \tfrac12 (a_{i-1} + a_i),\qquad "
+                r"k_{\theta,i} = k_0\,\frac{B^3}{12}\,l_{etki,i}")
+        anl.metin("Dönme yayı k_θ, tabla genişliği boyunca zeminin kiriş ekseni etrafındaki dönmeye direncidir (kolonun dik "
+                  "doğrultudaki momenti tablayı yan yatırır); tabla kenarlarında basınç p = k0·(w ± θ·B/2) olur ve p_maks/p_min "
+                  "bu kenar değerlerinden okunur.")
         if m.get("ortak_alan", 0) > 0:
             anl.metin(f"xy ızgarasında iki şeridin kesiştiği {_f(m['ortak_alan'], 3)} m² ortak tabla alanı yay hesabında bir kez sayıldı "
                       "(her iki şeridin düğümlerinden yarı yarıya düşüldü); temel öz ağırlığında da ortak hacim bir kez sayıldı.")
@@ -1399,7 +1554,7 @@ def anlatim(anl, no, B, ag, veri, ic, toplam_servis=None):
                       f" Kirişli radye: aks çizgilerindeki çubuklar ters T (plak + kiriş gövdesi b = {_f(m['kiris']['b'])}, "
                       f"h = {_f(m['kiris']['h'])} m)." if m.get("kiris") else ""))
     anl.metin(f"Toplam yay rijitliği Σk = {_f(m['yay_toplami'], 0)} kN/m = k0 × taban alanı ({_f(m['taban_alani'], 3)} m²). "
-              f"Yatay kararlılık: {'temel düğümlerinde X ve Y ötelemeleri tutulu (dönmeler serbest)' if m['yatay'] == 'tutulu' else 'yatay yaylar k_h = ' + _f(m['kh_oran'], 3) + '·k_z'}. "
+              f"Yatay kararlılık: {'temel düzlemi içindeki hareketler (X, Y ötelemeleri ve düşey eksen etrafında dönme) tutulu; düğüm başına w, θ_X, θ_Y serbest (ızgara)' if m['yatay'] == 'tutulu' else 'yatay yaylar k_h = ' + _f(m['kh_oran'], 3) + '·k_z'}. "
               f"Temel öz ağırlığı {_f(m['W_temel'])} kN G durumuna eklendi.")
     anl.metin(f"**Ayrık yay ↔ tutarlı Winkler matrisi:** tutarlı yaklaşımda zemin rijitliği k0·B·∫NᵀN dx ile eleman eğilme "
               f"serbestliklerine tam matris olarak eklenir; ayrık yay aynı toplamı düğümlere toplar (lumped). Karakteristik boy "
@@ -1411,10 +1566,13 @@ def anlatim(anl, no, B, ag, veri, ic, toplam_servis=None):
     anl.metin("**Taban basıncı ve oturma (servis, yük katsayıları 1,0; TS 500 md. 10.1):**\n\n"
               + se._tablo(["Kombinasyon", "p_maks (kN/m²)", "p_min (kN/m²)", "w_maks (mm)", "p_maks/q_em"], sat))
     dg = veri["dugumler"]
-    i_max = max(range(len(dg)), key=lambda i: dg[i]["p_kNm2"])
-    i_min = min(range(len(dg)), key=lambda i: dg[i]["p_kNm2"])
-    anl.metin(f"Kritik bölge: en büyük basınç {info.dugumler[i_max]['adres']} ({_f(dg[i_max]['p_kNm2'])} kN/m², w = {_f(dg[i_max]['w_mm'], 2)} mm), "
-              f"en küçük {info.dugumler[i_min]['adres']} ({_f(dg[i_min]['p_kNm2'])} kN/m²). Farklı oturma (komşu kolonlar): "
+    pmx = [d.get("p_maks_kNm2", d["p_kNm2"]) for d in dg]
+    pmn = [d.get("p_min_kNm2", d["p_kNm2"]) for d in dg]
+    i_max = max(range(len(dg)), key=lambda i: pmx[i])
+    i_min = min(range(len(dg)), key=lambda i: pmn[i])
+    kenar = " (tabla kenarı)" if tip == "surekli" else ""
+    anl.metin(f"Kritik bölge: en büyük basınç {info.dugumler[i_max]['adres']}{kenar} ({_f(pmx[i_max])} kN/m², w = {_f(dg[i_max]['w_mm'], 2)} mm), "
+              f"en küçük {info.dugumler[i_min]['adres']}{kenar} ({_f(pmn[i_min])} kN/m²). Farklı oturma (komşu kolonlar): "
               f"{veri['farkli_oturma_metin']}" + (f" ({veri['farkli_oturma_yer']})." if veri.get("farkli_oturma_yer") else "."))
     kont = veri["zemin_kontrolleri"]
     anl.metin("**Zemin kontrolleri** (iki ayrı yaklaşım):\n\n" + se._tablo(

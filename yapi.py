@@ -30,8 +30,12 @@ Bina veri modeli (``tur: "bina"``, ``surum: 1``; birimler kN, m, kN/m², kN/m³;
      "ek_yukler": [{"tur": "kiris", "kiris": 1, "durum": "G", "q": 2.0},
                    {"tur": "dugum", "aks": ["B", "2"], "kat": 2, "durum": "Q", "FZ": -10},
                    {"tur": "doseme", "doseme": 1, "g": 0.5}],
-     "temeller": {"tip": "tekil", "varsayilan": {"B": 1.6, "L": 1.6, "h": 0.6}, "zemin": {"q_em": 200, "k0": 20000},
-                  "mesnet": "ankastre" | "mafsal" | "elastik", "ozel": [{"aks": ["B", "1"], "B": 2.0, "L": 2.0}]},
+     "temeller": {"tip": "tekil" | "surekli" | "radye", "varsayilan": {"B": 1.6, "L": 1.6, "h": 0.6},
+                  "zemin": {"q_em": 200, "k0": 20000, "gamma": 18, "q_k": null},
+                  "mesnet": "ankastre" | "mafsal" | "elastik", "ozel": [{"aks": ["B", "1"], "B": 2.0, "L": 2.0}],   # tekil
+                  "surekli": {"yon": "x" | "y" | "xy", "akslar": "tum" | ["1", "3"], "B": 1.2, "h_tabla": 0.4, "b_govde": 0.5,
+                              "h_govde": 1.0, "tasma": 0.5, "ag": 0.5},                     # mütemadi: Winkler'e oturan ters T kirişler
+                  "radye": {"h": 0.8, "tasma": 1.0, "ag": 0.5, "kiris": null | {"b": 0.5, "h": 1.2}}},   # radye: Winkler'e oturan ızgara
      "yuk_durumlari": {"G": {"acik": true}, "Q": {"acik": true}, "S": {"acik": false, "bolge": 3, "rakim": 0, "mu": 0.8},
                        "W": {"acik": false, "C": 1.2}, "E": {"acik": false}},
      "deprem": {"SS": 1.0, "S1": 0.3, "SS_DD3": 0.4, "S1_DD3": 0.12, "zemin_sinifi": "ZC", "BKS": 3, "I": 1.0,
@@ -1046,9 +1050,8 @@ def _ag_olustur(B, Y, kutle=None):
     temel_info = None
     if B.temeller["tip"] != "tekil":
         # mütemadi / radye (§13): temel kirişleri ya da ızgara şeritleri kot_0'da; kolon tabanları temel düğümüdür
-        n_ust = len(dugumler)
-        eno, temel_info = tm.ag_kur(B, dugum, dugumler, elemanlar, model_el, eno)
-        tm.sayilar_sd_denetimi(B, n_ust, len(dugumler) - n_ust, EN_FAZLA_SD)
+        eno, temel_info = tm.ag_kur(B, dugum, dugumler, elemanlar, model_el, eno, en_fazla=EN_FAZLA_SD)
+        tm.sayilar_sd_denetimi(B, dugumler, temel_info, EN_FAZLA_SD)
     n_kole = len(dugumler)
     # rijit diyafram: efendi düğümler (kat kütle merkezi), köleler = o katın bütün düğümleri
     diyaframlar, efendi = [], {}
@@ -1067,7 +1070,7 @@ def _ag_olustur(B, Y, kutle=None):
             dugumler.append({"no": no, "X": kk["X"], "Y": kk["Y"], "Z": kk["kot"], "adres": f"KM/k{kat}", "kat": kat, "aks": None,
                              "key": None, "efendi": True})
     n = 6 * n_kole
-    if n > EN_FAZLA_SD:
+    if n - (temel_info.tutulu_sd if temel_info is not None else 0) > EN_FAZLA_SD:    # tutulu temel düğümünde 3 SD (temel.py)
         raise MatrisHatasi(f"Bina ağı {n_kole} düğüm × 6 = {n} serbestlik derecesi; tarayıcıda çözüm için en fazla {EN_FAZLA_SD}. "
                            "Modeli küçültün: aks ya da kat sayısını azaltın, katları birleştirin.")
     # yerel eksen matrisleri (motor kuralı) → bina koordinatına
@@ -2426,7 +2429,8 @@ def _adim_5(B, ag, anl):
         anl.metin(f"**Temel ({'mütemadi' if ti.tip == 'surekli' else 'radye'}):** kot_0'da {len(ti.dugumler)} temel düğümü, "
                   f"{n_tk} temel kirişi parçası" + (f", {n_rs} radye şeridi" if n_rs else "") + ". Kolon tabanları sabit mesnet "
                   "değildir; temel düğümüne bağlanır, her temel düğümünde düşey Winkler yayı k_z = k0·A_etki vardır"
-                  + (" ve bina X, Y ötelemeleri tutuludur (dönmeler serbest)." if ti.yatay == "tutulu" else " ve yatay yaylar vardır.")
+                  + (" ve temel düzlemi içindeki hareketler (X, Y ötelemeleri, düşey eksen etrafında dönme) tutuludur; eğilme "
+                     "dönmeleri serbesttir." if ti.yatay == "tutulu" else " ve yatay yaylar vardır.")
                   + " Aks kesişimi dışındaki temel düğümleri 50001'den numaralanır. Ayrıntı: 'Temel ve zemin' adımı.")
     anl.sema("Bina ağı", [_sema_ag(B, ag)])
 
@@ -2712,29 +2716,39 @@ def _adim_13(B, ag, model, durumlar, Y, anl, deprem=None, no=13):
 # ============================================================================
 # Çıktı verisi (şema §4) ve ana işlev
 # ============================================================================
-def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None):
+def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=None):
     """KISA → JSON. Kombinasyonlarda ``u`` yazılmaz (None; boyut), ``dugumler`` deforme şekil için kalır. ``diyagram=False``:
     eleman dizileri (x, N, V, M, …) yazılmaz, yalnız uç kuvvetleri ve enb (S, W, E durumları; tam dizi bina_kombinasyon ile).
-    ``ince``: diyagramı her durumda yazılmayan eleman numaraları (radye şeritleri; elemanda ``"diyagram": false``)."""
+    ``ince``: diyagramı her durumda yazılmayan eleman numaraları (radye şeritleri; elemanda ``"diyagram": false``);
+    ``seyrek``: dizileri uç + orta (3 nokta) yazılan kısa elemanlar (temel kirişi parçaları, a ≈ 0,5 m); ``ince`` elemanlarda
+    uç kuvvetleri de yazılmaz (tam kayıtta yalnız enb, ince kayıtta yalnız numara). ``yaysiz``: yay kayıtları yazılmayan düğümler (mütemadi/radye temel yayları: taban
+    basıncı ve oturma veri.temel'de, kombinasyonda bina_kombinasyon → temel)."""
     ince = ince or ()
+    seyrek = seyrek or ()
+    yaysiz = yaysiz or ()
+
+    def sec(e, dizi):
+        return [dizi[0], dizi[len(dizi) // 2], dizi[-1]] if (e["no"] in seyrek and len(dizi) > 3) else dizi
     if not diyagram:     # ince kayıt: u yok, 5 anlamlı basamak; tam diziler bina_kombinasyon ile tembel alınır
         return {"u": None, "diyagram": False,
                 "dugumler": [{"no": d["no"], **{a: float(f"{d[a]:.4g}") for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
                 "tepkiler": [{"dugum": t["dugum"], **{a: _r5(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
-                "elemanlar": [{"no": e["no"], "uc_kuvvetleri": [_r5(x) for x in e["uc_kuvvetleri"]],
+                "elemanlar": [{"no": e["no"], "diyagram": False} if e["no"] in ince else
+                              {"no": e["no"], "uc_kuvvetleri": [_r5(x) for x in e["uc_kuvvetleri"]],
                                "enb": {a: _r5(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
                 "denge": {a: _r(v) for a, v in k["denge"].items()},
-                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"])} for y in k["yaylar"]]}
+                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"])}
+                           for y in k["yaylar"] if y["dugum"] not in yaysiz]}
     return {"u": [_r(x) for x in k["u"]] if u_dahil else None, "diyagram": True,
             "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
             "tepkiler": [{"dugum": t["dugum"], **{a: _r(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
-            "elemanlar": [{"no": e["no"], "uc_kuvvetleri": [_r5(x) for x in e["uc_kuvvetleri"]], "diyagram": False,
-                           "enb": {a: _r5(v) for a, v in e["enb"].items()}} if e["no"] in ince else
-                          {"no": e["no"], "uc_kuvvetleri": [_r(x) for x in e["uc_kuvvetleri"]], "x": [_r(x) for x in e["x"]],
-                           **{a: [_r6(x) for x in e[a]] for a in _DIYAGRAM},
+            "elemanlar": [{"no": e["no"], "diyagram": False, "enb": {a: _r5(v) for a, v in e["enb"].items()}} if e["no"] in ince else
+                          {"no": e["no"], "uc_kuvvetleri": [_r(x) for x in e["uc_kuvvetleri"]], "x": [_r(x) for x in sec(e, e["x"])],
+                           **{a: [_r6(x) for x in sec(e, e[a])] for a in _DIYAGRAM},
                            "enb": {a: _r(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
             "denge": {a: _r(v) for a, v in k["denge"].items()},
-            "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])} for y in k["yaylar"]]}
+            "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])}
+                       for y in k["yaylar"] if y["dugum"] not in yaysiz]}
 
 
 def _kombinasyon_veri(kombinasyonlar):
@@ -2755,6 +2769,8 @@ def _kombinasyon_veri(kombinasyonlar):
 def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, *, deprem=None, ruzgar=None,
                   kutle=None, ozetler=None, gosterilecek=None, kimlik=None, temel_veri=None):
     ince = ag["temel"].ince if ag.get("temel") is not None else set()
+    seyrek = ag["temel"].seyrek if ag.get("temel") is not None else set()
+    yaysiz = set(ag["temel"].dno) if ag.get("temel") is not None else set()
     bina = {
         "baslik": B.baslik, "sistem": B.sistem,
         "akslar": {"x": [dict(a) for a in B.akslar["x"]], "y": [dict(a) for a in B.akslar["y"]]},
@@ -2862,11 +2878,11 @@ def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonu
     veri = {
         "tur": "bina", "surum": 2, "baslik": B.baslik, "sistem": B.sistem, "birim": dict(B.birim), "cozum_kimligi": kimlik,
         "bina": bina, "kutuphane_ozeti": kutuphane_ozeti, "ag": ag_veri, "yukler": yukler,
-        "durumlar": {ad: _kisa_veri(k, diyagram=ad in tam, ince=ince) for ad, k in durumlar_kisa.items()},
+        "durumlar": {ad: _kisa_veri(k, diyagram=ad in tam, ince=ince, seyrek=seyrek, yaysiz=yaysiz) for ad, k in durumlar_kisa.items()},
         "kombinasyonlar": _kombinasyon_veri(kombinasyonlar),
         "kombinasyon_ozet": kmb_ozet,
         "gosterilecek": list(gosterilecek),
-        "sonuclar": {ad: _kisa_veri(k, u_dahil=False, ince=ince) for ad, k in sonuclar.items()},
+        "sonuclar": {ad: _kisa_veri(k, u_dahil=False, ince=ince, seyrek=seyrek, yaysiz=yaysiz) for ad, k in sonuclar.items()},
         "zarf": {"kombinasyonlar": zarf["kombinasyonlar"], "kombinasyon_sayisi": len(zarf["kombinasyonlar"]),
                  "elemanlar": [{a: (_r6(v) if isinstance(v, float) else v) for a, v in z.items()} for z in zarf["elemanlar"]
                                if z["no"] not in ince]},
@@ -4276,7 +4292,8 @@ def bina_coz(bina, *, goster=None, anlat=True):
     ÇYTHYE YDKT/GKT + TBDY 9.2.5) ve zarf → yük akışı tabloları, korunum, sankey.
 
     Dönüş ``mo.Sonuc``: ``.deger`` G durumu u vektörü (motor SD sırası), ``.veri`` §4 şeması (bina koordinatında),
-    ``.anlatim`` 13 adım (12. adım kesit tahkikleri, ``tasarim.py`` varsa; ``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
+    ``.anlatim`` 13 adım (12. adım kesit tahkikleri, ``tasarim.py`` varsa; mütemadi / radye temelde 13. adım "Temel ve zemin",
+    Python 14; ``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
     ``.ic`` tembel kombinasyon üretimi için paket (``kombinasyon_kisa``)."""
     B = _bina_oku(bina)
     Y = _yukleri_hazirla(B)
@@ -4359,14 +4376,11 @@ def bina_coz(bina, *, goster=None, anlat=True):
         _adim_9(B, akis, anl)
         _adim_10(B, kombinasyonlar, zarf, ag, ozet, anl)
         _adim_11(B, Y, akis, kombinasyonlar, ozetler, anl)
-        no = 12
-        if temel_veri is not None:      # mütemadi / radye: "Temel ve zemin" adımı (tekil temelde adım yok, numaralar değişmez)
-            tm.anlatim(anl, no, B, ag, temel_veri, temel_ic, toplam_servis=Y.toplam["G"] + Y.toplam["Q"])
-            no += 1
         if tas is not None:
-            _adim_12(T, tas, anl, no=no)
-            no += 1
-        kod, cikti = _adim_13(B, ag, model, durumlar, Y, anl, deprem, no=no)
+            _adim_12(T, tas, anl)
+        if temel_veri is not None:      # mütemadi / radye: 13. adım "Temel ve zemin", Python 14 (tekil temelde numaralar değişmez)
+            tm.anlatim(anl, 13, B, ag, temel_veri, temel_ic, toplam_servis=Y.toplam["G"] + Y.toplam["Q"])
+        kod, cikti = _adim_13(B, ag, model, durumlar, Y, anl, deprem, no=13 + (temel_veri is not None))
     else:
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", kod, cikti)
@@ -4400,7 +4414,9 @@ def kombinasyon_kisa(ic, ad, katsayilar=None):
         raise MatrisHatasi(f"Kombinasyon ya da yük durumu bulunamadı: {ad!r}. Uygulananlardan bazıları: "
                            f"{', '.join(list(ic['kombinasyonlar'])[:8])}…; ya da katsayilar = {{durum: γ}} verin.")
     kisa = paket.kisa(paket.birlesim(kat))
-    out = _kisa_veri(kisa, u_dahil=False)
+    tmeta = ic.get("temel") or {}
+    out = _kisa_veri(kisa, u_dahil=False, ince=set(tmeta.get("ince", ())), seyrek=set(tmeta.get("seyrek", ())),
+                     yaysiz={d[0] for d in tmeta.get("dugumler", ())})
     if ic.get("temel") is not None and tm is not None:      # mütemadi / radye: bu kombinasyonun oturması ve taban basıncı
         out["temel"] = tm.basinc(ic["temel"], kisa)
     return out
@@ -4589,6 +4605,7 @@ def kutuphane():
         "tasiyici_sistemler": tasiyici_sistemler(),
         "dogrulanmamis": yv.dogrulanmamis_kayitlar(),
         "sinirlar": {"aks": EN_FAZLA_AKS, "kat": EN_FAZLA_KAT, "sd": EN_FAZLA_SD},
+        **({"temel": tm.kutuphane_ozeti()} if tm is not None else {}),
     }
 
 
@@ -4730,6 +4747,32 @@ BINA_SABLONLARI = {
                   "K30x60": {"tip": "dikdortgen", "b": 0.30, "h": 0.60, "malzeme": "C30", "donati": "B420C", "pas": 0.03}}, _BA_DUVAR,
         temel={"tip": "tekil", "varsayilan": {"B": 2.0, "L": 2.0, "h": 0.8}, "zemin": {"q_em": 250, "k0": 25000}, "mesnet": "ankastre",
                "ozel": [{"aks": ["B", "2"], "B": 2.8, "L": 2.8}, {"aks": ["C", "2"], "B": 2.8, "L": 2.8}]}),
+    "betonarme-3kat-surekli-temel": _izgara_bina(
+        "betonarme-3kat-surekli-temel", "3 katlı betonarme konut, mütemadi temel (3×3 aks)",
+        "Akslar A–B–C (0, 5, 10 m) ve 1–2–3 (0, 4,5, 9 m), üç kat (3 m); 40×40 kolonlar, 25×50 kirişler, 14 cm döşeme, konut yükü; "
+        "deprem açık (TBDY 2018, ZC). Orta sıkı zemin (q_em = 150 kN/m², k0 = 15000 kN/m³): kolonlar her iki doğrultudaki aks "
+        "boyunca ters T kesitli temel kirişlerine oturur (B = 1,3 m tabla, 35 cm tabla, 50 × 100 cm gövde, 0,6 m taşma). Temel "
+        "kirişleri Winkler yaylarına oturur; taban basıncı, oturma, temel kirişi ve tabla donatısı 'Temel ve zemin' adımında.",
+        "betonarme", [0.0, 5.0, 10.0], [0.0, 4.5, 9.0], 3.0, 3, "S40x40", "K25x50", "K25x50", 0.14, "tugla19",
+        _BA_MAL, {"S40x40": {"tip": "dikdortgen", "b": 0.40, "h": 0.40, "malzeme": "C30", "donati": "B420C", "pas": 0.03},
+                  "K25x50": {"tip": "dikdortgen", "b": 0.25, "h": 0.50, "malzeme": "C30", "donati": "B420C", "pas": 0.03}}, _BA_DUVAR,
+        temel={"tip": "surekli", "varsayilan": {"B": 1.8, "L": 1.8, "h": 0.6}, "zemin": {"q_em": 150, "k0": 15000, "gamma": 18},
+               "mesnet": "ankastre", "ozel": [],
+               "surekli": {"yon": "xy", "akslar": "tum", "B": 1.3, "h_tabla": 0.35, "b_govde": 0.50, "h_govde": 1.00, "tasma": 0.6,
+                           "ag": 0.5}},
+        deprem=True),
+    "betonarme-4kat-radye": _izgara_bina(
+        "betonarme-4kat-radye", "4 katlı betonarme konut, radye temel (4×3 aks)",
+        "Akslar A–D (4 m aralık) ve 1–3 (5 m aralık), dört kat (3 m); 50×50 kolonlar, 30×60 kirişler, 15 cm döşeme; dış kirişlerde "
+        "duvar, çatıda 1 m parapet; deprem açık (TBDY 2018, ZC). Zayıf zemin (q_em = 120 kN/m², k0 = 12000 kN/m³): bütün planı "
+        "1 m taşmayla kaplayan 70 cm kirişsiz radye; plak 1 m aralıklı ızgara (grillage) ile Winkler yaylarına oturur. Taban basıncı "
+        "haritası, oturma, iki doğrultuda m başına donatı ve kolonlarda zımbalama (TS 500 md. 8.3) 'Temel ve zemin' adımında.",
+        "betonarme", [0.0, 4.0, 8.0, 12.0], [0.0, 5.0, 10.0], 3.0, 4, "S50x50", "K30x60", "K30x60", 0.15, "tugla19",
+        _BA_MAL, {"S50x50": {"tip": "dikdortgen", "b": 0.50, "h": 0.50, "malzeme": "C30", "donati": "B420C", "pas": 0.03},
+                  "K30x60": {"tip": "dikdortgen", "b": 0.30, "h": 0.60, "malzeme": "C30", "donati": "B420C", "pas": 0.03}}, _BA_DUVAR,
+        temel={"tip": "radye", "varsayilan": {"B": 2.0, "L": 2.0, "h": 0.8}, "zemin": {"q_em": 120, "k0": 12000, "gamma": 18},
+               "mesnet": "ankastre", "ozel": [], "radye": {"h": 0.70, "tasma": 1.0, "ag": 1.0, "kiris": None}},
+        deprem=True),
 }
 
 
