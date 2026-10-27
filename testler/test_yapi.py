@@ -13,7 +13,7 @@ import sonlu_eleman as se
 import yapi
 import yapi_veri as yv
 
-SABLONLAR = list(yapi.BINA_SABLONLARI)
+SABLONLAR = [ad for ad, b in yapi.BINA_SABLONLARI.items() if int(b.get("surum", 1)) < 3]   # aks–kat şablonları (surum 3: test_yapi_serbest)
 
 
 @pytest.fixture(scope="module")
@@ -240,7 +240,7 @@ def test_y_yonu_kirisi_de_dusey_yuk_tasir():
 # ---------------------------------------------------------------------------
 def test_sablon_listesi():
     liste = yapi.bina_sablonlar()
-    assert [s["ad"] for s in liste] == SABLONLAR and len(liste) == 5
+    assert [s["ad"] for s in liste][:len(SABLONLAR)] == SABLONLAR and len(SABLONLAR) == 5
     assert "betonarme-2kat-3x2" in SABLONLAR and "celik-1kat-depo" in SABLONLAR
     b = yapi.bina_sablon("betonarme-2kat-3x2")
     b["kolonlar"] = []

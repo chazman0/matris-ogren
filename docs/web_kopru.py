@@ -44,6 +44,19 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
                     kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
                     "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
+                    Genel (surum 3) modelde "tur": "cubuk" (ya da çubuk türü) ve "no" çubuk numarasıdır; aks–kat kökenli çubuk
+                    için "kolon"/"kiris" ve aks–kat no'su da kabul edilir.
+  "bina_kesit_oner": girdi {"cozum_kimligi" | "bina", "hedef": "hepsi" | [{"tur", "no"}], "yinele": 0..3} → {"oneriler":
+                    [{cubuk, tur, kesit, oneri (profil adı ya da "bxh" cm), gerekce [metin], dc_once, dc_oneri, dc_sonra, degisim}],
+                    "turlar": [{tur, dc_maks, oneri_sayisi, degisen}], "dc_once", "dc_sonra", "bina" (yinele > 0: öneriler
+                    uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır önerisi), "cozum_kimligi", "aciklama",
+                    "hata": null}. yinele > 0: öneri uygulanıp yeniden çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur.
+
+Genel model (bina "surum": 3, yapi_serbest.py): bina_coz veri'sine ek alanlar — ag.cubuklar, ag.paneller (kenarlar, taşıyan
+kenarlar), ag.dugumler[].tur ("aks" | "bolme" | "kesisim" | "ic" | "efendi"), ag.donme_tutulan, ag.diyafram_seviye,
+yukler.paneller / yukler.cubuklar, bina.seviyeler (kat, kot, diyafram), kren (kopruler, durumlar, zarf), yalniz_cekme
+(var, kombinasyonlar: etkin_degil, yineleme), uyarilar; tasarim.elemanlar[] her çubuk için (tur: kolon, kiris, capraz,
+makas-*, asik, kren, bag, diger; cubuk, grup, L, varsayimlar).
 """
 from __future__ import annotations
 
@@ -418,7 +431,7 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 # "bina_kombinasyon", "bina_eleman_tasarim")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim"}
+                 "bina_eleman_tasarim", "bina_kesit_oner"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -502,17 +515,41 @@ def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
     if not hasattr(yapi, "eleman_tasarim"):
         raise mo.MatrisHatasi("Bu kurulumdaki bina modülü kesit tahkiki içermiyor; uygulamayı yenileyin.")
     tur = str(girdi.get("tur") or "").strip().lower()
-    if tur not in ("kiris", "kolon"):
-        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
     if girdi.get("no") is None:
         raise mo.MatrisHatasi("Eleman numarası (no) verilmedi: bina kirişinin ya da kolonunun no'su.")
     ic = _bina_ic(yapi, girdi)
+    if tur not in ("kiris", "kolon") and not ic.get("serbest"):
+        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
     r = yapi.eleman_tasarim(ic, tur, girdi.get("no"), goster="yok")
     return {"ad": r.ad, "bloklar": _bloklar(r.anlatim), "sonuc": _sonlu_sayilar(r.veri), "cozum_kimligi": ic.get("kimlik"),
             "hata": None}
 
 
+def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
+    """Kesit önerisi (genel model motoru; aks–kat bina da genel modele çevrilerek çözülür): öneri, gerekçe, D/C önce/sonra."""
+    _yapi_zorunlu()
+    try:
+        serbest = importlib.import_module("yapi_serbest")
+    except ImportError:
+        raise mo.MatrisHatasi("Kesit önerisi için yapi_serbest.py gerekir; uygulamayı yenileyin.") from None
+    kimlik = girdi.get("cozum_kimligi")
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    bina = girdi.get("bina")
+    if ic is None and bina is None:
+        raise mo.MatrisHatasi("Kesit önerisi için çözüm kimliği (önbellekte) ya da bina gerekir; binayı yeniden çözün.")
+    if bina is not None:
+        bina = _bina_girdisi(girdi)
+    hedef = girdi.get("hedef", "hepsi")
+    if hedef not in (None, "hepsi") and not isinstance(hedef, list):
+        raise mo.MatrisHatasi('hedef "hepsi" ya da [{"tur": "cubuk", "no": 3}] listesi olmalı.')
+    r = serbest.kesit_oner(bina, ic=ic if (ic is not None and ic.get("serbest")) else None, hedef=hedef or "hepsi",
+                           yinele=girdi.get("yinele", 0))
+    return dict(_sonlu_sayilar(r), hata=None)
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_kesit_oner":
+        return _bina_kesit_oner_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":

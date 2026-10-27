@@ -1535,6 +1535,8 @@ def _durumlari_coz(B, model, durumlar, ag=None):
             kayit = {"no": e["no"], "uc_kuvvetleri": [float(x) for x in e["uc_kuvvetleri"]], "x": [float(x) for x in diy["x"]]}
             for ad_ in _DIYAGRAM:
                 v = diy.get(ad_)
+                if ad_ == "N" and isinstance(diy.get("Nx"), (list, tuple)):
+                    v = diy["Nx"]          # istasyonlarda N(x): eksenel yayılı yükte (eğik/düşey çubuk öz ağırlığı) değişken
                 if v is None:
                     kayit[ad_] = [0.0] * len(kayit["x"])
                 elif isinstance(v, (int, float)):      # N sabit: skaler verilir, istasyon sayısına yayılır
@@ -3152,6 +3154,8 @@ def deprem_onizleme(bina):
     if not isinstance(bina.get("deprem"), dict) or not bina["deprem"]:
         raise MatrisHatasi("Deprem önizlemesi için 'deprem' kartı gerekli: {\"SS\": 1.0, \"S1\": 0.3, \"zemin_sinifi\": \"ZC\", ...}.")
     bina = dict(bina, deprem=dict(bina["deprem"], etkin=True))
+    if _serbest_mi(bina):
+        return _serbest_modulu().deprem_onizleme(bina)
     B = _bina_oku(bina)
     Y = _yukleri_hazirla(B)
     kutle = _kat_kutleleri(B, Y, n=B.deprem["n"], kar_payi=yv.TBDY_KUTLE_KATILIM_KULLANIM["kar"] if B.kar else 0.0)
@@ -4132,6 +4136,8 @@ def eleman_tasarim(ic, tur, no, goster=None):
     tasarim.py anlatımı (kesit şeması, formüller, N–M eğrisi)."""
     if not isinstance(ic, dict) or "paket" not in ic:
         raise MatrisHatasi("Önce bina çözülmeli (önbellekte çözüm yok ya da süresi doldu); binayı yeniden çözün.")
+    if ic.get("serbest"):
+        return _serbest_modulu().eleman_tasarim(ic, tur, no, goster=goster)
     T = ic.get("tasarim")
     ts = _tasarim_modulu()
     if T is None or ts is None:
@@ -4190,6 +4196,29 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
     return sec
 
 
+def _serbest_mi(bina):
+    """Genel (surum 3) model mi: surum ≥ 3 ya da cubuklar/paneller listesi var."""
+    if isinstance(bina, str):
+        try:
+            bina = json.loads(bina)
+        except ValueError:
+            return False
+    if not isinstance(bina, dict):
+        return False
+    try:
+        surum = int(bina.get("surum") or 1)
+    except (TypeError, ValueError):
+        surum = 1
+    return surum >= 3 or bool(bina.get("cubuklar")) or bool(bina.get("paneller"))
+
+
+def _serbest_modulu():
+    try:
+        return importlib.import_module("yapi_serbest")
+    except ImportError:
+        raise MatrisHatasi("Genel (surum 3) bina modeli için yapi_serbest.py gerekir; uygulamayı yenileyin.") from None
+
+
 def _cozum_kimligi(B):
     """Çözüm kimliği: bina girdisinin (normalize JSON) SHA-1 özeti; aynı bina aynı kimliği verir (köprü önbelleği anahtarı)."""
     import hashlib
@@ -4204,7 +4233,12 @@ def bina_coz(bina, *, goster=None, anlat=True):
 
     Dönüş ``mo.Sonuc``: ``.deger`` G durumu u vektörü (motor SD sırası), ``.veri`` §4 şeması (bina koordinatında),
     ``.anlatim`` 13 adım (12. adım kesit tahkikleri, ``tasarim.py`` varsa; ``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
-    ``.ic`` tembel kombinasyon üretimi için paket (``kombinasyon_kisa``)."""
+    ``.ic`` tembel kombinasyon üretimi için paket (``kombinasyon_kisa``).
+
+    Genel model (``surum`` ≥ 3 ya da ``cubuklar`` / ``paneller`` listesi): ``yapi_serbest.bina_coz`` (aks sistemi tabanlı düğüm–
+    çubuk–panel modeli, tasarım belgesi §12/§19)."""
+    if _serbest_mi(bina):
+        return _serbest_modulu().bina_coz(bina, goster=goster, anlat=anlat)
     B = _bina_oku(bina)
     Y = _yukleri_hazirla(B)
     kutle = dep = None
@@ -4333,6 +4367,10 @@ def yuk_yolu(bina, veri, hedef):
     ``veri`` = ``bina_coz(bina).veri`` (yeniden çözüm yapılmaz)."""
     if not isinstance(veri, dict) or veri.get("tur") != "bina":
         raise MatrisHatasi("yuk_yolu için önce bina_coz çalıştırılmalı; 'veri' bina çözümünün çıktısı olmalı.")
+    if veri.get("model") == "genel" or _serbest_mi(bina):
+        raise MatrisHatasi("Adım adım yük yolu (döşeme → kiriş → kolon) aks–kat modeli içindir. Genel (surum 3) modelde panelden "
+                           "çubuklara giden yükler veri.yukler.paneller[].kenarlar ve veri.akis.sankey'de, çubuk uç kuvvetleri ve "
+                           "mesnet tepkileri yük durumlarında izlenir.")
     if not isinstance(hedef, dict):
         raise MatrisHatasi('hedef bir sözlük olmalı: {"tur": "doseme", "no": 1, "durum": "G"}.')
     tur = str(hedef.get("tur", "")).strip().lower()
@@ -4660,3 +4698,11 @@ def bina_sablon(ad):
 def dogrulanmamis_kayitlar():
     """yapi_veri.dogrulanmamis_kayitlar() kısayolu."""
     return yv.dogrulanmamis_kayitlar()
+
+
+# Genel (surum 3) model şablonları: yapi_serbest.py (aks sistemi tabanlı düğüm–çubuk–panel); yoksa yalnız aks–kat şablonları.
+try:
+    from yapi_serbest import SERBEST_SABLONLAR as _SERBEST_SABLONLAR
+    BINA_SABLONLARI.update(_SERBEST_SABLONLAR)
+except ImportError:  # pragma: no cover
+    pass

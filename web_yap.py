@@ -47,7 +47,7 @@ def se_kopyala() -> str:
 def yapi_kopyala() -> str:
     """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py, varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir."""
     bilgi = []
-    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py"):
+    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py", "yapi_serbest.py"):
         kaynak = KOK / ad
         if not kaynak.exists():
             bilgi.append(f"{ad}: yok (atlandı)")

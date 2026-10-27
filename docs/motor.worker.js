@@ -35,6 +35,7 @@ async function hazirla() {
   const istege = function (ad) { return dosyaAl(ad).catch(function () { return null; }); };
   const dosyalar = await Promise.all([
     dosyaAl("matris_ogren.py"), dosyaAl("web_kopru.py"), istege("sonlu_eleman.py"), istege("yapi_veri.py"), istege("yapi.py"), istege("tasarim.py"),
+    istege("yapi_serbest.py"),
   ]);
   pyodide.FS.writeFile("/home/pyodide/matris_ogren.py", dosyalar[0], { encoding: "utf8" });
   pyodide.FS.writeFile("/home/pyodide/web_kopru.py", dosyalar[1], { encoding: "utf8" });
@@ -42,6 +43,7 @@ async function hazirla() {
   if (dosyalar[3] !== null) pyodide.FS.writeFile("/home/pyodide/yapi_veri.py", dosyalar[3], { encoding: "utf8" });
   if (dosyalar[4] !== null) pyodide.FS.writeFile("/home/pyodide/yapi.py", dosyalar[4], { encoding: "utf8" });
   if (dosyalar[5] !== null) pyodide.FS.writeFile("/home/pyodide/tasarim.py", dosyalar[5], { encoding: "utf8" });   // kesit tahkikleri (TS 500, ÇYTHYE)
+  if (dosyalar[6] !== null) pyodide.FS.writeFile("/home/pyodide/yapi_serbest.py", dosyalar[6], { encoding: "utf8" });   // genel (surum 3) bina modeli
   pyodide.runPython("import sys\nif '/home/pyodide' not in sys.path:\n    sys.path.insert(0, '/home/pyodide')");
   kopru = pyodide.pyimport("web_kopru");
   const surum = JSON.parse(kopru.surum_json());

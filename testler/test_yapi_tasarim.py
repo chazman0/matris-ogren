@@ -15,7 +15,7 @@ import sonlu_eleman as se
 import tasarim
 import yapi
 
-SABLONLAR = list(yapi.BINA_SABLONLARI)
+SABLONLAR = [ad for ad, b in yapi.BINA_SABLONLARI.items() if int(b.get("surum", 1)) < 3]   # aks–kat şablonları (surum 3: test_yapi_serbest)
 
 
 @pytest.fixture(scope="module")
