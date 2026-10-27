@@ -27,12 +27,19 @@ Sonlu eleman işlemleri (sonlu_eleman.py):
 
 Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_coz":       girdi {"bina": {...} | "JSON metni"} → {"ad": "bina", "bloklar", "veri" (yapi.bina_coz şeması: bina, ag,
-                    yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model), "sonuc_metin", "zincir": false, "hata"}
+                    yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model, deprem, ruzgar, kar, kutle_merkezi,
+                    cozum_kimligi), "sonuc_metin", "zincir": false, "hata"}; çözümün iç paketi tembel kombinasyonlar için
+                    önbelleğe alınır
   "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
                     "sablonlar", "dogrulanmamis", ..., "hata": null}
   "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}
   "bina_sablon":    girdi {"ad": "betonarme-2kat-3x2"} → {"ad", "bina": {...}, "hata": null}
   "bina_yuk_yolu":  girdi {"bina", "veri", "hedef": {"tur": "doseme"|"kiris"|"kolon", "no", "durum"}} → {"adimlar": [...], "hata": null}
+  "bina_deprem":    girdi {"bina"} → {"deprem": (veri.deprem şeması, çözümsüz önizleme: spektrum, V_tE, F_i, V_i; "tahmin": true),
+                    "hata": null}
+  "bina_kombinasyon": girdi {"cozum_kimligi", "ad", "katsayilar"?, "bina"?} → {"ad", "cozum_kimligi", "sonuc": KISA (tam diziler),
+                    "hata": null}. Son çözümler (en çok BINA_ONBELLEK_EN_FAZLA) bellekte tutulur; kimlik önbellekte yoksa ve
+                    "bina" verilmişse bina anlatımsız yeniden çözülür, yoksa öğretici hata.
 """
 from __future__ import annotations
 
@@ -41,6 +48,7 @@ import importlib
 import json
 import sys
 import traceback
+from collections import OrderedDict
 
 import sympy as sp
 
@@ -391,10 +399,23 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu")
+# bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
+# "bina_kombinasyon")
 # ---------------------------------------------------------------------------
-BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu"}
+BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
+BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar için bellekte tutulan son çözüm sayısı
+_BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
+
+
+def _onbellege_koy(ic: dict) -> None:
+    kimlik = ic.get("kimlik")
+    if not kimlik:
+        return
+    _BINA_ONBELLEK.pop(kimlik, None)
+    _BINA_ONBELLEK[kimlik] = ic
+    while len(_BINA_ONBELLEK) > BINA_ONBELLEK_EN_FAZLA:
+        _BINA_ONBELLEK.popitem(last=False)
 
 
 def _yapi_zorunlu():
@@ -416,6 +437,7 @@ def _bina_girdisi(girdi: dict):
 def _bina_coz_yaniti(girdi: dict) -> dict:
     yapi = _yapi_zorunlu()
     r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
+    _onbellege_koy(getattr(r, "ic", None) or {})
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
     return {
         "ad": "bina", "bloklar": _bloklar(r.anlatim),
@@ -426,10 +448,39 @@ def _bina_coz_yaniti(girdi: dict) -> dict:
     }
 
 
+def _bina_kombinasyon_yaniti(girdi: dict) -> dict:
+    """Tek kombinasyonun tam KISA'sı: önce önbellekteki çözüm (cozum_kimligi), yoksa girdi.bina anlatımsız yeniden çözülür."""
+    yapi = _yapi_zorunlu()
+    ad = str(girdi.get("ad") or "").strip()
+    if not ad:
+        raise mo.MatrisHatasi("Kombinasyon adı (ad) boş; örn. \"1.4G+1.6Q\" ya da \"G+Q+0.2S+EX++0.3EY++0.3EZ\".")
+    katsayilar = girdi.get("katsayilar")
+    if katsayilar is not None and not isinstance(katsayilar, dict):
+        raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    kimlik = girdi.get("cozum_kimligi")
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+    elif girdi.get("bina") is not None:
+        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        ic = r.ic
+        _onbellege_koy(ic)
+    else:
+        raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
+                              + " çözümün dışında kaldı). Binayı yeniden çözün; kombinasyonlar, çözümde hesaplanan G, Q, S, W ve E "
+                              "durumlarının katsayılı toplamıdır (yeniden çözüm gerekmez, ama durumların bellekte olması gerekir).")
+    sonuc = yapi.kombinasyon_kisa(ic, ad, katsayilar)
+    return {"ad": ad, "cozum_kimligi": ic.get("kimlik"), "sonuc": _sonlu_sayilar(sonuc), "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
+    if islem == "bina_kombinasyon":
+        return _bina_kombinasyon_yaniti(girdi)
     yapi = _yapi_zorunlu()
+    if islem == "bina_deprem":
+        return {"deprem": _sonlu_sayilar(yapi.deprem_onizleme(_bina_girdisi(girdi))), "hata": None}
     if islem == "bina_kutuphane":
         return dict(_sonlu_sayilar(yapi.kutuphane()), hata=None)
     if islem == "bina_sablonlar":

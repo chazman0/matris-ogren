@@ -33,7 +33,8 @@ def yanit(kopru):
 
 
 def test_islemler_tanimli(kopru):
-    assert kopru.BINA_ISLEMLER == {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu"}
+    assert kopru.BINA_ISLEMLER == {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem",
+                                   "bina_kombinasyon"}
     assert kopru._yapi_modulu() is not None
 
 
@@ -61,7 +62,8 @@ def test_bina_coz_yaniti(kopru, yanit):
     assert any(b["tur"] == "sema" and b["icerik"]["kareler"] for b in y["bloklar"])
     assert any(b["tur"] == "kod" for b in y["bloklar"])
     v = y["veri"]
-    assert v["tur"] == "bina" and set(v["durumlar"]) == {"G", "Q"} and set(v["sonuclar"]) == {"1.4G+1.6Q", "G+Q"}
+    assert v["tur"] == "bina" and set(v["durumlar"]) == {"G", "Q"} and set(v["sonuclar"]) == {"1.4G+1.6Q"}
+    assert v["cozum_kimligi"].startswith("bina-") and v["zarf"]["kombinasyon_sayisi"] == 2
     assert v["ozet"]["sd_sayisi"] == 108 and v["ozet"]["dugum"] == 18 and v["ozet"]["eleman"] == 26
     assert v["akis"]["kolonlar"] and v["akis"]["temeller"] and v["akis"]["sankey"]
     assert isinstance(v["ozet"]["uyarilar"], list)
@@ -121,3 +123,89 @@ def test_se_ve_matris_islemleri_bozulmadi(kopru):
     assert y["hata"] is None and len(y["ornekler"]) == 20
     y = iste(kopru, "determinant", {"A": "1 2; 3 4"})
     assert y["hata"] is None and y["sonuc_metin"] == "-2"
+
+
+# ---------------------------------------------------------------------------
+# Dilim 2: bina_deprem (çözümsüz önizleme), bina_kombinasyon (tembel tam kayıt, önbellek), taşıyıcı sistemler
+# ---------------------------------------------------------------------------
+def hepsi_acik(ad):
+    b = yapi.bina_sablon(ad)
+    for d in ("S", "W", "E"):
+        b["yuk_durumlari"][d]["acik"] = True
+    return b
+
+
+def test_bina_deprem_onizleme(kopru):
+    b = yapi.bina_sablon("betonarme-2kat-3x2")          # E kapalı: önizleme yine çalışır (arayüz girdileri canlı)
+    b["deprem"].update({"SS_DD3": 0.4, "S1_DD3": 0.12})
+    y = iste(kopru, "bina_deprem", {"bina": b})
+    assert y["hata"] is None and set(y) == {"deprem", "hata"}
+    d = y["deprem"]
+    assert d["tahmin"] is True and d["VtE"] > 0 and d["SDS_DD3"] > 0 and 0 < d["lambda"] < 1
+    assert abs(sum(k["F_x"] for k in d["katlar"]) - d["VtE"]) < 1e-6 and d["katlar"][0]["V_x"] == d["VtE"]
+    assert d["spektrum"] and isinstance(d["kaynaklar"]["SDS"], str)
+    b_e = json.loads(json.dumps(b))
+    b_e["yuk_durumlari"]["E"]["acik"] = True             # aynı kütle (kar kapalı)
+    r = yapi.bina_coz(b_e, anlat=False).veri["deprem"]
+    assert abs(d["VtE"] - r["VtE"]) < 1e-6 * r["VtE"]          # ampirik periyotlu şablonda çözümle aynı
+    for girdi, desen in (({"bina": dict(b, deprem=dict(b["deprem"], zemin_sinifi="ZQ"))}, "zemin"), ({}, "boş"),
+                         ({"bina": {k: v for k, v in b.items() if k != "deprem"}}, "deprem")):
+        y = iste(kopru, "bina_deprem", girdi)
+        assert y["hata_turu"] == "girdi" and desen in y["hata"]
+
+
+def test_bina_kombinasyon_onbellek(kopru):
+    kopru._BINA_ONBELLEK.clear()
+    b = hepsi_acik("betonarme-2kat-3x2")
+    y = iste(kopru, "bina_coz", {"bina": b})
+    v = y["veri"]
+    kimlik = v["cozum_kimligi"]
+    assert kimlik in kopru._BINA_ONBELLEK
+    k = next(k for k in v["kombinasyonlar"] if k["ad"] == "G+Q+0.2S+EX++0.3EY++0.3EZ")
+    z = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": k["ad"], "katsayilar": k["katsayilar"]})
+    assert z["hata"] is None and z["ad"] == k["ad"] and z["cozum_kimligi"] == kimlik
+    s = z["sonuc"]
+    assert s["diyagram"] is True and all(len(e["M"]) == len(e["x"]) >= 11 for e in s["elemanlar"])
+    assert all(abs(x) < 1e-6 for x in s["denge"].values())
+    # durumların (ince kayıt: uç kuvvetleri) katsayılı toplamıyla aynı uç kuvvetleri
+    D = v["durumlar"]
+    for i, e in enumerate(s["elemanlar"]):
+        for j in range(12):
+            top = sum(g * D[ad]["elemanlar"][i]["uc_kuvvetleri"][j] for ad, g in k["katsayilar"].items())
+            assert abs(e["uc_kuvvetleri"][j] - top) < 1e-3 * max(1.0, abs(top))
+    # serbest katsayılar (arayüzün kendi birleşimi), tek durum
+    z = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": "deneme", "katsayilar": {"G": 1.0, "W+X": 2.0}})
+    assert z["hata"] is None
+    z = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": "EY-"})
+    assert z["hata"] is None and len(z["sonuc"]["elemanlar"][0]["M"]) >= 11
+    # hatalar
+    for girdi, desen in (({"cozum_kimligi": kimlik, "ad": ""}, "boş"), ({"cozum_kimligi": kimlik, "ad": "x", "katsayilar": {"T": 1}}, "yük durumu"),
+                         ({"cozum_kimligi": "bina-yok", "ad": "G"}, "bellekte yok"), ({"cozum_kimligi": kimlik, "ad": "x", "katsayilar": [1]}, "sözlük")):
+        z = iste(kopru, "bina_kombinasyon", girdi)
+        assert z["hata_turu"] == "girdi" and desen in z["hata"], z
+    # önbellek en çok 3 çözüm; eskisi düşer, bina verilirse sessizce yeniden çözülür
+    for ad in ("betonarme-tek-aciklik", "celik-1kat-depo", "betonarme-3kat-3x3"):
+        iste(kopru, "bina_coz", {"bina": yapi.bina_sablon(ad)})
+    assert len(kopru._BINA_ONBELLEK) == kopru.BINA_ONBELLEK_EN_FAZLA == 3 and kimlik not in kopru._BINA_ONBELLEK
+    z = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": "G"})
+    assert z["hata_turu"] == "girdi" and "yeniden çözün" in z["hata"]
+    z = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": "1.4G+1.6Q", "bina": b})
+    assert z["hata"] is None and z["cozum_kimligi"] == kimlik and kimlik in kopru._BINA_ONBELLEK
+
+
+def test_kutuphane_tasiyici_sistemler(kopru):
+    y = iste(kopru, "bina_kutuphane")
+    ts = y["tasiyici_sistemler"]
+    assert isinstance(ts, list) and len(ts) == 10
+    assert all({"ad", "etiket", "R", "D", "BYS_izin", "kaynak"} <= set(t) for t in ts)
+    ad = {t["ad"]: t for t in ts}
+    assert (ad["celik-merkezi-capraz"]["R"], ad["celik-merkezi-capraz"]["D"]) == (5, 2)
+    assert ad["betonarme-perde-cerceve"]["etiket"].startswith("A15")
+
+
+def test_hepsi_acik_yanit_boyutu_ve_json(kopru):
+    for ad, sinir in (("betonarme-2kat-3x2", 450_000), ("betonarme-4kat-4x3", 1_400_000)):
+        ham = kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": hepsi_acik(ad)}}))
+        y = json.loads(ham, parse_constant=lambda c: pytest.fail(f"geçersiz JSON sabiti: {c}"))
+        assert y["hata"] is None and len(ham) < sinir, (ad, len(ham))
+        assert len(json.dumps(y["veri"], ensure_ascii=False)) < 1_100_000

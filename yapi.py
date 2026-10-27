@@ -9,6 +9,8 @@ Kullanım::
     r.veri       # yapılı sonuçlar (aşağıdaki şema; bina koordinatında)
     r.anlatim    # 12 adımlı anlatım (md / math / sema / kod blokları)
     yapi.yuk_yolu(bina, r.veri, {"tur": "doseme", "no": 1, "durum": "G"})   # tek nesneden zemine yük zinciri
+    yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")              # tek kombinasyonun tam kaydı (tembel)
+    yapi.deprem_onizleme(bina)                                             # TBDY spektrum, V_tE, F_i (çözümsüz)
 
 Bina veri modeli (``tur: "bina"``, ``surum: 1``; birimler kN, m, kN/m², kN/m³; MPa yalnız malzeme kartında)::
 
@@ -28,8 +30,13 @@ Bina veri modeli (``tur: "bina"``, ``surum: 1``; birimler kN, m, kN/m², kN/m³;
                    {"tur": "doseme", "doseme": 1, "g": 0.5}],
      "temeller": {"tip": "tekil", "varsayilan": {"B": 1.6, "L": 1.6, "h": 0.6}, "zemin": {"q_em": 200, "k0": 20000},
                   "mesnet": "ankastre" | "mafsal" | "elastik", "ozel": [{"aks": ["B", "1"], "B": 2.0, "L": 2.0}]},
+     "yuk_durumlari": {"G": {"acik": true}, "Q": {"acik": true}, "S": {"acik": false, "bolge": 3, "rakim": 0, "mu": 0.8},
+                       "W": {"acik": false, "C": 1.2}, "E": {"acik": false}},
+     "deprem": {"SS": 1.0, "S1": 0.3, "SS_DD3": 0.4, "S1_DD3": 0.12, "zemin_sinifi": "ZC", "BKS": 3, "I": 1.0,
+                "tasiyici": "betonarme-cerceve-yuksek", "R": 8, "D": 3, "n": 0.3, "Ct": 0.1, "periyot": "ampirik" | "rayleigh",
+                "diyafram": "rijit" | "esnek", "dismerkezlik": 0.05, "dolgu": "bitisik" | "esnek"},
      "kombinasyon_kumesi": "ts500" | "cythye_ydkt" | "cythye_gkt",
-     "analiz": {"diyagram_nokta": 11}}
+     "analiz": {"catlamis_rijitlik": false, "diyagram_nokta": 11, "gosterilecek": null}}
 
 Koordinatlar: **bina** sistemi X sağa (harfli akslar), Y plan derinliği (sayılı akslar), Z yukarı (kot). Motor
 (``cerceve3b``) Y yukarı çalışır; dönüşüm tek yerdedir: ``_motor_koordinat`` / ``_bina_vek``.
@@ -60,6 +67,7 @@ EN_FAZLA_AKS = 12
 EN_FAZLA_KAT = 12
 EN_FAZLA_SD = 1500
 DIYAGRAM_NOKTA = 11
+YANIT_BUTCESI = 1_050_000   # veri JSON'u (karakter) bu bütçeyi aşacaksa varsayılan tam kombinasyon da tembel bırakılır
 GAMMA_BA = yv.TS498_BIRIM_AGIRLIK["betonarme"]["deger"]   # 25 kN/m³
 _YON_AD = {"x": "X (güçlü eksen X doğrultusunda çalışır)", "y": "Y (güçlü eksen Y doğrultusunda çalışır)"}
 _KENAR_AD = {"alt": "güney (küçük Y)", "ust": "kuzey (büyük Y)", "sol": "batı (küçük X)", "sag": "doğu (büyük X)"}
@@ -108,9 +116,19 @@ def _r6(x):
     return float(f"{x:.6g}")
 
 
+def _r5(x):
+    """Yalnız uç kuvvetli (ince) durumlar ve görüntü tabloları için 5 anlamlı basamak (yanıt boyutu; bağıl hata ≤ 5e-6)."""
+    x = float(x)
+    if x == 0.0 or x != x:
+        return 0.0
+    return float(f"{x:.5g}")
+
+
 def _f(x, b=2):
     """Anlatım tablosu sayısı: en çok b ondalık, sondaki sıfırlar atılır."""
-    s = f"{float(x):.{b}f}".rstrip("0").rstrip(".")
+    s = f"{float(x):.{b}f}"
+    if "." in s:                      # yalnız ondalık kısımdaki sondaki sıfırlar atılır (30 → "30", 2.50 → "2.5")
+        s = s.rstrip("0").rstrip(".")
     return "0" if s in ("", "-0") else s
 
 
@@ -667,11 +685,15 @@ def _yuk_durumlarini_oku(B, bina):
         I = _sayi(dep.get("I", I_tablo), "deprem.I", pozitif=True, sifir_olur=False)
         if abs(I - I_tablo) > 1e-9:
             B.uyarilar.append(f"deprem.I = {I} girildi; Tablo 3.1'e göre BKS = {BKS} için I = {I_tablo}.")
-        varsayilan_tasiyici = "betonarme-cerceve-yuksek" if B.sistem == "betonarme" else "celik-mcm-yuksek"
-        tasiyici = str(dep.get("tasiyici") or varsayilan_tasiyici).strip().lower()
-        if tasiyici not in yv.TBDY_TASIYICI:
-            raise MatrisHatasi(f"deprem.tasiyici {tasiyici!r} Tablo 4.1 listesinde yok. Seçenekler: {', '.join(yv.TBDY_TASIYICI)}.")
+        varsayilan_tasiyici = "betonarme-cerceve-yuksek" if B.sistem == "betonarme" else "celik-cerceve-yuksek"
+        tasiyici_girdi = str(dep.get("tasiyici") or varsayilan_tasiyici).strip().lower()
+        tasiyici = yv.tasiyici_anahtar(tasiyici_girdi)
+        if tasiyici is None:
+            raise MatrisHatasi(f"deprem.tasiyici {tasiyici_girdi!r} Tablo 4.1 listesinde yok. Sık kullanılanlar: "
+                               f"{', '.join(yv.TBDY_TASIYICI_ARAYUZ)} (tam liste: bina_kutuphane → deprem.tasiyici).")
         ts = yv.TBDY_TASIYICI[tasiyici]
+        if ts["grup"] not in (B.sistem, "onuretimli" if B.sistem == "betonarme" else B.sistem):
+            B.uyarilar.append(f"deprem.tasiyici {ts['kod']} ({ts['grup']}) bina sistemiyle ({B.sistem}) uyuşmuyor; R ve D yine Tablo 4.1'den alındı.")
         R = _sayi(dep.get("R", ts["R"]), "deprem.R", pozitif=True, sifir_olur=False)
         D = _sayi(dep.get("D", ts["D"]), "deprem.D", pozitif=True, sifir_olur=False)
         if abs(R - ts["R"]) > 1e-9 or abs(D - ts["D"]) > 1e-9:
@@ -1041,8 +1063,8 @@ def _diyaframsiz(ag, model):
 def _kat_kutleleri(B, Y, n=0.3, kar_payi=0.3):
     """Her kat (1…N) için düğüm ağırlıkları ve toplamlar. Düğüm payı: komşu panellerin çeyreği (g + n·q + 0,3·s),
     komşu kiriş parçalarının yarısı (öz + duvar + ek_G + n·ek_Q + 0,3·ek_S), kolon öz ağırlığının yarıları (kat k kolonunun
-    üst yarısı kat k'ye, alt yarısı kat k−1'e), kata verilen ek düğüm yükleri. Dönüş [{kat, kot, h, w, m, X, Y, BX, BY,
-    dugum_w: {(ix, iy): w_j}, G, Q, S}]."""
+    üst yarısı kat k'ye, alt yarısı kat k−1'e), kata verilen ek düğüm yükleri. Dönüş [{kat, kot, H (temel üstünden
+    yükseklik H_i), h, w, m, X, Y, BX, BY, dugum_w: {(ix, iy): w_j}, G, Q, S}]."""
     g = 9.81
     sonuc = []
     for kt in B.katlar:
@@ -1090,7 +1112,7 @@ def _kat_kutleleri(B, Y, n=0.3, kar_payi=0.3):
         xs = [B.xk[ix] for (ix, iy) in w] or B.xk
         ys = [B.yk[iy] for (ix, iy) in w] or B.yk
         kk = next(x for x in Y.katlar if x["kat"] == kat)
-        sonuc.append({"kat": kat, "kot": kt["kot"], "h": kt["h"], "w": W, "m": W / g, "X": X, "Y": Yc,
+        sonuc.append({"kat": kat, "kot": kt["kot"], "H": kt["kot"] - B.katlar[0]["kot"], "h": kt["h"], "w": W, "m": W / g, "X": X, "Y": Yc,
                       "BX": max(xs) - min(xs), "BY": max(ys) - min(ys), "dugum_w": w, "G": kk["G"], "Q": kk["Q"], "S": kk["S"]})
     return sonuc
 
@@ -1177,8 +1199,12 @@ def _deprem_on(B, Y, kutle):
     if d["tasiyici_kod"] in ("A31", "B31", "C31") and DTS not in ("3", "4"):
         uyarilar.append(f"{d['tasiyici_kod']} yalnız DTS = 3 ve 4 binalarda (md. 4.3.4.3); DTS = {DTS}.")
     # Tablo 4.4: düzenli bina varsayımı (η_bi çözümden sonra denetlenir)
-    esik = yv.TBDY_UYGULANABILIRLIK["duzenli"]["dts12" if DTS[0] in "12" else "dts34"]
+    sutun = "dts12" if DTS[0] in "12" else "dts34"
+    esik = yv.TBDY_UYGULANABILIRLIK["duzenli"][sutun]
     uygulanabilir = BYS >= esik
+    uyg_bilgi = {"DTS": DTS, "BYS": BYS, "esik_duzenli": esik, "esik_diger": yv.TBDY_UYGULANABILIRLIK["diger"][sutun],
+                 "kosul_duzenli": yv.TBDY_UYGULANABILIRLIK["duzenli"]["kosul"], "kaynak": yv.TBDY_UYGULANABILIRLIK["kaynak"],
+                 "not": "B2 (yumuşak kat) düzensizliği bu modülde denetlenmez; η_bi çözümden sonra denetlenir (≤ 2,0)."}
     if not uygulanabilir:
         uyarilar.append(f"Eşdeğer deprem yükü yöntemi Tablo 4.4'e göre bu bina için uygulanamaz (DTS = {DTS}, BYS = {BYS} < {esik}); "
                         "mod birleştirme yöntemi gerekir. Sonuçlar yalnız öğretim amaçlıdır.")
@@ -1197,22 +1223,22 @@ def _deprem_on(B, Y, kutle):
                         "(md. 4.9.1.4 λ = S_ae(T_p; DD-3)/S_ae(T_p; DD-2) genellikle < 1, denetim güvenli taraftadır).")
     return {"sp": sp_, "sp3": sp3, "I": I, "R": R, "D": D, "DTS": DTS, "BYS": BYS, "HN": HN, "TpA": TpA, "Ra": Ra, "SaR": SaR,
             "mt": mt, "wt": wt, "N": len(kutle), "uyarilar": uyarilar, "uygulanabilir": uygulanabilir, "ampirik_yeter": ampirik_yeter,
-            "Tp_yontem": yontem, "lam": lam, "kutle": kutle, "g": 9.81,
+            "Tp_yontem": yontem, "lam": lam, "kutle": kutle, "g": 9.81, "uygulanabilirlik": uyg_bilgi,
             "kappa": yv.TBDY_DEPREM_KURALLAR["kappa"][B.sistem], "Ch": yv.TBDY_DEPREM_KURALLAR["Ch"][B.sistem],
             "sinir_oran": (0.008 if d["dolgu"] == "bitisik" else 0.016) * yv.TBDY_DEPREM_KURALLAR["kappa"][B.sistem]}
 
 
 def _taban_kesme(dep, Tp, alt_sinir=True):
-    """V_tE (Denk. 4.19), ΔF_NE (4.22), F_iE (4.23) → (VtE, VtE_min, dFN, [F_i]); alt_sinir=False: drift için (md. 4.9.1.1)."""
+    """V_tE (Denk. 4.19), ΔF_NE (4.22), F_iE (4.23) → (V_hesap, V_min, V_tE, ΔF_NE, [F_iE]); H_i temel üstünden ölçülür.
+    alt_sinir=False: drift için (md. 4.9.1.1, 0,04·m_t·I·S_DS·g alt sınırı uygulanmaz)."""
     g, mt, I = dep["g"], dep["mt"], dep["I"]
     SDS = dep["sp"]["SDS"]
     V = mt * dep["SaR"](Tp) * g
     Vmin = 0.04 * mt * I * SDS * g
     V_kullanilan = max(V, Vmin) if alt_sinir else V
-    N = dep["N"]
-    dFN = 0.0075 * N * V_kullanilan
-    toplam = sum(k["m"] * (k["kot"] - 0.0) for k in dep["kutle"])
-    F = [(V_kullanilan - dFN) * k["m"] * k["kot"] / toplam for k in dep["kutle"]]
+    dFN = 0.0075 * dep["N"] * V_kullanilan
+    toplam = sum(k["m"] * k["H"] for k in dep["kutle"])
+    F = [(V_kullanilan - dFN) * k["m"] * k["H"] / toplam for k in dep["kutle"]]
     return V, Vmin, V_kullanilan, dFN, F
 
 
@@ -1274,9 +1300,11 @@ def _dugum_yuku_ekle(liste, dugum, FX=0.0, FY=0.0, FZ=0.0, MZ=0.0):
 
 
 def _ruzgar_durumlari(B, ag):
-    """TS 498:2021 md. 14: kat kuvveti F_i = C·q(h_i)·B_cephe·(h_i/2 + h_{i+1}/2); rüzgâr yüzündeki kat düğümlerine
-    cephe payıyla (düğümün iki komşu aks aralığının yarısı). Dönüş (durumlar, ruzgar_veri)."""
+    """TS 498:2021 md. 14: kat kuvveti F_i = C·q(z_i)·A_cephe, A_cephe = B_cephe·(h_i/2 + h_(i+1)/2) (kat yükseklik payı);
+    q(z) Çizelge 4 basamağı, z = kat seviyesinin temel üstünden yüksekliği. Kuvvet rüzgâr yüzündeki kat düğümlerine
+    cephe payıyla (düğümün iki komşu aks aralığının yarısı) verilir. Dönüş (durumlar, ruzgar_veri)."""
     C = B.ruzgar["C"]
+    z0 = B.katlar[0]["kot"]
     katlar = []
     durumlar = {ad: {"yukler": [], "yayili": [], "yayili_esdeger": []} for ad in ("W+X", "W-X", "W+Y", "W-Y")}
     for kt in B.katlar:
@@ -1286,15 +1314,16 @@ def _ruzgar_durumlari(B, ag):
         dgs = [dg for dg in ag["dugumler"] if dg["kat"] == kat and not dg["efendi"]]
         if not dgs:
             continue
-        q = yv.ruzgar_q(kt["kot"])
+        z = kt["kot"] - z0
+        q = yv.ruzgar_q(z)
         if B.ruzgar["sarp"]:
             q = max(q, 1.1)
         ust = B.kat[kat + 1]["h"] if kat + 1 in B.kat else 0.0
         h_pay = kt["h"] / 2.0 + ust / 2.0
         xs, ys = [dg["X"] for dg in dgs], [dg["Y"] for dg in dgs]
         BX, BY = max(xs) - min(xs), max(ys) - min(ys)
-        kayit = {"kat": kat, "kot": kt["kot"], "q": q, "h_pay": h_pay, "cephe_x": BY, "cephe_y": BX,
-                 "F_x": C * q * BY * h_pay, "F_y": C * q * BX * h_pay}
+        kayit = {"kat": kat, "z": z, "kot": kt["kot"], "q": q, "h_pay": h_pay, "genislik_x": BY, "genislik_y": BX,
+                 "cephe_x": BY * h_pay, "cephe_y": BX * h_pay, "F_x": C * q * BY * h_pay, "F_y": C * q * BX * h_pay}
         katlar.append(kayit)
         for ad, yuz, F, kenar_konum in (("W+X", "X", kayit["F_x"], min(xs)), ("W-X", "X", -kayit["F_x"], max(xs)),
                                         ("W+Y", "Y", kayit["F_y"], min(ys)), ("W-Y", "Y", -kayit["F_y"], max(ys))):
@@ -1314,19 +1343,22 @@ def _ruzgar_durumlari(B, ag):
                     _dugum_yuku_ekle(durumlar[ad]["yukler"], dg["no"], FX=F * pay)
                 else:
                     _dugum_yuku_ekle(durumlar[ad]["yukler"], dg["no"], FY=F * pay)
-    q_h = [{"h": kt["kot"], "q": yv.ruzgar_q(kt["kot"])} for kt in B.katlar if kt["no"]]
-    return durumlar, {"C": C, "C_kaynak": B.ruzgar["C_kaynak"], "q_kaynak": B.ruzgar["q_kaynak"], "q_h": q_h, "katlar": katlar,
-                      "toplam_x": sum(k["F_x"] for k in katlar), "toplam_y": sum(k["F_y"] for k in katlar)}
+    q_h = [{"kat": k["kat"], "z": k["z"], "q": k["q"]} for k in katlar]
+    kaynak = (f"TS 498:2021 md. 14: W = C·q(z)·A; q Çizelge 4 (z ≤ 8 m 0,5; 8–20 m 0,8; 20–100 m 1,1; > 100 m 1,3 kN/m²), "
+              f"C = {_f(C, 2)} ({B.ruzgar['C_kaynak']}); A = cephe genişliği × kat yükseklik payı")
+    return durumlar, {"C": C, "C_kaynak": B.ruzgar["C_kaynak"], "q_kaynak": B.ruzgar["q_kaynak"], "kaynak": kaynak, "q_h": q_h,
+                      "katlar": katlar, "toplam_x": sum(k["F_x"] for k in katlar), "toplam_y": sum(k["F_y"] for k in katlar)}
 
 
 def _deprem_birim_durumlari(B, ag, dep):
     """Deprem için birim yük durumları (her yön d ∈ {X, Y}): R{d} kat kuvvetleri s_i = m_i·H_i/Σm_j·H_j (Σ = 1 kN),
-    N{d} tepe kata 1 kN, T{d} birim dışmerkezlik (e = 1 m) burulması (rijit diyaframda efendi düğüme M_Z = ∓s_i, esnekte
-    kütle payı ile kaydırma dağılımı), TN{d} tepe kat için aynısı (ΔF_NE payı). E durumları bunların süperpozisyonudur:
-    E{d}0 = (V − ΔF)·R + ΔF·N;  E{d}± = E{d}0 ± e·D_b·[(V − ΔF)·T + ΔF·TN]."""
+    N{d} tepe kata 1 kN, T{d} birim dışmerkezlik burulması: kat i'de M_Z = ∓s_i·B_i (e = 1·B_i, B_i deprem doğrultusuna dik
+    kat boyutu; rijit diyaframda efendi düğüme moment, esnekte kütle payıyla kuvvet çifti), TN{d} tepe kat için aynısı.
+    E durumları bunların süperpozisyonudur (e_oran = 0,05):
+    E{d}0 = (V − ΔF)·R + ΔF·N;  E{d}± = E{d}0 ± e_oran·D_b·[(V − ΔF)·T + ΔF·TN]  ⇒  M_ib = F_iE·0,05·B_i (Denk. 4.17)."""
     kutle = dep["kutle"]
-    toplam = sum(k["m"] * k["kot"] for k in kutle)
-    sekil = {k["kat"]: k["m"] * k["kot"] / toplam for k in kutle}
+    toplam = sum(k["m"] * k["H"] for k in kutle)
+    sekil = {k["kat"]: k["m"] * k["H"] / toplam for k in kutle}
     tepe = kutle[-1]["kat"]
     efendi = ag["efendi"]
     bos = lambda: {"yukler": [], "yayili": [], "yayili_esdeger": []}  # noqa: E731
@@ -1336,6 +1368,7 @@ def _deprem_birim_durumlari(B, ag, dep):
         for kk in kutle:
             kat = kk["kat"]
             s = sekil[kat]
+            Bdik = kk["BY"] if yon == "X" else kk["BX"]
             kat_d = [dg for dg in ag["dugumler"] if dg["kat"] == kat and not dg["efendi"]]
             # kuvvet dağılımı: efendiye tek kuvvet; esnekte kütle payı
             if kat in efendi:
@@ -1350,19 +1383,20 @@ def _deprem_birim_durumlari(B, ag, dep):
                 if kat == tepe:
                     kw1 = {"FX": pay} if yon == "X" else {"FY": pay}
                     _dugum_yuku_ekle(N["yukler"], no, **kw1)
-            # burulma (e = 1 m): X yönü kuvvet +Y'ye kaydırılınca M_Z = −F; Y yönü kuvvet +X'e kaydırılınca M_Z = +F
+            # burulma (e = B_i): X yönü kuvvet +Y'ye kaydırılınca M_Z = −F·e; Y yönü kuvvet +X'e kaydırılınca M_Z = +F·e
             isaret = -1.0 if yon == "X" else 1.0
             if kat in efendi:
-                _dugum_yuku_ekle(T["yukler"], efendi[kat], MZ=isaret * s)
+                _dugum_yuku_ekle(T["yukler"], efendi[kat], MZ=isaret * s * Bdik)
                 if kat == tepe:
-                    _dugum_yuku_ekle(TN["yukler"], efendi[kat], MZ=isaret * 1.0)
+                    _dugum_yuku_ekle(TN["yukler"], efendi[kat], MZ=isaret * Bdik)
             else:
+                # esnek diyafram: aynı momenti veren kuvvet dağılımı (net kuvvet 0): f_j = M·w_j·(c_j − c_m)/Σ w·(c − c_m)²
                 koord = "Y" if yon == "X" else "X"
                 merkez = kk["Y"] if yon == "X" else kk["X"]
                 I = sum(kk["dugum_w"].get(dg["key"][:2], 0.0) * (dg[koord] - merkez) ** 2 for dg in kat_d)
                 if I > 1e-12:
                     for dg in kat_d:
-                        pay = kk["dugum_w"].get(dg["key"][:2], 0.0) * (dg[koord] - merkez) / I
+                        pay = kk["dugum_w"].get(dg["key"][:2], 0.0) * (dg[koord] - merkez) / I * Bdik
                         kw = {"FX": s * pay} if yon == "X" else {"FY": s * pay}
                         _dugum_yuku_ekle(T["yukler"], dg["no"], **kw)
                         if kat == tepe:
@@ -1587,12 +1621,28 @@ _E_TEKLI = ("EX+", "EX-", "EY+", "EY-")
 
 
 def _isaretli(k):
-    return ("+" if k >= 0 else "-") + ("" if abs(abs(k) - 1.0) < 1e-9 else _f(abs(k), 3))
+    return ("+" if k >= 0 else "-") + ("" if abs(abs(k) - 1.0) < 1e-9 else _f(abs(k), 4))
+
+
+def _komb_adi(katsayilar):
+    """Kombinasyon adı katsayılardan, sabit durum sırasıyla: G, Q, S, W±X/W±Y, EX±, EY±, EZ. Katsayı 1 yazılmaz, eksi işaret
+    terimin önüne gelir: {"G": 1, "Q": 1, "S": 0.2, "EX+": 1, "EY+": 0.3, "EZ": 0.3} → "G+Q+0.2S+EX++0.3EY++0.3EZ";
+    {"G": 0.9, "EX-": 1, "EY+": 0.3, "EZ": -0.3} → "0.9G+EX-+0.3EY+-0.3EZ"; {"G": 1, "Q": 1.3, "W+X": 1.3} → "G+1.3Q+1.3W+X"."""
+    def sira(d):
+        for i, on in enumerate(("G", "Q", "S", "W", "EX", "EY", "EZ")):
+            if d == on or d.startswith(on):
+                return (i, d)
+        return (9, d)
+    parcalar = []
+    for d in sorted((d for d, v in katsayilar.items() if abs(v) > 1e-12), key=sira):
+        t = _isaretli(katsayilar[d]) + d
+        parcalar.append(t[1:] if not parcalar and t.startswith("+") else t)
+    return "".join(parcalar) or "0"
 
 
 def _eh_varyantlari():
-    """TBDY Denk. (4.9): ±E_d(X) ± 0,3·E_d(Y) ve ±0,3·E_d(X) ± E_d(Y); E_d(X) ∈ {EX+, EX-} (dışmerkezlik ±) → 32 varyant.
-    Her öğe (etiket, {durum: katsayı})."""
+    """TBDY Denk. (4.9): ±E_d(X) ± 0,3·E_d(Y) ve ±0,3·E_d(X) ± E_d(Y); E_d(X) ∈ {EX+, EX-}, E_d(Y) ∈ {EY+, EY-}
+    (dışmerkezlik ±) → 2 × 2 × 2 × 2 × 2 = 32 varyant. Her öğe (etiket, {durum: katsayı})."""
     out = []
     for px, py in ((1.0, 0.3), (0.3, 1.0)):
         for sx in (1.0, -1.0):
@@ -1600,67 +1650,68 @@ def _eh_varyantlari():
                 for ex in ("+", "-"):
                     for ey in ("+", "-"):
                         kx, ky = sx * px, sy * py
-                        out.append((f"{_isaretli(kx)}EX{ex} {_isaretli(ky)}EY{ey}", {f"EX{ex}": kx, f"EY{ey}": ky}))
+                        out.append((f"{_isaretli(kx)}EX{ex}{_isaretli(ky)}EY{ey}", {f"EX{ex}": kx, f"EY{ey}": ky}))
     return out
 
 
 def _kombinasyon_listesi(B, mevcut):
-    """Kümedeki her şablon satırı eldeki durumlarla açılır: W → 4 yön, EH → 32 E_d(H) varyantı (drift satırında 4 tekli),
-    EZ → EZ; S/T/H yoksa uygulanmaz. Dönüş [{ad, aile, katsayilar, tur, kaynak, not, uygulandi, neden, yon}]."""
+    """Kümedeki her şablon satırı eldeki durumlarla açılır: W → 4 yön (W+X, W-X, W+Y, W-Y), EH → Denk. (4.9)'un 32 varyantı
+    (drift satırında 4 tekli EX±/EY±), EZ → (2/3)·S_DS·G durumu. Satırın ``gerekli`` durumu (6.4'te T, 6.9/6.10'da H, kar
+    satırlarında S) yoksa satır uygulanmaz; ikincil terimler (4.11'de 0,2S, 4.12'de H) yoksa sıfır alınır. Ad katsayılardan
+    kurulur (``_komb_adi``). Dönüş [{ad, aile, katsayilar, tur, kaynak, not, uygulandi, neden, yon}]."""
     kume = yv.KOMBINASYONLAR[B.kombinasyon_kumesi]
-    liste = []
+    liste, adlar = [], set()
+
+    def var_mi(d):
+        if d == "W":
+            return "W+X" in mevcut
+        if d in ("EH", "EZ"):
+            return "EX+" in mevcut
+        return d in mevcut
+
     for satir in kume["liste"]:
         kat = dict(satir["katsayilar"])
         temel = {"aile": satir["ad"], "tur": satir["tur"], "kaynak": satir["kaynak"], "not": satir.get("not", "")}
-        eksik = []
-        for d in kat:
-            if d in ("G", "Q") and d not in mevcut:
-                eksik.append(d)
-            elif d == "W" and "W+X" not in mevcut:
-                eksik.append(d)
-            elif d in ("EH", "EZ") and "EX+" not in mevcut:
-                eksik.append(d)
+        eksik = [d for d in kat if (d in ("G", "Q", "W", "EH", "EZ") or d in satir.get("gerekli", ())) and not var_mi(d)]
         if eksik:
             neden = ", ".join(f"{d} ({yv.YUK_DURUMU_ADLARI.get(d, d)})" for d in eksik) + " durumu yok"
-            liste.append({"ad": satir["ad"], **temel, "katsayilar": kat, "uygulandi": False, "neden": neden, "yon": None})
+            ad = satir["ad"] if satir["ad"] not in adlar else f"{satir['ad']} [{satir['kaynak']}]"
+            adlar.add(ad)
+            liste.append({"ad": ad, **temel, "katsayilar": kat, "uygulandi": False, "neden": neden, "yon": None})
             continue
-        sifir = [d for d in kat if d in ("T", "H") or (d == "S" and "S" not in mevcut)]
-        if sifir:   # sıcaklık/oturma ve toprak itkisi bu modülde üretilmez, kar kapalıysa S = 0: terim düşer
-            temel = dict(temel, **{"not": (temel["not"] + "; " if temel["not"] else "") + ", ".join(sifir)
-                                   + (" = 0 (kar yükü kapalı)" if sifir == ["S"] else " = 0 (bu modülde üretilmez / kapalı)")})
-        varyantlar = [(satir["ad"], {k: v for k, v in kat.items() if k not in ("W", "EH", "EZ") and k not in sifir}, {})]
+        sifir = [d for d in kat if d in ("T", "H", "S") and not var_mi(d)]
+        if sifir:   # sıcaklık/oturma ve toprak itkisi bu modülde üretilmez, kar kapalıysa S = 0: ikincil terim düşer
+            ek = ", ".join(sifir) + (" = 0 (kar yükü kapalı)" if sifir == ["S"] else " = 0 (bu modülde üretilmez / kapalı)")
+            temel = dict(temel, **{"not": (temel["not"] + "; " if temel["not"] else "") + ek})
+        varyantlar = [({k: v for k, v in kat.items() if k not in ("W", "EH", "EZ") and k not in sifir}, {})]
         if "W" in kat:
-            yeni = []
-            for ad, ks, yon in varyantlar:
-                for w in _W_YONLER:
-                    yeni.append((ad.replace("W", w), {**ks, w: kat["W"]}, {**yon, "W": w}))
-            varyantlar = yeni
+            varyantlar = [({**ks, w: kat["W"]}, {**yon, "W": w}) for ks, yon in varyantlar for w in _W_YONLER]
         if "EH" in kat:
-            etiket = "Ed(H)" if "Ed(H)" in satir["ad"] else "E"
             yeni = []
-            for ad, ks, yon in varyantlar:
+            for ks, yon in varyantlar:
                 if satir["tur"] == "drift":
-                    for e in _E_TEKLI:
-                        yeni.append((ad.replace(etiket, e), {**ks, e: kat["EH"]}, {**yon, "EH": e}))
+                    yeni += [({**ks, e: kat["EH"]}, {**yon, "EH": e}) for e in _E_TEKLI]
                 else:
                     for eh_ad, eh_k in _eh_varyantlari():
                         ks2 = dict(ks)
                         for d, v in eh_k.items():
                             ks2[d] = ks2.get(d, 0.0) + v * kat["EH"]
-                        yeni.append((ad.replace(etiket, f"({eh_ad})", 1), ks2, {**yon, "EH": eh_ad}))
+                        yeni.append((ks2, {**yon, "EH": eh_ad}))
             varyantlar = yeni
         if "EZ" in kat:
-            varyantlar = [(ad, {**ks, "EZ": ks.get("EZ", 0.0) + kat["EZ"]}, yon) for ad, ks, yon in varyantlar]
-        for ad, ks, yon in varyantlar:
+            varyantlar = [({**ks, "EZ": ks.get("EZ", 0.0) + kat["EZ"]}, yon) for ks, yon in varyantlar]
+        for ks, yon in varyantlar:
+            ks = {d: float(v) for d, v in ks.items()}
+            ad = _komb_adi(ks)
             ozdes = next((k for k in liste if k["uygulandi"] and k["katsayilar"] == ks), None)
-            if ozdes is not None:
-                liste.append({"ad": ad, **temel, "katsayilar": ks, "uygulandi": False, "yon": yon or None,
-                              "neden": f"{', '.join(sifir)} = 0 iken {ozdes['ad']} ile özdeş"})
+            if ozdes is not None or ad in adlar:
+                ad2 = f"{ad} [{satir['kaynak']}]"
+                adlar.add(ad2)
+                liste.append({"ad": ad2, **temel, "katsayilar": ks, "uygulandi": False, "yon": yon or None,
+                              "neden": f"{ozdes['ad'] if ozdes else ad} ile özdeş" + (f" ({', '.join(sifir)} = 0)" if sifir else "")})
                 continue
+            adlar.add(ad)
             liste.append({"ad": ad, **temel, "katsayilar": ks, "uygulandi": True, "neden": None, "yon": yon or None})
-    adlar = [k["ad"] for k in liste]
-    if len(set(adlar)) != len(adlar):   # pragma: no cover — küme tanımı hatası
-        raise MatrisHatasi("Kombinasyon adları tekrarlı: " + ", ".join(sorted({a for a in adlar if adlar.count(a) > 1})))
     return liste
 
 
@@ -2186,9 +2237,20 @@ def _adim_3(B, Y, anl):
                   + _tablo(["Kenar", "Kiriş", "Kenar türü", "Şekil", "G tepe (kN/m)", "q_eM,G", "q_eV,G", "G payı (kN)", "Q tepe", "Q payı (kN)"], sat)
                   + f"\n\nKorunum: Σ paylar = {_f(topG)} kN = g·l_k·l_u = {_f(d['g'])}·{_f(d['lx'])}·{_f(d['ly'])} = {_f(d['G_toplam'])} kN ✓ "
                   f"(Q: {_f(topQ)} = {_f(d['Q_toplam'])} ✓).")
-    katlar = sorted({d["kat"] for d in Y.dosemeler})
-    if katlar:
-        anl.sema("Kat planları ve döşeme yük şekilleri", [_sema_plan(B, Y, k) for k in katlar])
+    # aynı planlı katlar (aynı paneller, aynı g/q/s ve dağıtım) tek şemayla gösterilir (yanıt boyutu)
+    gruplar = {}
+    for k in sorted({d["kat"] for d in Y.dosemeler}):
+        imza = tuple(sorted((d["ix0"], d["iy0"], round(d["g"], 6), round(d["q_top"], 6), round(d["s"], 6), d["tip"])
+                            for d in Y.dosemeler if d["kat"] == k))
+        gruplar.setdefault(imza, []).append(k)
+    if gruplar:
+        semalar = []
+        for katlar in gruplar.values():
+            sm = _sema_plan(B, Y, katlar[0])
+            if len(katlar) > 1:
+                sm = dict(sm, baslik=f"{sm['baslik']} (aynı plan: kat {', '.join(str(k) for k in katlar)})")
+            semalar.append(sm)
+        anl.sema("Kat planları ve döşeme yük şekilleri", semalar)
 
 
 def _adim_4(B, Y, anl):
@@ -2437,12 +2499,63 @@ def _py_betik(B, ag, model, durum, Y):
     return s
 
 
-def _adim_12(B, ag, model, durumlar, Y, anl):
+def _py_deprem(deprem):
+    """Betiğe eklenen bağımsız TBDY 2018 eşdeğer deprem yükü hesabı (spektrum → T_pA → V_tE → F_iE, X yönü)."""
+    S = lambda x: repr(float(x))  # noqa: E731
+    z = deprem["zemin_sinifi"]
+    k = deprem["katlar"]
+    s = ["", "# --- TBDY 2018 eşdeğer deprem yükü (X yönü): Tablo 2.1/2.2 → spektrum (Denk. 2.2) → V_tE (4.19) → F_iE (4.22–4.23) ---",
+         "def ara_deger(x, xs, ys):   # md. 2.3.3.1: doğrusal ara değer, uçlarda sabit",
+         "    if x <= xs[0]: return ys[0]",
+         "    if x >= xs[-1]: return ys[-1]",
+         "    for i in range(len(xs) - 1):",
+         "        if xs[i] <= x <= xs[i + 1]: return ys[i] + (x - xs[i])/(xs[i + 1] - xs[i])*(ys[i + 1] - ys[i])",
+         f"SS, S1 = {S(deprem['SS'])}, {S(deprem['S1'])}   # AFAD TDTH, DD-2; zemin {z}",
+         f"FS = ara_deger(SS, {yv.TBDY_FS['SS']}, {yv.TBDY_FS[z]})   # Tablo 2.1",
+         f"F1 = ara_deger(S1, {yv.TBDY_F1['S1']}, {yv.TBDY_F1[z]})   # Tablo 2.2",
+         "SDS, SD1 = SS*FS, S1*F1",
+         "TA, TB, TL = 0.2*SD1/SDS, SD1/SDS, 6.0",
+         "def Sae(T):",
+         "    if T <= TA: return (0.4 + 0.6*T/TA)*SDS",
+         "    if T <= TB: return SDS",
+         "    if T <= TL: return SD1/T",
+         "    return SD1*TL/T**2",
+         f"R, D, I = {S(deprem['R'])}, {S(deprem['D'])}, {S(deprem['I'])}   # Tablo 4.1, 3.1",
+         "def Ra(T): return R/I if T > TB else D + (R/I - D)*T/TB   # Denk. (4.1)",
+         f"HN, Ct = {S(deprem['HN'])}, {S(deprem['Ct'])}",
+         "TpA = Ct*HN**0.75   # Denk. (4.27)"]
+    if deprem["Tp_yontem"] == "ampirik":
+        s.append("Tp = TpA   # md. 4.7.3.3")
+    else:
+        s.append(f"Tp = {S(deprem['Tp'])}   # Rayleigh (Denk. 4.26), motorun ağ çözümünden; ≤ 1,4·T_pA")
+    s += [f"w = {[_r(x['w_i']) for x in k]}   # kat ağırlıkları w_i = w_G + n·w_Q (kN), Denk. (4.16)",
+          f"H = {[_r(x['H']) for x in k]}   # temel üstünden kat yükseklikleri (m)",
+          "g = 9.81",
+          "m = [wi/g for wi in w]; mt = sum(m)",
+          "V = mt*Sae(Tp)/Ra(Tp)*g",
+          "Vmin = 0.04*mt*I*SDS*g",
+          "VtE = max(V, Vmin)",
+          "dFN = 0.0075*len(m)*VtE",
+          "F = [(VtE - dFN)*mi*Hi/sum(mj*Hj for mj, Hj in zip(m, H)) for mi, Hi in zip(m, H)]",
+          "F[-1] += dFN",
+          'print(f"F_S = {FS:.4f}, F_1 = {F1:.4f}, S_DS = {SDS:.4f}, S_D1 = {SD1:.4f}, T_A = {TA:.4f} s, T_B = {TB:.4f} s")',
+          'print(f"T_pA = {TpA:.4f} s, T_p = {Tp:.4f} s, S_ae = {Sae(Tp):.4f}, R_a = {Ra(Tp):.3f}, S_aR = {Sae(Tp)/Ra(Tp):.4f}")',
+          'print(f"m_t = {mt:.3f} t, V_tE = max({V:.2f}, {Vmin:.2f}) = {VtE:.2f} kN, ΔF_NE = {dFN:.2f} kN")',
+          'print("Kat kuvvetleri F_iE (kN):", ", ".join(f"{Fi:.2f}" for Fi in F), f"  (Σ = {sum(F):.2f})")']
+    return s
+
+
+def _adim_12(B, ag, model, durumlar, Y, anl, deprem=None):
     se._basla(anl, 12, "Aynı hesap Python'da",
               "Ağ kurma, parçalı yayılı yükün Gauss integrasyonuyla eşdeğer düğüm yüklerine çevrilmesi, birleştirme, çözüm ve "
-              "kolon taban kuvvetleri tek bir numpy betiğinde. Betik sonlu_eleman modülünü içe aktarmaz; çıktısı 8. ve 11. "
-              "adımdaki G sonuçlarıyla aynı olmalıdır (rijit diyafram ve yatay yükler betiğe alınmaz).")
-    return mo._python_bolumu(anl, _py_betik(B, ag, model, durumlar["G"], Y))
+              "kolon taban kuvvetleri tek bir numpy betiğinde"
+              + ("; ardından TBDY 2018 eşdeğer deprem kat kuvvetleri (spektrum → V_tE → F_iE)" if deprem else "")
+              + ". Betik sonlu_eleman modülünü içe aktarmaz; çıktısı 8., 11. (ve 7.) adımdaki sonuçlarla aynı olmalıdır "
+              "(rijit diyafram ve yatay yüklerin çözümü betiğe alınmaz).")
+    satirlar = _py_betik(B, ag, model, durumlar["G"], Y)
+    if deprem:
+        satirlar += _py_deprem(deprem)
+    return mo._python_bolumu(anl, satirlar)
 
 
 # ============================================================================
@@ -2451,14 +2564,14 @@ def _adim_12(B, ag, model, durumlar, Y, anl):
 def _kisa_veri(k, u_dahil=True, diyagram=True):
     """KISA → JSON. Kombinasyonlarda ``u`` yazılmaz (None; boyut), ``dugumler`` deforme şekil için kalır. ``diyagram=False``:
     eleman dizileri (x, N, V, M, …) yazılmaz, yalnız uç kuvvetleri ve enb (S, W, E durumları; tam dizi bina_kombinasyon ile)."""
-    if not diyagram:
-        return {"u": [_r(x) for x in k["u"]] if u_dahil else None, "diyagram": False,
-                "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
-                "tepkiler": [{"dugum": t["dugum"], **{a: _r(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
-                "elemanlar": [{"no": e["no"], "uc_kuvvetleri": [_r(x) for x in e["uc_kuvvetleri"]],
-                               "enb": {a: _r(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
+    if not diyagram:     # ince kayıt: u yok, 5 anlamlı basamak; tam diziler bina_kombinasyon ile tembel alınır
+        return {"u": None, "diyagram": False,
+                "dugumler": [{"no": d["no"], **{a: float(f"{d[a]:.4g}") for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
+                "tepkiler": [{"dugum": t["dugum"], **{a: _r5(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
+                "elemanlar": [{"no": e["no"], "uc_kuvvetleri": [_r5(x) for x in e["uc_kuvvetleri"]],
+                               "enb": {a: _r5(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
                 "denge": {a: _r(v) for a, v in k["denge"].items()},
-                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])} for y in k["yaylar"]]}
+                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"])} for y in k["yaylar"]]}
     return {"u": [_r(x) for x in k["u"]] if u_dahil else None, "diyagram": True,
             "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
             "tepkiler": [{"dugum": t["dugum"], **{a: _r(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
@@ -2467,6 +2580,18 @@ def _kisa_veri(k, u_dahil=True, diyagram=True):
                            "enb": {a: _r(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
             "denge": {a: _r(v) for a, v in k["denge"].items()},
             "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])} for y in k["yaylar"]]}
+
+
+def _kombinasyon_veri(kombinasyonlar):
+    """veri.kombinasyonlar: [{ad, aile, katsayilar, tur, kaynak, uygulandi, neden, not}]; ``not`` ailenin yalnız ilk satırında
+    (yanıt boyutu; aynı ailenin 32 deprem varyantı aynı notu taşır), ``yon`` yazılmaz (ad katsayılardan okunur)."""
+    out, gorulen = [], set()
+    for k in kombinasyonlar:
+        r = {a: k[a] for a in ("ad", "aile", "katsayilar", "tur", "kaynak", "uygulandi", "neden")}
+        r["not"] = k.get("not", "") if k["aile"] not in gorulen else ""
+        gorulen.add(k["aile"])
+        out.append(r)
+    return out
 
 
 def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, *, deprem=None, ruzgar=None,
@@ -2502,7 +2627,7 @@ def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonu
     ag_veri = {"dugumler": [{"no": d["no"], "X": d["X"], "Y": d["Y"], "Z": d["Z"], "adres": d["adres"], "kat": d["kat"], "aks": d["aks"],
                              "efendi": d["efendi"]} for d in ag["dugumler"]],
                "elemanlar": [{"no": e["no"], "dugumler": e["dugumler"], "tur": e["tur"], "kaynak_no": e["kaynak_no"], "parca": e["parca"],
-                              "kat": e["kat"], "L": _r(e["L"]), "kesit": e["kesit"], "lam": [[_r(x) for x in s] for s in e["lam"]],
+                              "kat": e["kat"], "L": _r(e["L"]), "kesit": e["kesit"], "lam": [[_r6(x) for x in s] for s in e["lam"]],
                               "adres": e["adres"], "rijitlik_carpani": e["rijitlik_carpani"]} for e in ag["elemanlar"]],
                "mesnetler": [{"dugum": m["dugum"], "tip": m["tip"]} for m in ag["mesnetler"]],
                "diyaframlar": [{"ad": d["ad"], "ana": d["ana"]["no"], "dugumler": list(d["dugumler"]), "X": _r(d["ana"]["x"]),
@@ -2530,7 +2655,7 @@ def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonu
         "kolonlar": [{a: (_r(v) if isinstance(v, float) else v) for a, v in k.items()} for k in akis["kolonlar"]],
         "temeller": [{a: (_r(v) if isinstance(v, float) else v) for a, v in t.items()} for t in akis["temeller"]],
         "korunum": {d: {a: _r(v) for a, v in p.items()} for d, p in akis["korunum"].items()},
-        "sankey": [dict(s, kN=_r(s["kN"])) for s in akis["sankey"]],
+        "sankey": [dict(s, kN=_r6(s["kN"])) for s in akis["sankey"]],
     }
     uyarilar = list(B.uyarilar)
     kullanilan = set()
@@ -2553,33 +2678,40 @@ def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonu
                 uyarilar.append(u)
     if B.kar and not B.kar["dogrulandi"]:
         uyarilar.append("Kar bölgesi Ek 1 il/ilçe listesinden (OCR aktarımı, doğrulanmamış) alındı; bölgeyi haritadan doğrulayın.")
-    fe_model = copy.deepcopy(model)
-    fe_model["yukler"] = copy.deepcopy(durumlar["G"]["yukler"])
-    fe_model["yayili"] = copy.deepcopy(durumlar["G"]["yayili"])
+    fe_model = _sonlu(dict(model, yukler=durumlar["G"]["yukler"], yayili=durumlar["G"]["yayili"]))
     gosterilecek = gosterilecek or list(sonuclar)
-    uygulanan = [k for k in kombinasyonlar if k["uygulandi"]]
-    kmb_ozet = {ad: {"enb": {a: _r(v) for a, v in o["enb"].items()}, "u_enb": {a: _r(v) for a, v in o["u_enb"].items()},
-                     "FZ_tepki": _r(o["FZ_tepki"]), "denge_enb": _r(o["denge_enb"])} for ad, o in (ozetler or {}).items()}
+    uygulanan = [k for k in kombinasyonlar if k["uygulandi"] and k["tur"] != "drift"]
+    kar_veri = None
+    if B.kar:
+        cati = [d for d in Y.dosemeler if d["kat"] == B.nk]
+        kar_veri = _sonlu({"bolge": B.kar["bolge"], "rakim": B.kar["rakim"], "Sk": B.kar["Sk"], "mu": B.kar["mu"], "s": B.kar["s"],
+                           "Ce": B.kar["Ce"], "Ct": B.kar["Ct"], "alpha": B.kar["alpha"], "cati_alani": sum(d["alan"] for d in cati),
+                           "S_toplam": Y.toplam["S"], "kat": B.nk, "Sk_kaynak": B.kar["Sk_kaynak"], "mu_kaynak": B.kar["mu_kaynak"],
+                           "kaynak": B.kar["kaynak"] + "; " + B.kar["Sk_kaynak"] + "; μ1: " + B.kar["mu_kaynak"],
+                           "dogrulandi": B.kar["dogrulandi"]})
+    kmb_ozet = {ad: {"enb": {a: _r5(v) for a, v in o["enb"].items()}, "u_enb": {a: _r5(v) for a, v in o["u_enb"].items()},
+                     "FZ_tepki": _r6(o["FZ_tepki"]), "denge_enb": float(f"{o['denge_enb']:.2g}")} for ad, o in (ozetler or {}).items()}
     tam = {"G", "Q"} | set(gosterilecek)
     veri = {
         "tur": "bina", "surum": 2, "baslik": B.baslik, "sistem": B.sistem, "birim": dict(B.birim), "cozum_kimligi": kimlik,
         "bina": bina, "kutuphane_ozeti": kutuphane_ozeti, "ag": ag_veri, "yukler": yukler,
         "durumlar": {ad: _kisa_veri(k, diyagram=ad in tam) for ad, k in durumlar_kisa.items()},
-        "kombinasyonlar": [{a: v for a, v in k.items()} for k in kombinasyonlar],
+        "kombinasyonlar": _kombinasyon_veri(kombinasyonlar),
         "kombinasyon_ozet": kmb_ozet,
         "gosterilecek": list(gosterilecek),
         "sonuclar": {ad: _kisa_veri(k, u_dahil=False) for ad, k in sonuclar.items()},
-        "zarf": {"kombinasyonlar": zarf["kombinasyonlar"],
+        "zarf": {"kombinasyonlar": zarf["kombinasyonlar"], "kombinasyon_sayisi": len(zarf["kombinasyonlar"]),
                  "elemanlar": [{a: (_r6(v) if isinstance(v, float) else v) for a, v in z.items()} for z in zarf["elemanlar"]]},
         "akis": akis_veri,
         "deprem": _sonlu(deprem) if deprem else None,
         "ruzgar": _sonlu(ruzgar) if ruzgar else None,
-        "kar": _sonlu({k: v for k, v in B.kar.items()}) if B.kar else None,
+        "kar": kar_veri,
         "kutle_merkezi": [{"kat": k["kat"], "X": _r(k["X"]), "Y": _r(k["Y"]), "w": _r(k["w"]), "m": _r(k["m"]), "BX": _r(k["BX"]), "BY": _r(k["BY"])}
                           for k in (kutle or [])],
         "rijitlik_merkezi": [{"kat": k["kat"], "X": _r(k["X"]), "Y": _r(k["Y"])} for k in _rijitlik_merkezi(B)],
         "ozet": {"sd_sayisi": ag["sd_sayisi"], "dugum": len(ag["dugumler"]), "eleman": len(ag["elemanlar"]),
                  "durum_sayisi": len(durumlar_kisa), "kombinasyon_sayisi": len(uygulanan), "gosterilen_sayisi": len(sonuclar),
+                 "drift_kombinasyon_sayisi": sum(1 for k in kombinasyonlar if k["uygulandi"] and k["tur"] == "drift"),
                  "toplam_G": _r(Y.toplam["G"]), "toplam_Q": _r(Y.toplam["Q"]), "toplam_S": _r(Y.toplam["S"]),
                  "en_buyuk_temel_DC": _r(en_dc), "uyarilar": uyarilar,
                  "deprem_etkin": bool(deprem), "ruzgar_etkin": bool(ruzgar), "kar_etkin": bool(B.kar),
@@ -2657,6 +2789,52 @@ def _delta_katlar(B, ag, paket, arr, yon):
     return out
 
 
+def _deprem_kaynaklari(d):
+    """veri.deprem.kaynaklar: alan adı → yönetmelik maddesi (UI parametre kartlarının altına yazar)."""
+    K = {a: (v if not isinstance(v, str) or v.startswith("TBDY") else "TBDY 2018 — " + v) for a, v in yv.TBDY_DEPREM_KURALLAR.items()}
+    afad = "AFAD Türkiye Deprem Tehlike Haritası (tdth.afad.gov.tr); TBDY 2018 md. 2.3.2.1, DD-2"
+    ts = yv.TBDY_TASIYICI[d["tasiyici"]]
+    rd = f"{ts['kaynak']}: {ts['kod']} — {ts['tanim']}"
+    drift = K["drift"]
+    return {
+        "SS": afad, "S1": afad, "zemin_sinifi": yv.ZEMIN_SINIFLARI["kaynak"],
+        "FS": yv.TBDY_FS["kaynak"], "F1": yv.TBDY_F1["kaynak"],
+        "SDS": "TBDY 2018 Denk. (2.1): S_DS = S_S·F_S (F_S Tablo 2.1)", "SD1": "TBDY 2018 Denk. (2.1): S_D1 = S_1·F_1 (F_1 Tablo 2.2)",
+        "TA": "TBDY 2018 Denk. (2.3): T_A = 0,2·S_D1/S_DS, T_B = S_D1/S_DS; md. 2.3.4.1: T_L = 6 s",
+        "TB": "TBDY 2018 Denk. (2.3): T_B = S_D1/S_DS", "TL": "TBDY 2018 md. 2.3.4.1: T_L = 6 s",
+        "Sae_Tp": "TBDY 2018 Denk. (2.2) yatay elastik tasarım spektrumu", "spektrum": yv.TBDY_SPEKTRUM["kaynak"],
+        "DTS": yv.TBDY_DTS["kaynak"], "BYS": yv.TBDY_BYS["kaynak"], "HN": "TBDY 2018 md. 3.3.1.3: H_N bina tabanından ölçülür",
+        "I": yv.TBDY_BKS_I["kaynak"], "BKS": yv.TBDY_BKS_I["kaynak"], "R": rd, "D": rd,
+        "n": "TBDY 2018 Tablo 4.3 (md. 4.5.9.2), Denk. (4.16): m_i = (w_G + n·w_Q)/g; çatıda kar yükünün %30'u",
+        "m_t": "TBDY 2018 Denk. (4.16): m_i = (w_G + n·w_Q)/g, m_t = Σ m_i", "W_t": "TBDY 2018 Denk. (4.16): w_i = w_G + n·w_Q",
+        "Ct": yv.TBDY_CT["kaynak"], "TpA": "TBDY 2018 Denk. (4.27): T_pA = C_t·H_N^(3/4); " + yv.TBDY_CT["kaynak"],
+        "Tp": K["Tp"] + "; md. 4.7.3.3: DTS = 3, 4 ve (DTS = 1, 2 ve BYS ≥ 6) binalarda T_p ≅ T_pA alınabilir",
+        "Ra": K["Ra"], "SaR": K["SaR"], "VtE": K["VtE"], "VtE_min": K["VtE"], "dFN": K["dFN"], "F": K["FiE"],
+        "e": K["dismerkezlik"], "Mb": K["dismerkezlik"], "eta_b": K["eta_b"], "D_b": K["eta_b"],
+        "delta": drift, "oran": drift, "sinir": drift, "lambda": K["lambda"],
+        "kappa": "TBDY 2018 md. 4.9.1.3: κ = 1 (betonarme), 0,5 (çelik)",
+        "theta": K["theta"], "theta_sinir": K["theta"], "EZ": K["EdZ"], "EdH": K["EdH"],
+        "uygulanabilir": yv.TBDY_UYGULANABILIRLIK["kaynak"], "catlamis_rijitlik": yv.TBDY_ETKIN_RIJITLIK["kaynak"],
+        "Mo": "TBDY 2018 Denk. (4.25): M_o = Σ F_iE·H_i", "drift_notu": K["drift_notu"],
+    }
+
+
+def _kat_kuvvet_tablosu(kutle, Fx, dFNx, Fy, dFNy):
+    """Kat tablosu satırları: F_i (tepe kata ΔF_NE eklenmiş) ve kat kesmesi V_i = Σ_{j≥i} F_j (iki yön)."""
+    tepe = kutle[-1]["kat"]
+    sat = []
+    for k, fx, fy in zip(kutle, Fx, Fy):
+        sat.append({"kat": k["kat"], "H": k["H"], "kot": k["kot"], "h": k["h"], "w_i": k["w"], "m_i": k["m"],
+                    "G": k["G"], "Q": k["Q"], "S": k["S"], "X": k["X"], "Y": k["Y"], "BX": k["BX"], "BY": k["BY"],
+                    "F_x": fx + (dFNx if k["kat"] == tepe else 0.0), "F_y": fy + (dFNy if k["kat"] == tepe else 0.0)})
+    for yon in ("x", "y"):
+        kum = 0.0
+        for s in reversed(sat):
+            kum += s["F_" + yon]
+            s["V_" + yon] = kum
+    return sat
+
+
 def _deprem_son(B, ag, dep, paket, durumlar):
     """Birim durumlardan E durumlarını kurar (paket.durum'a EX+, EX-, EY+, EY-, EZ eklenir; durumlar'a yük kayıtları),
     T_p (Rayleigh / ampirik), V_tE, F_iE, η_bi ve D_bi, göreli kat ötelemesi ve θ_II tablolarını hesaplar."""
@@ -2665,15 +2843,13 @@ def _deprem_son(B, ag, dep, paket, durumlar):
     g = dep["g"]
     sp_ = dep["sp"]
     uyarilar = list(dep["uyarilar"])
-    sekil = {}
-    toplam = sum(k["m"] * k["kot"] for k in kutle)
-    for k in kutle:
-        sekil[k["kat"]] = k["m"] * k["kot"] / toplam
+    toplam = sum(k["m"] * k["H"] for k in kutle)
+    sekil = {k["kat"]: k["m"] * k["H"] / toplam for k in kutle}
+    tepe = kutle[-1]["kat"]
     yonler = {}
-    katlar = {k["kat"]: {"kat": k["kat"], "H": k["kot"], "h": k["h"], "w_i": k["w"], "m_i": k["m"]} for k in kutle}
     for yon in ("X", "Y"):
         R, N, T, TN = (paket.durum["R" + yon], paket.durum["N" + yon], paket.durum["T" + yon], paket.durum["TN" + yon])
-        # Rayleigh (Denk. 4.26): kurgusal yük F_fi = s_i (Σ = 1 kN) → d_fi
+        # Rayleigh (Denk. 4.26): kurgusal yük F_fi = s_i (Σ = 1 kN) → d_fi (kütle merkezinde / efendi düğümde)
         dR = _kat_d(ag, paket, R, yon, kutle)
         pay = sum(k["m"] * dR[k["kat"]] ** 2 for k in kutle)
         payda = sum(sekil[k["kat"]] * dR[k["kat"]] for k in kutle)
@@ -2689,134 +2865,168 @@ def _deprem_son(B, ag, dep, paket, durumlar):
         Tp_d = dep["TpA"] if yontem == "ampirik" else Tp_ray
         Vd = dep["mt"] * dep["SaR"](Tp_d) * g
         olcek = Vd / Vk if Vk > 1e-12 else 1.0
-        # dışmerkezlik: e_i = ±0,05·B_i (deprem doğrultusuna dik kat boyutu); birim burulma durumu kuvvet ağırlıklı e ile
+        # dışmerkezlik: e_i = ±0,05·B_i (deprem doğrultusuna dik kat boyutu); birim burulma durumu B_i'yi zaten içerir
         Bdik = {k["kat"]: (k["BY"] if yon == "X" else k["BX"]) for k in kutle}
-        e = sum(Fi * d["dismerkezlik"] * Bdik[k["kat"]] for Fi, k in zip(F, kutle)) / sum(F) if sum(F) > 1e-12 else 0.0
+        e_oran = d["dismerkezlik"]
         E0 = {a: (Vk - dFN) * R[a] + dFN * N[a] for a in R}
         Tb = {a: (Vk - dFN) * T[a] + dFN * TN[a] for a in T}
 
         def ek_kur(Db):
-            return ({a: E0[a] + e * Db * Tb[a] for a in E0}, {a: E0[a] - e * Db * Tb[a] for a in E0})
+            return ({a: E0[a] + e_oran * Db * Tb[a] for a in E0}, {a: E0[a] - e_oran * Db * Tb[a] for a in E0})
+
+        def eta_hesap(Ep, Em):
+            out = {}
+            for kat in range(1, B.nk + 1):
+                dp, dm = _delta_katlar(B, ag, paket, Ep, yon)[kat], _delta_katlar(B, ag, paket, Em, yon)[kat]
+                out[kat] = max(dp["max"] / dp["ort"] if dp["ort"] > 1e-15 else 1.0, dm["max"] / dm["ort"] if dm["ort"] > 1e-15 else 1.0)
+            return out
 
         Db = 1.0
         Ep, Em = ek_kur(Db)
-        eta = {}
-        for kat in range(1, B.nk + 1):
-            dp, dm = _delta_katlar(B, ag, paket, Ep, yon)[kat], _delta_katlar(B, ag, paket, Em, yon)[kat]
-            eta[kat] = max(dp["max"] / dp["ort"] if dp["ort"] > 1e-15 else 1.0, dm["max"] / dm["ort"] if dm["ort"] > 1e-15 else 1.0)
+        eta = eta_hesap(Ep, Em)
         eta_max = max(eta.values()) if eta else 1.0
-        if eta_max > 1.2:
-            Db = (eta_max / 1.2) ** 2
-            uyarilar.append(f"{yon} yönü: η_bi,max = {eta_max:.3f} > 1,2 → A1 burulma düzensizliği; ±%5 dışmerkezlik "
-                            f"D_bi = (η_bi/1,2)² = {Db:.3f} ile büyütüldü (Denk. 4.29).")
+        if eta_max > 1.2 and e_oran > 0:
+            Db = min((eta_max / 1.2) ** 2, (2.0 / 1.2) ** 2)
+            uyarilar.append(f"{yon} yönü: η_bi,max = {eta_max:.3f} > 1,2 → A1 burulma düzensizliği; ±%{_f(100 * e_oran, 1)} dışmerkezlik "
+                            f"D_bi = (η_bi/1,2)² = {Db:.3f} ile büyütüldü (Denk. 4.29; η_bi ilk hesaptan, yinelenmedi).")
             Ep, Em = ek_kur(Db)
-            for kat in range(1, B.nk + 1):
-                dp, dm = _delta_katlar(B, ag, paket, Ep, yon)[kat], _delta_katlar(B, ag, paket, Em, yon)[kat]
-                eta[kat] = max(dp["max"] / dp["ort"] if dp["ort"] > 1e-15 else 1.0, dm["max"] / dm["ort"] if dm["ort"] > 1e-15 else 1.0)
-            eta_max = max(eta.values())
         if eta_max > 2.0:
             uyarilar.append(f"{yon} yönü: η_bi,max = {eta_max:.2f} > 2,0; eşdeğer deprem yükü yöntemi uygulanamaz (Tablo 4.4), "
                             "mod birleştirme gerekir.")
         paket.durum[f"E{yon}+"], paket.durum[f"E{yon}-"] = Ep, Em
-        durumlar[f"E{yon}+"] = _yuk_kayit_birlesim(durumlar, {"R" + yon: Vk - dFN, "N" + yon: dFN, "T" + yon: e * Db * (Vk - dFN), "TN" + yon: e * Db * dFN})
-        durumlar[f"E{yon}-"] = _yuk_kayit_birlesim(durumlar, {"R" + yon: Vk - dFN, "N" + yon: dFN, "T" + yon: -e * Db * (Vk - dFN), "TN" + yon: -e * Db * dFN})
-        # kat tablosu: kuvvet, kesme, yer değiştirme, drift, θ_II
+        for isaret, ad in ((1.0, f"E{yon}+"), (-1.0, f"E{yon}-")):
+            durumlar[ad] = _yuk_kayit_birlesim(durumlar, {"R" + yon: Vk - dFN, "N" + yon: dFN,
+                                                          "T" + yon: isaret * e_oran * Db * (Vk - dFN), "TN" + yon: isaret * e_oran * Db * dFN})
         dE = _kat_d(ag, paket, E0, yon, kutle)
-        lam = 1.0
-        if dep["sp3"] is not None:
-            lam = dep["sp3"]["Sae"](Tp) / sp_["Sae"](Tp)
+        lam = dep["sp3"]["Sae"](Tp) / sp_["Sae"](Tp) if dep["sp3"] is not None else 1.0
         sinir = dep["sinir_oran"]
-        tek_katli_celik = B.sistem == "celik" and B.nk == 1 and "mcm" in d["tasiyici"]
-        if tek_katli_celik:
+        if B.sistem == "celik" and B.nk == 1 and d["tasiyici_kod"] in ("C11", "C31"):   # md. 4.9.1.5
             sinir *= 1.5
-        Vi = {}
-        for k in kutle:
-            Vi[k["kat"]] = sum(Fj for Fj, kj in zip(F, kutle) if kj["kat"] >= k["kat"]) + dFN
-        w_ust = {k["kat"]: sum(kj["w"] for kj in kutle if kj["kat"] >= k["kat"]) for k in kutle}
-        theta_sinir = 0.12 * dep["D"] / (dep["Ch"] * dep["R"])
+            not_ = (f"Tek katlı çelik moment çerçeve: göreli kat ötelemesi sınırı md. 4.9.1.5'in izin verdiği en çok %50 "
+                    f"artırımla {_f(sinir, 4)} alındı.")
+            if not_ not in uyarilar:
+                uyarilar.append(not_)
+        yonler[yon] = {"Tp": Tp, "Tp_rayleigh": Tp_ray, "Tp_rayleigh_sinirli": Tp_ray_sinirli, "Tp_yontem": yontem,
+                       "Sae_Tp": sp_["Sae"](Tp), "Ra": dep["Ra"](Tp), "SaR": dep["SaR"](Tp), "VtE": Vk, "VtE_hesap": V, "VtE_min": Vmin,
+                       "alt_sinir_etkin": alt_sinir_etkin, "dFN": dFN, "F": list(F), "e_oran": e_oran, "B_dik": Bdik, "D_b": Db,
+                       "eta": eta, "eta_max": eta_max, "lambda": lam, "sinir": sinir, "olcek_drift": olcek, "Tp_drift": Tp_d,
+                       "V_drift": Vd, "Ep": Ep, "Em": Em, "dE": dE,
+                       "rayleigh": [{"kat": k["kat"], "m": k["m"], "F_f": sekil[k["kat"]], "d_f": dR[k["kat"]]} for k in kutle],
+                       "Mo": sum(Fi * k["H"] for Fi, k in zip(F, kutle)) + dFN * kutle[-1]["H"]}
+    X, Yy = yonler["X"], yonler["Y"]
+    katlar = _kat_kuvvet_tablosu(kutle, X["F"], X["dFN"], Yy["F"], Yy["dFN"])
+    theta_sinir = 0.12 * dep["D"] / (dep["Ch"] * dep["R"])
+    w_ust = {k["kat"]: sum(kj["w"] for kj in kutle if kj["kat"] >= k["kat"]) for k in kutle}
+    for yon, v in (("X", X), ("Y", Yy)):
+        y = yon.lower()
         theta_max = 0.0
-        for Fi, k in zip(F, kutle):
-            kat = k["kat"]
-            dp, dm = _delta_katlar(B, ag, paket, Ep, yon)[kat], _delta_katlar(B, ag, paket, Em, yon)[kat]
-            D_max = max(dp["max"], dm["max"]) * olcek
-            D_ort = max(dp["ort"], dm["ort"])
+        for s in katlar:
+            kat = s["kat"]
+            dp = _delta_katlar(B, ag, paket, v["Ep"], yon)[kat]
+            dm = _delta_katlar(B, ag, paket, v["Em"], yon)[kat]
+            D_max = max(dp["max"], dm["max"]) * v["olcek_drift"]       # Δ_i,max (drift spektrumu, alt sınırsız)
+            D_ort = max(dp["ort"], dm["ort"])                         # θ_II için (Δ_i)ort, V_i ile aynı yükleme
             delta = dep["R"] / dep["I"] * D_max
-            oran = lam * delta / k["h"]
-            theta = D_ort * w_ust[kat] / (Vi[kat] * k["h"]) if Vi[kat] > 1e-12 else 0.0
+            oran = v["lambda"] * delta / s["h"]
+            Vi = s["V_" + y]
+            theta = D_ort * w_ust[kat] / (Vi * s["h"]) if Vi > 1e-12 else 0.0
             theta_max = max(theta_max, theta)
-            kk = katlar[kat]
-            kk.update({f"F_{yon.lower()}": Fi + (dFN if kat == kutle[-1]["kat"] else 0.0), f"V_{yon.lower()}": Vi[kat],
-                       f"d_{yon.lower()}": dE[kat], f"delta_{yon.lower()}": D_max, f"delta_ort_{yon.lower()}": D_ort,
-                       f"delta_etkin_{yon.lower()}": delta, f"oran_{yon.lower()}": oran, f"eta_b{yon.lower()}": eta[kat],
-                       f"theta_{yon.lower()}": theta, f"uygun_{yon.lower()}": oran <= sinir + 1e-12,
-                       f"dugum_{yon.lower()}": dp["dugum_max"] if dp["max"] >= dm["max"] else dm["dugum_max"]})
+            e_i = v["e_oran"] * v["D_b"] * v["B_dik"][kat]
+            s.update({f"d_{y}": v["dE"][kat], f"delta_{y}": D_max, f"delta_ort_{y}": D_ort, f"delta_etkin_{y}": delta,
+                      f"oran_{y}": oran, f"eta_b{y}": v["eta"][kat], f"theta_{y}": theta, f"uygun_{y}": oran <= v["sinir"] + 1e-12,
+                      f"e_{y}": e_i, f"Mb_{y}": s["F_" + y] * e_i, f"B_dik_{y}": v["B_dik"][kat],
+                      f"dugum_{y}": dp["dugum_max"] if dp["max"] >= dm["max"] else dm["dugum_max"]})
+        v["theta_max"] = theta_max
+        v["theta_sinir"] = theta_sinir
         if theta_max > theta_sinir:
             beta = max(1.0, 0.88 + dep["Ch"] * dep["R"] / dep["D"] * theta_max)
             uyarilar.append(f"{yon} yönü: θ_II,max = {theta_max:.4f} > 0,12·D/(C_h·R) = {theta_sinir:.4f}; ikinci mertebe etkileri "
                             f"önemli, iç kuvvetler β_II = {beta:.3f} ile büyütülmeli (Denk. 4.37; bu çözümde uygulanmadı).")
-        kotu = [kat for kat in katlar if not katlar[kat].get(f"uygun_{yon.lower()}", True)]
+        kotu = [s["kat"] for s in katlar if not s[f"uygun_{y}"]]
         if kotu:
-            uyarilar.append(f"{yon} yönü: göreli kat ötelemesi sınırı ({_f(sinir, 4)}) aşıldı — kat(lar) {kotu}; rijitlik artırılıp "
+            uyarilar.append(f"{yon} yönü: göreli kat ötelemesi sınırı ({_f(v['sinir'], 4)}) aşıldı — kat(lar) {kotu}; rijitlik artırılıp "
                             "hesap yinelenmeli (md. 4.9.1.6).")
-        yonler[yon] = {"Tp": Tp, "Tp_rayleigh": Tp_ray, "Tp_rayleigh_sinirli": Tp_ray_sinirli, "Tp_yontem": yontem, "Sae_Tp": sp_["Sae"](Tp),
-                       "Ra": dep["Ra"](Tp), "SaR": dep["SaR"](Tp), "VtE": Vk, "VtE_hesap": V, "VtE_min": Vmin, "alt_sinir_etkin": alt_sinir_etkin,
-                       "dFN": dFN, "F": list(F), "e": e, "e_oran": d["dismerkezlik"], "B_dik": Bdik, "D_b": Db, "eta_max": eta_max,
-                       "lambda": lam, "sinir": sinir, "olcek_drift": olcek, "Tp_drift": Tp_d, "V_drift": Vd, "theta_max": theta_max,
-                       "theta_sinir": theta_sinir, "Mo": sum(Fi * k["kot"] for Fi, k in zip(F, kutle)) + dFN * kutle[-1]["kot"]}
-    # düşey deprem: E_d(Z) ≈ (2/3)·S_DS·G
+    for s in katlar:
+        s["sinir"] = X["sinir"]
+        s["uygun"] = bool(s["uygun_x"] and s["uygun_y"])
+    # düşey deprem: E_d(Z) ≈ (2/3)·S_DS·G (Denk. 4.10)
     kz = 2.0 / 3.0 * sp_["SDS"]
     paket.durum["EZ"] = {a: kz * paket.durum["G"][a] for a in paket.durum["G"]}
     durumlar["EZ"] = _yuk_kayit_birlesim(durumlar, {"G": kz})
-    uygulanabilir = dep["uygulanabilir"] and max(y["eta_max"] for y in yonler.values()) <= 2.0
-    X = yonler["X"]
-    for kat in katlar.values():
-        kat["sinir"] = X["sinir"]
-        kat["uygun"] = bool(kat.get("uygun_x", True) and kat.get("uygun_y", True))
+    eta_tum = max(X["eta_max"], Yy["eta_max"])
+    uygulanabilir = dep["uygulanabilir"] and eta_tum <= 2.0
+    yon_ozet = {}
+    for yon, v in (("X", X), ("Y", Yy)):
+        yon_ozet[yon] = {a: v[a] for a in ("Tp", "Tp_rayleigh", "Tp_rayleigh_sinirli", "Tp_yontem", "Sae_Tp", "Ra", "SaR", "VtE",
+                                           "VtE_hesap", "VtE_min", "alt_sinir_etkin", "dFN", "e_oran", "D_b", "eta_max", "lambda",
+                                           "sinir", "olcek_drift", "Tp_drift", "V_drift", "theta_max", "theta_sinir", "Mo", "rayleigh")}
+    sp3 = dep["sp3"]
     return {"FS": sp_["FS"], "F1": sp_["F1"], "SDS": sp_["SDS"], "SD1": sp_["SD1"], "TA": sp_["TA"], "TB": sp_["TB"], "TL": sp_["TL"],
             "DTS": dep["DTS"], "BYS": dep["BYS"], "I": dep["I"], "R": dep["R"], "D": dep["D"], "n": d["n"], "n_oneri": d["n_oneri"],
             "HN": dep["HN"], "Ct": d["Ct"], "TpA": dep["TpA"], "Tp": X["Tp"], "Tp_yontem": X["Tp_yontem"], "Tp_rayleigh": X["Tp_rayleigh"],
             "Sae_Tp": X["Sae_Tp"], "Ra": X["Ra"], "SaR": X["SaR"], "VtE": X["VtE"], "VtE_min": X["VtE_min"], "dFN": X["dFN"],
-            "mt": dep["mt"], "wt": dep["wt"], "N": dep["N"], "EZ_katsayi": kz, "kappa": dep["kappa"], "Ch": dep["Ch"], "lambda": X["lambda"],
-            "sinir_oran": X["sinir"], "dolgu": d["dolgu"], "e_oran": d["dismerkezlik"], "diyafram": "rijit" if ag["efendi"] else "esnek",
-            "diyafram_istek": d["diyafram"], "catlamis_rijitlik": B.analiz["catlamis_rijitlik"], "zemin_sinifi": d["zemin_sinifi"],
-            "SS": d["SS"], "S1": d["S1"], "BKS": d["BKS"], "tasiyici": d["tasiyici"], "tasiyici_kod": d["tasiyici_kod"],
-            "tasiyici_tanim": d["tasiyici_tanim"], "SS_DD3": d["SS_DD3"], "S1_DD3": d["S1_DD3"],
-            "X": yonler["X"], "Y": yonler["Y"], "katlar": [katlar[k] for k in sorted(katlar)],
-            "spektrum": _spektrum_noktalari(dep, X["Tp"]), "uyarilar": uyarilar, "uygulanabilir": uygulanabilir,
-            "ampirik_yeter": dep["ampirik_yeter"],
-            "kaynaklar": {"spektrum": yv.TBDY_SPEKTRUM["kaynak"], "FS": yv.TBDY_FS["kaynak"], "F1": yv.TBDY_F1["kaynak"], "I": yv.TBDY_BKS_I["kaynak"],
-                          "DTS": yv.TBDY_DTS["kaynak"], "BYS": yv.TBDY_BYS["kaynak"], "RD": yv.TBDY_TASIYICI[d["tasiyici"]]["kaynak"],
-                          "Ct": yv.TBDY_CT["kaynak"], "n": yv.TBDY_KUTLE_KATILIM_KULLANIM["kaynak"], "kurallar": yv.TBDY_DEPREM_KURALLAR}}
+            "m_t": dep["mt"], "W_t": dep["wt"], "N": dep["N"], "EZ_katsayi": kz, "kappa": dep["kappa"], "Ch": dep["Ch"],
+            "lambda": X["lambda"], "theta_sinir": theta_sinir, "sinir_oran": X["sinir"], "dolgu": d["dolgu"], "e_oran": d["dismerkezlik"],
+            "SDS_DD3": sp3["SDS"] if sp3 else None, "SD1_DD3": sp3["SD1"] if sp3 else None,
+            "diyafram": "rijit" if ag["efendi"] else "esnek", "diyafram_istek": d["diyafram"], "catlamis_rijitlik": B.analiz["catlamis_rijitlik"],
+            "zemin_sinifi": d["zemin_sinifi"], "SS": d["SS"], "S1": d["S1"], "BKS": d["BKS"], "tasiyici": d["tasiyici"],
+            "tasiyici_kod": d["tasiyici_kod"], "tasiyici_tanim": d["tasiyici_tanim"], "SS_DD3": d["SS_DD3"], "S1_DD3": d["S1_DD3"],
+            "X": yon_ozet["X"], "Y": yon_ozet["Y"], "katlar": katlar, "spektrum": _spektrum_noktalari(dep, X["Tp"]),
+            "uyarilar": uyarilar, "uygulanabilir": uygulanabilir, "uygulanabilirlik": dep["uygulanabilirlik"], "ampirik_yeter": dep["ampirik_yeter"],
+            "kaynaklar": _deprem_kaynaklari(d), "tahmin": False}
 
 
 def _deprem_ozet(B, Y, dep, Tp=None):
-    """Çözümsüz önizleme (köprü bina_deprem): spektrum, sınıflar, T_pA, V_tE ve F_iE (ampirik periyotla)."""
+    """Çözümsüz önizleme (köprü bina_deprem): spektrum, sınıflar, T_pA, V_tE, F_iE ve V_i (ampirik periyotla; iki yönde aynı).
+    Şekli veri.deprem ile aynıdır; çözüm gerektiren alanlar (d, δ, η_bi, θ_II) yoktur, ``tahmin: True``."""
     Tp = dep["TpA"] if Tp is None else Tp
     V, Vmin, Vk, dFN, F = _taban_kesme(dep, Tp)
     sp_ = dep["sp"]
+    sp3 = dep["sp3"]
     d = B.deprem
+    lam = sp3["Sae"](Tp) / sp_["Sae"](Tp) if sp3 is not None else 1.0
+    katlar = _kat_kuvvet_tablosu(dep["kutle"], F, dFN, F, dFN)
+    for s in katlar:
+        s["sinir"] = dep["sinir_oran"]
+        for y in ("x", "y"):
+            B_dik = s["BY"] if y == "x" else s["BX"]
+            s[f"e_{y}"] = d["dismerkezlik"] * B_dik
+            s[f"Mb_{y}"] = s["F_" + y] * s[f"e_{y}"]
     return {"FS": sp_["FS"], "F1": sp_["F1"], "SDS": sp_["SDS"], "SD1": sp_["SD1"], "TA": sp_["TA"], "TB": sp_["TB"], "TL": sp_["TL"],
-            "DTS": dep["DTS"], "BYS": dep["BYS"], "I": dep["I"], "R": dep["R"], "D": dep["D"], "n": d["n"], "HN": dep["HN"], "Ct": d["Ct"],
-            "TpA": dep["TpA"], "Tp": Tp, "Tp_yontem": "ampirik", "Sae_Tp": sp_["Sae"](Tp), "Ra": dep["Ra"](Tp), "SaR": dep["SaR"](Tp),
-            "VtE": Vk, "VtE_hesap": V, "VtE_min": Vmin, "dFN": dFN, "mt": dep["mt"], "wt": dep["wt"], "N": dep["N"],
-            "katlar": [{"kat": k["kat"], "H": k["kot"], "h": k["h"], "w_i": k["w"], "m_i": k["m"], "G": k["G"], "Q": k["Q"], "S": k["S"],
-                        "X": k["X"], "Y": k["Y"], "F_x": Fi + (dFN if k["kat"] == dep["kutle"][-1]["kat"] else 0.0),
-                        "F_y": Fi + (dFN if k["kat"] == dep["kutle"][-1]["kat"] else 0.0)} for Fi, k in zip(F, dep["kutle"])],
-            "spektrum": _spektrum_noktalari(dep, Tp), "uyarilar": list(dep["uyarilar"]), "uygulanabilir": dep["uygulanabilir"],
-            "tasiyici_kod": d["tasiyici_kod"], "tasiyici_tanim": d["tasiyici_tanim"], "zemin_sinifi": d["zemin_sinifi"],
-            "SS": d["SS"], "S1": d["S1"], "BKS": d["BKS"], "kappa": dep["kappa"], "sinir_oran": dep["sinir_oran"]}
+            "DTS": dep["DTS"], "BYS": dep["BYS"], "I": dep["I"], "R": dep["R"], "D": dep["D"], "n": d["n"], "n_oneri": d["n_oneri"],
+            "HN": dep["HN"], "Ct": d["Ct"], "TpA": dep["TpA"], "Tp": Tp, "Tp_yontem": "ampirik (önizleme)", "Sae_Tp": sp_["Sae"](Tp),
+            "Ra": dep["Ra"](Tp), "SaR": dep["SaR"](Tp), "VtE": Vk, "VtE_hesap": V, "VtE_min": Vmin, "dFN": dFN,
+            "m_t": dep["mt"], "W_t": dep["wt"], "N": dep["N"], "EZ_katsayi": 2.0 / 3.0 * sp_["SDS"], "kappa": dep["kappa"], "Ch": dep["Ch"],
+            "lambda": lam, "theta_sinir": 0.12 * dep["D"] / (dep["Ch"] * dep["R"]), "sinir_oran": dep["sinir_oran"],
+            "SDS_DD3": sp3["SDS"] if sp3 else None, "SD1_DD3": sp3["SD1"] if sp3 else None, "dolgu": d["dolgu"], "e_oran": d["dismerkezlik"],
+            "zemin_sinifi": d["zemin_sinifi"], "SS": d["SS"], "S1": d["S1"], "BKS": d["BKS"], "tasiyici": d["tasiyici"],
+            "tasiyici_kod": d["tasiyici_kod"], "tasiyici_tanim": d["tasiyici_tanim"], "SS_DD3": d["SS_DD3"], "S1_DD3": d["S1_DD3"],
+            "katlar": katlar, "spektrum": _spektrum_noktalari(dep, Tp), "uyarilar": list(dep["uyarilar"]),
+            "uygulanabilir": dep["uygulanabilir"], "uygulanabilirlik": dep["uygulanabilirlik"], "ampirik_yeter": dep["ampirik_yeter"],
+            "kaynaklar": _deprem_kaynaklari(d), "tahmin": True}
 
 
 def deprem_onizleme(bina):
-    """Köprü ``bina_deprem``: çözüm yapmadan spektrum, sınıflar, kat ağırlıkları, V_tE ve F_iE (ampirik T_pA ile)."""
+    """Köprü ``bina_deprem``: çözüm yapmadan spektrum, sınıflar, kat ağırlıkları, V_tE, F_iE ve V_i (ampirik T_pA ile).
+    Deprem yük durumu kapalı olsa da deprem kartı varsa hesaplanır (arayüz girdileri canlı önizler)."""
+    if isinstance(bina, str):
+        try:
+            bina = json.loads(bina)
+        except ValueError as e:
+            raise MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
+    if not isinstance(bina, dict):
+        raise MatrisHatasi("Bina bir sözlük (ya da JSON metni) olmalı.")
+    if not isinstance(bina.get("deprem"), dict) or not bina["deprem"]:
+        raise MatrisHatasi("Deprem önizlemesi için 'deprem' kartı gerekli: {\"SS\": 1.0, \"S1\": 0.3, \"zemin_sinifi\": \"ZC\", ...}.")
+    bina = dict(bina, deprem=dict(bina["deprem"], etkin=True))
     B = _bina_oku(bina)
-    if not B.deprem:
-        raise MatrisHatasi("Deprem önizlemesi için deprem kartı ve yuk_durumlari.E.acik (ya da deprem.etkin) gerekli.")
     Y = _yukleri_hazirla(B)
     kutle = _kat_kutleleri(B, Y, n=B.deprem["n"], kar_payi=yv.TBDY_KUTLE_KATILIM_KULLANIM["kar"] if B.kar else 0.0)
+    if not kutle or sum(k["m"] * k["H"] for k in kutle) <= 0:
+        raise MatrisHatasi("Deprem önizlemesi için katlarda kütle yok: döşeme, kiriş ya da kolon ekleyin.")
     dep = _deprem_on(B, Y, kutle)
     veri = _deprem_ozet(B, Y, dep)
-    veri["uyarilar"] = list(B.uyarilar) + veri["uyarilar"]
+    veri["uyarilar"] = list(dict.fromkeys(list(B.uyarilar) + veri["uyarilar"]))
     return _sonlu(veri)
 
 
@@ -2885,11 +3095,34 @@ def _sema_kat_kuvvetleri(deprem):
 # ============================================================================
 # Anlatım: yük durumları (6), deprem (7), kombinasyonlar (10), denge (11)
 # ============================================================================
+def _ara_deger_metni(tablo, zemin, deger, ad, girdi_ad):
+    """Tablo 2.1 / 2.2 okuması: hangi sütunlar, doğrusal ara değer (md. 2.3.3.1)."""
+    x = tablo["SS"] if "SS" in tablo else tablo["S1"]
+    y = tablo[zemin]
+    v = float(deger)
+    if v <= x[0] + 1e-12:
+        return f"{girdi_ad} = {_f(v, 3)} ≤ {_f(x[0])} → ilk sütun, {ad} = {_f(y[0], 3)}"
+    if v >= x[-1] - 1e-12:
+        return f"{girdi_ad} = {_f(v, 3)} ≥ {_f(x[-1])} → son sütun, {ad} = {_f(y[-1], 3)}"
+    for i in range(len(x) - 1):
+        if abs(v - x[i]) < 1e-12:
+            return f"{girdi_ad} = {_f(v, 3)} sütunu: {ad} = {_f(y[i], 3)}"
+        if x[i] < v < x[i + 1]:
+            t = (v - x[i]) / (x[i + 1] - x[i])
+            return (f"{girdi_ad} = {_f(v, 3)}, {_f(x[i])} ile {_f(x[i + 1])} sütunları arasında doğrusal ara değer: "
+                    f"{ad} = {_f(y[i], 3)} + ({_f(v, 3)} − {_f(x[i])})/({_f(x[i + 1])} − {_f(x[i])})·({_f(y[i + 1], 3)} − {_f(y[i], 3)}) "
+                    f"= {_f(y[i] + t * (y[i + 1] - y[i]), 4)}")
+    return f"{ad} = {_f(y[-1], 3)}"  # pragma: no cover
+
+
 def _adim_6(B, durumlar, Y, ruzgar, anl):
     se._basla(anl, 6, "Yük durumları: G, Q, S, W ve E ayrı ayrı",
-              "SAP2000'deki 'load pattern' gibi her yük türünü ayrı sağ taraf vektörü olarak kuruyoruz. Neden ayrı? Çünkü "
+              "SAP2000'deki 'load pattern' gibi her yük türünü ayrı bir sağ taraf vektörü olarak kuruyoruz. Neden ayrı? Çünkü "
               "kombinasyon katsayıları farklıdır (1,4G + 1,6Q; 0,9G + 1,3W; G + Q + 0,2S + E_d(H) + 0,3E_d(Z)) ve doğrusal "
               "sistemde sonuçlar sonradan toplanabilir; bir kez kurulan K ile bütün sağ taraflar tek çözümde biter.")
+    anl.metin("SAP2000 dilinde: **load pattern** = yükün kendisi (G, Q, S, W+X …), **load case** = bir pattern'in çözümü "
+              "(burada doğrusal statik, tek K), **load combination** = case sonuçlarının katsayılı toplamı (10. adım). "
+              "Deprem için SAP2000'in 'Auto Lateral Load → TBDY 2018' seçeneğinin yaptığını 7. adımda elle yapıyoruz.")
     sat = []
     el_L = {e["no"]: e["L"] for e in B.ag["elemanlar"]}
     for ad, d in durumlar.items():
@@ -2902,10 +3135,18 @@ def _adim_6(B, durumlar, Y, ruzgar, anl):
         topF = -sum(y.get("Fy", 0.0) for y in d["yukler"])
         topX = sum(y.get("Fx", 0.0) for y in d["yukler"])
         topY = -sum(y.get("Fz", 0.0) for y in d["yukler"])
-        anlam = yv.YUK_DURUMU_ADLARI.get(ad) or {"S": "kar"}.get(ad) or ("rüzgâr " + ad[1:] if ad.startswith("W") else
-                                                                        ("düşey deprem (2/3)S_DS·G" if ad == "EZ" else f"deprem {ad[1]} yönü, dışmerkezlik {ad[2:]}"))
-        sat.append([ad, anlam, duzgun, parcali, len(d["yukler"]), _f(topq + topp + topF), _f(topX), _f(topY)])
-    anl.metin(_tablo(["Durum", "Anlam", "Düzgün yayılı", "Parçalı (üçgen/trapez)", "Düğüm yükü", "Σ düşey (kN)", "Σ F_X (kN)", "Σ F_Y (kN)"], sat))
+        topM = sum(y.get("My", 0.0) for y in d["yukler"])
+        if ad in yv.YUK_DURUMU_ADLARI:
+            anlam = yv.YUK_DURUMU_ADLARI[ad]
+        elif ad.startswith("W"):
+            anlam = f"rüzgâr, {ad[1:]} doğrultusu"
+        elif ad == "EZ":
+            anlam = "düşey deprem (2/3)·S_DS·G"
+        else:
+            anlam = f"deprem {ad[1]} yönü, dışmerkezlik {ad[2:]}%5"
+        sat.append([ad, anlam, duzgun, parcali, len(d["yukler"]), _f(topq + topp + topF), _f(topX), _f(topY), _f(topM)])
+    anl.metin(_tablo(["Durum", "Anlam", "Düzgün yayılı", "Parçalı (üçgen/trapez)", "Düğüm yükü", "Σ düşey (kN)", "Σ F_X (kN)",
+                      "Σ F_Y (kN)", "Σ M_Z düğüm (kN·m)"], sat))
     anl.metin("Parçalı kayıt biçimi: `{\"eleman\": no, \"q1\": q(x1), \"q2\": q(x2), \"x1\": 0, \"x2\": L}` (yerel y′, aşağı negatif); "
               "aynı elemana gelen kayıtlar üst üste toplanır.")
     if B.kar:
@@ -2914,107 +3155,178 @@ def _adim_6(B, durumlar, Y, ruzgar, anl):
                   f"({k['Sk_kaynak']}); çatı şekil katsayısı μ1 = {_f(k['mu'], 2)} ({k['mu_kaynak']}), C_e = {_f(k['Ce'])}, C_t = {_f(k['Ct'])}.")
         anl.mat(rf"s = \mu_1 C_e C_t S_k = {_f(k['mu'], 2)}\cdot{_f(k['Ce'])}\cdot{_f(k['Ct'])}\cdot{_f(k['Sk'], 2)} = {_f(k['s'], 3)}\ \text{{kN/m}}^2"
                 rf"\quad\Rightarrow\quad \Sigma S = {_f(Y.toplam['S'])}\ \text{{kN (yalnız kat {B.nk} döşemeleri)}}")
+        anl.metin("Kar, çatı döşemesinden kirişlere G ve Q ile aynı 45° kuralıyla gider (aynı üçgen/trapez şekiller, tepe s·l_k/2).")
         anl.uyari("TS 498:2021 çatı şekli için TS EN 1991-1-3'e yönlendirir; μ1 Eurocode Tablo 5.2'dendir (standart metni doğrudan "
                   "görülmedi, ikincil kaynaklar tutarlı). Kar ve rüzgârın birlikte etkisi için md. 12.1 (S/2 + W ya da S + W/2) ayrıca değerlendirilir.")
     if ruzgar:
-        anl.metin(f"**Rüzgâr (W±X, W±Y)** — TS 498:2021 md. 14: hız basıncı q(h) Çizelge 4 basamakları (0–8 m 0,5; 9–20 m 0,8; 21–100 m 1,1; "
-                  f"> 100 m 1,3 kN/m²), kapalı binada rüzgâra dik yüzeyde basınç + emme toplam katsayısı C = {_f(ruzgar['C'])} "
-                  f"({ruzgar['C_kaynak']}). Kat kuvveti F_i = C·q(h_i)·B_cephe·(h_i/2 + h_(i+1)/2), rüzgâr yüzündeki kat düğümlerine "
-                  "aks aralığı payıyla verilir.\n\n"
-                  + _tablo(["Kat", "h (m)", "q (kN/m²)", "Kat payı (m)", "Cephe X-rüzgârı (m)", "F_x (kN)", "Cephe Y-rüzgârı (m)", "F_y (kN)"],
-                           [[k["kat"], _f(k["kot"]), _f(k["q"]), _f(k["h_pay"]), _f(k["cephe_x"]), _f(k["F_x"]), _f(k["cephe_y"]), _f(k["F_y"])]
-                            for k in ruzgar["katlar"]]
-                           + [["Σ", "", "", "", "", _f(ruzgar["toplam_x"]), "", _f(ruzgar["toplam_y"])]]))
+        anl.metin(f"**Rüzgâr (W±X, W±Y)** — TS 498:2021 md. 14: hız basıncı q(z) Çizelge 4 basamakları (0–8 m 0,5; 8–20 m 0,8; 20–100 m 1,1; "
+                  f"> 100 m 1,3 kN/m²; z temel üstünden kat seviyesi), kapalı binada rüzgâra dik yüzeyde basınç + emme toplam katsayısı "
+                  f"C = {_f(ruzgar['C'])} ({ruzgar['C_kaynak']}). Kat kuvveti:")
+        anl.mat(r"W_i = C\,q(z_i)\,A_i,\qquad A_i = B_{cephe}\left(\frac{h_i}{2} + \frac{h_{i+1}}{2}\right)")
+        anl.metin(_tablo(["Kat", "z (m)", "q (kN/m²)", "Kat payı (m)", "B_cephe X-rüzgârı (m)", "A_x (m²)", "F_x (kN)",
+                          "B_cephe Y-rüzgârı (m)", "A_y (m²)", "F_y (kN)"],
+                         [[k["kat"], _f(k["z"]), _f(k["q"]), _f(k["h_pay"]), _f(k["genislik_x"]), _f(k["cephe_x"]), _f(k["F_x"]),
+                           _f(k["genislik_y"]), _f(k["cephe_y"]), _f(k["F_y"])] for k in ruzgar["katlar"]]
+                         + [["Σ", "", "", "", "", "", _f(ruzgar["toplam_x"]), "", "", _f(ruzgar["toplam_y"])]]))
+        anl.metin("Kat kuvveti rüzgârın çarptığı cephedeki kat düğümlerine, düğümün iki komşu aks aralığının yarısı oranında dağıtılır "
+                  "(W+X: batı cephesinden +X yönünde; W−X: doğu cephesinden −X yönünde).")
     if B.deprem:
-        anl.metin("**Deprem (EX±, EY±, EZ)**: eşdeğer deprem yükü kat kuvvetleri bir sonraki adımda türetilir; burada yalnız "
-                  "sağ taraf vektörlerinin toplamları görülür. EX+ / EX−: X yönü kuvvet, kütle merkezinden ±%5 kaydırılmış "
-                  "(ek burulma momenti). EZ: düşey deprem, G durumunun (2/3)·S_DS katı.")
+        anl.metin("**Deprem (EX±, EY±, EZ)**: eşdeğer deprem yükü kat kuvvetleri 7. adımda türetilir. Motor önce birim durumları "
+                  "çözer (kat kuvveti şekli s_i = m_iH_i/Σm_jH_j, tepe kat 1 kN, birim burulma); EX± ve EY± bunların katsayılı "
+                  "toplamıdır: EX+ / EX−: X yönü kat kuvvetleri, kütle merkezinden dik kat boyutunun ±%5'i kadar kaydırılmış "
+                  "(ek burulma momenti). EZ: düşey deprem, G durumunun (2/3)·S_DS katı (Denk. 4.10).")
 
 
 def _adim_7(B, deprem, anl):
     se._basla(anl, 7, "TBDY 2018 eşdeğer deprem yükü",
               "Deprem, binayı kütlesiyle orantılı yatay kuvvetlerle iter. Yönetmelik bunu bir tasarım spektrumundan (zemin ve "
               "harita katsayıları), taşıyıcı sistem davranış katsayısı R ile azaltarak ve kat kütlelerine yükseklikle orantılı "
-              "dağıtarak hesaplar. Sonra dışmerkezlik, burulma düzensizliği ve göreli kat ötelemesi denetlenir.")
+              "dağıtarak hesaplar. Sonra dışmerkezlik, burulma düzensizliği, göreli kat ötelemesi ve ikinci mertebe denetlenir.")
     if not deprem:
         anl.metin("Bu modelde deprem yükü kapalı (`yuk_durumlari.E.acik` ya da `deprem.etkin` = true ile açılır; S_S, S_1 AFAD "
                   "Türkiye Deprem Tehlike Haritası'ndan girilir).")
         return
     d = deprem
-    anl.metin(f"**Girdiler:** S_S = {_f(d['SS'], 3)}, S_1 = {_f(d['S1'], 3)} (DD-2, AFAD TDTH), zemin **{d['zemin_sinifi']}** "
+    X, Yy = d["X"], d["Y"]
+    # 1. spektrum
+    anl.metin(f"**7.1 Girdiler.** S_S = {_f(d['SS'], 3)}, S_1 = {_f(d['S1'], 3)} (DD-2, %10/50 yıl, AFAD TDTH), zemin **{d['zemin_sinifi']}** "
               f"(Tablo 16.1), BKS = {d['BKS']} → I = {_f(d['I'], 2)} (Tablo 3.1), taşıyıcı sistem **{d['tasiyici_kod']}** "
               f"({d['tasiyici_tanim']}) → R = {_f(d['R'])}, D = {_f(d['D'])} (Tablo 4.1), n = {_f(d['n'], 2)} (Tablo 4.3), "
               f"C_t = {_f(d['Ct'], 3)} (Denk. 4.27).")
+    anl.metin("**7.2 Yerel zemin katsayıları** (Tablo 2.1 / 2.2):\n\n"
+              f"- {_ara_deger_metni(yv.TBDY_FS, d['zemin_sinifi'], d['SS'], 'F_S', 'S_S')}\n"
+              f"- {_ara_deger_metni(yv.TBDY_F1, d['zemin_sinifi'], d['S1'], 'F_1', 'S_1')}")
     anl.mat(r"S_{DS} = S_S F_S,\quad S_{D1} = S_1 F_1,\quad T_A = 0{,}2\frac{S_{D1}}{S_{DS}},\quad T_B = \frac{S_{D1}}{S_{DS}},\quad T_L = 6\ \text{s}")
-    anl.metin(f"Tablo 2.1 / 2.2 (doğrusal ara değer): F_S = **{_f(d['FS'], 3)}**, F_1 = **{_f(d['F1'], 3)}** → "
-              f"S_DS = {_f(d['SS'], 3)}·{_f(d['FS'], 3)} = **{_f(d['SDS'], 4)}**, S_D1 = {_f(d['S1'], 3)}·{_f(d['F1'], 3)} = **{_f(d['SD1'], 4)}**; "
-              f"T_A = {_f(d['TA'], 4)} s, T_B = {_f(d['TB'], 4)} s.")
+    anl.metin(f"S_DS = {_f(d['SS'], 3)}·{_f(d['FS'], 3)} = **{_f(d['SDS'], 4)}**, S_D1 = {_f(d['S1'], 3)}·{_f(d['F1'], 3)} = **{_f(d['SD1'], 4)}**; "
+              f"T_A = {_f(d['TA'], 4)} s, T_B = {_f(d['TB'], 4)} s, T_L = {_f(d['TL'], 1)} s.")
     anl.mat(r"S_{ae}(T)=\begin{cases}\left(0{,}4+0{,}6\frac{T}{T_A}\right)S_{DS} & T\le T_A\\ S_{DS} & T_A\le T\le T_B\\ "
             r"\frac{S_{D1}}{T} & T_B\le T\le T_L\\ \frac{S_{D1}T_L}{T^2} & T\ge T_L\end{cases},\qquad "
             r"R_a(T)=\begin{cases}\frac{R}{I} & T>T_B\\ D+\left(\frac{R}{I}-D\right)\frac{T}{T_B} & T\le T_B\end{cases},\qquad S_{aR}=\frac{S_{ae}}{R_a}")
-    anl.metin(f"**Sınıflar:** S_DS = {_f(d['SDS'], 3)} → DTS = **{d['DTS']}** (Tablo 3.2); H_N = {_f(d['HN'])} m → BYS = **{d['BYS']}** (Tablo 3.3). "
-              f"Eşdeğer deprem yükü yöntemi Tablo 4.4'e göre {'**uygulanabilir**' if d['uygulanabilir'] else '**uygulanamaz** (yalnız öğretim)'}.")
-    anl.metin("**Kat ağırlıkları** (Denk. 4.16: w_i = w_G + n·w_Q" + (" + 0,3·S" if B.kar else "") + "; kolon öz ağırlığı üst ve alt kata yarı yarıya):\n\n"
-              + _tablo(["Kat", "H_i (m)", "w_i (kN)", "m_i (kN·s²/m)", "m_i·H_i"],
-                       [[k["kat"], _f(k["H"]), _f(k["w_i"]), _f(k["m_i"], 3), _f(k["m_i"] * k["H"], 2)] for k in d["katlar"]]
-                       + [["Σ", "", _f(d["wt"]), _f(d["mt"], 3), ""]]))
+    Ra = lambda T: d["R"] / d["I"] if T > d["TB"] else d["D"] + (d["R"] / d["I"] - d["D"]) * T / d["TB"]  # noqa: E731
+    kose = [("T = 0", 0.0), ("T = T_A", d["TA"]), ("T = T_B", d["TB"]), ("T = 1 s", 1.0), ("T = T_p", d["Tp"])]
+    sat = []
+    for ad, T in kose:
+        sae = (0.4 + 0.6 * T / d["TA"]) * d["SDS"] if T <= d["TA"] else (d["SDS"] if T <= d["TB"] else (d["SD1"] / T if T <= d["TL"] else d["SD1"] * d["TL"] / T ** 2))
+        sat.append([ad, _f(T, 4), _f(sae, 4), _f(Ra(T), 3), _f(sae / Ra(T), 4)])
+    anl.metin("Spektrumun köşe değerleri (S_ae(T_A) = S_ae(T_B) = S_DS; T = 1 s'de S_ae = S_D1 (T_B ≤ 1 s ise); R_a T_B'de süreklidir):\n\n"
+              + _tablo(["Nokta", "T (s)", "S_ae (g)", "R_a", "S_aR (g)"], sat))
+    # 2. sınıflar ve uygulanabilirlik
+    u = d.get("uygulanabilirlik") or {}
+    anl.metin(f"**7.3 Sınıflar.** S_DS = {_f(d['SDS'], 3)} → DTS = **{d['DTS']}** (Tablo 3.2); H_N = {_f(d['HN'])} m → BYS = **{d['BYS']}** (Tablo 3.3). "
+              f"Tablo 4.4: {u.get('kosul_duzenli', 'düzenli bina')} için BYS ≥ {u.get('esik_duzenli', '–')}, diğer binalar için "
+              f"BYS ≥ {u.get('esik_diger', '–')} → eşdeğer deprem yükü yöntemi "
+              + ("**uygulanabilir**." if d["uygulanabilir"] else "**uygulanamaz** (mod birleştirme gerekir; sonuçlar yalnız öğretim içindir).")
+              + " B2 (yumuşak kat) düzensizliği bu modülde denetlenmez.")
+    # 3. kütleler
+    anl.metin("**7.4 Kat ağırlıkları ve kütleleri** (Denk. 4.16: w_i = w_G + n·w_Q" + (" + 0,3·S (çatı)" if B.kar else "")
+              + "; kolon öz ağırlığı üst ve alt kata yarı yarıya; H_i temel üstünden):\n\n"
+              + _tablo(["Kat", "H_i (m)", "w_i (kN)", "m_i = w_i/g (t)", "m_i·H_i", "Kütle merkezi (X, Y)"],
+                       [[k["kat"], _f(k["H"]), _f(k["w_i"]), _f(k["m_i"], 3), _f(k["m_i"] * k["H"], 2), f"({_f(k['X'])}, {_f(k['Y'])})"] for k in d["katlar"]]
+                       + [["Σ", "", _f(d["W_t"]), _f(d["m_t"], 3), _f(sum(k["m_i"] * k["H"] for k in d["katlar"]), 2), ""]]))
+    # 4. periyot
+    anl.metin("**7.5 Hakim periyot — iki yol.** (a) Ampirik (Denk. 4.27) ve (b) Rayleigh (Denk. 4.26): kat kütle merkezlerine "
+              "kurgusal F_fi ∝ m_i·H_i kuvvetleri (Σ = 1 kN) uygulanıp kat yer değiştirmeleri d_fi bu ağdan çözülür.")
     anl.mat(rf"T_{{pA}} = C_t H_N^{{3/4}} = {_f(d['Ct'], 3)}\cdot{_f(d['HN'])}^{{0{{,}}75}} = {_f(d['TpA'], 4)}\ \text{{s}},\qquad "
             r"T_p = 2\pi\sqrt{\frac{\sum m_i d_{fi}^2}{\sum F_{fi} d_{fi}}}\ \le 1{,}4\,T_{pA}")
-    X, Yy = d["X"], d["Y"]
-    anl.metin(f"Rayleigh (Denk. 4.26; kurgusal F_fi ∝ m_i·H_i ile çözüm): T_p,X = **{_f(X['Tp_rayleigh'], 4)} s**, T_p,Y = **{_f(Yy['Tp_rayleigh'], 4)} s** "
-              f"(üst sınır 1,4·T_pA = {_f(1.4 * d['TpA'], 4)} s). Kullanılan yöntem: **{d['Tp_yontem']}**"
-              + (" (md. 4.7.3.3: bu bina için ampirik periyot doğrudan alınabilir)" if d["ampirik_yeter"] else "")
-              + f" → T_p,X = {_f(X['Tp'], 4)} s, T_p,Y = {_f(Yy['Tp'], 4)} s.")
+    for yon, v in (("X", X), ("Y", Yy)):
+        ray = v["rayleigh"]
+        pay, payda = sum(r["m"] * r["d_f"] ** 2 for r in ray), sum(r["F_f"] * r["d_f"] for r in ray)
+        anl.metin(f"Rayleigh, {yon} yönü:\n\n" + _tablo(["Kat", "m_i (t)", "F_fi (kN)", "d_fi (mm)", "m_i·d_fi² (t·m²)", "F_fi·d_fi (kN·m)"],
+                                                        [[r["kat"], _f(r["m"], 3), _f(r["F_f"], 4), f"{r['d_f'] * 1000:.6f}", f"{r['m'] * r['d_f'] ** 2:.4e}",
+                                                          f"{r['F_f'] * r['d_f']:.4e}"] for r in ray]
+                                                        + [["Σ", "", "1", "", f"{pay:.4e}", f"{payda:.4e}"]])
+                  + f"\n\nT_p,{yon} = 2π·√({pay:.4e}/{payda:.4e}) = **{_f(v['Tp_rayleigh'], 4)} s** (1,4·T_pA = {_f(1.4 * d['TpA'], 4)} s).")
+    anl.metin(f"Kullanılan yöntem: **{d['Tp_yontem']}**"
+              + (" (md. 4.7.3.3: bu binada T_p ≅ T_pA alınabilir; Rayleigh yalnız karşılaştırma)" if d["Tp_yontem"] == "ampirik" else " (≤ 1,4·T_pA ile sınırlı)")
+              + f" → T_p,X = {_f(X['Tp'], 4)} s, T_p,Y = {_f(Yy['Tp'], 4)} s."
+              + (" Çatlamış kesit rijitliği (Tablo 4.2) açık: EI küçüldüğü için Rayleigh periyodu uzar (yaklaşık √(1/0,35…1/0,70) kat)."
+                 if d["catlamis_rijitlik"] else ""))
+    # 5. taban kesme ve kat kuvvetleri
     anl.mat(r"V_{tE} = m_t\,S_{aR}(T_p)\,g \ \ge\ 0{,}04\,m_t\,I\,S_{DS}\,g,\qquad \Delta F_{NE} = 0{,}0075\,N\,V_{tE},\qquad "
             r"F_{iE} = (V_{tE}-\Delta F_{NE})\frac{m_i H_i}{\sum m_j H_j}")
     sat = []
     for yon, v in (("X", X), ("Y", Yy)):
         sat.append([yon, _f(v["Tp"], 4), _f(v["Sae_Tp"], 4), _f(v["Ra"], 3), _f(v["SaR"], 4), _f(v["VtE_hesap"]), _f(v["VtE_min"]),
-                    _f(v["VtE"]) + (" (alt sınır)" if v["alt_sinir_etkin"] else ""), _f(v["dFN"]), _f(v["e"], 3), _f(v["D_b"], 3)])
-    anl.metin(_tablo(["Yön", "T_p (s)", "S_ae(T_p)", "R_a", "S_aR", "m_t·S_aR·g", "0,04·m_t·I·S_DS·g", "V_tE (kN)", "ΔF_N (kN)", "e (m)", "D_bi"], sat))
-    anl.metin("**Kat kuvvetleri ve kesmeleri:**\n\n"
-              + _tablo(["Kat", "F_x (kN)", "V_x (kN)", "F_y (kN)", "V_y (kN)"],
-                       [[k["kat"], _f(k["F_x"]), _f(k["V_x"]), _f(k["F_y"]), _f(k["V_y"])] for k in d["katlar"]]))
-    anl.metin(f"**Dışmerkezlik** (md. 4.5.10.2): kat kuvveti kütle merkezinden deprem doğrultusuna dik kat boyutunun ±%{_f(100 * d['e_oran'], 0)}'i "
-              f"kadar kaydırılır (ek burulma momenti M_ib = F_iE·e; Denk. 4.17). Diyafram: **{d['diyafram']}** "
-              + ("(efendi düğümde kuvvet + moment)" if d["diyafram"] == "rijit" else "(kat düğümlerine kütle payıyla kuvvet; kaydırma kütle momenti ile)")
-              + ". Dört durum: EX+, EX−, EY+, EY−.")
+                    _f(v["VtE"]) + (" (alt sınır)" if v["alt_sinir_etkin"] else ""), _f(v["dFN"]), _f(v["Mo"], 1)])
+    anl.metin("**7.6 Taban kesme kuvveti** (g = 9,81 m/s²):\n\n"
+              + _tablo(["Yön", "T_p (s)", "S_ae(T_p)", "R_a", "S_aR", "m_t·S_aR·g", "0,04·m_t·I·S_DS·g", "V_tE (kN)", "ΔF_NE (kN)", "M_o (kN·m)"], sat))
+    toplam_mh = sum(k["m_i"] * k["H"] for k in d["katlar"])
+    anl.metin("**7.7 Kat kuvvetleri F_iE ve kat kesmeleri V_i** (tepe kata ΔF_NE eklenmiş; V_i = Σ_{j≥i} F_j):\n\n"
+              + _tablo(["Kat", "H_i (m)", "m_i·H_i/Σ", "F_x (kN)", "V_x (kN)", "F_y (kN)", "V_y (kN)"],
+                       [[k["kat"], _f(k["H"]), _f(k["m_i"] * k["H"] / toplam_mh, 4), _f(k["F_x"]), _f(k["V_x"]), _f(k["F_y"]), _f(k["V_y"])] for k in d["katlar"]]
+                       + [["Σ", "", "1", _f(sum(k["F_x"] for k in d["katlar"])), "", _f(sum(k["F_y"] for k in d["katlar"])), ""]])
+              + f"\n\nSağlama: Σ F_iE + ΔF_NE = {_f(sum(k['F_x'] for k in d['katlar']))} kN = V_tE,X = {_f(X['VtE'])} kN ✓")
+    # 6. dışmerkezlik, diyafram
+    anl.metin(f"**7.8 Ek dışmerkezlik ve rijit diyafram** (md. 4.5.10.2, Denk. 4.17): kat kuvveti kütle merkezinden deprem doğrultusuna dik "
+              f"kat boyutunun ±%{_f(100 * d['e_oran'], 1)}'i kadar kaydırılır; kütle merkezinde ek burulma momenti M_ib = F_iE·e_i. "
+              "İşaret: EX+ kuvveti +Y'ye kaydırır → M_Z = −F·e; EY+ kuvveti +X'e kaydırır → M_Z = +F·e (Z yukarı, sağ el).\n\n"
+              + _tablo(["Kat", "B_⊥,x (m)", "e_x (m)", "M_b,x = F_x·e_x (kN·m)", "B_⊥,y (m)", "e_y (m)", "M_b,y (kN·m)"],
+                       [[k["kat"], _f(k["B_dik_x"]), _f(k["e_x"], 3), _f(k["Mb_x"]), _f(k["B_dik_y"]), _f(k["e_y"], 3), _f(k["Mb_y"])] for k in d["katlar"]]))
+    if d["diyafram"] == "rijit":
+        anl.metin("Diyafram **rijit**: her katta kütle merkezinde bir efendi düğüm (9000 + kat) vardır; köle düğümlerin düzlem içi "
+                  "serbestlikleri ona bağlanır (efendi–köle / MPC). Kat kuvveti ve burulma momenti efendi düğüme uygulanır, kütle de "
+                  "orada toplanmış sayılır. Köle yer değiştirmesi efendinin rijit cisim hareketidir (ω × r):")
+        anl.mat(r"u_{X,s} = u_{X,m} - \theta_Z\,(Y_s - Y_m),\qquad u_{Y,s} = u_{Y,m} + \theta_Z\,(X_s - X_m),\qquad \theta_{Z,s} = \theta_{Z,m}")
+    else:
+        anl.metin("Diyafram **esnek**: kat kuvveti kat düğümlerine düğüm kütlesi payıyla, burulma momenti aynı momenti veren (net "
+                  "kuvveti sıfır) bir kuvvet çiftiyle dağıtılır.")
     anl.mat(r"\eta_{bi} = \frac{(\Delta_i)_{max}}{(\Delta_i)_{ort}},\quad (\Delta_i)_{ort} = \tfrac{1}{2}[(\Delta_i)_{max}+(\Delta_i)_{min}];\qquad "
             r"\eta_{bi} > 1{,}2 \Rightarrow D_{bi} = \left(\frac{\eta_{bi}}{1{,}2}\right)^2")
+    anl.metin(f"Burulma düzensizliği katsayısı η_bi,max: X yönü {_f(X['eta_max'], 3)}, Y yönü {_f(Yy['eta_max'], 3)} "
+              f"(D_bi: {_f(X['D_b'], 3)} / {_f(Yy['D_b'], 3)}). Simetrik binada dışmerkezlik olmasa η_bi = 1 olurdu; ±%5 kaydırma "
+              "tek başına η_bi'yi biraz büyütür.")
+    # 7. drift ve θ_II
     anl.mat(r"\Delta_i = u_i - u_{i-1},\qquad \delta_i = \frac{R}{I}\Delta_i,\qquad \lambda\frac{\delta_{i,max}}{h_i} \le "
             + (r"0{,}008\,\kappa" if d["dolgu"] == "bitisik" else r"0{,}016\,\kappa") + rf",\quad \kappa = {_f(d['kappa'], 1)},\ \lambda = {_f(d['lambda'], 3)}"
             r";\qquad \theta_{II,i} = \frac{(\Delta_i)_{ort}\sum_{k\ge i} w_k}{V_i h_i} \le 0{,}12\frac{D}{C_h R}")
+    lam_metin = (f"λ = S_ae(T_p; DD-3)/S_ae(T_p; DD-2) = {_f(d['lambda'], 4)} (DD-3: S_DS = {_f(d['SDS_DD3'], 4)}, S_D1 = {_f(d['SD1_DD3'], 4)})"
+                 if d.get("SDS_DD3") is not None else "λ = 1 (DD-3 spektrumu verilmedi; güvenli taraf)")
+    anl.metin(f"{lam_metin}; sınır {_f(d['sinir_oran'], 4)} ({'gevrek dolgu çerçeveye bitişik' if d['dolgu'] == 'bitisik' else 'esnek derzli dolgu'}); "
+              f"θ_II sınırı 0,12·D/(C_h·R) = {_f(d['theta_sinir'], 4)} (C_h = {_f(d['Ch'], 1)}).")
     sat = []
     for k in d["katlar"]:
         sat.append([k["kat"], _f(k["h"]), f"{k['delta_x'] * 1000:.2f}", f"{k['delta_etkin_x'] * 1000:.1f}", _f(k["oran_x"], 5), _f(k["eta_bx"], 3), _f(k["theta_x"], 4),
                     f"{k['delta_y'] * 1000:.2f}", f"{k['delta_etkin_y'] * 1000:.1f}", _f(k["oran_y"], 5), _f(k["eta_by"], 3), _f(k["theta_y"], 4),
                     _f(k["sinir"], 4), "✓" if k["uygun"] else "✗"])
-    anl.metin("**Göreli kat ötelemesi ve burulma** (Δ: azaltılmış yüklerle en büyük kolon hattı ötelemesi; δ = (R/I)·Δ; drift için "
-              "md. 4.9.1.1 gereği 1,4·T_pA sınırı ve V_tE alt sınırı kaldırılmıştır):\n\n"
+    anl.metin("**7.9 Göreli kat ötelemesi, burulma ve ikinci mertebe** (Δ: azaltılmış yüklerle en büyük kolon hattı ötelemesi; δ = (R/I)·Δ; "
+              "drift için md. 4.9.1.1 gereği 1,4·T_pA sınırı ve V_tE alt sınırı kaldırılmıştır):\n\n"
               + _tablo(["Kat", "h (m)", "Δ_x (mm)", "δ_x (mm)", "λδ_x/h", "η_bx", "θ_x", "Δ_y (mm)", "δ_y (mm)", "λδ_y/h", "η_by", "θ_y", "Sınır", "Uygun"], sat))
-    for u in d["uyarilar"]:
-        anl.uyari(u)
+    anl.metin(f"**7.10 Düşey deprem** (Denk. 4.10): E_d(Z) ≈ (2/3)·S_DS·G = {_f(d['EZ_katsayi'], 4)}·G — EZ durumu G'nin bu katıdır "
+              "(4.11'de +0,3, 4.12'de −0,3 katsayıyla girer).")
+    for u_ in d["uyarilar"]:
+        anl.uyari(u_)
     anl.sema("Spektrum ve kat kuvvetleri", [_sema_spektrum(d), _sema_kat_kuvvetleri(d)])
 
 
 def _adim_10(B, kombinasyonlar, zarf, ag, ozet, anl):
     se._basla(anl, 10, "Kombinasyonlar ve zarf",
-              "Doğrusal sistemde u_komb = Σγ_i u_i; iç kuvvetler de aynı katsayılarla toplanır, yeniden çözüm yapılmaz "
-              "(SAP2000 de 'combo'ları böyle toplar). Rüzgâr dört yön, deprem Denk. (4.9) ile iki doğrultunun ±%30 "
-              "birleştirmesi ve ± dışmerkezlik olarak çoğaltılır. Zarf, her kesitte uygulanan kombinasyonların en büyüğü/en küçüğüdür.")
+              "Doğrusal sistemde u_komb = Σγ_i u_i; iç kuvvetler de aynı katsayılarla toplanır. SAP2000 bir kombinasyonu yeniden "
+              "çözmez, case sonuçlarını toplar; biz de öyle yapıyoruz. Rüzgâr dört yöne, deprem Denk. (4.9)'un iki doğrultu "
+              "birleştirmesine (%100 + %30) ve ± dışmerkezliğe göre çoğaltılır. Zarf, her kesitte kombinasyonların en büyüğü/en küçüğüdür.")
     anl.mat(r"\mathbf{u}_{komb} = \sum_i \gamma_i\,\mathbf{u}_i,\qquad \mathbf{f}_{komb} = \sum_i \gamma_i\,\mathbf{f}_i,\qquad "
             r"E_d^{(H)} = \pm E_d^{(X)} \pm 0{,}3E_d^{(Y)}\ \ \text{ya da}\ \ \pm 0{,}3E_d^{(X)} \pm E_d^{(Y)}")
+    anl.metin("Ad kuralı: katsayılar sırasıyla yazılır, 1 yazılmaz, eksi terimin önüne gelir. Örnek: `G+Q+0.2S+EX++0.3EY++0.3EZ` = "
+              "G + Q + 0,2·S + 1·(EX+) + 0,3·(EY+) + 0,3·EZ; `0.9G+EX-+0.3EY+-0.3EZ`; rüzgâr `G+1.3Q+1.3W+X` = G + 1,3Q + 1,3·(W+X).")
     aileler = {}
     for k in kombinasyonlar:
-        a = aileler.setdefault(k["aile"], {"tur": k["tur"], "kaynak": k["kaynak"], "n": 0, "uygulandi": k["uygulandi"], "neden": k.get("neden")})
-        a["n"] += 1 if k["uygulandi"] else 0
+        a = aileler.setdefault(k["aile"], {"tur": k["tur"], "kaynak": k["kaynak"], "n": 0, "uygulandi": False, "neden": k.get("neden"), "ornek": None})
+        if k["uygulandi"]:
+            a["n"] += 1
+            a["uygulandi"] = True
+            a["ornek"] = a["ornek"] or k["ad"]
     anl.metin(f"Küme: **{yv.KOMBINASYONLAR[B.kombinasyon_kumesi]['ad']}**\n\n"
-              + _tablo(["Kombinasyon (aile)", "Tür", "Kaynak", "Varyant", "Durum"],
-                       [[ad, a["tur"], a["kaynak"], a["n"], "uygulandı ✓" if a["uygulandi"] else f"uygulanmadı: {a['neden']}"] for ad, a in aileler.items()]))
-    n_uyg = sum(1 for k in kombinasyonlar if k["uygulandi"])
-    anl.metin(f"Toplam **{n_uyg} kombinasyon** süperpozisyonla kuruldu; yanıtta yalnız seçilenlerin tam sonucu "
-              f"({', '.join(ozet['gosterilecek'])}) yazılır, ötekiler zarf ve özet tablosunda yaşar; istenen tek kombinasyon "
-              "`bina_kombinasyon` ile sonradan alınır.")
+              + _tablo(["Kombinasyon (aile)", "Tür", "Kaynak", "Varyant", "Örnek ad", "Durum"],
+                       [[ad, a["tur"], a["kaynak"], a["n"], f"`{a['ornek']}`" if a["ornek"] else "–",
+                         "uygulandı ✓" if a["uygulandi"] else f"uygulanmadı: {a['neden']}"] for ad, a in aileler.items()]))
+    if B.kombinasyon_kumesi == "ts500" and B.kar:
+        anl.uyari("TS 500 Denk. (6.3)–(6.6) kar yükünü ayrı bir terim olarak içermez; bu kümede S yalnız TBDY (4.11)'deki 0,2S ile "
+                  "girer. Kar etkili çatılarda kar yükünün hareketli yükle birlikte nasıl katsayılandırılacağını tasarımcı değerlendirmelidir.")
+    n_uyg = sum(1 for k in kombinasyonlar if k["uygulandi"] and k["tur"] != "drift")
+    n_dr = sum(1 for k in kombinasyonlar if k["uygulandi"] and k["tur"] == "drift")
+    anl.metin(f"Toplam **{n_uyg} dayanım/servis kombinasyonu** süperpozisyonla kuruldu"
+              + (f" (ayrıca {n_dr} öteleme denetim birleşimi; zarfa girmez)" if n_dr else "")
+              + f". Yanıtta yalnız seçilenlerin tam sonucu ({', '.join(ozet['gosterilecek'])}) yazılır; ötekiler zarfta ve özet "
+              "tablosunda yaşar, istenen tek kombinasyonun tam dizileri `bina_kombinasyon` ile sonradan alınır.")
     sayac = {}
     for z in zarf["elemanlar"]:
         for ad in z["belirleyen"].values():
@@ -3068,7 +3380,9 @@ def _adim_11(B, Y, akis, kombinasyonlar, ozetler, anl):
 # Ana işlev ve köprü yardımcıları
 # ============================================================================
 def _gosterilecek_sec(B, kombinasyonlar, zarf):
-    """Tam KISA'sı yazılacak kombinasyonlar: kullanıcı listesi ya da (ilk dayanım satırı, G+Q, zarfı en çok belirleyen deprem/rüzgâr)."""
+    """Tam KISA'sı yazılacak kombinasyonlar: kullanıcı listesi (analiz.gosterilecek) ya da yalnız ilk dayanım satırı (1.4G+1.6Q,
+    1.4G …). G+Q servis birleşimi G ve Q durumlarının toplamıdır (arayüz doğrudan toplar); öteki kombinasyonlar (rüzgâr, deprem)
+    zarf ve özet tablosunda yaşar, tam dizileri bina_kombinasyon ile tembel alınır (yanıt boyutu)."""
     uyg = [k for k in kombinasyonlar if k["uygulandi"]]
     adlar = {k["ad"] for k in uyg}
     if B.analiz["gosterilecek"] is not None:
@@ -3081,17 +3395,14 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
     ilk = next((k["ad"] for k in uyg if k["tur"] == "dayanim"), None)
     if ilk:
         sec.append(ilk)
-    if "G+Q" in adlar and "G+Q" not in sec:
-        sec.append("G+Q")
-    sayac = {}
-    for z in zarf["elemanlar"]:
-        for ad in z["belirleyen"].values():
-            sayac[ad] = sayac.get(ad, 0) + 1
-    tur = {k["ad"]: k["tur"] for k in uyg}
-    yanal = sorted((ad for ad in sayac if tur.get(ad) == "deprem" or "W" in ad), key=lambda a: -sayac[a])
-    if yanal:
-        sec.append(yanal[0])
     return sec
+
+
+def _cozum_kimligi(B):
+    """Çözüm kimliği: bina girdisinin (normalize JSON) SHA-1 özeti; aynı bina aynı kimliği verir (köprü önbelleği anahtarı)."""
+    import hashlib
+    metin = json.dumps(B.ham, sort_keys=True, ensure_ascii=False, default=str)
+    return "bina-" + hashlib.sha1(metin.encode("utf-8")).hexdigest()[:16]
 
 
 def bina_coz(bina, *, goster=None, anlat=True):
@@ -3129,6 +3440,15 @@ def bina_coz(bina, *, goster=None, anlat=True):
     komb_kat = {k["ad"]: k["katsayilar"] for k in kombinasyonlar if k["uygulandi"]}
     sonuclar = {ad: paket.kisa(paket.birlesim(komb_kat[ad])) for ad in gosterilecek}
     akis = _akis(B, Y, ag, durumlar_kisa)
+    kimlik = _cozum_kimligi(B)
+    veri = _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol,
+                         deprem=deprem, ruzgar=ruzgar, kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik)
+    if B.analiz["gosterilecek"] is None and veri["sonuclar"] and len(json.dumps(veri, ensure_ascii=False)) > YANIT_BUTCESI:
+        # büyük model: varsayılan tam kombinasyon da yanıta yazılmaz (arayüz bina_kombinasyon ile tembel alır ya da G, Q'dan toplar)
+        veri["sonuclar"], veri["gosterilecek"] = {}, []
+        veri["ozet"]["gosterilen_sayisi"] = 0
+        veri["ozet"]["sonuclar_tembel"] = True
+        gosterilecek = []
     ozet = {"gosterilecek": gosterilecek}
     anl = mo.Anlatim()
     kod = cikti = ""
@@ -3144,21 +3464,21 @@ def bina_coz(bina, *, goster=None, anlat=True):
         _adim_9(B, akis, anl)
         _adim_10(B, kombinasyonlar, zarf, ag, ozet, anl)
         _adim_11(B, Y, akis, kombinasyonlar, ozetler, anl)
-        kod, cikti = _adim_12(B, ag, model, durumlar, Y, anl)
+        kod, cikti = _adim_12(B, ag, model, durumlar, Y, anl, deprem)
     else:
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", kod, cikti)
-    kimlik = f"bina-{abs(hash((B.baslik, ag['sd_sayisi'], len(kombinasyonlar), id(paket)))) % 10 ** 10:010d}"
-    sonuc.veri = _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol,
-                               deprem=deprem, ruzgar=ruzgar, kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik)
+    sonuc.veri = veri
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum)}
     mo.son_anlatim = anl
     anl.goster(goster)
     return sonuc
 
 
-def kombinasyon_kisa(ic, ad):
-    """Köprü ``bina_kombinasyon``: ``bina_coz(...).ic`` paketinden tek kombinasyonun (ya da tek yük durumunun) tam KISA'sı."""
+def kombinasyon_kisa(ic, ad, katsayilar=None):
+    """Köprü ``bina_kombinasyon``: ``bina_coz(...).ic`` paketinden tek kombinasyonun (ya da tek yük durumunun) tam KISA'sı
+    (diyagram dizileri dahil). ``ad`` uygulanan kombinasyonlarda ya da yük durumlarında yoksa ``katsayilar`` ({durum: γ})
+    ile serbest bir birleşim kurulur (yalnız mevcut durumlar)."""
     if not isinstance(ic, dict) or "paket" not in ic:
         raise MatrisHatasi("Önce bina çözülmeli (önbellekte çözüm yok ya da süresi doldu); binayı yeniden çözün.")
     ad = str(ad)
@@ -3167,8 +3487,15 @@ def kombinasyon_kisa(ic, ad):
         kat = ic["kombinasyonlar"][ad]
     elif ad in paket.durum:
         kat = {ad: 1.0}
+    elif isinstance(katsayilar, dict) and katsayilar:
+        kat = {}
+        for d, g in katsayilar.items():
+            if str(d) not in paket.durum:
+                raise MatrisHatasi(f"Kombinasyon {ad!r}: {d!r} yük durumu bu çözümde yok. Mevcut durumlar: {', '.join(paket.durum)}.")
+            kat[str(d)] = _sayi(g, f"Kombinasyon {ad!r}: {d} katsayısı")
     else:
-        raise MatrisHatasi(f"Kombinasyon ya da yük durumu bulunamadı: {ad!r}. Uygulananlar: {', '.join(list(ic['kombinasyonlar'])[:12])}…")
+        raise MatrisHatasi(f"Kombinasyon ya da yük durumu bulunamadı: {ad!r}. Uygulananlardan bazıları: "
+                           f"{', '.join(list(ic['kombinasyonlar'])[:8])}…; ya da katsayilar = {{durum: γ}} verin.")
     return _kisa_veri(paket.kisa(paket.birlesim(kat)), u_dahil=False)
 
 
@@ -3352,9 +3679,24 @@ def kutuphane():
         "kar": {"cizelge3": yv.kopya(yv.TS498_KAR), "mu": yv.kopya(yv.EN1991_KAR_SEKIL), "iller": sorted(yv.TS498_KAR_BOLGE_IL),
                 "il_bolge": {il: yv.kar_bolgesi(il) for il in yv.TS498_KAR_BOLGE_IL}, "il_kaynak": yv.kopya(yv.TS498_KAR_BOLGE_KAYNAK)},
         "ruzgar": yv.kopya(yv.TS498_RUZGAR),
+        "tasiyici_sistemler": tasiyici_sistemler(),
         "dogrulanmamis": yv.dogrulanmamis_kayitlar(),
         "sinirlar": {"aks": EN_FAZLA_AKS, "kat": EN_FAZLA_KAT, "sd": EN_FAZLA_SD},
     }
+
+
+def tasiyici_sistemler(hepsi=False):
+    """Arayüz listesi (TBDY 2018 Tablo 4.1): [{ad, etiket, kod, R, D, BYS_izin, BYS_min, sistem, kaynak, dogrulandi}].
+    ``hepsi=True``: tablonun bütün satırları (varsayılan: yv.TBDY_TASIYICI_ARAYUZ alt kümesi, arayüz sırasıyla)."""
+    adlar = list(yv.TBDY_TASIYICI) if hepsi else list(yv.TBDY_TASIYICI_ARAYUZ)
+    out = []
+    for ad in adlar:
+        t = yv.TBDY_TASIYICI[ad]
+        bys = "–" if t["BYS_min"] is None else (f"= {t['BYS_min']}" if t["BYS_min"] == 8 else f"≥ {t['BYS_min']}")
+        out.append({"ad": ad, "etiket": f"{t['kod']} — {t['tanim']}", "kod": t["kod"], "R": t["R"], "D": t["D"], "BYS_izin": bys,
+                    "BYS_min": t["BYS_min"], "sistem": t["grup"], "suneklik": t["suneklik"], "kaynak": t["kaynak"],
+                    "dogrulandi": t["dogrulandi"]})
+    return out
 
 
 def _izgara_bina(ad, baslik, aciklama, sistem, x_konum, y_konum, kat_h, nkat, kolon, kiris_x, kiris_y, doseme, duvar_dis,
@@ -3372,7 +3714,7 @@ def _izgara_bina(ad, baslik, aciklama, sistem, x_konum, y_konum, kat_h, nkat, ko
          "yuk_durumlari": {"G": {"acik": True}, "Q": {"acik": True}, "S": {"acik": False, "bolge": 3, "rakim": 0, "mu": 0.8},
                            "W": {"acik": False, "C": 1.2}, "E": {"acik": False}},
          "deprem": {"etkin": False, "SS": 1.0, "S1": 0.3, "zemin_sinifi": "ZC", "DD": "DD-2", "BKS": 3,
-                    "tasiyici": "betonarme-cerceve-yuksek" if sistem == "betonarme" else "celik-mcm-yuksek",
+                    "tasiyici": "betonarme-cerceve-yuksek" if sistem == "betonarme" else "celik-cerceve-yuksek",
                     "periyot": "otomatik", "diyafram": "rijit", "dismerkezlik": 0.05, "dolgu": "bitisik"},
          "kombinasyon_kumesi": kombinasyon or ("ts500" if sistem == "betonarme" else "cythye_ydkt"),
          "analiz": {"catlamis_rijitlik": False, "diyagram_nokta": 11}}
@@ -3445,7 +3787,7 @@ BINA_SABLONLARI = {
     "celik-1kat-depo": _izgara_bina(
         "celik-1kat-depo", "Tek katlı çelik depo / atölye (2×1 aks, IPE/HEB)",
         "6 + 6 m × 6 m planlı, 5 m yüksekliğinde çelik çerçeve: HEB 240 kolonlar, IPE 400 ana kirişler (Y), IPE 300 kirişler (X), "
-        "12 cm betonarme döşeme, hafif atölye yükü (5 kN/m²); kombinasyonlar ÇYTHYE YDKT (Dilim 1: 1,4G ve G+Q).",
+        "12 cm betonarme döşeme, hafif atölye yükü (5 kN/m²); kombinasyonlar ÇYTHYE YDKT (deprem/rüzgâr/kar açılırsa TBDY 9.2.5 satırlarıyla).",
         "celik", [0.0, 6.0, 12.0], [0.0, 6.0], 5.0, 1, "HEB240", "IPE300", "IPE400", 0.12, None,
         {"S275": {"kutuphane": "S275"}, "C30": {"kutuphane": "C30/37"}},
         {"HEB240": {"tip": "profil", "profil": "HEB 240", "malzeme": "S275"}, "IPE300": {"tip": "profil", "profil": "IPE 300", "malzeme": "S275"},

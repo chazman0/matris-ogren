@@ -2,7 +2,7 @@
 """Yapı modülü kütüphaneleri (salt veri): malzeme, kesit, TS 498:2021 yükleri, duvar/kaplama takımları, hareketli
 yük azaltması ve yük birleşimleri (TS 500, ÇYTHYE, TBDY 2018).
 
-Bu dosyada hesap yoktur (yalnız tablo okuma yardımcıları: ``zemin_katsayisi``, ``kar_Sk``, ``kar_mu1``, ``ruzgar_q``,
+Bu dosyada hesap yoktur (yalnız tablo okuma yardımcıları: ``zemin_katsayisi``, ``kar_Sk``, ``kar_mu1``, ``ruzgar_q``, ``tasiyici_anahtar``,
 ``kar_bolgesi``); ``yapi.py`` bu tabloları okur. Dilim 2 tabloları: TBDY 2018 (F_S/F_1, I, DTS, BYS, Tablo 4.1 R/D,
 C_t, n, Tablo 4.2/4.4, drift ve θ_II kuralları) ve TS 498:2021 kar (Çizelge 3, Ek 1) / rüzgâr (Çizelge 4, 5). Her kayıt ``kaynak`` (yönetmelik maddesi) ve ``dogrulandi``
 (değer yürürlükteki belgeden okunup çapraz kontrol edildi mi?) taşır. ``dogrulandi: False`` olan kayıtlar
@@ -318,11 +318,13 @@ def azaltma_beta(grup, kat_adedi):
 
 
 # ============================================================================
-# Yük birleşimleri — her satır: ad, katsayılar {durum: γ}, tür, kaynak; Dilim 1 yalnız G ve Q durumlarını üretir,
-# ötekiler listede kalır ve "uygulanabilir" alanı çözümde eldeki durumlara göre doldurulur.
+# Yük birleşimleri — her satır: ad (şablon), katsayılar {durum: γ}, tür, kaynak, gerekli; yapi.py eldeki durumlara göre
+# açar (uygulandi / neden) ve uygulanan her varyanta katsayılardan ad verir (örn. "G+Q+0.2S+EX++0.3EY++0.3EZ").
 # ============================================================================
-def _komb(ad, katsayilar, tur, kaynak, not_=""):
-    return {"ad": ad, "katsayilar": katsayilar, "tur": tur, "kaynak": kaynak, "dogrulandi": True, "not": not_}
+def _komb(ad, katsayilar, tur, kaynak, not_="", gerekli=()):
+    """gerekli: satırın varlık nedeni olan durumlar (yoksa satır uygulanmaz; örn. 6.4'te T, 6.9/6.10'da H, kar satırlarında S).
+    Öteki eksik ikincil terimler (4.11'de 0,2S, 4.12'de H) sıfır alınır ve satır uygulanır."""
+    return {"ad": ad, "katsayilar": katsayilar, "tur": tur, "kaynak": kaynak, "dogrulandi": True, "not": not_, "gerekli": list(gerekli)}
 
 
 _TBDY_411 = "TBDY 2018 md. 4.4.4.1 Denk. (4.11)"
@@ -330,7 +332,8 @@ _TBDY_412 = "TBDY 2018 md. 4.4.4.1 Denk. (4.12)"
 _TBDY_DRIFT = "TBDY 2018 md. 4.9.1: göreli kat ötelemesi Δ_i azaltılmış deprem yükleri altında (Denk. 4.32); düşey yükler yatay ötelemeyi değiştirmez"
 _GKT_E_NOT = "E = Ed(H) + 0,3·Ed(Z) yorumu (TBDY 4.4.4.1 düşey deprem payı GKT'ye de taşındı; 0,6G satırında −0,3)"
 # Yer tutucular (yapi.py çoğaltır): W → W+X, W-X, W+Y, W-Y; EH → ±EX± ± 0,3·EY± ve ±0,3·EX± ± EY± (32 yön/dışmerkezlik);
-# EZ → EZ durumu ((2/3)·S_DS·G); drift satırı → tek doğrultulu EX+, EX-, EY+, EY-; T ve H durumu üretilmez (uygulanmaz).
+# EZ → EZ durumu ((2/3)·S_DS·G); drift satırı → tek doğrultulu EX+, EX-, EY+, EY-; T ve H durumu üretilmez: gerekli ise
+# satır uygulanmaz (6.4, 6.9, 6.10), ikincil ise sıfır alınır (4.12'de H).
 KOMBINASYONLAR = {
     "ts500": {
         "ad": "Betonarme: TS 500 md. 6.2.6 + TBDY 2018 md. 4.4.4",
@@ -338,11 +341,13 @@ KOMBINASYONLAR = {
         "dogrulandi": True,
         "liste": [
             _komb("1.4G+1.6Q", {"G": 1.4, "Q": 1.6}, "dayanim", "TS 500 Denk. (6.3)"),
-            _komb("G+1.2Q+1.2T", {"G": 1.0, "Q": 1.2, "T": 1.2}, "dayanim", "TS 500 Denk. (6.4)", "T: sıcaklık, büzülme, farklı oturma"),
+            _komb("G+1.2Q+1.2T", {"G": 1.0, "Q": 1.2, "T": 1.2}, "dayanim", "TS 500 Denk. (6.4)", "T: sıcaklık, büzülme, farklı oturma",
+                  gerekli=("T",)),
             _komb("G+1.3Q+1.3W", {"G": 1.0, "Q": 1.3, "W": 1.3}, "dayanim", "TS 500 Denk. (6.5)"),
             _komb("0.9G+1.3W", {"G": 0.9, "W": 1.3}, "dayanim", "TS 500 Denk. (6.6)"),
-            _komb("1.4G+1.6Q+1.6H", {"G": 1.4, "Q": 1.6, "H": 1.6}, "dayanim", "TS 500 Denk. (6.9)", "H: yanal toprak itkisi"),
-            _komb("0.9G+1.6H", {"G": 0.9, "H": 1.6}, "dayanim", "TS 500 Denk. (6.10)"),
+            _komb("1.4G+1.6Q+1.6H", {"G": 1.4, "Q": 1.6, "H": 1.6}, "dayanim", "TS 500 Denk. (6.9)", "H: yanal toprak itkisi",
+                  gerekli=("H",)),
+            _komb("0.9G+1.6H", {"G": 0.9, "H": 1.6}, "dayanim", "TS 500 Denk. (6.10)", gerekli=("H",)),
             _komb("G+Q+0.2S+Ed(H)+0.3Ed(Z)", {"G": 1.0, "Q": 1.0, "S": 0.2, "EH": 1.0, "EZ": 0.3}, "deprem", _TBDY_411,
                   "TS 500 (6.7) yerine TBDY; Ed(H) doğrultu birleştirmeli (4.4.2), Ed(Z) düşey deprem (4.4.3)"),
             _komb("0.9G+H+Ed(H)-0.3Ed(Z)", {"G": 0.9, "H": 1.0, "EH": 1.0, "EZ": -0.3}, "deprem", _TBDY_412,
@@ -357,10 +362,13 @@ KOMBINASYONLAR = {
         "dogrulandi": True,
         "liste": [
             _komb("1.4G", {"G": 1.4}, "dayanim", "ÇYTHYE 5.3.1 (1)"),
-            _komb("1.2G+1.6(Qr|S|R)", {"G": 1.2, "S": 1.6}, "dayanim", "ÇYTHYE 5.3.1 (2a)", "Qr çatı hareketli, S kar, R yağmur: en büyüğü"),
+            _komb("1.2G+1.6(Qr|S|R)", {"G": 1.2, "S": 1.6}, "dayanim", "ÇYTHYE 5.3.1 (2a)", "Qr çatı hareketli, S kar, R yağmur: en büyüğü",
+                  gerekli=("S",)),
             _komb("1.2G+1.6Q+0.5(Qr|S|R)", {"G": 1.2, "Q": 1.6, "S": 0.5}, "dayanim", "ÇYTHYE 5.3.1 (2b)"),
-            _komb("1.2G+1.6(Qr|S|R)+(Q|0.8W)", {"G": 1.2, "S": 1.6, "Q": 1.0, "W": 0.8}, "dayanim", "ÇYTHYE 5.3.1 (3)",
-                  "Q ya da 0,8W: elverişsiz olanı"),
+            _komb("1.2G+1.6(Qr|S|R)+Q", {"G": 1.2, "S": 1.6, "Q": 1.0}, "dayanim", "ÇYTHYE 5.3.1 (3), Q seçeneği",
+                  "(Q ya da 0,8W): iki seçenek ayrı satır, zarf elverişsiz olanı seçer", gerekli=("S",)),
+            _komb("1.2G+1.6(Qr|S|R)+0.8W", {"G": 1.2, "S": 1.6, "W": 0.8}, "dayanim", "ÇYTHYE 5.3.1 (3), 0,8W seçeneği",
+                  "(Q ya da 0,8W): iki seçenek ayrı satır, zarf elverişsiz olanı seçer", gerekli=("S",)),
             _komb("1.2G+Q+0.5(Qr|S|R)+1.6W", {"G": 1.2, "Q": 1.0, "S": 0.5, "W": 1.6}, "dayanim", "ÇYTHYE 5.3.1 (4)",
                   "rüzgâr katsayısı 1,6 (1,3 değil)"),
             _komb("1.2G+Q+0.2S+Ed(H)+0.3Ed(Z)", {"G": 1.2, "Q": 1.0, "S": 0.2, "EH": 1.0, "EZ": 0.3}, "deprem",
@@ -380,8 +388,8 @@ KOMBINASYONLAR = {
         "liste": [
             _komb("G", {"G": 1.0}, "dayanim", "ÇYTHYE 5.3.2 (1)"),
             _komb("G+Q", {"G": 1.0, "Q": 1.0}, "dayanim", "ÇYTHYE 5.3.2 (2)", "GKT'de dayanım birleşimi; servis için de aynı"),
-            _komb("G+(Qr|S|R)", {"G": 1.0, "S": 1.0}, "dayanim", "ÇYTHYE 5.3.2 (3)"),
-            _komb("G+0.75Q+0.75(Qr|S|R)", {"G": 1.0, "Q": 0.75, "S": 0.75}, "dayanim", "ÇYTHYE 5.3.2 (4)"),
+            _komb("G+(Qr|S|R)", {"G": 1.0, "S": 1.0}, "dayanim", "ÇYTHYE 5.3.2 (3)", gerekli=("S",)),
+            _komb("G+0.75Q+0.75(Qr|S|R)", {"G": 1.0, "Q": 0.75, "S": 0.75}, "dayanim", "ÇYTHYE 5.3.2 (4)", gerekli=("S",)),
             _komb("G+W", {"G": 1.0, "W": 1.0}, "dayanim", "ÇYTHYE 5.3.2 (5a)"),
             _komb("G+0.7E", {"G": 1.0, "EH": 0.7, "EZ": 0.21}, "deprem", "ÇYTHYE 5.3.2 (5b) → TBDY Denk. (9.1b)", _GKT_E_NOT),
             _komb("G+0.75Q+0.75(Qr|S|R)+0.75W", {"G": 1.0, "Q": 0.75, "S": 0.75, "W": 0.75}, "dayanim", "ÇYTHYE 5.3.2 (6a)"),
@@ -396,7 +404,7 @@ KOMBINASYONLAR = {
 YUK_DURUMU_ADLARI = {"G": "sabit yük", "Q": "hareketli yük", "S": "kar", "W": "rüzgâr", "EH": "yatay deprem Ed(H)",
                      "EZ": "düşey deprem Ed(Z)", "T": "sıcaklık / büzülme / oturma", "H": "toprak itkisi"}
 
-# TBDY 2018 Tablo 4.3 hareketli yük kütle katılım katsayısı n (Dilim 2'de kütle hesabı için; burada yalnız bilgi)
+# TBDY 2018 Tablo 4.3 hareketli yük kütle katılım katsayısı n (kütle hesabında TBDY_KUTLE_KATILIM_KULLANIM eşlemesi kullanılır)
 TBDY_KUTLE_KATILIM = {
     "kaynak": "TBDY 2018 Tablo 4.3 (md. 4.5.9 / Denk. 4.16)", "dogrulandi": True,
     "n": {"depo": 0.8, "okul-magaza-sinema-lokanta": 0.6, "konut-isyeri-otel-hastane-otopark": 0.3, "endustri-sabit-ekipman": 1.0},
@@ -484,9 +492,9 @@ def _ts(kod, tanim, R, D, bys, grup, suneklik):
 TBDY_TASIYICI = {
     "betonarme-cerceve-yuksek": _ts("A11", "Tamamı moment aktaran süneklik düzeyi yüksek (SDY) betonarme çerçeve", 8, 3, 3, "betonarme", "yuksek"),
     "betonarme-perde-bagkirisli-yuksek": _ts("A12", "Tamamı SDY bağ kirişli (boşluklu) betonarme perde", 7, 2.5, 2, "betonarme", "yuksek"),
-    "betonarme-perde-yuksek": _ts("A13", "Tamamı SDY boşluksuz betonarme perde", 6, 2.5, 2, "betonarme", "yuksek"),
+    "betonarme-perde-bosluksuz": _ts("A13", "Tamamı SDY boşluksuz betonarme perde", 6, 2.5, 2, "betonarme", "yuksek"),
     "betonarme-perde-cerceve-bagkirisli-yuksek": _ts("A14", "SDY çerçeve + SDY bağ kirişli perde (perde-çerçeve; 4.3.4.5)", 8, 2.5, 2, "betonarme", "yuksek"),
-    "betonarme-perde-cerceve-yuksek": _ts("A15", "SDY çerçeve + SDY boşluksuz perde (perde-çerçeve; 4.3.4.5)", 7, 2.5, 2, "betonarme", "yuksek"),
+    "betonarme-perde-cerceve": _ts("A15", "SDY çerçeve + SDY boşluksuz perde (perde-çerçeve; 4.3.4.5)", 7, 2.5, 2, "betonarme", "yuksek"),
     "betonarme-tek-katli-mafsalli": _ts("A16", "Tek katlı, çatı bağlantısı mafsallı, H ≤ 12 m SDY betonarme kolonlar", 3, 2, None, "betonarme", "yuksek"),
     "betonarme-karma-perde-bagkirisli": _ts("A21", "SDS çerçeve + SDY bağ kirişli perde (karma; 4.3.1.2)", 6, 2.5, 4, "betonarme", "karma"),
     "betonarme-karma-perde": _ts("A22", "SDS çerçeve + SDY boşluksuz perde (karma; 4.3.1.2)", 5, 2.5, 4, "betonarme", "karma"),
@@ -505,15 +513,15 @@ TBDY_TASIYICI = {
     "onuretimli-cerceve-perde-sinirli": _ts("B32", "SDS önüretimli çerçeve + SDS yerinde dökme boşluksuz perde", 3, 2, 7, "onuretimli", "sinirli"),
     "onuretimli-panel-cift-cidar": _ts("B33", "Önüretimli düşey çift cidarlı paneller (SDS)", 4, 2, 6, "onuretimli", "sinirli"),
     "onuretimli-panel-tek-cidar": _ts("B34", "Önüretimli düşey tek cidarlı paneller (SDS)", 3, 2, 7, "onuretimli", "sinirli"),
-    "celik-mcm-yuksek": _ts("C11", "Tamamı moment aktaran SDY çelik çerçeve", 8, 3, 3, "celik", "yuksek"),
-    "celik-dismerkez-capraz-yuksek": _ts("C12", "Tamamı SDY dışmerkez çaprazlı ya da burkulması önlenmiş merkezi çaprazlı çelik çerçeve", 8, 2.5, 2, "celik", "yuksek"),
-    "celik-merkezi-capraz-yuksek": _ts("C13", "Tamamı SDY merkezi çaprazlı çelik çerçeve", 5, 2, 4, "celik", "yuksek"),
+    "celik-cerceve-yuksek": _ts("C11", "Tamamı moment aktaran SDY çelik çerçeve", 8, 3, 3, "celik", "yuksek"),
+    "celik-dismerkez-capraz": _ts("C12", "Tamamı SDY dışmerkez çaprazlı ya da burkulması önlenmiş merkezi çaprazlı çelik çerçeve", 8, 2.5, 2, "celik", "yuksek"),
+    "celik-merkezi-capraz": _ts("C13", "Tamamı SDY merkezi çaprazlı çelik çerçeve", 5, 2, 4, "celik", "yuksek"),
     "celik-mcm-dismerkez-capraz-yuksek": _ts("C14", "SDY moment çerçeve + SDY dışmerkez/BÖÇ çaprazlı çerçeve ya da SDY bağ kirişli BA perde (4.3.4.5)", 8, 3, 2, "celik", "yuksek"),
     "celik-mcm-merkezi-capraz-yuksek": _ts("C15", "SDY moment çerçeve + SDY merkezi çaprazlı çerçeve ya da SDY boşluksuz BA perde (4.3.4.5)", 6, 2.5, 2, "celik", "yuksek"),
     "celik-tek-katli-mafsalli": _ts("C16", "Tek katlı, çatı bağlantısı mafsallı, H ≤ 12 m SDY çelik kolonlar", 4, 2, None, "celik", "yuksek"),
     "celik-karma-dismerkez-capraz": _ts("C21", "SDS moment çerçeve + SDY dışmerkez/BÖÇ çaprazlı çerçeve ya da SDY bağ kirişli BA perde (karma; 4.3.1.2)", 6, 2.5, 4, "celik", "karma"),
     "celik-karma-merkezi-capraz": _ts("C22", "SDS moment çerçeve + SDY merkezi çaprazlı çerçeve ya da SDY boşluksuz BA perde (karma; 4.3.1.2)", 5, 2, 4, "celik", "karma"),
-    "celik-mcm-sinirli": _ts("C31", "Tamamı moment aktaran SDS çelik çerçeve", 4, 2.5, 7, "celik", "sinirli"),
+    "celik-cerceve-sinirli": _ts("C31", "Tamamı moment aktaran SDS çelik çerçeve", 4, 2.5, 7, "celik", "sinirli"),
     "celik-merkezi-capraz-sinirli": _ts("C32", "Tamamı SDS merkezi çaprazlı çelik çerçeve", 3, 2, 8, "celik", "sinirli"),
     "celik-mcm-merkezi-capraz-sinirli": _ts("C33", "SDS moment çerçeve + SDS merkezi çaprazlı çerçeve", 4, 2, 7, "celik", "sinirli"),
     "hafif-celik-vidali-panel": _ts("D1", "Hafif çelik: SDY vidalı sac/OSB/kontrplak panel", 4, 2, 8, "hafif-celik", "yuksek"),
@@ -525,6 +533,25 @@ TBDY_TASIYICI = {
     "ahsap-civili-panel": _ts("F1", "Ahşap: SDY çivili/vidalı OSB/kontrplak panel", 4, 2, 7, "ahsap", "yuksek"),
     "ahsap-tutkalli-panel": _ts("F2", "Ahşap: SDS tutkallı panel ya da ahşap çapraz", 3, 2, 8, "ahsap", "sinirli"),
 }
+# Eski (Dilim 2 ara sürüm) anahtarlar → kanonik anahtar; motor her ikisini de kabul eder
+TBDY_TASIYICI_TAKMA_AD = {
+    "betonarme-perde-yuksek": "betonarme-perde-bosluksuz", "betonarme-perde-cerceve-yuksek": "betonarme-perde-cerceve",
+    "celik-mcm-yuksek": "celik-cerceve-yuksek", "celik-dismerkez-capraz-yuksek": "celik-dismerkez-capraz",
+    "celik-merkezi-capraz-yuksek": "celik-merkezi-capraz", "celik-mcm-sinirli": "celik-cerceve-sinirli",
+}
+# Arayüzde (docs/bina.js) listelenen alt küme, sırasıyla (köprü bina_kutuphane.tasiyici_sistemler)
+TBDY_TASIYICI_ARAYUZ = ("betonarme-cerceve-yuksek", "betonarme-perde-bosluksuz", "betonarme-perde-cerceve", "betonarme-cerceve-sinirli",
+                        "betonarme-tek-katli-mafsalli", "celik-cerceve-yuksek", "celik-dismerkez-capraz", "celik-merkezi-capraz",
+                        "celik-cerceve-sinirli", "celik-tek-katli-mafsalli")
+
+
+def tasiyici_anahtar(ad):
+    """Taşıyıcı sistem adını kanonik TBDY_TASIYICI anahtarına çevirir (takma adlar dahil); yoksa None."""
+    a = str(ad or "").strip().lower()
+    a = TBDY_TASIYICI_TAKMA_AD.get(a, a)
+    return a if a in TBDY_TASIYICI else None
+
+
 TBDY_TASIYICI_KURALLAR = {
     "kaynak": _T41 + " dipnotları ve md. 4.3.4", "dogrulandi": True,
     "4.3.2.3": "Dıştan rijit perdelerle çevrili bodrumda (R/I) = 2,5 ve D = 1,5",
