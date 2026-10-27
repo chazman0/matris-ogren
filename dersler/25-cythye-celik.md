@@ -250,8 +250,8 @@ r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A2→B2/k1" and abs(r.ve
 Mesnetteki negatif moment alt başlığı bastırır; desteksiz boy açıklığın tamamıdır ($L_b=6>L_r$), ama ankastre uçlu kirişin moment diyagramı $C_b=2.08$ verir ve $C_bM_n$, $M_p$'yi aşar: $M_c=\phi_bM_p=155.53$ kN·m. $C_b=1$ ile aynı kesit D/C $\approx1.3$ ile yetmezdi; çerçeve davranışından gelen küçük eksenel kuvvet nedeniyle basınç dayanımı da hesaplanır ve zayıf eksende 6 m burkulma boyu narinlik sınırına yaklaşır. Kolonlarda D/C 0.40'ın altında: rüzgâr ve deprem açılınca (bina kartı) ÇYTHYE ve TBDY 9.2.5 birleşimleri devreye girer ve tablo değişir.
 :::
 
-::: muhendislik SAP2000'de çelik tasarım ve ÇYTHYE
-CSI programlarında doğrudan ÇYTHYE kodu yoktur; ÇYTHYE AISC 360'a çok yakın olduğundan (YDKT = LRFD, GKT = ASD) uygulamada AISC 360-16 seçilir, malzeme S235/S275/S355 ve TBDY 2018 kombinasyonları elle tanımlanır. Program $K$'yı çerçeve rijitliklerinden hesaplar, $L_b$'yi düğümlerden belirler, $C_b$'yi moment diyagramından bulur; "Overwrites" ile her biri elle değiştirilebilir ve **mutlaka denetlenmelidir**: bölünmüş bir çubuğun her parçası ayrı tutulu sayılır.
+::: muhendislik Yapı analiz programlarında çelik tasarım ve ÇYTHYE
+Yaygın yapı analiz programlarının çoğunda doğrudan ÇYTHYE kodu yoktur; ÇYTHYE AISC 360'a çok yakın olduğundan (YDKT = LRFD, GKT = ASD) uygulamada AISC 360-16 seçilir, malzeme S235/S275/S355 ve TBDY 2018 kombinasyonları elle tanımlanır. Program $K$'yı çerçeve rijitliklerinden hesaplar, $L_b$'yi düğümlerden belirler, $C_b$'yi moment diyagramından bulur; her biri elle değiştirilebilir ve **mutlaka denetlenmelidir**: bölünmüş bir çubuğun her parçası ayrı tutulu sayılır.
 
 Tarihi yapılarda çelik çoğu zaman güçlendirme elemanıdır: yığma köprüye eklenen çekme bağları ya da kemer altı iskeleleri. OMA ile ölçülen frekanslar güçlendirme öncesi ve sonrası karşılaştırılarak çelik elemanın gerçekten yük aldığı doğrulanabilir.
 :::

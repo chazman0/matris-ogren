@@ -2212,7 +2212,7 @@ def _adim_1(B, anl):
     if B.aciklama:
         anl.metin(B.aciklama)
     se._basla(anl, 1, "Bina tabloları: akslar, katlar, elemanlar, kütüphane kartları",
-              "Bir binayı SAP2000 gibi bir program da önce tablolarla tanır: aks ızgarası, kat kotları, kolon/kiriş/döşeme "
+              "Bir binayı ticari yapı analiz programları da önce tablolarla tanır: aks ızgarası, kat kotları, kolon/kiriş/döşeme "
               "listeleri ve malzeme–kesit kartları. Adresleri (S-B1/k1 = B1 aksındaki 1. kat kolonu) baştan öğrenirsek yük "
               "akışını izlerken kaybolmayız.")
     anl.metin("**Akslar** (X sağa, harfli; Y plan derinliği, sayılı; Z yukarı):\n\n"
@@ -3250,12 +3250,14 @@ def _ara_deger_metni(tablo, zemin, deger, ad, girdi_ad):
 
 def _adim_6(B, durumlar, Y, ruzgar, anl):
     se._basla(anl, 6, "Yük durumları: G, Q, S, W ve E ayrı ayrı",
-              "SAP2000'deki 'load pattern' gibi her yük türünü ayrı bir sağ taraf vektörü olarak kuruyoruz. Neden ayrı? Çünkü "
+              "Yaygın yapı analiz programlarındaki 'load pattern' (yük deseni) gibi her yük türünü ayrı bir sağ taraf "
+              "vektörü olarak kuruyoruz. Neden ayrı? Çünkü "
               "kombinasyon katsayıları farklıdır (1,4G + 1,6Q; 0,9G + 1,3W; G + Q + 0,2S + E_d(H) + 0,3E_d(Z)) ve doğrusal "
               "sistemde sonuçlar sonradan toplanabilir; bir kez kurulan K ile bütün sağ taraflar tek çözümde biter.")
-    anl.metin("SAP2000 dilinde: **load pattern** = yükün kendisi (G, Q, S, W+X …), **load case** = bir pattern'in çözümü "
+    anl.metin("Yapı analiz programlarının dilinde: **load pattern** = yükün kendisi (G, Q, S, W+X …), "
+              "**load case** = bir pattern'in çözümü "
               "(burada doğrusal statik, tek K), **load combination** = case sonuçlarının katsayılı toplamı (10. adım). "
-              "Deprem için SAP2000'in 'Auto Lateral Load → TBDY 2018' seçeneğinin yaptığını 7. adımda elle yapıyoruz.")
+              "Programların TBDY 2018'e göre kendiliğinden ürettiği eşdeğer deprem yüklerini 7. adımda elle kuruyoruz.")
     sat = []
     el_L = {e["no"]: e["L"] for e in B.ag["elemanlar"]}
     for ad, d in durumlar.items():
@@ -3446,7 +3448,7 @@ def _adim_7(B, deprem, anl):
 
 def _adim_10(B, kombinasyonlar, zarf, ag, ozet, anl):
     se._basla(anl, 10, "Kombinasyonlar ve zarf",
-              "Doğrusal sistemde u_komb = Σγ_i u_i; iç kuvvetler de aynı katsayılarla toplanır. SAP2000 bir kombinasyonu yeniden "
+              "Doğrusal sistemde u_komb = Σγ_i u_i; iç kuvvetler de aynı katsayılarla toplanır. Yapı analiz programları bir kombinasyonu yeniden "
               "çözmez, case sonuçlarını toplar; biz de öyle yapıyoruz. Rüzgâr dört yöne, deprem Denk. (4.9)'un iki doğrultu "
               "birleştirmesine (%100 + %30) ve ± dışmerkezliğe göre çoğaltılır. Zarf, her kesitte kombinasyonların en büyüğü/en küçüğüdür.")
     anl.mat(r"\mathbf{u}_{komb} = \sum_i \gamma_i\,\mathbf{u}_i,\qquad \mathbf{f}_{komb} = \sum_i \gamma_i\,\mathbf{f}_i,\qquad "
