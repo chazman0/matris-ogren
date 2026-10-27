@@ -8,6 +8,8 @@
  *                    tepe p = w·l_k/2, paylar (kN), q_eM ve q_eV, korunum Σ = w·l_k·l_u
  *   kolon-birikimi   yük alanı (iç / kenar / köşe kolon) ve kolon şeridinde kat kat gelen G, Q okları, kümülatif N,
  *                    TS 498:2021 Çizelge 7 hareketli yük azaltması β
+ *   deprem-spektrumu TBDY 2018 yatay elastik tasarım spektrumu S_ae(T) ve azaltılmış S_aR(T) = S_ae/R_a:
+ *                    S_S, S_1, zemin sınıfı (Tablo 2.1/2.2 → F_S, F_1), R, I, D kaydırıcıları → S_DS, S_D1, T_A, T_B, T_p noktası
  *
  * ALIŞTIRMALAR (BICIM.md 7): alistirma:doseme-esdeger
  *
@@ -402,6 +404,122 @@
     baslik: "Kolonda yük birikimi ve yük alanı",
     aciklama: "Kat sayısı, kat yükleri, aks aralıkları ve kolon konumunu değiştir; yük alanı, kat kat gelen G ve Q, kümülatif N ve β azaltması canlı güncellenir.",
     varsayilan: { kat: 4, g: 5, q: 2, lx: 5, ly: 4, konum: "ic", beta: true }
+  });
+
+  /* ================================================================== 3. deprem-spektrumu */
+
+  /* TBDY 2018 Tablo 2.1 (F_S) ve Tablo 2.2 (F_1), md. 2.3.3.1: ara değerler doğrusal enterpolasyon, uç sütunlar sabit
+     (kaynak: scratchpad/tasarim/arastirma_tbdy2018.json; ZF için sahaya özel analiz gerekir, burada yok). */
+  const TBDY_FS = { SS: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5], ZA: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8], ZB: [0.9, 0.9, 0.9, 0.9, 0.9, 0.9], ZC: [1.3, 1.3, 1.2, 1.2, 1.2, 1.2], ZD: [1.6, 1.4, 1.2, 1.1, 1.0, 1.0], ZE: [2.4, 1.7, 1.3, 1.1, 0.9, 0.8] };
+  const TBDY_F1 = { S1: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], ZA: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8], ZB: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8], ZC: [1.5, 1.5, 1.5, 1.5, 1.5, 1.4], ZD: [2.4, 2.2, 2.0, 1.9, 1.8, 1.7], ZE: [4.2, 3.3, 2.8, 2.4, 2.2, 2.0] };
+  const TBDY_TL = 6;
+  function araDeger(xs, ys, x) {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[xs.length - 1]) return ys[ys.length - 1];
+    for (let i = 0; i < xs.length - 1; i++) if (x >= xs[i] && x <= xs[i + 1]) return ys[i] + (x - xs[i]) / (xs[i + 1] - xs[i]) * (ys[i + 1] - ys[i]);
+    return ys[ys.length - 1];
+  }
+  /* Spektrum parametreleri ve eğri değerleri (Denk. 2.1–2.3, 4.1, 4.8) */
+  function spektrum(SS, S1, zemin, R, I, D) {
+    const FS = araDeger(TBDY_FS.SS, TBDY_FS[zemin], SS), F1 = araDeger(TBDY_F1.S1, TBDY_F1[zemin], S1);
+    const SDS = SS * FS, SD1 = S1 * F1, TA = 0.2 * SD1 / SDS, TB = SD1 / SDS;
+    const sae = T => T <= TA ? (0.4 + 0.6 * T / TA) * SDS : T <= TB ? SDS : T <= TBDY_TL ? SD1 / T : SD1 * TBDY_TL / (T * T);
+    const ra = T => T > TB ? R / I : D + (R / I - D) * T / TB;
+    return { FS, F1, SDS, SD1, TA, TB, sae, ra };
+  }
+
+  E.kaydet("deprem-spektrumu", function (kok, p) {
+    const kap = kur(kok);
+    let SS = sayiP(p.SS, 1.0, 0.1, 2.5), S1 = sayiP(p.S1, 0.3, 0.02, 1.0), Tp = sayiP(p.Tp, 0.4, 0.05, 4), R = sayiP(p.R, 8, 1, 8), D = sayiP(p.D, 3, 1, 3);
+    let zemin = TBDY_FS[p.zemin] ? p.zemin : "ZC", I = [1.0, 1.2, 1.5].indexOf(Number(p.I)) >= 0 ? Number(p.I) : 1.0;
+    const W = 520, H = 320, PL = 52, PR = 16, PU = 22, PA = 40, TMAX = 3;
+    const sd = sv(W, H, "TBDY 2018 yatay elastik tasarım spektrumu S_ae(T) ve azaltılmış spektrum S_aR(T)");
+    const dyn = svg("g");
+    sd.appendChild(dyn);
+    const formul = formulKutu();
+    const bilgi = el("p", { class: "ky-bilgi" });
+    let sSS, sS1, sTp, sR, sD, secZ, secI;
+
+    function ciz() {
+      const s = spektrum(SS, S1, zemin, R, I, D);
+      const Smax = Math.max(s.SDS, 0.2) * 1.12;
+      const X = T => PL + T / TMAX * (W - PL - PR), Y = v => H - PA - v / Smax * (H - PA - PU);
+      bos(dyn);
+      // eksenler ve ızgara
+      dyn.appendChild(cizgi(PL, Y(0), W - PR, Y(0), { renk: "metin", kal: 1.4 }));
+      dyn.appendChild(cizgi(PL, Y(0), PL, PU, { renk: "metin", kal: 1.4 }));
+      for (let T = 0; T <= TMAX + 1e-9; T += 0.5) { dyn.appendChild(cizgi(X(T), Y(0), X(T), Y(0) + 4, { renk: "soluk", kal: 1 })); dyn.appendChild(yaziH(X(T), Y(0) + 14, f(T, 2), { boyut: 10, renk: "soluk" })); }
+      const adim = Smax > 1.5 ? 0.5 : Smax > 0.6 ? 0.25 : 0.1;
+      for (let v = adim; v <= Smax + 1e-9; v += adim) { dyn.appendChild(cizgi(PL, Y(v), W - PR, Y(v), { renk: "kenar", kal: 1 })); dyn.appendChild(yaziH(PL - 6, Y(v), f(v, 3), { boyut: 10, renk: "soluk", hiza: "sag" })); }
+      dyn.appendChild(yaziH(W / 2, H - 6, "T (s)", { boyut: 11, renk: "soluk" }));
+      dyn.appendChild(yaziH(PL + 4, PU - 8, "S (g)", { boyut: 11, renk: "soluk", hiza: "sol" }));
+      // eğriler
+      const Ts = [];
+      for (let T = 0; T <= TMAX + 1e-9; T += T < 0.6 ? 0.01 : 0.05) Ts.push(T);
+      const sae = Ts.map(T => [X(T), Y(s.sae(T))]), sar = Ts.map(T => [X(T), Y(s.sae(T) / s.ra(T))]);
+      dyn.appendChild(yol("M" + nokta(sae), { renk: "a", kal: 2.4 }));
+      dyn.appendChild(yol("M" + nokta(sar), { renk: "b", kal: 2.4 }));
+      // köşe periyotları
+      [[s.TA, "T_A"], [s.TB, "T_B"]].forEach((k, i) => {
+        dyn.appendChild(cizgi(X(k[0]), Y(0), X(k[0]), PU + 4, { renk: "soluk", kal: 1.2, kesik: true }));
+        dyn.appendChild(yaziH(X(k[0]) + 3, PU + 12 + 13 * i, k[1] + " = " + f(k[0], 3) + " s", { boyut: 10, renk: "soluk", hiza: "sol" }));
+      });
+      // T_p noktası
+      const sT = s.sae(Tp), rT = sT / s.ra(Tp);
+      dyn.appendChild(cizgi(X(Tp), Y(0), X(Tp), Y(sT), { renk: "sil", kal: 1.2, kesik: true }));
+      dyn.appendChild(svg("circle", { cx: r2(X(Tp)), cy: r2(Y(sT)), r: 5, fill: renk("a"), stroke: renk("kart"), "stroke-width": 1.5 }));
+      dyn.appendChild(svg("circle", { cx: r2(X(Tp)), cy: r2(Y(rT)), r: 5, fill: renk("b"), stroke: renk("kart"), "stroke-width": 1.5 }));
+      const sag = Tp > 2.1;
+      dyn.appendChild(yaziH(X(Tp) + (sag ? -8 : 8), Y(sT) - 10, "S_ae(T_p) = " + f(sT, 3), { boyut: 11, renk: "a", kalin: true, hiza: sag ? "sag" : "sol" }));
+      dyn.appendChild(yaziH(X(Tp) + (sag ? -10 : 10), Math.min(Y(rT) + 22, Y(0) - 8), "S_aR(T_p) = " + f(rT, 3), { boyut: 11, renk: "b", kalin: true, hiza: sag ? "sag" : "sol" }));
+      // gösterge
+      dyn.appendChild(cizgi(W - PR - 150, PU + 30, W - PR - 126, PU + 30, { renk: "a", kal: 2.4 }));
+      dyn.appendChild(yaziH(W - PR - 120, PU + 30, "S_ae(T): elastik (Denk. 2.2)", { boyut: 10.5, hiza: "sol" }));
+      dyn.appendChild(cizgi(W - PR - 150, PU + 46, W - PR - 126, PU + 46, { renk: "b", kal: 2.4 }));
+      dyn.appendChild(yaziH(W - PR - 120, PU + 46, "S_aR(T) = S_ae / R_a(T) (Denk. 4.8)", { boyut: 10.5, hiza: "sol" }));
+      // formüller
+      const bolge = Tp <= s.TA ? "0 \\le T_p \\le T_A" : Tp <= s.TB ? "T_A \\le T_p \\le T_B" : Tp <= TBDY_TL ? "T_B \\le T_p \\le T_L" : "T_p \\ge T_L";
+      const saeTex = Tp <= s.TA ? "\\big(0.4+0.6\\tfrac{T_p}{T_A}\\big)S_{DS}" : Tp <= s.TB ? "S_{DS}" : Tp <= TBDY_TL ? "\\tfrac{S_{D1}}{T_p}" : "\\tfrac{S_{D1}T_L}{T_p^2}";
+      const raTex = Tp > s.TB ? "\\tfrac{R}{I}=\\tfrac{" + ft(R) + "}{" + ft(I) + "}" : "D+\\big(\\tfrac{R}{I}-D\\big)\\tfrac{T_p}{T_B}=" + ft(D) + "+\\big(" + ft(R / I) + "-" + ft(D) + "\\big)\\tfrac{" + ft(Tp) + "}{" + ft(s.TB) + "}";
+      texYaz(formul, "\\begin{aligned}" +
+        "\\kutua{S_{DS}}&=S_S\\,F_S=" + ft(SS) + "\\cdot" + ft(s.FS) + "=" + ft(s.SDS) + ",\\qquad \\kutua{S_{D1}}=S_1\\,F_1=" + ft(S1) + "\\cdot" + ft(s.F1) + "=" + ft(s.SD1) + "\\\\" +
+        "T_A&=0.2\\,\\tfrac{S_{D1}}{S_{DS}}=" + ft(s.TA) + "\\ \\text{s},\\qquad T_B=\\tfrac{S_{D1}}{S_{DS}}=" + ft(s.TB) + "\\ \\text{s},\\qquad T_L=6\\ \\text{s}\\\\" +
+        "\\ka{S_{ae}(T_p)}&=" + saeTex + "=" + ft(sT) + "\\ g\\quad(" + bolge + ")\\\\" +
+        "R_a(T_p)&=" + raTex + "=" + ft(s.ra(Tp)) + "\\\\" +
+        "\\kb{S_{aR}(T_p)}&=\\tfrac{S_{ae}(T_p)}{R_a(T_p)}=\\tfrac{" + ft(sT) + "}{" + ft(s.ra(Tp)) + "}=" + ft(rT) + "\\ g\\end{aligned}");
+      bilgi.textContent = "F_S = " + f(s.FS, 3) + " (Tablo 2.1, " + zemin + ", S_S = " + f(SS, 3) + "), F_1 = " + f(s.F1, 3) + " (Tablo 2.2). " +
+        (Tp > s.TB ? "T_p > T_B: azaltma katsayısı tam R/I; yapı yumuşadıkça S_aR 1/T ile düşer." : Tp >= s.TA ? "T_p platoda (T_A–T_B): S_ae = S_DS; R_a T_B'ye doğru D'den R/I'ya doğrusal büyür (Denk. 4.1b)." : "T_p < T_A: çok rijit yapı; S_ae 0,4·S_DS'den başlayıp yükselir, R_a ≈ D (dayanım fazlalığı).") +
+        " Taban kesme katsayısı S_aR(T_p) (g) ile V_tE = m_t·S_aR·g (Denk. 4.19; alt sınır 0,04·I·S_DS).";
+    }
+
+    sSS = sl("$S_S$ (DD-2 harita)", 0.1, 2.5, 0.05, SS, "", v => { SS = v; ciz(); });
+    sS1 = sl("$S_1$ (DD-2 harita)", 0.02, 1.0, 0.01, S1, "", v => { S1 = v; ciz(); });
+    sTp = sl("$T_p$ hakim periyot", 0.05, 4, 0.05, Tp, "s", v => { Tp = v; ciz(); });
+    sR = sl("$R$ (Tablo 4.1)", 1, 8, 0.5, R, "", v => { R = v; ciz(); });
+    sD = sl("$D$ (Tablo 4.1)", 1, 3, 0.5, D, "", v => { D = v; ciz(); });
+    secZ = secici(["ZA", "ZB", "ZC", "ZD", "ZE"].map(z => ({ deger: z, etiket: z })), zemin, v => { zemin = v; ciz(); });
+    secI = secici([{ deger: 1.0, etiket: "I = 1,0 (BKS 3)" }, { deger: 1.2, etiket: "I = 1,2 (BKS 2)" }, { deger: 1.5, etiket: "I = 1,5 (BKS 1)" }], I, v => { I = v; ciz(); });
+    function ayarla(o) {
+      SS = o.SS; S1 = o.S1; zemin = o.zemin; R = o.R; I = o.I; D = o.D; Tp = o.Tp;
+      sSS.ayarla(SS, true); sS1.ayarla(S1, true); sTp.ayarla(Tp, true); sR.ayarla(R, true); sD.ayarla(D, true); secZ.ayarla(zemin, true); secI.ayarla(I, true);
+      ciz();
+    }
+    kap.appendChild(kart(sd));
+    kap.appendChild(satir(
+      dugme("Ders örneği (S_S 1,2; S_1 0,35; ZC)", () => ayarla({ SS: 1.2, S1: 0.35, zemin: "ZC", R: 8, I: 1.0, D: 3, Tp: 0.38 }), { baslik: "2 katlı betonarme çerçeve, T_pA = 0,1·6^0,75" }),
+      dugme("Yumuşak zemin ZE", () => ayarla({ SS: 0.8, S1: 0.25, zemin: "ZE", R: 8, I: 1.0, D: 3, Tp: 0.8 }), { baslik: "F_1 büyür, T_B sağa kayar" }),
+      dugme("Hastane, ZD, R = 4", () => ayarla({ SS: 1.0, S1: 0.3, zemin: "ZD", R: 4, I: 1.5, D: 2.5, Tp: 0.5 }), { baslik: "I = 1,5 ve sınırlı süneklik: S_aR üç kat büyür" }),
+      secZ.kok, secI.kok));
+    kap.appendChild(el("div", { class: "ky-ayar" }, sSS.kok, sS1.kok, sTp.kok, sR.kok, sD.kok));
+    kap.appendChild(bilgi);
+    kap.appendChild(formul);
+    kap.appendChild(el("p", { class: "ky-not" }, "Mavi eğri elastik tasarım spektrumu S_ae(T) (TBDY 2018 Denk. 2.2; T_A, T_B Denk. 2.3), turuncu eğri azaltılmış tasarım spektrumu S_aR(T) = S_ae(T)/R_a(T) " +
+      "(Denk. 4.8; R_a Denk. 4.1). Harita katsayıları S_S, S_1 AFAD Türkiye Deprem Tehlike Haritası'ndan (tdth.afad.gov.tr) koordinatla okunur; F_S, F_1 Tablo 2.1 ve 2.2'den zemin sınıfına göre enterpolasyonla alınır."));
+    ciz();
+  }, {
+    baslik: "TBDY 2018 tasarım spektrumu",
+    aciklama: "S_S, S_1, zemin sınıfı, R, I ve D'yi değiştir; S_DS, S_D1, T_A, T_B, S_ae(T) ve S_aR(T) eğrileri ile T_p noktası canlı güncellenir.",
+    varsayilan: { SS: 1.0, S1: 0.3, zemin: "ZC", R: 8, I: 1.0, D: 3, Tp: 0.4 }
   });
 
   /* ================================================================== alıştırma: doseme-esdeger */

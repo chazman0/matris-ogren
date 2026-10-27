@@ -741,6 +741,44 @@ kbd { background: var(--ana-acik); border-radius: 5px; padding: 1px 6px; font-si
 .bn-zarf-min { fill-opacity: .3; stroke-dasharray: 4 3; }
 .bn-dgm-svg { cursor: pointer; }
 
+/* Dilim 2: Yükler / Deprem kartları, spektrum, kat kuvvetleri, öteleme tablosu, 3B deprem okları */
+.bn-anahtar { padding: 6px 8px; margin: 4px 0; border: 1px solid var(--cizgi); border-radius: 10px; background: var(--arka); }
+.bn-anahtar .bn-onay { min-height: 30px; }
+.bn-anahtar > .not { display: block; margin: 0 0 2px; font-size: 12.5px; }
+.bn-anahtar-alan { margin-top: 4px; }
+.bn-spek { margin-top: 6px; min-width: 0; }
+.bn-spek-svg, .bn-fk-svg { width: 100%; height: auto; display: block; }
+.bn-spek-svg text, .bn-fk-svg text { font-family: inherit; font-size: 11px; fill: var(--metin); font-variant-numeric: tabular-nums; }
+.bn-spek-svg .bn-spek-t { font-size: 10.5px; fill: var(--soluk); }
+.bn-spek-svg .bn-spek-vurgu { fill: var(--metin); font-weight: 600; paint-order: stroke; stroke: var(--kart); stroke-width: 3px; }
+.bn-spek-izgara { fill: none; stroke: var(--cizgi); stroke-width: 1; }
+.bn-spek-sae { fill: none; stroke: var(--sema-a); stroke-width: 2.2; stroke-linejoin: round; }
+.bn-spek-sar { fill: none; stroke: var(--sema-b); stroke-width: 2.2; stroke-linejoin: round; }
+.bn-spek-kose { fill: none; stroke: var(--soluk); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.bn-spek-tp { fill: none; stroke: var(--sema-sil); stroke-width: 1.4; stroke-dasharray: 2 3; }
+.bn-spek-tp-n { fill: var(--sema-a); stroke: var(--kart); stroke-width: 1.5; }
+.bn-spek-tp-r { fill: var(--sema-b); }
+.bn-spek-buyuk { padding: 6px; }
+.bn-param-grid { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.bn-param { padding: 6px 10px; border: 1px solid var(--cizgi); border-radius: 10px; background: var(--kart); font-size: 13px; display: flex; flex-direction: column; min-width: 0; }
+.bn-param > span { color: var(--soluk); font-size: 12px; }
+.bn-param > b { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.bn-kaynak { color: var(--soluk); font-size: 11px; }
+.bn-iki-kolon { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.bn-fk-kolon { fill: none; stroke: var(--metin); stroke-width: 2.4; }
+.bn-fk-kat { fill: none; stroke: var(--metin); stroke-width: 3.2; stroke-linecap: round; }
+.bn-fk-ok-c { fill: none; stroke: var(--sema-sil); stroke-width: 2.4; stroke-linecap: round; } .bn-fk-ok-o { fill: var(--sema-sil); }
+.bn-fk-v { fill: var(--sema-a-bg); stroke: var(--sema-a); stroke-width: 1.4; }
+.bn-fk-svg .bn-fk-t { font-size: 11px; }
+.bn-drift-asim td, .bn-drift-asim th { background: var(--hata-arka); color: var(--sema-sil); font-weight: 600; }
+.bn-pasif-satir td, .bn-pasif-satir th { color: var(--soluk); }
+.bn-iyi-kutu { margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--sema-c-bg); border: 1px solid var(--sema-c); font-size: 13.5px; }
+.bn-mini .se-sonuc-tablo { font-size: 12.5px; }
+.b3-dep-ok-c { fill: none; stroke: var(--sema-sil); stroke-width: 3; stroke-linecap: round; } .b3-dep-ok-o { fill: var(--sema-sil); }
+.b3-etiket-kutu.b3-dep-et rect { stroke: var(--sema-sil); }
+.b3-km circle { fill: var(--sema-b-bg); stroke: var(--sema-b); stroke-width: 2; } .b3-km path { fill: none; stroke: var(--sema-b); stroke-width: 1.6; }
+.bn-svg .b3-km-t { font-size: 11px; font-weight: 700; fill: var(--sema-b); paint-order: stroke; stroke: var(--arka); stroke-width: 3px; }
+
 /* 3B sahne parçaları (cizim3b.js + bina.js) */
 .b3-izgara { fill: none; stroke: var(--cizgi); stroke-width: 1; }
 .b3-izgara-kat { stroke: var(--ana); stroke-dasharray: 3 4; opacity: .5; }
@@ -800,6 +838,7 @@ kbd { background: var(--ana-acik); border-radius: 5px; padding: 1px 6px; font-si
   .bn-panel { grid-column: auto; max-height: 640px; overflow: auto; }
   .bn-panel > summary { pointer-events: none; }
   .bn-panel > summary::before { content: none; }
+  .bn-iki-kolon { grid-template-columns: minmax(260px, 420px) minmax(0, 1fr); }
 }
 @media (max-width: 699px) {
   .bn-ust { gap: 6px 10px; }
