@@ -27,6 +27,7 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
                    {"eleman": 2, "q1": 0, "q2": -12, "x1": 0, "x2": 4, "qz1": 0, "qz2": 0}],
      "yaylar":    [{"dugum": 1, "kx": 0, "ky": "50000", "kr": "20000"}],
      "cokmeler":  [{"dugum": 4, "uy": "-0.01"}],
+     "diyaframlar": [{"ad": "Kat 1", "dugumler": [5, 6, 7, 8], "ana": {"no": 9001, "x": 2.5, "y": 3, "z": 2}}],
      "hesap":     "sayisal"}      # isteğe bağlı: SD ≤ 12 olsa da numpy (ondalık) kipini zorlar
 
 * Düğüm başına SD: yay/çubuk 1 (u), kafes 2 (u, v), kiriş 2 (v, θ), çerçeve 3 (u, v, θ),
@@ -54,6 +55,14 @@ Model şeması (sayılar sayı ya da metin olabilir: "200e6", "1/3", "E", "P" ..
   yay karşılığıdır (kx, ky, kz, kr; 3B çerçevede krx, kry, krz). Rijitlik K'nın köşegenine eklenir.
 * ``cokmeler`` (mesnet çökmesi / verilen yer değiştirme): ilgili SD tutulu sayılır ve değeri sıfır yerine verilen
   değer olur; çözüm K_ff u_f = F_f − K_fs u_s ile yapılır.
+* ``diyaframlar`` (yalnız cerceve3b; rijit kat diyaframı, efendi–köle bağı): ``dugumler`` aynı kottaki (y) köle düğümler,
+  ``ana`` efendi düğüm: var olan bir düğümün numarası ya da yeni (sanal) bir düğüm sözlüğü ``{"no", "x", "z"[, "y"]}``
+  (düğüm listesinin sonuna eklenir; SD numaraları değişmez). Döşeme yatay x–z düzleminde rijittir: köle s, efendi m için
+  u_s = u_m + θy_m (z_s − z_m), w_s = w_m − θy_m (x_s − x_m), θy_s = θy_m (sağ el: ω × r); v, θx, θz köle düğümde
+  bağımsız kalır. Sanal efendinin v, θx, θz serbestlikleri sıfır alınır (yük, mesnet ya da çökme verilemez). Çözüm
+  indirgenmiş sistemde (K_r = Tᵀ K T, F_r = Tᵀ F, u = T u_r; mesnetler ve mekanizma denetimi indirgenmiş SD'lerde),
+  yalnız sayısal kip. Köle düğümün ux, uz, ry serbestliklerine mesnet/çökme verilemez (efendiye verin); yaylar her SD'de
+  kullanılabilir. Diyaframın köle düğüme uyguladığı iç kuvvetler ``veri["diyafram_kuvvetleri"]`` içinde (tepki değildir).
 * Birimler kN ve m'dir (E: kN/m², A: m², I: m⁴). X sağa, Y yukarı, dönme ve moment saat yönünün tersi (+).
 * Uzay çerçevede eleman yerel eksenleri: x' eleman boyunca; y' elemanı içeren düşey düzlemde yukarı doğru;
   z' = x' × y' (yatay). Düşey elemanda z' = Z alınır (Kassimali kuralı). Düzlemde (z = 0) soldan sağa tanımlı
@@ -70,8 +79,10 @@ yoksayılır, her durum ``{"yukler": [...], "yayili": [...]}`` biçimindedir; K 
 ``Sonuc.veri`` sözlüğünün anahtarları (sayılar JSON'a uygun ``float``; sembolik çözümde sayı yerine ifade metni)::
 
     tip, baslik, birim {"kuvvet", "uzunluk"}, mod ("kesin" | "sayisal"), sd_sayisi, sd_etiketleri [str],
-    boyut (2 | 3),
-    dugumler  [{no, x, y, z, sd [global SD numaraları, 1'den], u [bu düğümün yer değiştirmeleri]}],
+    serbest_sd (bilinmeyen sayısı; diyafram varsa indirgenmiş sistemde), boyut (2 | 3),
+    dugumler  [{no, x, y, z, sd [global SD numaraları, 1'den], u [bu düğümün yer değiştirmeleri], sanal (diyafram efendisi)}],
+    diyaframlar [{ad, ana (efendi düğüm no), sanal, dugumler [köle no]}],
+    diyafram_kuvvetleri [{dugum, diyafram, Fx, Fz, My}],   # diyaframın köle düğüme uyguladığı iç kuvvet
     elemanlar [{no, dugumler [i, j], L, c, s, uc_kuvvetleri [yerel uç kuvvetleri, SE işaretiyle],
                 N (çekme +), durum ("çekme" | "basınç" | "sıfır" | "eğilme"), zemin (k_s ya da None),
                 zemin_kuvvetleri (zeminin düğümlere aktarılmış global kuvvetleri, 4 ya da 6 bileşen; zemin yoksa None),
@@ -918,6 +929,94 @@ def _bos(v):
     return v is None or (isinstance(v, str) and not v.strip())
 
 
+# Rijit kat diyaframı: köle düğümün efendiye bağlanan (düzlem içi) SD'leri ve sanal efendinin sıfır alınan SD'leri
+# (cerceve3b SD sırası u, v, w, θx, θy, θz; diyafram yatay x–z düzlemindedir, normali y)
+_DIYAFRAM_SD = (0, 2, 4)        # u, w, θy: efendiye bağlanır
+_DIYAFRAM_DISI_SD = (1, 3, 5)   # v, θx, θz: bağımsız kalır (sanal efendide hiçbir elemana bağlı değildir: 0 alınır)
+
+
+def _diyaframlari_oku(model, tip, dugumler, dn):
+    """'diyaframlar' listesini okur: [{"ad": "Kat 1", "dugumler": [köle no, ...], "ana": {"no", "x", "y", "z"} | no}].
+
+    Yalnız uzay çerçevede (cerceve3b). Köle düğümler aynı kotta (y) olmalıdır; efendi ("ana") ya var olan bir düğümün
+    numarası ya da yeni (sanal) bir düğüm sözlüğüdür (y verilmezse kat kotu alınır). Sanal efendi düğüm listesinin
+    SONUNA eklenir (var olan SD numaraları değişmez) ve ``sanal=True`` işaretlenir. Dönüş: SimpleNamespace listesi
+    (ad, ana [düğüm sırası], koleler [düğüm sıraları], sanal)."""
+    ham = model.get("diyaframlar")
+    if ham in (None, "", []):
+        return []
+    if not isinstance(ham, list):
+        raise MatrisHatasi('"diyaframlar" bir liste olmalı: [{"ad": "Kat 1", "dugumler": [5, 6, 7, 8], '
+                           '"ana": {"no": 9001, "x": 2.5, "y": 3, "z": 2}}].')
+    if tip != "cerceve3b":
+        raise MatrisHatasi(f"Rijit kat diyaframı (diyaframlar) yalnız uzay çerçevede (cerceve3b) tanımlanabilir; "
+                           f"{_TIP_AD[tip]} modelinde kat düzlemi (x–z) ve düşey eksen (y) etrafında dönme yoktur.")
+    diyaframlar, kole_kume, efendi_kume = [], set(), set()
+    for k, dy in enumerate(ham, start=1):
+        if not isinstance(dy, dict):
+            raise MatrisHatasi(f"{k}. diyafram bir sözlük olmalı: {{\"ad\": \"Kat 1\", \"dugumler\": [5, 6, 7, 8], \"ana\": ...}}.")
+        ad = str(dy.get("ad") or f"Diyafram {k}")
+        liste = dy.get("dugumler")
+        if not isinstance(liste, (list, tuple)) or not liste:
+            raise MatrisHatasi(f"Diyafram '{ad}': 'dugumler' köle düğüm numaralarının listesi olmalı (en az bir düğüm), "
+                               "örn. [5, 6, 7, 8] (katın kolon–kiriş birleşim düğümleri).")
+        koleler = []
+        for ham_no in liste:
+            no = _tam(ham_no, f"Diyafram '{ad}': köle düğüm numarası")
+            if no not in dn:
+                raise MatrisHatasi(f"Diyafram '{ad}' tanımsız bir düğümü köle yapıyor: düğüm {no}. "
+                                   f"Tanımlı düğümler: {sorted(dn)}.")
+            if no in kole_kume:
+                raise MatrisHatasi(f"Düğüm {no} birden çok diyaframa köle olamaz (diyafram '{ad}'): bir düğüm yalnız bir "
+                                   "katın döşemesine bağlıdır; kat listelerini ayırın.")
+            if no in efendi_kume:
+                raise MatrisHatasi(f"Düğüm {no} başka bir diyaframın efendi düğümüdür; diyafram '{ad}' içinde köle olamaz.")
+            kole_kume.add(no)
+            koleler.append(dn[no])
+        kot = dugumler[koleler[0]].y
+        for i in koleler[1:]:
+            if abs(float(dugumler[i].y - kot)) > 1e-9 * max(1.0, abs(float(kot))):
+                raise MatrisHatasi(f"Diyafram '{ad}': köle düğümler aynı kotta (y) olmalı; düğüm {dugumler[koleler[0]].no} "
+                                   f"y = {_metin(kot)}, düğüm {dugumler[i].no} y = {_metin(dugumler[i].y)}. Rijit döşeme "
+                                   "yatay bir düzlemdir (x–z); her kat için ayrı bir diyafram tanımlayın.")
+        ana = dy.get("ana")
+        if _bos(ana):
+            raise MatrisHatasi(f"Diyafram '{ad}': efendi düğüm ('ana') tanımsız. Ya var olan bir düğümün numarasını "
+                               f"(\"ana\": 5) ya da yeni bir düğüm sözlüğünü (\"ana\": {{\"no\": 9001, \"x\": 2.5, "
+                               f"\"y\": {_metin(kot)}, \"z\": 2}}; katın kütle merkezi) verin.")
+        if isinstance(ana, dict):
+            no = _tam(ana.get("no"), f"Diyafram '{ad}': efendi düğümün 'no' değeri")
+            if no in dn:
+                raise MatrisHatasi(f"Diyafram '{ad}': efendi düğüm {no} zaten tanımlı. Var olan bir düğümü efendi yapmak için "
+                                   f"\"ana\": {no} yazın; yeni (sanal) efendi için kullanılmayan bir numara seçin.")
+            x = _koord(ana.get("x", 0), f"Diyafram '{ad}': efendi düğüm x koordinatı")
+            y = kot if _bos(ana.get("y")) else _koord(ana.get("y"), f"Diyafram '{ad}': efendi düğüm y koordinatı")
+            z = _koord(ana.get("z", 0), f"Diyafram '{ad}': efendi düğüm z koordinatı")
+            if abs(float(y - kot)) > 1e-9 * max(1.0, abs(float(kot))):
+                raise MatrisHatasi(f"Diyafram '{ad}': efendi düğümün kotu y = {_metin(y)} köle düğümlerin kotundan "
+                                   f"(y = {_metin(kot)}) farklı; efendi düğüm döşeme düzleminde olmalıdır ('y' boş "
+                                   "bırakılırsa kat kotu alınır).")
+            dn[no] = len(dugumler)
+            dugumler.append(SimpleNamespace(no=no, x=x, y=y, z=z, i=len(dugumler), sanal=True))
+            ana_i, sanal = dn[no], True
+        else:
+            no = _tam(ana, f"Diyafram '{ad}': efendi düğüm ('ana') numarası")
+            if no not in dn:
+                raise MatrisHatasi(f"Diyafram '{ad}': efendi düğüm {no} tanımsız. Tanımlı düğümler: {sorted(dn)}. "
+                                   "Yeni (sanal) bir efendi için sözlük verin: \"ana\": {\"no\": 9001, \"x\": ..., \"z\": ...}.")
+            if no in kole_kume:
+                raise MatrisHatasi(f"Diyafram '{ad}': düğüm {no} hem efendi hem köle olamaz; köle listesinden çıkarın.")
+            if no in efendi_kume:
+                raise MatrisHatasi(f"Düğüm {no} iki diyaframın efendisi olamaz (diyafram '{ad}').")
+            ana_i, sanal = dn[no], False
+            if abs(float(dugumler[ana_i].y - kot)) > 1e-9 * max(1.0, abs(float(kot))):
+                raise MatrisHatasi(f"Diyafram '{ad}': efendi düğüm {no} (y = {_metin(dugumler[ana_i].y)}) köle düğümlerle "
+                                   f"aynı kotta (y = {_metin(kot)}) olmalıdır.")
+        efendi_kume.add(no)
+        diyaframlar.append(SimpleNamespace(ad=ad, ana=ana_i, koleler=koleler, sanal=sanal))
+    return diyaframlar
+
+
 def _yayili_parca_oku(y, eno, L, anahtar_q1, anahtar_q2, duzgun_q, uzunluk):
     """Bir yayılı yük kaydından (q1, q2, x1, x2) parçasını okur; x2 verilmemişse eleman boyu L alınır (None döner,
     _hazirla'da doldurulur).
@@ -989,7 +1088,12 @@ def _yukleri_oku(M, model):
             v = _say(ham, f"Düğüm {dno}: {anahtar} yükü")
             if v.free_symbols:
                 semb = True
-            yuk[dn[dno]][gecerli.index(hedef)] += v
+            j = gecerli.index(hedef)
+            if M.dugumler[dn[dno]].sanal and j in _DIYAFRAM_DISI_SD and v != 0:
+                raise MatrisHatasi(f"Düğüm {dno}: sanal efendi düğüme {anahtar} yükü verilemez; diyafram yalnız düzlem içi "
+                                   "bileşenleri (Fx, Fz, My) katın düğümlerine aktarır. Düşey yükü (Fy) ve Mx, Mz'yi "
+                                   "doğrudan ilgili kolon–kiriş düğümüne verin.")
+            yuk[dn[dno]][j] += v
 
     # --- yayılı yükler: düzgün (q, qz) ya da parçalı doğrusal (q1, q2, x1, x2; qz1, qz2) ---
     yayili = [[] for _ in M.elemanlar]
@@ -1076,7 +1180,7 @@ def _model_oku(model):
         if not uc and dg.get("z") not in (None, "", 0, "0") and no not in z_yoksayilan:
             z_yoksayilan.append(no)
         dn[no] = len(dugumler)
-        dugumler.append(SimpleNamespace(no=no, x=x, y=y, z=z, i=len(dugumler)))
+        dugumler.append(SimpleNamespace(no=no, x=x, y=y, z=z, i=len(dugumler), sanal=False))
     if tip == "kiris":
         for dg in dugumler[1:]:
             if sp.simplify(dg.y - dugumler[0].y) != 0:
@@ -1149,9 +1253,16 @@ def _model_oku(model):
                                          G=ozel.get("G"), Iy=ozel.get("Iy"), Iz=ozel.get("Iz"), J=ozel.get("J"),
                                          zemin=zemin))
 
+    # --- rijit kat diyaframları (sanal efendi düğümler listenin sonuna eklenir) ---
+    diyaframlar = _diyaframlari_oku(model, tip, dugumler, dn)
+    kole = {}                       # köle düğüm sırası -> diyafram
+    for dy in diyaframlar:
+        for i in dy.koleler:
+            kole[i] = dy
+
     kullanilan = {x for e in elemanlar for x in e.dno}
     for dg in dugumler:
-        if dg.no not in kullanilan:
+        if dg.no not in kullanilan and not dg.sanal:
             raise MatrisHatasi(f"Düğüm {dg.no} hiçbir elemana bağlı değil: bu düğümün serbestlikleri için denklem "
                                "yazılamaz (K matrisinde sıfır satır/sütun oluşur). Düğümü bir elemana bağlayın "
                                "ya da modelden çıkarın.")
@@ -1169,10 +1280,17 @@ def _model_oku(model):
             if deger is None and tip in ("yay", "cubuk") and anahtar == "ux":
                 deger = m.get("u")
             if _bayrak(deger):
+                if dn[dno] in kole and k in _DIYAFRAM_SD:
+                    raise MatrisHatasi(
+                        f"Düğüm {dno}: {anahtar} serbestliği rijit diyafram '{kole[dn[dno]].ad}' ile efendi düğüme bağlıdır; "
+                        "köle düğümün düzlem içi serbestlikleri (ux, uz, ry) ayrıca mesnetlenemez. Katı tutmak için mesneti "
+                        f"efendi düğüme ({dugumler[kole[dn[dno]].ana].no}) verin; düşey (uy) ve diğer dönmeler (rx, rz) köle "
+                        "düğümde mesnetlenebilir.")
                 mesnet[dn[dno]][k] = True
 
     # --- yükler ve yayılı yükler (coz_coklu de aynı yardımcıyı kullanır) ---
-    M = SimpleNamespace(tip=tip, d=d, uc=uc, dugumler=dugumler, dn=dn, elemanlar=elemanlar, en=en, uzunluk=uzunluk)
+    M = SimpleNamespace(tip=tip, d=d, uc=uc, dugumler=dugumler, dn=dn, elemanlar=elemanlar, en=en, uzunluk=uzunluk,
+                        diyaframlar=diyaframlar, kole=kole)
     yuk, yayili, yayili_z, semb_yuk = _yukleri_oku(M, model)
     semb = semb or semb_yuk
 
@@ -1226,6 +1344,13 @@ def _model_oku(model):
             if v.free_symbols:
                 semb = True
             k = _MESNET_ANAHTAR[tip].index(anahtar)
+            if dn[dno] in kole and k in _DIYAFRAM_SD:
+                raise MatrisHatasi(f"Düğüm {dno}: {anahtar} serbestliği rijit diyafram '{kole[dn[dno]].ad}' ile efendi düğüme "
+                                   "bağlıdır; köle düğümün düzlem içi serbestliğine (ux, uz, ry) çökme verilemez. Verilen yer "
+                                   f"değiştirmeyi efendi düğüme ({dugumler[kole[dn[dno]].ana].no}) uygulayın.")
+            if dugumler[dn[dno]].sanal and k in _DIYAFRAM_DISI_SD:
+                raise MatrisHatasi(f"Düğüm {dno}: sanal efendi düğümün {anahtar} serbestliği hiçbir elemana bağlı değildir "
+                                   "(diyafram yalnız ux, uz, ry'yi aktarır); bu serbestliğe çökme verilemez.")
             mesnet[dn[dno]][k] = True
             if v != 0:
                 cokme[d * dn[dno] + k] = v
@@ -1250,6 +1375,14 @@ def _model_oku(model):
     if hesap == "sayisal" and semb:
         raise MatrisHatasi("\"hesap\": \"sayisal\" ile harfli (sembolik) girdi bir arada olamaz: E, A, P gibi harfleri "
                            "sayıyla değiştirin ya da 'hesap' anahtarını kaldırın.")
+    if diyaframlar:
+        if semb:
+            raise MatrisHatasi("Rijit kat diyaframı (diyaframlar) yalnız sayısal kipte çözülür; harfli (sembolik) girdiyle "
+                               "bir arada olamaz: E, A, P gibi harfleri sayıyla değiştirin.")
+        if hesap == "kesin":
+            raise MatrisHatasi("Rijit kat diyaframı (diyaframlar) yalnız sayısal kipte çözülür: \"hesap\": \"kesin\" ile "
+                               "bir arada olamaz; 'hesap' anahtarını kaldırın.")
+        hesap = "sayisal"
     if M.n > SD_ESIK or hesap == "sayisal":
         if semb:
             raise MatrisHatasi(
@@ -1625,7 +1758,58 @@ def _hazirla(M):
     M.sabit = [d * i + j for i, fl in enumerate(M.mesnet) for j, f in enumerate(fl) if f]
     ks = set(M.sabit)
     M.serbest = [i for i in range(n) if i not in ks]
+    _diyafram_kur(M)
     _mekanizma_kontrol(M)
+
+
+def _diyafram_kur(M):
+    """Rijit kat diyaframı dönüşümü u = T u_r (efendi–köle / çok noktalı bağ, MPC). Diyafram yoksa indirgenmiş sistem
+    tam sistemin kendisidir (T = None; K_r, sabit_r, serbest_r tam sistemin listeleridir).
+
+    Köle s, efendi m; diyafram yatay x–z düzleminde, dönme y ekseni etrafında (sağ el: köle yer değiştirmesi ω × r,
+    ω = θy ŷ, r = (x_s − x_m, 0, z_s − z_m); ŷ × x̂ = −ẑ, ŷ × ẑ = x̂):
+        u_s = u_m + θy_m (z_s − z_m),   w_s = w_m − θy_m (x_s − x_m),   θy_s = θy_m;
+    v, θx, θz köle düğümde bağımsız kalır. Sanal efendinin v, θx, θz serbestlikleri hiçbir elemana bağlı olmadığından
+    indirgenmiş sistemde yer almaz (sıfır alınır). K_r = Tᵀ K T, F_r = Tᵀ F, mesnetler indirgenmiş SD'lerde.
+    M.T (n × n_r), M.ind (sütun → tam SD), M.kol (tam SD → sütun), M.kole_sd (köle bağlı SD'ler), M.oto_sd (sanal
+    efendinin sıfır SD'leri), M.n_r, M.K_r, M.sabit_r, M.serbest_r."""
+    d, n = M.d, M.n
+    M.kole_sd, M.oto_sd = set(), set()
+    if not M.diyaframlar:
+        M.T, M.ind, M.kol = None, list(range(n)), {i: i for i in range(n)}
+        M.n_r, M.K_r, M.sabit_r, M.serbest_r = n, M.K, M.sabit, M.serbest
+        return
+    bag = {}   # köle SD -> [(efendi SD, katsayı), ...]
+    for dy in M.diyaframlar:
+        m = M.dugumler[dy.ana]
+        if dy.sanal:
+            M.oto_sd.update(d * dy.ana + j for j in _DIYAFRAM_DISI_SD)
+        for si in dy.koleler:
+            s = M.dugumler[si]
+            dx, dz = s.x - m.x, s.z - m.z
+            bag[d * si + 0] = [(d * dy.ana + 0, 1.0), (d * dy.ana + 4, dz)]     # u_s = u_m + θy_m (z_s − z_m)
+            bag[d * si + 2] = [(d * dy.ana + 2, 1.0), (d * dy.ana + 4, -dx)]    # w_s = w_m − θy_m (x_s − x_m)
+            bag[d * si + 4] = [(d * dy.ana + 4, 1.0)]                           # θy_s = θy_m
+    M.kole_sd = set(bag)
+    M.ind = [i for i in range(n) if i not in bag and i not in M.oto_sd]
+    M.kol = {i: a for a, i in enumerate(M.ind)}
+    M.n_r = len(M.ind)
+    T = np.zeros((n, M.n_r))
+    for i in M.ind:
+        T[i, M.kol[i]] = 1.0
+    for i, terimler in bag.items():
+        for q, c in terimler:
+            T[i, M.kol[q]] += c
+    M.T = T
+    M.K_r = T.T @ M.K @ T
+    M.sabit_r = [M.kol[i] for i in M.sabit if i in M.kol]   # sanal efendinin sıfır SD'leri zaten sistem dışıdır
+    ks = set(M.sabit_r)
+    M.serbest_r = [a for a in range(M.n_r) if a not in ks]
+
+
+def _F_indirgenmis(M):
+    """İndirgenmiş yük vektörü F_r = Tᵀ F (diyafram yoksa F)."""
+    return M.F if M.T is None else M.T.T @ M.F
 
 
 def _eleman_yuku(M, e, parcalar, parcalar_z):
@@ -1693,10 +1877,10 @@ def _sifir_ozdeger_sayisi(Ks, esik=1e-10):
 
 
 def _mekanizma_kontrol(M):
-    """İndirgenmiş K tekilse (mekanizma / yetersiz mesnet) öğretici hata verir."""
-    if not M.serbest:
+    """İndirgenmiş K tekilse (mekanizma / yetersiz mesnet) öğretici hata verir (diyafram varsa K_r üzerinde)."""
+    if not M.serbest_r:
         return
-    Ks = M.K[np.ix_(M.serbest, M.serbest)] if M.sayisal else M.K.extract(M.serbest, M.serbest)
+    Ks = M.K_r[np.ix_(M.serbest_r, M.serbest_r)] if M.sayisal else M.K_r.extract(M.serbest_r, M.serbest_r)
     z = 0
     if np is not None:
         if not M.sayisal:
@@ -1734,16 +1918,19 @@ def _mekanizma_kontrol(M):
 
 def _coz(M):
     """K_ff u_f = F_f − K_fs u_s sistemini çözer (kesin: sympy LU, sayısal: numpy), sonra tepkileri hesaplar.
-    u_s tutulu SD'lerin bilinen değerleridir (mesnet çökmesi yoksa 0)."""
+    u_s tutulu SD'lerin bilinen değerleridir (mesnet çökmesi yoksa 0). Rijit diyafram varsa sistem indirgenmiş
+    SD'lerde (K_r = Tᵀ K T, F_r = Tᵀ F) çözülür, sonra u = T u_r (sayısal kip)."""
     if M.sayisal:
-        u = np.zeros(M.n)
+        u_r = np.zeros(M.n_r)
         for i, v in M.cokme.items():
-            u[i] = v
-        if M.serbest:
-            rhs = M.F[M.serbest].copy()
+            u_r[M.kol[i]] = v
+        if M.serbest_r:
+            rhs = _F_indirgenmis(M)[M.serbest_r].copy()
             if M.cokme:
-                rhs = rhs - M.K[np.ix_(M.serbest, M.sabit)] @ u[M.sabit]
-            u[M.serbest] = np.linalg.solve(M.K[np.ix_(M.serbest, M.serbest)], rhs)
+                rhs = rhs - M.K_r[np.ix_(M.serbest_r, M.sabit_r)] @ u_r[M.sabit_r]
+            u_r[M.serbest_r] = np.linalg.solve(M.K_r[np.ix_(M.serbest_r, M.serbest_r)], rhs)
+        M.u_r = u_r
+        u = u_r if M.T is None else M.T @ u_r
     else:
         u = sp.zeros(M.n, 1)
         for i, v in M.cokme.items():
@@ -1781,8 +1968,19 @@ def _kesin_coz(Ks, Fs):
 
 def _tepki_hesapla(M):
     """R = K u − F: yalnız tutulu SD'lerde sıfırdan farklı olmalı (serbest SD'lerde sağlama).
-    Yay (elastik mesnet) kuvvetleri F_yay = −k u ve zemin kuvvetleri F_zemin (düğümlere aktarılmış) ayrıca tutulur."""
+    Yay (elastik mesnet) kuvvetleri F_yay = −k u ve zemin kuvvetleri F_zemin (düğümlere aktarılmış) ayrıca tutulur.
+    Rijit diyaframda köle düğümün bağlı SD'lerindeki artık, diyaframın düğüme uyguladığı iç kuvvettir: tepki değil,
+    M.F_diyafram'a ayrılır; tepkiler indirgenmiş sistemde R_r = Tᵀ(K u − F) ile bulunur (efendi düğüm köle
+    kuvvetlerini toplar)."""
     R = M.K @ M.u - M.F
+    Fd = _sifir_vek(M, M.n)
+    if M.T is not None:
+        R_r = M.T.T @ R
+        for i in M.kole_sd:
+            Fd[i] = R[i]
+        R = np.zeros(M.n)
+        R[M.ind] = R_r
+    M.F_diyafram = Fd
     if M.sayisal:
         olcek = max(1.0, float(np.abs(M.F).max()), float(np.abs(R).max()))
         ks = set(M.sabit)
@@ -2569,7 +2767,8 @@ def _adim_model(M, anl):
         sat = [[dg.no, _metin(dg.x)] for dg in M.dugumler]
     elif M.uc:
         ust = ["Düğüm", f"x [{M.uzunluk}]", f"y [{M.uzunluk}]", f"z [{M.uzunluk}]"]
-        sat = [[dg.no, _metin(dg.x), _metin(dg.y), _metin(dg.z)] for dg in M.dugumler]
+        sat = [[f"{dg.no} (sanal efendi)" if dg.sanal else dg.no, _metin(dg.x), _metin(dg.y), _metin(dg.z)]
+               for dg in M.dugumler]
     else:
         ust = ["Düğüm", f"x [{M.uzunluk}]", f"y [{M.uzunluk}]"]
         sat = [[dg.no, _metin(dg.x), _metin(dg.y)] for dg in M.dugumler]
@@ -2611,6 +2810,11 @@ def _adim_model(M, anl):
     if M.cokme:
         anl.metin("**Mesnet çökmesi (verilen yer değiştirme):** tutulu SD'lerden bazıları sıfır yerine bilinen bir değer "
                   "alır; bu değerler çözümde sağ tarafa taşınır (7. adım).")
+    if M.diyaframlar:
+        sat = [[dy.ad, f"{M.dugumler[dy.ana].no}{' (sanal; yalnız u, w, θy)' if dy.sanal else ''}",
+                ", ".join(str(M.dugumler[i].no) for i in dy.koleler)] for dy in M.diyaframlar]
+        anl.metin("**Rijit kat diyaframları** (döşeme kendi düzleminde rijit: köle düğümlerin u, w, θy serbestlikleri "
+                  "efendi düğüme bağlanır; 7. adım)\n\n" + _tablo(["Diyafram", "Efendi düğüm", "Köle düğümler"], sat))
     if M.yay_var:
         ya = _YAY_ANAHTAR[t]
         ust = ["Düğüm"] + [f"{a} [{b[a]}]" for a in ya]
@@ -2674,6 +2878,9 @@ def _adim_sd(M, anl):
     bilinen = "yer değiştirmesi bilinen: mesnet çökmesi verilenler dışında sıfır" if M.cokme else "yer değiştirmesi sıfır"
     anl.metin(f"**Tutulu SD'ler** ({bilinen}, {len(sabit)} adet): {sabit}. "
               f"**Serbest SD'ler** (bilinmeyen, {len(serbest)} adet): {serbest}.")
+    if M.diyaframlar:
+        anl.metin(f"Rijit kat diyaframı: köle düğümlerin u, w, θy serbestlikleri ({len(M.kole_sd)} SD) efendi düğüme "
+                  f"bağlıdır; 7. adımda dönüşüm matrisiyle bilinmeyen sayısı {M.n}'den {M.n_r}'ye iner.")
     if M.n <= 12:
         vek = ", ".join(M.sd_tex)
     else:
@@ -3898,6 +4105,51 @@ def _tepki_tablosu(M):
     return _tablo(ust, sat)
 
 
+def _diyafram_tablosu(M):
+    d = M.d
+    b = _birimler(M)
+    sat = []
+    for dy in M.diyaframlar:
+        for i in dy.koleler:
+            sat.append([dy.ad, M.dugumler[i].no, _hucre(M, M.F_diyafram[d * i]), _hucre(M, M.F_diyafram[d * i + 2]),
+                        _hucre(M, M.F_diyafram[d * i + 4])])
+    return _tablo(["Diyafram", "Köle düğüm", f"Fx [{b['Fx']}]", f"Fz [{b['Fz']}]", f"My [{b['My']}]"], sat)
+
+
+def _diyafram_anlatimi(M, anl):
+    """7. adımın başında kısa 'rijit diyafram' alt adımı: kural, bir köle için T'nin üç satırı, SD sayısının azalması."""
+    anl.baslik("Rijit kat diyaframı (efendi–köle bağı)", 4)
+    anl.kural("Kat döşemesi kendi düzleminde (x–z) çok rijittir: katın bütün düğümleri tek bir rijit cisim gibi birlikte "
+              "ötelenir ve düşey eksen (y) etrafında birlikte döner. Bu yüzden her **köle** düğümün düzlem içi üç "
+              "serbestliği ($u$, $w$, $\\theta_y$) **efendi** düğümün üç serbestliğine bağlanır; düşey öteleme $v$ ile "
+              "$\\theta_x$, $\\theta_z$ köle düğümde bağımsız kalır. Sağ el kuralıyla köle düğümün yer değiştirmesi "
+              "$\\boldsymbol{\\omega}\\times\\mathbf{r}$'dir ($\\boldsymbol{\\omega}=\\theta_{y,m}\\,\\hat{y}$, "
+              "$\\mathbf{r}$ efendiden köleye; $\\hat{y}\\times\\hat{x}=-\\hat{z}$, $\\hat{y}\\times\\hat{z}=\\hat{x}$): "
+              "$u_s = u_m + \\theta_{y,m}\\,(z_s - z_m)$, $w_s = w_m - \\theta_{y,m}\\,(x_s - x_m)$, "
+              "$\\theta_{y,s}=\\theta_{y,m}$.")
+    sat = [[dy.ad, f"{M.dugumler[dy.ana].no}{' (sanal)' if dy.sanal else ''}",
+            ", ".join(str(M.dugumler[i].no) for i in dy.koleler)] for dy in M.diyaframlar]
+    anl.metin("**Diyaframlar**\n\n" + _tablo(["Diyafram", "Efendi düğüm", "Köle düğümler"], sat))
+    dy = M.diyaframlar[0]
+    s, m = M.dugumler[dy.koleler[0]], M.dugumler[dy.ana]
+    dz, dx = s.z - m.z, s.x - m.x
+    anl.metin(f"Örnek: diyafram '{dy.ad}', köle düğüm {s.no}, efendi düğüm {m.no} "
+              f"($x_s-x_m={_metin(dx)}$, $z_s-z_m={_metin(dz)}$). $\\mathbf{{T}}$'nin bu köleye ait üç satırı:")
+    anl.mat(rf"\begin{{bmatrix}} u_{{{s.no}}} \\ w_{{{s.no}}} \\ \theta_{{y,{s.no}}} \end{{bmatrix}} = "
+            rf"\begin{{bmatrix}} 1 & 0 & {_L(dz)} \\ 0 & 1 & {_L(-dx)} \\ 0 & 0 & 1 \end{{bmatrix}}"
+            rf"\begin{{bmatrix}} u_{{{m.no}}} \\ w_{{{m.no}}} \\ \theta_{{y,{m.no}}} \end{{bmatrix}}")
+    oto = (f", sanal efendi düğümün {len(M.oto_sd)} serbestliği ($v$, $\\theta_x$, $\\theta_z$) hiçbir elemana bağlı "
+           "olmadığından sıfır alındı" if M.oto_sd else "")
+    anl.metin(f"Bütün bağlar tek bir dönüşüm matrisinde toplanır: $\\mathbf{{u}}=\\mathbf{{T}}\\,\\mathbf{{u}}_r$ "
+              f"($\\mathbf{{T}}$: {M.n}×{M.n_r}; bağımsız SD'lerin satırı birim, köle SD'lerin satırı yukarıdaki "
+              f"katsayılar). Rijitlik ve yük buna göre indirgenir: $\\mathbf{{K}}_r=\\mathbf{{T}}^T\\mathbf{{K}}\\mathbf{{T}}$, "
+              f"$\\mathbf{{F}}_r=\\mathbf{{T}}^T\\mathbf{{F}}$. **SD sayısı {M.n} → {M.n_r}** ({len(M.kole_sd)} köle SD'si "
+              f"efendiye bağlandı{oto}). Mesnetler ve mekanizma denetimi indirgenmiş sistemdedir; çözümden sonra "
+              "$\\mathbf{u}=\\mathbf{T}\\mathbf{u}_r$ ile tam vektöre dönülür. Köle SD'lerinde $\\mathbf{K}\\mathbf{u}-\\mathbf{F}$ "
+              "artığı sıfır değildir: bu, diyaframın düğüme uyguladığı **iç kuvvettir** (aşağıda ayrı tablo), mesnet "
+              "tepkisi değildir; tepkiler $\\mathbf{R}_r=\\mathbf{T}^T(\\mathbf{K}\\mathbf{u}-\\mathbf{F})$ ile bulunur.")
+
+
 def _yay_tablosu(M):
     t, d = M.tip, M.d
     b = _birimler(M)
@@ -3917,13 +4169,16 @@ def _adim_cozum(M, anl):
            "$\\mathbf{K}\\mathbf{u}=\\mathbf{F}$ tek başına çözülemez. Mesnetler bazı SD'lerin yer değiştirmesini sıfıra "
            "bağlar; bu bilinen değerleri denklemden çıkarıp yalnız **bilinmeyen** (serbest) SD'ler için küçük bir sistem "
            "çözüyoruz. Sonra tutulu SD'lerdeki denge artığından **mesnet tepkilerini** buluyoruz.")
+    if M.diyaframlar:
+        _diyafram_anlatimi(M, anl)
     sabit1 = [i + 1 for i in M.sabit]
     serbest1 = [i + 1 for i in M.serbest]
     if M.sabit:
         sat = [[i + 1, M.sd_et[i], M.dugumler[i // d].no, _metin(M.cokme.get(i, 0))] for i in M.sabit]
         anl.metin("**Tutulu SD'ler** (mesnet; yer değiştirme bilinir)\n\n" + _tablo(["SD no", "SD", "Düğüm", "Bilinen değer"], sat))
     anl.metin(f"Tutulu SD'ler: {sabit1}. Serbest (bilinmeyen) SD'ler: {serbest1 or 'yok'}. "
-              f"İndirgenmiş sistemin boyutu {len(M.serbest)}×{len(M.serbest)}.")
+              + (f"Diyafram bağlarından sonra bilinmeyen sayısı {len(M.serbest_r)}; " if M.diyaframlar else "")
+              + f"İndirgenmiş sistemin boyutu {len(M.serbest_r)}×{len(M.serbest_r)}.")
     if M.yay_sd:
         anl.metin("Yaylarla tutulan serbestlikler **serbest** sayılır: yay, yer değiştirmeyi sıfırlamaz, yalnız ona karşı "
                   "kuvvet üretir (5. adımda köşegene eklendi).")
@@ -3935,20 +4190,22 @@ def _adim_cozum(M, anl):
                   "\\begin{bmatrix}\\mathbf{F}_f\\\\\\mathbf{F}_s+\\mathbf{R}\\end{bmatrix}$; ilk satırdan "
                   "$\\mathbf{K}_{ff}\\mathbf{u}_f=\\mathbf{F}_f-\\mathbf{K}_{fs}\\mathbf{u}_s$ çıkar: bilinen yer değiştirmenin "
                   "etkisi **eşdeğer bir yük** gibi sağ tarafa taşınır. Tepkiler yine $\\mathbf{R}=\\mathbf{K}\\mathbf{u}-\\mathbf{F}$.")
+        F_r = _F_indirgenmis(M)
         if M.sayisal:
-            Kfs = M.K[np.ix_(M.serbest, M.sabit)]
-            us_ = M.u[M.sabit]
+            Kfs = M.K_r[np.ix_(M.serbest_r, M.sabit_r)]
+            us_ = M.u_r[M.sabit_r]
             ek = Kfs @ us_
-            Fc = M.F[M.serbest] - ek
+            Fc = F_r[M.serbest_r] - ek
         else:
             Kfs = M.K.extract(M.serbest, M.sabit)
             us_ = sp.Matrix([M.u[i] for i in M.sabit])
             ek = _sade(Kfs * us_)
             Fc = M.F_cokme
         sat = []
-        for a_, i in enumerate(M.serbest):
-            if ek[a_] != 0 or M.F[i] != 0:
-                sat.append([f"{M.sd_et[i]} (SD {i + 1})", _metin(M.F[i]), _metin(-ek[a_]), _metin(Fc[a_])])
+        for a_, c in enumerate(M.serbest_r):
+            i = M.ind[c]
+            if ek[a_] != 0 or F_r[c] != 0:
+                sat.append([f"{M.sd_et[i]} (SD {i + 1})", _metin(F_r[c]), _metin(-ek[a_]), _metin(Fc[a_])])
         if sat:
             anl.metin("**Sağ tarafın düzeltilmesi** $\\mathbf{F}_f-\\mathbf{K}_{fs}\\mathbf{u}_s$ (yalnız dolu satırlar)\n\n"
                       + _tablo(["SD", "F_f", "−K_fs·u_s", "Düzeltilmiş sağ taraf"], sat))
@@ -3977,15 +4234,16 @@ def _adim_cozum(M, anl):
         anl.mat(rf"\mathbf{{u}}_f = \mathbf{{K}}_{{ff}}^{{-1}}\left(\mathbf{{F}}_f-\mathbf{{K}}_{{fs}}\mathbf{{u}}_s\right) = "
                 rf"{_etiketli_vek(sp.Matrix([M.u[i] for i in M.serbest]), et)}")
     else:
-        m = len(M.serbest)
-        Ks = M.K[np.ix_(M.serbest, M.serbest)]
-        Fs = M.F[M.serbest]
+        m = len(M.serbest_r)
+        Ks = M.K_r[np.ix_(M.serbest_r, M.serbest_r)]
+        Fs = _F_indirgenmis(M)[M.serbest_r]
         if M.cokme:
-            Fs = Fs - M.K[np.ix_(M.serbest, M.sabit)] @ M.u[M.sabit]
-        us = M.u[M.serbest]
+            Fs = Fs - M.K_r[np.ix_(M.serbest_r, M.sabit_r)] @ M.u_r[M.sabit_r]
+        us = M.u_r[M.serbest_r]
         kosul = float(np.linalg.cond(Ks))
         art = float(np.abs(Ks @ us - Fs).max())
-        anl.metin(f"Tutulu {len(M.sabit)} SD'nin satır ve sütunları $\\mathbf{{K}}$'dan atılır; kalan "
+        K_ad = "\\mathbf{K}_r" if M.diyaframlar else "\\mathbf{K}"
+        anl.metin(f"Tutulu {len(M.sabit_r)} SD'nin satır ve sütunları ${K_ad}$'dan atılır; kalan "
                   f"$\\mathbf{{K}}_s$ ({m}×{m}) simetrik ve pozitif tanımlıdır. Sistem "
                   f"$\\mathbf{{K}}_s\\mathbf{{u}}_s=\\mathbf{{F}}_s$"
                   + (" (sağ taraf $\\mathbf{F}_f-\\mathbf{K}_{fs}\\mathbf{u}_s$ ile düzeltilmiş)" if M.cokme else "")
@@ -4004,6 +4262,10 @@ def _adim_cozum(M, anl):
         if M.sayisal:
             kalan = max([abs(float(M.R_tam[i])) for i in M.serbest] + [0.0])
             anl.metin(f"Serbest SD'lerdeki tepkilerin en büyüğü {kalan:.2g} (≈ 0) ✔.")
+    if M.diyaframlar:
+        anl.metin("**Diyafram kuvvetleri** (diyaframın köle düğüme uyguladığı düzlem içi kuvvet $\\mathbf{T}$ bağından "
+                  "gelen $\\mathbf{K}\\mathbf{u}-\\mathbf{F}$ artığıdır; iç kuvvettir, tepki değildir: bir katın kuvvetleri "
+                  "efendi düğümdeki yük ve tepkiyle dengelenir, Σ ≈ 0)\n\n" + _diyafram_tablosu(M))
     if M.yay_sd:
         anl.metin("**Yay (elastik mesnet) kuvvetleri:** yayın yapıya uyguladığı kuvvet $F_{yay}=-k\\,u$ (yer değiştirmeye zıt). "
                   "Bunlar da mesnet tepkisi gibi dengeye girer.\n\n" + _yay_tablosu(M))
@@ -4550,6 +4812,10 @@ def _py_betik(M):
         s += ["yaylar = [" + ", ".join(f"({k}, {S(v)})" for k, v in M.yay_sd.items()) + "]   # elastik mesnetler: (SD, k)"]
     if M.cokme:
         s += ["cokme = {" + ", ".join(f"{k}: {S(v)}" for k, v in M.cokme.items()) + "}   # verilen yer değiştirmeler: SD -> değer"]
+    if M.diyaframlar:
+        s += ["diyaframlar = [" + ", ".join(f"({dy.ana}, {list(dy.koleler)})" for dy in M.diyaframlar)
+              + "]   # rijit kat diyaframları: (efendi düğüm, köle düğümler) düğüm sırasıyla (0'dan)",
+              f"sifir_sd = {sorted(M.oto_sd)}   # sanal efendi düğümlerin v, θx, θz SD'leri: hiçbir elemana bağlı değil, sıfır alınır"]
     s += [f"n = sd*len({koord})"]
     if kesin:
         s += ["",
@@ -4594,13 +4860,56 @@ def _py_betik(M):
               "    K[p, p] += kk"]
     if kesin:
         s += ["K = K.applyfunc(sp.cancel)                  # pay/payda sadeleştirme (simplify büyük matriste yavaş)"]
-    s += ["", "# --- sınır koşulları ve çözüm ---",
-          "serbest = [p for p in range(n) if p not in sabit]",
-          "u = sifirlar(n)"]
-    if M.cokme:
+    if M.diyaframlar:
+        # rijit diyafram (yalnız sayısal kip): aynı T dönüşümü, indirgenmiş sistemde çözüm, u = T u_r
+        s += ["", "# --- rijit kat diyaframı: köle SD'leri efendi SD'lerine bağlanır, u = T u_r ---",
+              "bag = {}                                   # köle SD -> [(efendi SD, katsayı)]",
+              "for efendi, koleler in diyaframlar:",
+              "    xm, ym, zm = dugum_xyz[efendi]",
+              "    for kole in koleler:",
+              "        xs, ys, zs = dugum_xyz[kole]",
+              "        bag[sd*kole + 0] = [(sd*efendi + 0, 1.0), (sd*efendi + 4, zs - zm)]     # u_s = u_m + θy_m (z_s - z_m)",
+              "        bag[sd*kole + 2] = [(sd*efendi + 2, 1.0), (sd*efendi + 4, -(xs - xm))]  # w_s = w_m - θy_m (x_s - x_m)",
+              "        bag[sd*kole + 4] = [(sd*efendi + 4, 1.0)]                               # θy_s = θy_m",
+              "ind = [p for p in range(n) if p not in bag and p not in sifir_sd]   # indirgenmiş (bağımsız) SD'ler",
+              "kol = {p: a for a, p in enumerate(ind)}",
+              "T = sifirlar(n, len(ind))",
+              "for p in ind:",
+              "    T[p, kol[p]] = 1.0",
+              "for p, terimler in bag.items():",
+              "    for q, c in terimler:",
+              "        T[p, kol[q]] += c",
+              "K_r = T.T @ K @ T                          # K_r = Tᵀ K T",
+              "F_r = T.T @ F                              # F_r = Tᵀ F",
+              "",
+              "# --- sınır koşulları ve çözüm (indirgenmiş sistemde) ---",
+              "sabit_r = [kol[p] for p in sabit if p in kol]",
+              "serbest_r = [a for a in range(len(ind)) if a not in sabit_r]",
+              "u_r = sifirlar(len(ind))"]
+        if M.cokme:
+            s += ["for p, v in cokme.items():                # bilinen (sıfır olmayan) yer değiştirmeler",
+                  "    u_r[kol[p]] = v"]
+        s += ["if serbest_r:"]
+        if M.cokme:
+            s += ["    Fs = F_r[serbest_r] - K_r[np.ix_(serbest_r, sabit_r)] @ u_r[sabit_r]   # F_f - K_fs u_s",
+                  "    u_r[serbest_r] = np.linalg.solve(K_r[np.ix_(serbest_r, serbest_r)], Fs)"]
+        else:
+            s += ["    u_r[serbest_r] = np.linalg.solve(K_r[np.ix_(serbest_r, serbest_r)], F_r[serbest_r])"]
+        s += ["u = T @ u_r                                # tam yer değiştirme vektörü",
+              "artik = K @ u - F                          # köle SD'lerinde diyafram kuvveti, ötekilerde tepki",
+              "F_diyafram = {p: artik[p] for p in bag}    # diyaframın köle düğüme uyguladığı kuvvet (iç kuvvet)",
+              "R = sifirlar(n)",
+              "R[ind] = T.T @ artik                       # tepkiler R_r = Tᵀ (K u - F): efendi, köle kuvvetlerini toplar"]
+    else:
+        s += ["", "# --- sınır koşulları ve çözüm ---",
+              "serbest = [p for p in range(n) if p not in sabit]",
+              "u = sifirlar(n)"]
+    if M.cokme and not M.diyaframlar:
         s += ["for p, v in cokme.items():                # bilinen (sıfır olmayan) yer değiştirmeler",
               "    u[p] = v"]
-    if kesin:
+    if M.diyaframlar:
+        pass
+    elif kesin:
         s += ["if serbest:",
               "    Ks = K.extract(serbest, serbest)",
               "    Fs = sp.Matrix([F[p] for p in serbest])"]
@@ -4660,6 +4969,20 @@ def _yayili_veri(parcalar):
     return [{"q1": V(q1), "q2": V(q2), "x1": V(x1), "x2": V(x2)} for q1, q2, x1, x2 in parcalar]
 
 
+def _diyafram_veri(M, V):
+    """Veri çıktısı için (diyaframlar, diyafram_kuvvetleri) listeleri. ``diyafram_kuvvetleri``: diyaframın köle düğüme
+    uyguladığı düzlem içi kuvvetler (Fx, Fz, My; global eksen yönünde +), tepkilerden ayrı (iç kuvvet)."""
+    d = M.d
+    diyaframlar = [{"ad": dy.ad, "ana": M.dugumler[dy.ana].no, "sanal": dy.sanal,
+                    "dugumler": [M.dugumler[i].no for i in dy.koleler]} for dy in M.diyaframlar]
+    kuvvetler = []
+    for dy in M.diyaframlar:
+        for i in dy.koleler:
+            kuvvetler.append({"dugum": M.dugumler[i].no, "diyafram": dy.ad, "Fx": V(M.F_diyafram[d * i]),
+                              "Fz": V(M.F_diyafram[d * i + 2]), "My": V(M.F_diyafram[d * i + 4])})
+    return diyaframlar, kuvvetler
+
+
 def _veri_olustur(M):
     """Sonuc.veri: JSON'a uygun, yapılı sonuçlar (sembolik çözümde sayı yerine ifade metni)."""
     t, d = M.tip, M.d
@@ -4669,7 +4992,7 @@ def _veri_olustur(M):
     for i, dg in enumerate(M.dugumler):
         dugumler.append({"no": dg.no, "x": V(dg.x), "y": V(dg.y), "z": V(dg.z),
                          "sd": [d * i + j + 1 for j in range(d)],
-                         "u": [V(M.u[d * i + j]) for j in range(d)]})
+                         "u": [V(M.u[d * i + j]) for j in range(d)], "sanal": dg.sanal})
     elemanlar = []
     for e in M.elemanlar:
         uc = [V(-e.N), V(e.N)] if e.f is None else [V(x) for x in e.f]
@@ -4717,11 +5040,14 @@ def _veri_olustur(M):
             olcek = float(_olcek_bul(M))
         except (TypeError, ValueError, ArithmeticError):  # pragma: no cover
             olcek = None
+    diyaframlar, diyafram_kuvvetleri = _diyafram_veri(M, V)
     veri = {
         "tip": t, "baslik": M.baslik, "birim": {"kuvvet": M.kuvvet, "uzunluk": M.uzunluk},
-        "mod": M.mod, "sd_sayisi": M.n, "sd_etiketleri": list(M.sd_et), "boyut": 3 if M.uc else 2,
+        "mod": M.mod, "sd_sayisi": M.n, "serbest_sd": len(M.serbest_r), "sd_etiketleri": list(M.sd_et),
+        "boyut": 3 if M.uc else 2,
         "dugumler": dugumler, "elemanlar": elemanlar, "tepkiler": tepkiler,
         "yaylar": yaylar, "cokmeler": cokmeler,
+        "diyaframlar": diyaframlar, "diyafram_kuvvetleri": diyafram_kuvvetleri,
         "u": [V(M.u[i]) for i in range(M.n)], "F": [V(M.F[i]) for i in range(M.n)],
         "denge": {k: V(v) for k, v in M.denge.items()},
         "olcek": olcek,
@@ -4822,8 +5148,10 @@ def _kisa_veri(M):
         i, j = divmod(k, d)
         yaylar.append({"dugum": M.dugumler[i].no, "sd": M.sd_et[k], "bilesen": _BILESEN[t][j], "k": float(kk),
                        "kuvvet": float(M.F_yay[k])})
+    _, diyafram_kuvvetleri = _diyafram_veri(M, float)
     return {"u": [float(v) for v in M.u], "F": [float(v) for v in M.F], "tepkiler": tepkiler,
-            "elemanlar": elemanlar, "denge": denge, "yaylar": yaylar}
+            "elemanlar": elemanlar, "denge": denge, "yaylar": yaylar,
+            "n": M.n, "serbest_sd": len(M.serbest_r), "diyafram_kuvvetleri": diyafram_kuvvetleri}
 
 
 def coz_coklu(model, durumlar, *, diyagram_nokta=11):
@@ -4869,6 +5197,11 @@ def coz_coklu(model, durumlar, *, diyagram_nokta=11):
             durum = {"yukler": list(durum)}
         if not isinstance(durum, dict):
             raise MatrisHatasi(f'Yük durumu {ad!r} bir sözlük olmalı: {{"yukler": [...], "yayili": [...]}}.')
+        fazla = sorted(set(durum) - {"yukler", "yayili"})
+        if fazla:
+            raise MatrisHatasi(f"Yük durumu {ad!r}: yalnız 'yukler' ve 'yayili' anahtarları kullanılabilir "
+                               f"(bilinmeyen: {', '.join(repr(k) for k in fazla)}). Durumların doğrusal birleşimi "
+                               "(kombinasyon, ölçek) motorda yapılmaz; sonuçlar istasyon-istasyon ölçeklenip toplanır.")
         try:
             yuk, yayili, yayili_z, semb = _yukleri_oku(M, durum)
         except MatrisHatasi as e:
@@ -4877,26 +5210,27 @@ def coz_coklu(model, durumlar, *, diyagram_nokta=11):
             raise MatrisHatasi(f"Yük durumu {ad!r}: coz_coklu harfli (sembolik) yük kabul etmez; sayı girin.")
         yukler[str(ad)] = ([[float(v) for v in satir] for satir in yuk],
                            _parcalari_floata_cevir(yayili), _parcalari_floata_cevir(yayili_z))
-    # --- bütün sağ taraflar bir kez: K_ff U_f = F_f − K_fs U_s ---
-    n, adlar = M.n, list(yukler)
-    Fcok = np.zeros((n, len(adlar)))
+    # --- bütün sağ taraflar bir kez: K_ff U_f = F_f − K_fs U_s (diyafram varsa indirgenmiş sistemde, u = T u_r) ---
+    adlar = list(yukler)
+    Fcok = np.zeros((M.n_r, len(adlar)))
     for k, ad in enumerate(adlar):
         _yuk_durumu_yukle(M, *yukler[ad])
-        Fcok[:, k] = M.F
-    U = np.zeros((n, len(adlar)))
+        Fcok[:, k] = _F_indirgenmis(M)
+    U = np.zeros((M.n_r, len(adlar)))
     for i, v in M.cokme.items():
-        U[i, :] = v
-    if M.serbest:
-        rhs = Fcok[M.serbest, :]
+        U[M.kol[i], :] = v
+    if M.serbest_r:
+        rhs = Fcok[M.serbest_r, :]
         if M.cokme:
-            rhs = rhs - M.K[np.ix_(M.serbest, M.sabit)] @ U[M.sabit, :]
-        U[M.serbest, :] = np.linalg.solve(M.K[np.ix_(M.serbest, M.serbest)], rhs)
+            rhs = rhs - M.K_r[np.ix_(M.serbest_r, M.sabit_r)] @ U[M.sabit_r, :]
+        U[M.serbest_r, :] = np.linalg.solve(M.K_r[np.ix_(M.serbest_r, M.serbest_r)], rhs)
     # --- her durum için tepkiler, eleman kuvvetleri, denge, diyagramlar (ortak istasyonlarda) ---
     sabit_x = _ortak_istasyonlar(M, adet, [(yukler[ad][1], yukler[ad][2]) for ad in adlar])
     sonuc = {}
     for k, ad in enumerate(adlar):
         _yuk_durumu_yukle(M, *yukler[ad])
-        M.u = U[:, k].copy()
+        M.u_r = U[:, k].copy()
+        M.u = M.u_r.copy() if M.T is None else M.T @ M.u_r
         _tepki_hesapla(M)
         _eleman_kuvvetleri(M)
         _denge_hesapla(M)
