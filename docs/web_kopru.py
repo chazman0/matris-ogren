@@ -416,9 +416,7 @@ def _bina_girdisi(girdi: dict):
 def _bina_coz_yaniti(girdi: dict) -> dict:
     yapi = _yapi_zorunlu()
     r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
-    veri = _sonlu_sayilar(r.veri)
-    veri["ozet"]["uyarilar"] = list(veri["ozet"].get("uyarilar") or []) + [
-        f"Doğrulanmamış kütüphane kaydı: {k}" for k in yapi.dogrulanmamis_kayitlar()]
+    veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
     return {
         "ad": "bina", "bloklar": _bloklar(r.anlatim),
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",

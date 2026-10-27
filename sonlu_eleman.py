@@ -2310,8 +2310,33 @@ def _kesme_sifirlari(M, e, f1, xs):
     return kokler
 
 
-def _diyagram_hazirla(M, adet=20):
+def _ortak_istasyonlar(M, adet, parca_listeleri):
+    """coz_coklu için eleman başına ORTAK istasyon kümesi: adet + 1 eşit aralıklı nokta + bütün yük durumlarının
+    parça sınırlarının birleşimi (V = 0 kökleri eklenmez). Dönüş {e.idx: [x...]}; bütün durumlar ve kombinasyonlar
+    aynı x'te hesaplanır, süperpozisyon istasyon-istasyon kesin olur."""
+    sabit = {}
+    for e in M.elemanlar:
+        L = float(e.L)
+        xs = [L * i / adet for i in range(adet + 1)]
+        tol = 1e-9 * max(1.0, L)
+        for yayili, yayili_z in parca_listeleri:
+            for parcalar in (yayili[e.idx], yayili_z[e.idx]):
+                for q1, q2, x1, x2 in parcalar:
+                    for xb in (x1, x2):
+                        if xb is None:
+                            continue
+                        fb = float(xb)
+                        if tol < fb < L - tol and all(abs(fb - x) > tol for x in xs):
+                            xs.append(fb)
+        sabit[e.idx] = sorted(xs)
+    return sabit
+
+
+def _diyagram_hazirla(M, adet=20, sabit_x=None):
     """Her eleman için boyunca x, N, V, M dizileri (yapı işaret kuralı) ve uç/ekstremum değerleri.
+
+    ``sabit_x`` ({e.idx: [x...]}) verilirse istasyonlar bu kümedir ve V = 0 kökleri EKLENMEZ (coz_coklu: bütün yük
+    durumları aynı x'te); kökler yalnız ``e.ekst`` (en büyük |M| ekstremumu) için ayrıca değerlendirilir.
 
     N çekme +; V(x) = f1 + Q(x); M(x) = −m1 + f1·x + MQ(x) (alt lif çekme +, yani 'sagging' +) ile
     Q(x) = ∫₀ˣ q ds, MQ(x) = ∫₀ˣ (x − s) q(s) ds parçalı doğrusal yük için kapalı formdur (düzgün q'da q·x ve q·x²/2).
@@ -2334,16 +2359,19 @@ def _diyagram_hazirla(M, adet=20):
             else:
                 f1, m1, f2, m2, N = e.f[1], e.f[5], e.f[7], e.f[11], -e.f[0]
                 v1 = t1 = v2 = t2 = z0
-            xs = _istasyonlar(M, e, adet)
+            xs = _istasyonlar(M, e, adet) if sabit_x is None else list(sabit_x[e.idx])
             xe, kokler = None, []
             if e.parcalar and e.zemin is None:
-                kokler = _kesme_sifirlari(M, e, f1, xs)   # V(x) = 0: M ekstremumları istasyon olarak eklenir
-                if kokler:
-                    xs = sorted(xs + kokler, key=float)
+                kokler = _kesme_sifirlari(M, e, f1, xs)   # V(x) = 0: M ekstremumları
+                if kokler and sabit_x is None:
+                    xs = sorted(xs + kokler, key=float)      # istasyon olarak eklenir (tek durumlu çözüm)
             V = [f1 + _yuk_integralleri(e.parcalar, x, z0)[0] for x in xs]
             Mo = [-m1 + f1 * x + _yuk_integralleri(e.parcalar, x, z0)[1] for x in xs]
+            Mk = {}
             if kokler:
-                xe = max(kokler, key=lambda r: abs(float(Mo[xs.index(r)])))
+                for r in kokler:
+                    Mk[r] = Mo[xs.index(r)] if sabit_x is None else (-m1 + f1 * r + _yuk_integralleri(e.parcalar, r, z0)[1])
+                xe = max(kokler, key=lambda r: abs(float(Mk[r])))
             if e.zemin is not None:
                 ks = e.zemin
                 a0, a1 = v1, t1
@@ -2357,7 +2385,7 @@ def _diyagram_hazirla(M, adet=20):
                 Mo = [_sade(v) if _gercek(v) is not None else sp.expand(v) for v in Mo]
             e.dx, e.dV, e.dM, e.dN = xs, V, Mo, [N] * len(xs)
             if xe is not None:
-                e.ekst = (xe, Mo[xs.index(xe)])
+                e.ekst = (xe, Mk[xe])
             e.m_uc, e.v_uc = (-m1, m2), (f1, -f2)
             kM, kV = Mo[-1] - m2, V[-1] + f2
             if not say and _gercek(kM) is None:
@@ -4777,6 +4805,10 @@ def _kisa_veri(M):
             kayit["My"] = [float(x) for x in e.dMy]
             kayit["T"] = [float(x) for x in e.dT]
         enb = {"N": abs(kayit["N"]), "V": max(abs(v) for v in kayit["V"]), "M": max(abs(v) for v in kayit["M"])}
+        kayit["ekst"] = None
+        if e.ekst is not None:                        # V = 0 kökündeki kesin M (istasyonlarda olmayabilir)
+            kayit["ekst"] = [float(e.ekst[0]), float(e.ekst[1])]
+            enb["M"] = max(enb["M"], abs(float(e.ekst[1])))
         if t == "cerceve3b":
             enb.update({"Vz": max(abs(v) for v in kayit["Vz"]), "My": max(abs(v) for v in kayit["My"]),
                         "T": max(abs(v) for v in kayit["T"])})
@@ -4809,11 +4841,13 @@ def coz_coklu(model, durumlar, *, diyagram_nokta=11):
         u [n], F [n],
         tepkiler  [{dugum, Fx, Fy, Fz, Mx, My, Mz}]        # yalnız mesnetli düğümler (2B'de M → Mz)
         elemanlar [{no, uc_kuvvetleri [yerel, SE işareti], N, x, V, M, Vz, My, T (2B'de None),
-                    enb {N, V, M[, Vz, My, T]} (mutlak en büyükler)}]
+                    enb {N, V, M[, Vz, My, T]} (mutlak en büyükler), ekst [x, M] | None (V = 0 kökündeki M)}]
         denge {Fx, Fy, Fz, Mx, My, Mz}   # ≈ 0
         yaylar [{dugum, sd, bilesen, k, kuvvet}]
 
-    ``diyagram_nokta``: her elemanın diyagram istasyonu sayısı (parça sınırları ve V = 0 noktaları eklenir)."""
+    ``diyagram_nokta``: her elemanın eşit aralıklı diyagram istasyonu sayısı. İstasyon kümesi bütün durumlar için
+    ORTAKTIR: eşit aralıklı noktalar + bütün durumların yayılı yük parça sınırları; V = 0 kökleri istasyona eklenmez
+    (kombinasyonlar istasyon-istasyon toplanabilsin diye), kökteki kesin M ``ekst`` ve ``enb.M`` içinde verilir."""
     model = dict(_model_sozluk(model))
     model.pop("yukler", None)
     model.pop("yayili", None)
@@ -4857,7 +4891,8 @@ def coz_coklu(model, durumlar, *, diyagram_nokta=11):
         if M.cokme:
             rhs = rhs - M.K[np.ix_(M.serbest, M.sabit)] @ U[M.sabit, :]
         U[M.serbest, :] = np.linalg.solve(M.K[np.ix_(M.serbest, M.serbest)], rhs)
-    # --- her durum için tepkiler, eleman kuvvetleri, denge, diyagramlar ---
+    # --- her durum için tepkiler, eleman kuvvetleri, denge, diyagramlar (ortak istasyonlarda) ---
+    sabit_x = _ortak_istasyonlar(M, adet, [(yukler[ad][1], yukler[ad][2]) for ad in adlar])
     sonuc = {}
     for k, ad in enumerate(adlar):
         _yuk_durumu_yukle(M, *yukler[ad])
@@ -4865,6 +4900,6 @@ def coz_coklu(model, durumlar, *, diyagram_nokta=11):
         _tepki_hesapla(M)
         _eleman_kuvvetleri(M)
         _denge_hesapla(M)
-        _diyagram_hazirla(M, adet=adet)
+        _diyagram_hazirla(M, adet=adet, sabit_x=sabit_x)
         sonuc[ad] = _kisa_veri(M)
     return sonuc

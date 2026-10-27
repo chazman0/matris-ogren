@@ -1716,12 +1716,14 @@ def test_coz_coklu_se_coz_ile_ayni(ad):
         assert ek["no"] == ev["no"]
         assert yakin(ek["uc_kuvvetleri"], ev["uc_kuvvetleri"], rtol=1e-10, atol=1e-9)
         assert ek["N"] == pytest.approx(ev["N"], rel=1e-10, abs=1e-9)
-        assert yakin(ek["x"], ev["diyagram"]["x"], rtol=1e-12, atol=1e-12)
-        for b in ("V", "M"):
-            assert yakin(ek[b], ev["diyagram"][b], rtol=1e-10, atol=1e-9)
+        # coz_coklu istasyonları: eşit aralıklı + parça sınırları (V = 0 kökleri eklenmez) ⊆ se_coz istasyonları
+        hv = {round(x, 9): i for i, x in enumerate(ev["diyagram"]["x"])}
+        assert all(round(x, 9) in hv for x in ek["x"]) and len(ek["x"]) >= (21 if m["tip"] in ("kiris", "cerceve", "cerceve3b") else 2)
+        idx = [hv[round(x, 9)] for x in ek["x"]]
+        bilesenler = ("V", "M") + (("Vz", "My", "T") if m["tip"] == "cerceve3b" else ())
+        for b in bilesenler:
+            assert yakin(ek[b], [ev["diyagram"][b][i] for i in idx], rtol=1e-10, atol=1e-9)
         if m["tip"] == "cerceve3b":
-            for b in ("Vz", "My", "T"):
-                assert yakin(ek[b], ev["diyagram"][b], rtol=1e-10, atol=1e-9)
             assert set(ek["enb"]) == {"N", "V", "M", "Vz", "My", "T"}
         else:
             assert ek["Vz"] is None and ek["My"] is None and ek["T"] is None
@@ -1783,6 +1785,38 @@ def test_coz_coklu_cokme_yay_zemin_ve_diyagram_nokta():
     mz = se.ornek_model("cerceve-temel-kirisi")
     cz = se.coz_coklu(mz, {"g": {"yukler": mz["yukler"], "yayili": mz["yayili"]}}, diyagram_nokta=21)
     assert yakin(cz["g"]["u"], se.se_coz(mz, goster=False).veri["u"], rtol=1e-10, atol=1e-13)
+
+
+def test_coz_coklu_ortak_istasyonlar_ve_superpozisyon():
+    """Farklı yük şekilli durumlar aynı x kümesini kullanır (eşit aralıklı + bütün durumların parça sınırları; V = 0
+    kökü istasyon değildir); kombinasyon istasyon-istasyon toplanır ve birleşik yükün doğrudan çözümüyle 1e-9 aynıdır;
+    kökteki kesin M ``ekst`` ve ``enb.M`` içinde verilir."""
+    m = se.ornek_model("cerceve-portal")
+    A = {"yayili": [{"eleman": 2, "q1": 0, "q2": -12}]}                                   # üçgen: V = 0 kökü ızgarada değil
+    B = {"yayili": [{"eleman": 2, "q1": 0, "q2": -20, "x1": 1.0, "x2": 3.0}], "yukler": [{"dugum": 2, "Fx": 8}]}
+    AB = {"yayili": A["yayili"] + B["yayili"], "yukler": B["yukler"]}
+    c = se.coz_coklu(m, {"A": A, "B": B, "AB": AB}, diyagram_nokta=11)
+    for ea, eb, eab in zip(c["A"]["elemanlar"], c["B"]["elemanlar"], c["AB"]["elemanlar"]):
+        assert ea["x"] == eb["x"] == eab["x"]
+        L = eab["x"][-1]
+        esit = [L * i / 10 for i in range(11)]
+        assert all(any(abs(x - y) < 1e-9 for y in ea["x"]) for x in esit)
+        if ea["no"] == 2:
+            ek_sinir = sum(1 for s in (1.0, 3.0) if all(abs(s - y) > 1e-9 for y in esit))   # ızgaraya düşmeyen parça sınırları
+            assert len(ea["x"]) == 11 + ek_sinir and any(abs(x - 1.0) < 1e-9 for x in ea["x"]) and any(abs(x - 3.0) < 1e-9 for x in ea["x"])
+        for b in ("V", "M"):
+            assert yakin(np.array(ea[b]) + np.array(eb[b]), eab[b], rtol=1e-9, atol=1e-9)
+        assert yakin(np.array(ea["uc_kuvvetleri"]) + np.array(eb["uc_kuvvetleri"]), eab["uc_kuvvetleri"], rtol=1e-9, atol=1e-9)
+        assert "ekst" in ea
+    e2 = c["A"]["elemanlar"][1]
+    assert e2["ekst"] is not None and e2["ekst"][0] not in e2["x"]
+    xk, Mk = e2["ekst"]
+    assert 0 < xk < e2["x"][-1] and abs(Mk) >= max(abs(v) for v in e2["M"]) - 1e-9 and e2["enb"]["M"] == pytest.approx(abs(Mk))
+    # kök gerçekten V = 0 noktası: tek durumlu se_coz diyagramında aynı x'te |M| en büyük
+    m2 = dict(m, yayili=A["yayili"], yukler=[])
+    d = se.se_coz(m2, goster=False).veri["elemanlar"][1]["diyagram"]
+    i = min(range(len(d["x"])), key=lambda k: abs(d["x"][k] - xk))
+    assert abs(d["x"][i] - xk) < 1e-9 and d["M"][i] == pytest.approx(Mk, rel=1e-9)
 
 
 def test_coz_coklu_hatalari():

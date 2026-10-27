@@ -323,7 +323,8 @@ v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden 
 v["akis"]["kolonlar"]                               # kat kat N (FE) ve yük alanı (tributary) karşılaştırması, fark %
 v["akis"]["temeller"]                               # N, M_X, M_Y, σ_max/min, e/B, D/C
 v["akis"]["korunum"]["G"]                           # döşeme + duvar + öz = Σ kolon taban N = Σ temel tepkisi
-v["sonuclar"]["1.4G+1.6Q"]["elemanlar"][0]["M"]     # kombinasyon diyagramları; v["zarf"] en büyük / en küçük
+v["sonuclar"]["1.4G+1.6Q"]["elemanlar"][0]["M"]     # kombinasyon diyagramları (ortak istasyonlarda süperpozisyon; u yazılmaz)
+v["zarf"]                                           # her eleman için en büyük / en küçük ve belirleyen kombinasyon
 yapi.yuk_yolu(b, v, {"tur": "doseme", "no": 1, "durum": "G+Q"})   # tek nesneden zemine adım adım zincir
 ```
 

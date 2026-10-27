@@ -54,7 +54,7 @@ def test_kutuphane(kopru):
     assert y["kombinasyon_kumeleri"]["ts500"]["liste"][0]["ad"] == "1.4G+1.6Q"
 
 
-def test_bina_coz_yaniti(yanit):
+def test_bina_coz_yaniti(kopru, yanit):
     y = yanit
     assert y["hata"] is None and y["ad"] == "bina" and y["zincir"] is False and y["sonuc_metin"]
     assert y["bloklar"] and {b["tur"] for b in y["bloklar"]} <= {"md", "math", "kod", "sema"}
@@ -65,7 +65,11 @@ def test_bina_coz_yaniti(yanit):
     assert v["ozet"]["sd_sayisi"] == 108 and v["ozet"]["dugum"] == 18 and v["ozet"]["eleman"] == 26
     assert v["akis"]["kolonlar"] and v["akis"]["temeller"] and v["akis"]["sankey"]
     assert isinstance(v["ozet"]["uyarilar"], list)
-    assert all("Doğrulanmamış kütüphane kaydı" in u for u in v["ozet"]["uyarilar"])   # şablon yalnız doğrulanmış değer kullanır
+    assert v["ozet"]["uyarilar"] == []      # şablon yalnız doğrulanmış değer kullanır; kullanılmayan kayıtlar uyarı değildir
+    b = yapi.bina_sablon("betonarme-tek-aciklik")
+    b["dosemeler"][0]["kullanim"] = "depo"
+    y2 = iste(kopru, "bina_coz", {"bina": b})
+    assert any("TS498_HAREKETLI.depo" in u for u in y2["veri"]["ozet"]["uyarilar"])
     assert v["fe_model"]["tip"] == "cerceve3b" and v["fe_model"]["yayili"]
 
 
