@@ -890,6 +890,19 @@ kbd { background: var(--ana-acik); border-radius: 5px; padding: 1px 6px; font-si
 .bn-dc-rozet { border: 1.5px solid var(--dcr); }
 .bn-tasarim-anlatim { margin-top: 10px; }
 .bn-komb-hata { color: var(--sema-sil); }
+.bn-dc-yok { --dcr: var(--soluk); }
+.bn-dc-cip.bn-dc-yok { border-style: dashed; color: var(--soluk); font-weight: 600; }
+.bn-kritik { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.bn-kritik-cip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+.bn-kritik-cip .bn-dc-cip { min-width: 0; padding: 0 6px; }
+.bn-donen { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--cizgi); border-top-color: var(--ana); border-radius: 50%; vertical-align: -2px; animation: bn-don .8s linear infinite; }
+@keyframes bn-don { to { transform: rotate(360deg); } }
+.bn-ilerleme { margin: 8px 0 0; }
+.bn-ilerleme[hidden] { display: none; }
+.bn-ilerleme-cubuk { height: 6px; border-radius: 3px; background: var(--ana-acik); overflow: hidden; margin-bottom: 4px; }
+.bn-ilerleme-cubuk span { display: block; width: 35%; height: 100%; border-radius: 3px; background: var(--ana); animation: bn-ilerle 1.2s ease-in-out infinite; }
+@keyframes bn-ilerle { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .bn-donen, .bn-ilerleme-cubuk span { animation: none; } .bn-ilerleme-cubuk span { width: 100%; opacity: .5; } }
 
 @media (min-width: 700px) {
   .bn-govde { grid-template-columns: 60px minmax(0, 1fr); align-items: start; }
