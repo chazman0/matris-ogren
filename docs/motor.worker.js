@@ -5,7 +5,24 @@
 "use strict";
 
 const PYODIDE_SURUM = "314.0.7";
-const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";
+const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";
+// Pyodide'nin yerel kopyası (masaüstü sürümü, çevrimdışı denemeler): önce worker adresindeki ?pyodide=… sorgu
+// parametresi (yalnız aynı kökenden bir adres), sonra self.MATRIS_PYODIDE_URL. İkisi de yoksa web sürümündeki gibi CDN.
+const PYODIDE_URL = pyodideAdresi();
+
+function pyodideAdresi() {
+  const klasor = function (adres) { return adres.endsWith("/") ? adres : adres + "/"; };
+  try {
+    const burasi = new URL(self.location.href);
+    const sorgu = burasi.searchParams.get("pyodide");
+    if (sorgu) {
+      const u = new URL(sorgu, burasi);
+      if (u.origin === burasi.origin) return klasor(u.href);
+    }
+    if (typeof self.MATRIS_PYODIDE_URL === "string" && self.MATRIS_PYODIDE_URL) return klasor(new URL(self.MATRIS_PYODIDE_URL, burasi).href);
+  } catch (e) { /* geçersiz adres: CDN kullanılır */ }
+  return PYODIDE_CDN;
+}
 
 let pyodide = null;
 let kopru = null;

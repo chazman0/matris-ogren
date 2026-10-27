@@ -1,4 +1,4 @@
-/* Matris Öğren masaüstü — ana sürecin saf Node yardımcıları (Electron'suz test edilebilir):
+/* Matris Öğren masaüstü — ana sürecin saf yardımcıları (masaüstü çatısı olmadan test edilebilir):
    dosya okuma/yazma (atomik), ayar deposu, son dosyalar, komut satırı dosyaları, pencere sınırları, otomatik kayıt/kurtarma. */
 "use strict";
 
@@ -71,7 +71,7 @@ function sonDosyaEkle(liste, yol, enFazla) {
   return yeni.slice(0, enFazla || 10);
 }
 
-// Komut satırındaki proje dosyaları (dosya ilişkilendirmesi, "Birlikte aç", ikinci örnek). Seçenekler (--x) ve Electron'un
+// Komut satırındaki proje dosyaları (dosya ilişkilendirmesi, "Birlikte aç", ikinci örnek). Seçenekler (--x) ve çalışma zamanının
 // kendi bağımsız değişkenleri atlanır; göreli yollar `cwd`'ye göre çözülür; var olmayanlar atılır.
 function dosyaArgumanlari(argv, cwd) {
   const sonuc = [];
@@ -153,7 +153,37 @@ function guvenliAd(ad, yedek) {
   return temiz || yedek || "adsiz";
 }
 
+// Rapor HTML'inde <title> yoksa eklenir (PDF belge başlığı olur; yoksa iç adres görünürdü).
+function htmlBasligiEkle(html, baslik) {
+  const metin = String(html || "");
+  if (/<title[\s>]/i.test(metin)) return metin;
+  const t = "<title>" + String(baslik || "Rapor").replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }) + "</title>";
+  if (/<head[^>]*>/i.test(metin)) return metin.replace(/<head[^>]*>/i, function (m) { return m + t; });
+  if (/<html[^>]*>/i.test(metin)) return metin.replace(/<html[^>]*>/i, function (m) { return m + "<head><meta charset=\"utf-8\">" + t + "</head>"; });
+  return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" + t + "</head><body>" + metin + "</body></html>";
+}
+
+// PDF bilgi sözlüğündeki üretici girdileri (/Creator, /Producer: tarayıcı motorunun adı) aynı uzunlukta boşlukla silinir;
+// bayt konumları değişmediğinden çapraz başvuru tablosu geçerli kalır. Bilgi sözlüğü bulunamazsa veri olduğu gibi döner.
+function pdfUreticiBilgisiniSil(veri) {
+  const buf = Buffer.isBuffer(veri) ? veri : Buffer.from(veri);
+  const metin = buf.toString("latin1");
+  const iz = /\/Info\s+(\d+)\s+0\s+R/g;
+  let m, no = null;
+  while ((m = iz.exec(metin)) !== null) no = m[1];
+  if (no === null) return buf;
+  const bas = new RegExp("(^|[\\r\\n\\s])" + no + "\\s+0\\s+obj").exec(metin);
+  if (!bas) return buf;
+  const son = metin.indexOf("endobj", bas.index);
+  if (son < 0) return buf;
+  const sozluk = metin.slice(bas.index, son);
+  const temiz = sozluk.replace(/\/(Creator|Producer)\s*(\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f\s]*>)/g, function (x) { return " ".repeat(x.length); });
+  if (temiz === sozluk) return buf;
+  return Buffer.from(metin.slice(0, bas.index) + temiz + metin.slice(son), "latin1");
+}
+
 module.exports = {
+  htmlBasligiEkle: htmlBasligiEkle, pdfUreticiBilgisiniSil: pdfUreticiBilgisiniSil,
   PROJE_UZANTILARI: PROJE_UZANTILARI, projeDosyasiMi: projeDosyasiMi, atomikYaz: atomikYaz, projeOku: projeOku, depo: depo,
   sonDosyaEkle: sonDosyaEkle, dosyaArgumanlari: dosyaArgumanlari, pencereSiniri: pencereSiniri, kurtarma: kurtarma,
   suzgecler: suzgecler, guvenliAd: guvenliAd,

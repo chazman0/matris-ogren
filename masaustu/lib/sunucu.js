@@ -86,7 +86,7 @@ function cspUret(html) {
   ].join("; ");
 }
 
-// {durum, basliklar, govde(Buffer)} — Electron protocol.handle ve http önizleme sunucusu aynı yanıtı üretir.
+// {durum, basliklar, govde(Buffer)} — masaüstü uygulamasının app:// protokolü ve http önizleme sunucusu aynı yanıtı üretir.
 async function yanitUret(kok, urlMetni) {
   let url;
   try { url = new URL(urlMetni); } catch (e) { return hataYaniti(400, "Geçersiz adres"); }
