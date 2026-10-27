@@ -50,6 +50,17 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     il, ilce, ada, parsel, malik, hazirlayan, kontrol, tarih}, "bolumler": [1..14, "A", "B", "C", "metraj"],
                     "eleman_detay": "kritik" | "hepsi" | "yok", "ek_tablolar": [TABLO...], "tablolar": [tablo adı...],
                     "tablo_filtre": {ad: {"satirlar": [indeks...]}}}.
+  "bina_tablolar":  girdi {"cozum_kimligi" | "bina"} → {"tablolar": [TABLO...] (tablolar.bina_tablolari şeması: ad, baslik, grup,
+                    sutunlar, satirlar (degerler, yol), toplam, aciklama, kaynak), "cozum_kimligi" (kullanılan çözüm ya da null),
+                    "cozumlu": bool, "hata": null}. Önbellekte bu binanın çözümü varsa (kimlik eşleşir) Analiz/Deprem/Tasarım/Temel
+                    tabloları da gelir; yoksa çözmeden Model + Yükler + Metraj (deprem kartı varsa önizleme) tabloları.
+  "bina_alan":      girdi {"cozum_kimligi" | "bina", "durum" (yük durumu | kombinasyon adı | "zarf+" | "zarf-"), "istasyon"? (2…61,
+                    varsayılan 21), "katsayilar"? ({"G": 1.2, ...} serbest birleşim), "elemanlar"? ([FE no] yalnız bunlar; döşemesiz)}
+                    → {"alan": alan.eleman_alanlari (§16.1: durum, birim, elemanlar [istasyonlarda N, Vy, Vz, T, My, Mz, eğri u,
+                    σ_maks/σ_min, τ, von Mises, kullanım, ekstremum], dugumler, aralik, secenekler, not) + "paneller" (§16.2 Navier
+                    plak ızgarası w/mx/my ve 45° yük payı poligonları) + "radye" (temel modülü varsa Winkler basıncı), "cozum_kimligi",
+                    "hata": null}. Önbellekteki çözümden (yeniden çözmez): kombinasyon = durumların katsayılı toplamı, zarf =
+                    istasyon bazında en büyük / en küçük. alan.py yoksa öğretici hata.
 """
 from __future__ import annotations
 
@@ -301,6 +312,14 @@ def _rapor_modulu():
         return None
 
 
+def _alan_modulu():
+    """alan.py (ısı haritası alanları: çubuk boyunca iç kuvvet, gerilme, eğri yer değiştirme; döşeme plakları) varsa; yoksa None."""
+    try:
+        return importlib.import_module("alan")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
@@ -429,10 +448,10 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor")
+# "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim", "bina_rapor"}
+                 "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -470,7 +489,12 @@ def _bina_coz_yaniti(girdi: dict) -> dict:
     r = yapi.bina_coz(bina, goster="yok")
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
     ic = getattr(r, "ic", None)
-    if isinstance(ic, dict):        # rapor (bina_rapor) yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
+    if isinstance(ic, dict):        # rapor/tablolar yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
+        if isinstance(bina, str):
+            try:
+                bina = json.loads(bina)
+            except ValueError:
+                pass
         ic["veri"], ic["bina"] = veri, bina
         _onbellege_koy(ic)
     return {
@@ -561,9 +585,85 @@ def _bina_rapor_yaniti(girdi: dict) -> dict:
             "cozum_kimligi": ic.get("kimlik"), "hata": None}
 
 
+def _tablolar_modulu():
+    """tablolar.py (tablo editörü ve metraj) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("tablolar")
+    except ImportError:
+        return None
+
+
+def _bina_tablolar_yaniti(girdi: dict) -> dict:
+    """Tablo editörü: önbellekteki çözüm (kimlik eşleşirse) ile bütün tablolar; yoksa çözmeden model/yük/metraj tabloları."""
+    yapi = _yapi_zorunlu()
+    tb = _tablolar_modulu()
+    if tb is None:
+        raise mo.MatrisHatasi("Tablo modülü (tablolar.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    kimlik = girdi.get("cozum_kimligi")
+    bina = girdi.get("bina")
+    if bina is not None:
+        bina = _bina_girdisi(girdi)
+        if isinstance(bina, str):
+            try:
+                bina = json.loads(bina)
+            except ValueError as e:
+                raise mo.MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
+        try:   # verilen binanın kimliği: önbellekteki çözüm ancak aynı binaya aitse kullanılır (düzenlenmiş binada eski sonuç yok)
+            kimlik = yapi._cozum_kimligi(yapi._bina_oku(bina))
+        except mo.MatrisHatasi:
+            kimlik = None
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None and ic.get("veri") is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+        tablolar = tb.bina_tablolari(bina if bina is not None else ic.get("bina"), ic["veri"])
+        return {"tablolar": _sonlu_sayilar(tablolar), "cozum_kimligi": kimlik, "cozumlu": True, "hata": None}
+    if bina is None:
+        raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
+                              + " çözümün dışında kaldı); tablolar için 'bina' alanını da gönderin ya da binayı yeniden çözün.")
+    return {"tablolar": _sonlu_sayilar(tb.bina_tablolari(bina)), "cozum_kimligi": None, "cozumlu": False, "hata": None}
+
+
+ALAN_ISTASYON = (2, 61)   # bina_alan istasyon sayısı sınırları
+
+
+def _bina_alan_yaniti(girdi: dict) -> dict:
+    """Isı haritası alanı (alan.py §16): önbellekteki çözümden durum / kombinasyon / zarf için eleman ve döşeme alanları."""
+    yapi = _yapi_zorunlu()
+    alan = _alan_modulu()
+    if alan is None:
+        raise mo.MatrisHatasi("Isı haritası modülü (alan.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    durum = str(girdi.get("durum") or "").strip()
+    if not durum:
+        raise mo.MatrisHatasi("Durum (durum) boş: bir yük durumu (G, Q…), kombinasyon adı (örn. \"1.4G+1.6Q\") ya da "
+                              "\"zarf+\" / \"zarf-\" verin.")
+    istasyon = girdi.get("istasyon")
+    try:
+        istasyon = alan.ISTASYON if istasyon is None else int(istasyon)
+    except (TypeError, ValueError):
+        raise mo.MatrisHatasi(f"istasyon bir tamsayı olmalı ({ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]}).") from None
+    if not ALAN_ISTASYON[0] <= istasyon <= ALAN_ISTASYON[1]:
+        raise mo.MatrisHatasi(f"istasyon {ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]} arasında olmalı (verilen {istasyon}).")
+    katsayilar = girdi.get("katsayilar")
+    if katsayilar is not None and not isinstance(katsayilar, dict):
+        raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    elemanlar = girdi.get("elemanlar")
+    if elemanlar is not None:
+        if not isinstance(elemanlar, list):
+            raise mo.MatrisHatasi("elemanlar bir FE eleman numarası listesi olmalı: [12, 13].")
+        elemanlar = _sayi_listesi(elemanlar)
+    ic = _bina_ic(yapi, girdi)
+    sonuc = alan.eleman_alanlari(ic, durum, istasyon=istasyon, katsayilar=katsayilar, elemanlar=elemanlar,
+                                 paneller=elemanlar is None)
+    return {"alan": _sonlu_sayilar(sonuc), "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
     if islem == "bina_rapor":
         return _bina_rapor_yaniti(girdi)
+    if islem == "bina_tablolar":
+        return _bina_tablolar_yaniti(girdi)
+    if islem == "bina_alan":
+        return _bina_alan_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":

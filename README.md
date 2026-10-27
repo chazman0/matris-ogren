@@ -14,6 +14,18 @@ Sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Her işlemi 
 
 İlk açılışta Python motoru (≈30 MB) bir kez indirilir; sonraki açılışlar internet olmadan da çalışır.
 
+## Masaüstü sürümü
+
+Windows, macOS ve Linux için kurulabilen bilgisayar programı: aynı uygulama, Python motoru içinde gelir (ilk açılışta bile
+internet gerekmez). Türkçe menü çubuğu (Dosya, Düzen, Görünüm, Çizim, Aks, Analiz, Tasarım, Rapor, Yardım) ve kısayollar
+(Ctrl+S kaydet, Ctrl+O aç, F5 çöz, F11 tam ekran…), `.matris` proje dosyaları (çift tıklayınca ya da pencereye sürükleyince açılır),
+son dosyalar, çoklu pencere, otomatik kayıt ve beklenmedik kapanmadan sonra kurtarma, IFC / CSV / rapor için yerel "Kaydet"
+penceresi ve rapordan doğrudan PDF.
+
+Paketler GitHub'da **Releases** sayfasındadır (Windows kurulum ve taşınabilir `.exe`, macOS `.dmg`, Linux `.AppImage` / `.deb`).
+Kurulum, imzasız paket uyarıları, geliştirme (`masaustu/`: `npm ci`, `npm run hazirla`, `npm start`) ve sayfa ↔ masaüstü
+sözleşmesi için: [`masaustu/README.md`](masaustu/README.md).
+
 ## İşlemler
 
 Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm; Sonlu eleman sayfasında 2B ve 3B yapıların tam çözümü. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
@@ -42,6 +54,7 @@ Uygulamadaki **Sonlu eleman** sayfasında hazır bir model seçilir ya da düğ�
 | `Matris_Ogren.ipynb` | Google Colab defteri: konu anlatımı + çalıştırılabilir örnekler. |
 | `KULLANIM.md` | Motorun fonksiyon fonksiyon kullanım kılavuzu. |
 | `docs/` | Yüklenebilir web uygulaması (PWA); motor tarayıcıda Pyodide ile çalışır. |
+| `masaustu/` | Masaüstü sürümü: `docs/`'u çevrimdışı çalışan bir bilgisayar programı olarak paketler (bkz. `masaustu/README.md`). |
 | `testler/` | pytest testleri. |
 | `defter_yap.py`, `web_yap.py` | Defteri ve `docs/` klasörünü üreten betikler. |
 

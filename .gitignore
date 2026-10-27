@@ -6,3 +6,10 @@ __pycache__/
 Thumbs.db
 .DS_Store
 .claude/worktrees/
+# Masaüstü sürümü: bağımlılıklar, hazırlanan uygulama kopyası (indirilen çalışma zamanı dahil) ve paket çıktıları
+masaustu/node_modules/
+masaustu/uygulama/
+masaustu/dist/
+masaustu/.onbellek/
+masaustu/build/
+masaustu/uygulama.hazirlaniyor/

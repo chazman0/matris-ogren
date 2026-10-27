@@ -1,0 +1,121 @@
+# Matris Öğren masaüstü sürümü: Windows (kurulum + taşınabilir), macOS (dmg) ve Linux (AppImage + deb) paketleri.
+# Elle başlatılır (workflow_dispatch) ya da "v*" etiketiyle; etiketli çalıştırmada paketler GitHub sürümüne eklenir.
+# Eylemler değişmez işleme özetleriyle sabitlenmiştir (yorumdaki sürüm bilgi içindir).
+name: Masaüstü sürümü
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: masaustu-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  paketle:
+    name: Paketle (${{ matrix.ad }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ad: Windows
+            os: windows-latest
+            platform: win
+          - ad: macOS
+            os: macos-latest
+            platform: mac
+          - ad: Linux
+            os: ubuntu-latest
+            platform: linux
+    defaults:
+      run:
+        shell: bash
+        working-directory: masaustu
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: masaustu/package-lock.json
+
+      - name: Sürümü etiketten al
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ETIKET: ${{ github.ref_name }}
+        run: |
+          SURUM="${ETIKET#v}"
+          if ! [[ "$SURUM" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Geçersiz sürüm etiketi: $ETIKET (beklenen: v1.2.3)"
+            exit 1
+          fi
+          npm version "$SURUM" --no-git-tag-version --allow-same-version
+
+      - name: Bağımlılıklar
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: npm ci
+
+      - name: Sözdizimi denetimi
+        run: npm run denetle
+
+      - name: Birim testleri
+        if: matrix.platform == 'linux'
+        run: node --test ../testler/js/masaustu.test.js
+
+      - name: Uygulamayı hazırla (docs + yerel Python motoru)
+        run: npm run hazirla
+
+      - name: Paketle
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: Paketleri sakla
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: matris-ogren-${{ matrix.platform }}
+          path: |
+            masaustu/dist/*.exe
+            masaustu/dist/*.dmg
+            masaustu/dist/*.AppImage
+            masaustu/dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  yayinla:
+    name: Sürüme ekle
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: paketle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Paketleri indir
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: paketler
+          pattern: matris-ogren-*
+          merge-multiple: true
+
+      - name: GitHub sürümü
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: paketler/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            Matris Öğren masaüstü sürümü. Kurulum dosyası (Windows), taşınabilir sürüm (Windows), dmg (macOS) ve
+            AppImage / deb (Linux) aşağıdadır. Paketler imzasızdır: Windows'ta SmartScreen uyarısında
+            "Ek bilgi → Yine de çalıştır", macOS'ta ilk açılışta sağ tık → "Aç" gerekir. Ayrıntılar: masaustu/README.md.
