@@ -317,7 +317,7 @@ her kayıtta `kaynak` ve `dogrulandi` taşır.
 
 ```python
 import yapi
-b = yapi.bina_sablon("betonarme-2kat-3x2")          # 5 şablon: yapi.bina_sablonlar()
+b = yapi.bina_sablon("betonarme-2kat-3x2")          # 7 şablon: yapi.bina_sablonlar()
 r = yapi.bina_coz(b)                                # 13 adımlı anlatım (12: kesit tahkikleri) + bağımsız numpy betiği
 v = r.veri
 v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden üçgen/trapez pay (tepe, q_eM, q_eV, toplam kN)
@@ -328,6 +328,23 @@ v["sonuclar"]["1.4G+1.6Q"]["elemanlar"][0]["M"]     # kombinasyon diyagramları 
 yapi.kombinasyon_kisa(r.ic, "G+Q")                  # yanıtta olmayan kombinasyonun tam kaydı (G+Q = G ve Q'nun toplamı)
 v["zarf"]                                           # her eleman için en büyük / en küçük ve belirleyen kombinasyon
 yapi.yuk_yolu(b, v, {"tur": "doseme", "no": 1, "durum": "G+Q"})   # tek nesneden zemine adım adım zincir
+```
+
+**Temel tipleri** (`temeller.tip`): `tekil` (kolon başına B × L; mesnet ankastre / mafsal / elastik), `surekli` (mütemadi:
+seçilen aks çizgileri boyunca ters T kesitli temel kirişleri) ve `radye` (bütün planı taşmayla kaplayan plak; isteğe bağlı aks
+kirişleri). Mütemadi ve radyede kolon tabanları sabit mesnet değildir: temel elemanları (`temel.py`) bina ağına eklenir ve
+Winkler zeminine (düğüm yayı k_z = k0·A_etki; mütemadide tabla dönme yayı k0·B³/12·l) oturur; radye iki doğrultulu ızgara
+(şerit I = b·h³/12, J ≈ b·h³/6) ile temsil edilir. Ağ aralığı `ag` serbestlik sınırına sığmazsa kendiliğinden büyütülür.
+
+```python
+b = yapi.bina_sablon("betonarme-4kat-radye")        # ya da "betonarme-3kat-surekli-temel"
+r = yapi.bina_coz(b)                                # 13. adım: Temel ve zemin (Winkler, taban basıncı, zımbalama, donatı)
+T = r.veri["temel"]
+T["dugumler"][0]                                    # {no, X, Y, w_mm, p_kNm2, A[, kolon]}: servis G+Q oturma ve p = k0·w
+T["p_maks"], T["DC_zemin"], T["oturma_maks_mm"], T["farkli_oturma_metin"]
+T["zemin_kontrolleri"]                              # TS 500 emniyet (servis, q_em) ve TBDY 16.8 (katsayılı, q_t = q_k/1,4) ayrı
+T["tasarim"]                                        # temel kirişi / tabla / radye şeridi donatısı, zımbalama (TS 500 md. 8.3.1)
+yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["temel"]   # bir kombinasyonun taban basıncı ve oturması
 ```
 
 Bina modeli bir sözlüktür (`tur: "bina"`): `akslar` (X harfli, Y sayılı; konum m), `katlar` (0 = temel, kotlar),
