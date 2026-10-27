@@ -485,6 +485,10 @@ def _bina_oku(bina):
         if d.get("q") is None:
             qk = yv.TS498_HAREKETLI[kullanim]
             q, q_kaynak, q_dogru = qk["deger"], qk["kaynak"], qk["dogrulandi"]
+            alan_p = (B.xk[ix1] - B.xk[ix0]) * (B.yk[iy1] - B.yk[iy0])
+            if kullanim == "balkon" and alan_p > 10.0:      # TS 498:2021 Çizelge 6 satır 4: > 10 m² balkon
+                q = 5.0 + 0.35 * (alan_p - 10.0)
+                q_kaynak = f"TS 498:2021 md. 15.1 Çizelge 6 satır 4: balkon > 10 m² → 5,0 + 0,35·(A − 10) = 5,0 + 0,35·({alan_p:.2f} − 10)"
         else:
             q, q_kaynak, q_dogru = _sayi(d.get("q"), f"Döşeme {no}: q (kN/m²)", pozitif=True), "kullanıcı değeri", True
         dagitim = str(d.get("dagitim") or "otomatik").strip().lower()
@@ -625,9 +629,13 @@ def _doseme_dagit(B, d):
         tip = d["dagitim"]
     g, q = d["g"], d["q_top"]
     paylar = []
+    kare = abs(dx - dy) < 1e-9
+    d["not"] = ""
+    if tip == "tek" and kare:
+        d["not"] = "Kare panelde tek doğrultulu dağıtım: X doğrultusundaki kirişler taşıyan (uzun kenar) sayıldı, Y kirişlerine yük verilmedi."
     for ad, key in d["kenarlar"].items():
         Le = dx if key[1] == "x" else dy
-        kisa = abs(Le - lx) < 1e-9
+        kisa = (key[1] == "y") if (tip == "tek" and kare) else abs(Le - lx) < 1e-9
         if tip == "cift":
             sekil = "ucgen" if (kisa or abs(m - 1.0) < 1e-9) else "trapez"
         else:
@@ -712,8 +720,8 @@ def _yukleri_hazirla(B):
             hav = Y.dugum_yuk.setdefault((y["ix"], y["iy"], y["kat"]), {"G": [0.0] * 6, "Q": [0.0] * 6})
             for i, a in enumerate(("FX", "FY", "FZ", "MX", "MY", "MZ")):
                 hav[y["durum"]][i] += y[a]
-    # kat toplamları
-    for kt in B.katlar[1:]:
+    # kat toplamları (kat 0 = temel seviyesine doğrudan verilen düğüm yükleri; kolonlardan geçmez)
+    for kt in B.katlar:
         k = kt["no"]
         G = sum(d["G_toplam"] for d in Y.dosemeler if d["kat"] == k)
         G += sum(r["G"]["duvar"] + r["G"]["oz"] + r["G"]["ek"] for r in Y.kirisler if r["kat"] == k)
@@ -723,8 +731,9 @@ def _yukleri_hazirla(B):
         Q += sum(r["Q"]["ek"] for r in Y.kirisler if r["kat"] == k)
         Q += sum(-h["Q"][2] for key, h in Y.dugum_yuk.items() if key[2] == k)
         Y.katlar.append({"kat": k, "ad": kt["ad"], "kot": kt["kot"], "h": kt["h"], "G": G, "Q": Q, "w": G + Q})
-    Y.toplam = {"G": sum(k["G"] for k in Y.katlar) + sum(-h["G"][2] for key, h in Y.dugum_yuk.items() if key[2] == 0),
-                "Q": sum(k["Q"] for k in Y.katlar) + sum(-h["Q"][2] for key, h in Y.dugum_yuk.items() if key[2] == 0)}
+    Y.toplam = {"G": sum(k["G"] for k in Y.katlar), "Q": sum(k["Q"] for k in Y.katlar)}
+    Y.kat0 = {"G": sum(-h["G"][2] for key, h in Y.dugum_yuk.items() if key[2] == 0),
+              "Q": sum(-h["Q"][2] for key, h in Y.dugum_yuk.items() if key[2] == 0)}
     Y.korunum_parcalari = {
         "G": {"dosemeler": sum(d["G_toplam"] for d in Y.dosemeler),
               "duvarlar": sum(r["G"]["duvar"] for r in Y.kirisler),
@@ -949,6 +958,11 @@ def _kisa_birlesim(kisalar, katsayilar):
     """u_komb = Σ γ_i u_i; iç kuvvetler, tepkiler, denge aynı katsayılarla (yeniden çözüm yok)."""
     adlar = [ad for ad in katsayilar if ad in kisalar]
     ilk = kisalar[adlar[0]]
+    for ad in adlar[1:]:
+        for e0, e1 in zip(ilk["elemanlar"], kisalar[ad]["elemanlar"]):
+            if len(e0["x"]) != len(e1["x"]) or any(abs(a - b) > 1e-9 for a, b in zip(e0["x"], e1["x"])):
+                raise MatrisHatasi(f"Kombinasyon kurulamadı: eleman {e0['no']} için {adlar[0]} ve {ad} durumlarının diyagram "
+                                   "istasyonları farklı; coz_coklu bütün durumları ortak istasyonlarda vermelidir.")
 
     def top(al):
         return sum(katsayilar[ad] * al(kisalar[ad]) for ad in adlar)
@@ -1021,10 +1035,9 @@ def _kolon_N(kisa, eleman_no):
     return e["uc_kuvvetleri"][0]
 
 
-def _tributary(B, Y, c):
-    """Kolonun kat payı (yük alanı yöntemi): komşu panellerin çeyreği × (g, q) + komşu kiriş parçalarının yarısı
-    (öz + duvar + ek) + düğüm ek yükü + kolon öz ağırlığı. Dönüş (G_kat, Q_kat, A_trib)."""
-    ix, iy, kat = c["ix"], c["iy"], c["kat"]
+def _dugum_payi(B, Y, ix, iy, kat):
+    """Bir aks kesişiminin kat payı (yük alanı yöntemi): komşu panellerin çeyreği × (g, q) + komşu kiriş parçalarının
+    yarısı (öz + duvar + ek) + düğüm yükü (kolon öz ağırlığı dahil). Dönüş (G, Q, A_trib)."""
     G = Q = A = 0.0
     for d in Y.dosemeler:
         if d["kat"] == kat and ix in (d["ix0"], d["ix1"]) and iy in (d["iy0"], d["iy1"]):
@@ -1048,49 +1061,130 @@ def _tributary(B, Y, c):
     return G, Q, A
 
 
+def _tasiyan_kolonlar(B, kat, ix, iy):
+    """Kolonsuz bir düğümü taşıyan iki kolon: kiriş çizgisi boyunca iki yönde ilk kolonlu düğüm aranır (kiriş parçaları
+    kesintisiz olmalı); önce X, sonra Y doğrultusu denenir. Dönüş [((ix, iy), uzaklık), ...] ya da []."""
+    for yon in ("x", "y"):
+        bulunan = []
+        n = len(B.xk) if yon == "x" else len(B.yk)
+        konum = B.xk if yon == "x" else B.yk
+        i0 = ix if yon == "x" else iy
+        sabit = iy if yon == "x" else ix
+        for adim in (-1, 1):
+            i = i0
+            while True:
+                parca = (kat, yon, sabit, i - 1 if adim < 0 else i)
+                if parca not in B.kiris_parca:
+                    break
+                i += adim
+                if not 0 <= i < n:
+                    break
+                dugum = (i, sabit) if yon == "x" else (sabit, i)
+                if (dugum[0], dugum[1], kat) in B.kolon_key:
+                    bulunan.append((dugum, abs(konum[i] - konum[i0])))
+                    break
+        if len(bulunan) == 2:
+            return bulunan
+    return []
+
+
+def _yuk_alani(B, Y):
+    """Yük alanı (tributary) el hesabı, kat kat yukarıdan aşağıya: her düğümün kat payı; kolonsuz düğümün payı
+    (ve üstündeki kolondan inen yük) onu taşıyan kirişin iki ucundaki kolonlara basit kiriş tepkisi oranıyla
+    (uzaklıkla ters orantılı) dağıtılır. Dönüş ({kolon_no: {"G", "Q", "A", "pay_G", "pay_Q"}}, dagitilamayan)."""
+    sonuc = {}
+    kum = {}                       # (ix, iy, kat) → üstten inen (G, Q) (kolonlu düğümde kolon kümülatifi)
+    dagitilamayan = {"G": 0.0, "Q": 0.0}
+    for kat in range(B.nk, 0, -1):
+        dugumler = {(ix, iy) for d in Y.dosemeler if d["kat"] == kat for ix in (d["ix0"], d["ix1"]) for iy in (d["iy0"], d["iy1"])}
+        for key in Y.kiris_yuk:
+            k_, yon, sabit, i = key
+            if k_ == kat:
+                dugumler |= {(i, sabit), (i + 1, sabit)} if yon == "x" else {(sabit, i), (sabit, i + 1)}
+        dugumler |= {(c["ix"], c["iy"]) for c in B.kolonlar if c["kat"] == kat}
+        dugumler |= {(ix, iy) for (ix, iy, k_) in Y.dugum_yuk if k_ == kat}
+        paylar = {}
+        for ix, iy in dugumler:
+            g, q, a = _dugum_payi(B, Y, ix, iy, kat)
+            inen = kum.pop((ix, iy, kat), (0.0, 0.0))
+            paylar[(ix, iy)] = [g + inen[0], q + inen[1], a]
+        # kolonsuz düğümler → taşıyan kolonlara
+        for (ix, iy), (g, q, a) in list(paylar.items()):
+            if (ix, iy, kat) in B.kolon_key:
+                continue
+            tas = _tasiyan_kolonlar(B, kat, ix, iy)
+            if not tas:
+                dagitilamayan["G"] += g
+                dagitilamayan["Q"] += q
+                continue
+            (d1, u1), (d2, u2) = tas
+            for d_, oran in ((d1, u2 / (u1 + u2)), (d2, u1 / (u1 + u2))):
+                paylar[d_][0] += g * oran
+                paylar[d_][1] += q * oran
+        for c in B.kolonlar:
+            if c["kat"] != kat:
+                continue
+            g, q, a = paylar.get((c["ix"], c["iy"]), (0.0, 0.0, 0.0))
+            sonuc[c["no"]] = {"G": g, "Q": q, "A": a}
+            kum[(c["ix"], c["iy"], kat - 1)] = (g, q)
+    return sonuc, dagitilamayan
+
+
+def _mesnet_kuvvetleri(kisa):
+    """Her temel düğümü için destek kuvvetleri (bina koordinatı): tepkiler + yay kuvvetleri (elastik temel).
+    Yay: motor ky → FZ, krx → MX, krz → MY = −M_z,m (eksen eşlemesi). Dönüş {dugum: {"FZ", "MX", "MY"}}."""
+    top = {}
+    for t in kisa["tepkiler"]:
+        top[t["dugum"]] = {"FZ": t["FZ"], "MX": t["MX"], "MY": t["MY"]}
+    for y in kisa["yaylar"]:
+        h = top.setdefault(y["dugum"], {"FZ": 0.0, "MX": 0.0, "MY": 0.0})
+        if y.get("bilesen") == "Fy":
+            h["FZ"] += y["kuvvet"]
+        elif y.get("bilesen") == "Mx":
+            h["MX"] += y["kuvvet"]
+        elif y.get("bilesen") == "Mz":
+            h["MY"] += -y["kuvvet"]
+    return top
+
+
 def _akis(B, Y, ag, durumlar_kisa):
     """Kolon tabloları (FE ve yük alanı), temel taban basıncı, korunum (beş sayı) ve sankey bantları."""
     G, Q = durumlar_kisa["G"], durumlar_kisa["Q"]
     kolon_key = {(c["ix"], c["iy"], c["kat"]): c for c in B.kolonlar}
+    trib, dagitilamayan = _yuk_alani(B, Y)
     kolonlar = []
     for c in sorted(B.kolonlar, key=lambda c: (c["ix"], c["iy"], -c["kat"])):
         NkG, NkQ = _kolon_N(G, c["eleman"]), _kolon_N(Q, c["eleman"])
         ust = kolon_key.get((c["ix"], c["iy"], c["kat"] + 1))
         NuG = _kolon_N(G, ust["eleman"]) if ust else 0.0
         NuQ = _kolon_N(Q, ust["eleman"]) if ust else 0.0
-        tG = tQ = tA = 0.0
-        for k2 in range(c["kat"], B.nk + 1):
-            c2 = kolon_key.get((c["ix"], c["iy"], k2))
-            if c2 is None:
-                break
-            g_, q_, a_ = _tributary(B, Y, c2)     # kolon öz ağırlığı üst düğüm yükünün içindedir
-            tG += g_
-            tQ += q_
-            if k2 == c["kat"]:
-                tA = a_
+        t = trib[c["no"]]
+        tG, tQ, tA = t["G"], t["Q"], t["A"]
         fark = (NkG + NkQ - tG - tQ) / (tG + tQ) * 100.0 if (tG + tQ) > 1e-9 else 0.0
         kolonlar.append({"no": c["no"], "kat": c["kat"], "aks": c["aks"], "adres": c["adres"], "eleman": c["eleman"],
                          "N_G": NkG - NuG, "N_Q": NkQ - NuQ, "N_kum_G": NkG, "N_kum_Q": NkQ,
                          "N_trib_G": tG, "N_trib_Q": tQ, "A_trib": tA, "fark_yuzde": fark})
-    # temeller
+    # temeller: destek kuvvetleri = tepkiler + yay kuvvetleri; temel öz ağırlığı γ_b·B·L·h servis N'e eklenir
     temeller = []
     q_em = B.temeller["zemin"]["q_em"]
-    tepG = {t["dugum"]: t for t in G["tepkiler"]}
-    tepQ = {t["dugum"]: t for t in Q["tepkiler"]}
+    h_t = B.temeller["varsayilan"]["h"]
+    desG, desQ = _mesnet_kuvvetleri(G), _mesnet_kuvvetleri(Q)
     for m in ag["mesnetler"]:
         c = kolon_key.get((B.ax[m["aks"][0]], B.ay[m["aks"][1]], 1))
-        tg, tq = tepG.get(m["dugum"]), tepQ.get(m["dugum"])
-        if c is None or tg is None:
+        tg, tq = desG.get(m["dugum"]), desQ.get(m["dugum"])
+        if c is None or tg is None or tq is None:
             continue
         Bt, Lt = m["B"], m["L"]
         NG, NQ = tg["FZ"], tq["FZ"]
-        N = NG + NQ
+        Nt = GAMMA_BA * Bt * Lt * h_t
+        N = NG + NQ + Nt
         MX, MY = tg["MX"] + tq["MX"], tg["MY"] + tq["MY"]
         A = Bt * Lt
         sig_m = 6.0 * abs(MX) / (Bt * Lt * Lt) + 6.0 * abs(MY) / (Lt * Bt * Bt)
         s_max, s_min = N / A + sig_m, N / A - sig_m
         eX, eY = (abs(MY) / N, abs(MX) / N) if N > 1e-9 else (0.0, 0.0)
-        temeller.append({"kolon_no": c["no"], "aks": c["aks"], "dugum": m["dugum"], "B": Bt, "L": Lt, "N_G": NG, "N_Q": NQ, "N_servis": N,
+        temeller.append({"kolon_no": c["no"], "aks": c["aks"], "dugum": m["dugum"], "B": Bt, "L": Lt, "h": h_t,
+                         "N_G": NG, "N_Q": NQ, "N_temel": Nt, "N_servis": N,
                          "MX": MX, "MY": MY, "sigma_max": s_max, "sigma_min": s_min, "e_X": eX, "e_Y": eY, "q_em": q_em,
                          "DC": s_max / q_em if q_em else 0.0, "cekirdek_icinde": eX <= Bt / 6.0 + 1e-9 and eY <= Lt / 6.0 + 1e-9})
     # korunum
@@ -1098,9 +1192,13 @@ def _akis(B, Y, ag, durumlar_kisa):
     for durum, kisa in (("G", G), ("Q", Q)):
         p = dict(Y.korunum_parcalari[durum])
         p["kolon_taban"] = sum(k["N_kum_" + durum] for k in kolonlar if k["kat"] == 1)
-        p["temel"] = sum(t["FZ"] for t in kisa["tepkiler"])
+        p["kat0"] = Y.kat0[durum]                                   # temel seviyesine doğrudan verilen düğüm yükü
+        p["tepki"] = sum(t["FZ"] for t in kisa["tepkiler"])
         # elastik temelde düşey yük yaylara gider: F_yay = −k·u (yayın yapıya uyguladığı, yukarı +); motor Fy = bina FZ
         p["yay"] = sum(y["kuvvet"] for y in kisa["yaylar"] if y.get("bilesen") == "Fy")
+        p["temel"] = p["tepki"] + p["yay"]
+        p["yuk_alani"] = sum(trib[k["no"]][durum] for k in kolonlar if k["kat"] == 1) + dagitilamayan[durum]
+        p["dagitilamayan"] = dagitilamayan[durum]
         korunum[durum] = p
     # sankey
     sankey = []
@@ -1404,7 +1502,8 @@ def _adim_3(B, Y, anl):
                 _f(p["toplam_G"]), _f(p["tepe_q"]), _f(p["toplam_Q"])] for p in d["paylar"]]
         topG, topQ = sum(p["toplam_G"] for p in d["paylar"]), sum(p["toplam_Q"] for p in d["paylar"])
         anl.metin(f"**D{d['no']}** (kat {d['kat']}): l_k = {_f(d['lx'])} m, l_u = {_f(d['ly'])} m, m = {_f(d['m'], 3)} → "
-                  f"**{'çift' if d['tip'] == 'cift' else 'tek'} doğrultulu**; g = {_f(d['g'])}, q = {_f(d['q_top'])} kN/m².\n\n"
+                  f"**{'çift' if d['tip'] == 'cift' else 'tek'} doğrultulu**; g = {_f(d['g'])}, q = {_f(d['q_top'])} kN/m²"
+                  + (f" ({d['q_kaynak']})" if "balkon" in d["q_kaynak"] else "") + (f". {d['not']}" if d.get("not") else ".") + "\n\n"
                   + _tablo(["Kenar", "Kiriş", "Kenar türü", "Şekil", "G tepe (kN/m)", "q_eM,G", "q_eV,G", "G payı (kN)", "Q tepe", "Q payı (kN)"], sat)
                   + f"\n\nKorunum: Σ paylar = {_f(topG)} kN = g·l_k·l_u = {_f(d['g'])}·{_f(d['lx'])}·{_f(d['ly'])} = {_f(d['G_toplam'])} kN ✓ "
                   f"(Q: {_f(topQ)} = {_f(d['Q_toplam'])} ✓).")
@@ -1480,9 +1579,11 @@ def _adim_7(B, ag, durumlar_kisa, Y, yol, anl):
     for ad, k in durumlar_kisa.items():
         uz = max((abs(dg["uZ"]) for dg in k["dugumler"]), default=0.0)
         ux = max((math.hypot(dg["uX"], dg["uY"]) for dg in k["dugumler"]), default=0.0)
-        sat.append([ad, _f(sum(t["FZ"] for t in k["tepkiler"])), _f(Y.toplam[ad]), f"{k['denge']['FZ']:.1e}", f"{uz * 1000:.2f}", f"{ux * 1000:.2f}"])
-    anl.metin(_tablo(["Durum", "Σ tepki FZ (kN)", "Toplam yük (kN)", "Denge kalıntısı ΣFZ", "max u_Z (mm)", "max yatay (mm)"], sat))
-    anl.metin("Σ tepki = toplam yük: dış yükler mesnetlerde karşılanmıştır (denge). Kiriş uç kesmelerini 8. adımda kolonlara taşıyacağız.")
+        yay = sum(y["kuvvet"] for y in k["yaylar"] if y.get("bilesen") == "Fy")
+        sat.append([ad, _f(sum(t["FZ"] for t in k["tepkiler"])), _f(yay), _f(Y.toplam[ad]), f"{k['denge']['FZ']:.1e}", f"{uz * 1000:.2f}", f"{ux * 1000:.2f}"])
+    anl.metin(_tablo(["Durum", "Σ tepki FZ (kN)", "Σ yay kuvveti (kN)", "Toplam yük (kN)", "Denge kalıntısı ΣFZ", "max u_Z (mm)", "max yatay (mm)"], sat))
+    anl.metin("Σ tepki + Σ yay = toplam yük: dış yükler mesnetlerde (elastik temelde yaylarda) karşılanmıştır (denge). "
+              "Kiriş uç kesmelerini 8. adımda kolonlara taşıyacağız.")
     el_no = {e["no"]: e for e in ag["elemanlar"]}
     sat = []
     for r in Y.kirisler[:40]:
@@ -1510,12 +1611,15 @@ def _adim_8(B, akis, anl):
               + _tablo(["Kolon", "Kat", "N_G kat", "N_Q kat", "N_G küm.", "N_Q küm.", "A_trib (m²)", "N_trib,G", "N_trib,Q", "Fark %"],
                        [[f"S{k['no']}", k["kat"], _f(k["N_G"]), _f(k["N_Q"]), _f(k["N_kum_G"]), _f(k["N_kum_Q"]), _f(k["A_trib"]),
                          _f(k["N_trib_G"]), _f(k["N_trib_Q"]), _f(k["fark_yuzde"], 1)] for k in akis["kolonlar"]]))
-    anl.metin("Köşe kolonlarda FE değeri yük alanından genellikle büyük, iç kolonlarda küçük çıkar: sürekli kiriş ilk iç mesnete "
-              "daha çok yük bırakır; yük alanı bunu göremez.")
+    anl.metin("Köşe ve kenar kolonlarda FE değeri yük alanından genellikle **küçük**, iç kolonlarda **büyük** çıkar: sürekli "
+              "kiriş ilk iç mesnede daha çok yük bırakır (basit kirişteki qL/2 yerine ≈ 1,25·qL/2); yük alanı yöntemi bu "
+              "süreklilik etkisini göremez. Kolonsuz ara düğümlere inen paylar, taşıyan kirişin uçlarındaki kolonlara "
+              "basit kiriş tepkisi oranıyla dağıtılmıştır.")
     anl.mat(r"\sigma_{max,min} = \frac{N}{B\,L} \pm \frac{6M_X}{B\,L^{2}} \pm \frac{6M_Y}{L\,B^{2}},\qquad e_X = \frac{M_Y}{N} \le \frac{B}{6},\ e_Y = \frac{M_X}{N} \le \frac{L}{6}")
-    anl.metin("**Temeller** (servis: N = N_G + N_Q; B X yönünde, L Y yönünde):\n\n"
-              + _tablo(["Temel", "B × L (m)", "N_G", "N_Q", "N", "M_X", "M_Y", "σ_max", "σ_min", "e_X/B", "e_Y/L", "q_em", "D/C"],
-                       [[f"T-{t['aks'][0]}{t['aks'][1]}", f"{_f(t['B'])} × {_f(t['L'])}", _f(t["N_G"]), _f(t["N_Q"]), _f(t["N_servis"]),
+    anl.metin(f"**Temeller** (servis: N = N_G + N_Q + G_temel; G_temel = γ_b·B·L·h, h = {_f(B.temeller['varsayilan']['h'])} m, temel üstü "
+              "dolgu ihmal; B X yönünde, L Y yönünde; elastik temelde N ve M yay kuvvetlerinden okunur):\n\n"
+              + _tablo(["Temel", "B × L (m)", "N_G", "N_Q", "G_temel", "N", "M_X", "M_Y", "σ_max", "σ_min", "e_X/B", "e_Y/L", "q_em", "D/C"],
+                       [[f"T-{t['aks'][0]}{t['aks'][1]}", f"{_f(t['B'])} × {_f(t['L'])}", _f(t["N_G"]), _f(t["N_Q"]), _f(t["N_temel"]), _f(t["N_servis"]),
                          _f(t["MX"]), _f(t["MY"]), _f(t["sigma_max"]), _f(t["sigma_min"]), _f(t["e_X"] / t["B"], 3), _f(t["e_Y"] / t["L"], 3),
                          _f(t["q_em"]), _f(t["DC"], 2)] for t in akis["temeller"]]))
     kotu = [t for t in akis["temeller"] if t["DC"] > 1.0]
@@ -1553,8 +1657,14 @@ def _adim_10(B, Y, akis, sonuclar, anl):
     for durum in ("G", "Q"):
         p = akis["korunum"][durum]
         sat.append([durum, _f(p["dosemeler"]), _f(p["duvarlar"]), _f(p["kiris_oz"]), _f(p["kolon_oz"]), _f(p["ek"]), _f(p["toplam"]),
-                    _f(p["kolon_taban"]), _f(p["temel"] + p.get("yay", 0.0))])
-    anl.metin(_tablo(["Durum", "Döşemeler", "Duvarlar", "Kiriş öz", "Kolon öz", "Ek", "**Toplam**", "**Σ kolon taban N**", "**Σ temel tepkisi**"], sat))
+                    _f(p["yuk_alani"]), _f(p["kolon_taban"]), _f(p["kat0"]), _f(p["temel"])])
+    anl.metin(_tablo(["Durum", "Döşemeler", "Duvarlar", "Kiriş öz", "Kolon öz", "Ek", "**Toplam**", "Σ yük alanı", "**Σ kolon taban N**",
+                      "Kat 0 düğüm yükü", "**Σ temel (tepki + yay)**"], sat))
+    anl.metin("Toplam = Σ yük alanı = Σ kolon taban N + kat 0 düğüm yükü = Σ temel: temel seviyesine doğrudan verilen düğüm yükleri "
+              "kolonlardan geçmeden mesnete iner; elastik temelde tepki yerine yay kuvveti okunur.")
+    if any(abs(akis["korunum"][d]["dagitilamayan"]) > 1e-6 for d in ("G", "Q")):
+        anl.uyari("Yük alanı el hesabında bazı kolonsuz düğüm payları hiçbir kolona ulaştırılamadı (kiriş zinciri kolona varmıyor); "
+                  "FE çözümü yine de doğrudur, el hesabı toplamı eksik kalır.")
     sat = []
     for ad, k in sonuclar.items():
         d = k["denge"]
@@ -1716,8 +1826,9 @@ def _adim_11(B, ag, model, durumlar, Y, anl):
 # ============================================================================
 # Çıktı verisi (şema §4) ve ana işlev
 # ============================================================================
-def _kisa_veri(k):
-    return {"u": [_r(x) for x in k["u"]],
+def _kisa_veri(k, u_dahil=True):
+    """KISA → JSON. Kombinasyonlarda ``u`` yazılmaz (None; boyut), ``dugumler`` deforme şekil için kalır."""
+    return {"u": [_r(x) for x in k["u"]] if u_dahil else None,
             "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
             "tepkiler": [{"dugum": t["dugum"], **{a: _r(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
             "elemanlar": [{"no": e["no"], "uc_kuvvetleri": [_r(x) for x in e["uc_kuvvetleri"]], "x": [_r(x) for x in e["x"]],
@@ -1807,7 +1918,7 @@ def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonu
         "bina": bina, "kutuphane_ozeti": kutuphane_ozeti, "ag": ag_veri, "yukler": yukler,
         "durumlar": {ad: _kisa_veri(k) for ad, k in durumlar_kisa.items()},
         "kombinasyonlar": kombinasyonlar,
-        "sonuclar": {ad: _kisa_veri(k) for ad, k in sonuclar.items()},
+        "sonuclar": {ad: _kisa_veri(k, u_dahil=False) for ad, k in sonuclar.items()},
         "zarf": {"kombinasyonlar": zarf["kombinasyonlar"],
                  "elemanlar": [{a: (_r6(v) if isinstance(v, float) else v) for a, v in z.items()} for z in zarf["elemanlar"]]},
         "akis": akis_veri,
@@ -1988,10 +2099,11 @@ def yuk_yolu(bina, veri, hedef):
         sat = []
         for t in tem:
             N = D(lambda d_, t=t: t["N_" + d_])
-            sat.append([f"T-{t['aks'][0]}{t['aks'][1]}", f"{_f(t['B'])} × {_f(t['L'])}", _f(N), _f(N / (t["B"] * t["L"])), _f(t["sigma_max"]), _f(t["q_em"]), _f(t["DC"], 2)])
+            sat.append([f"T-{t['aks'][0]}{t['aks'][1]}", f"{_f(t['B'])} × {_f(t['L'])}", _f(N), _f(t["N_temel"]), _f(t["N_servis"]),
+                        _f(t["sigma_max"]), _f(t["q_em"]), _f(t["DC"], 2)])
         adim(f"{len(adimlar) + 1}. Temel ve zemin",
-             [{"tur": "math", "icerik": r"\sigma = \frac{N}{B\,L} \pm \frac{6M_X}{B\,L^{2}} \pm \frac{6M_Y}{L\,B^{2}} \le q_{em}"},
-              {"tur": "md", "icerik": _tablo(["Temel", "B × L (m)", f"N ({durum})", "N/(BL)", "σ_max (servis)", "q_em", "D/C"], sat)}],
+             [{"tur": "math", "icerik": r"\sigma = \frac{N}{B\,L} \pm \frac{6M_X}{B\,L^{2}} \pm \frac{6M_Y}{L\,B^{2}} \le q_{em},\qquad N = N_G + N_Q + \gamma_b B L h"},
+              {"tur": "md", "icerik": _tablo(["Temel", "B × L (m)", f"N ({durum})", "G_temel", "N servis", "σ_max (servis)", "q_em", "D/C"], sat)}],
              temeller=temel_nolar)
     kor = veri["akis"]["korunum"]
     topl = D(lambda d_: kor[d_]["toplam"])
