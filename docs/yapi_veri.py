@@ -330,20 +330,30 @@ def _komb(ad, katsayilar, tur, kaynak, not_="", gerekli=()):
 _TBDY_411 = "TBDY 2018 md. 4.4.4.1 Denk. (4.11)"
 _TBDY_412 = "TBDY 2018 md. 4.4.4.1 Denk. (4.12)"
 _TBDY_DRIFT = "TBDY 2018 md. 4.9.1: göreli kat ötelemesi Δ_i azaltılmış deprem yükleri altında (Denk. 4.32); düşey yükler yatay ötelemeyi değiştirmez"
+_TS500_KAR_63 = "TS 500 Denk. (6.3); kar TS 498:2021 md. 3.1 kapsamında hareketli yük olarak (Q gibi 1,6)"
+_KAR_NOT = ("TS 500 md. 6.2.6 kar terimini ayrı vermez; TS 500'ün karakteristik yük için atfettiği TS 498:2021 kar yükünü "
+            "hareketli yük sayar (md. 3.1), kar ile rüzgârın birlikte etkisini md. 12.1 verir")
 _GKT_E_NOT = "E = Ed(H) + 0,3·Ed(Z) yorumu (TBDY 4.4.4.1 düşey deprem payı GKT'ye de taşındı; 0,6G satırında −0,3)"
 # Yer tutucular (yapi.py çoğaltır): W → W+X, W-X, W+Y, W-Y; EH → ±EX± ± 0,3·EY± ve ±0,3·EX± ± EY± (32 yön/dışmerkezlik);
 # EZ → EZ durumu ((2/3)·S_DS·G); drift satırı → tek doğrultulu EX+, EX-, EY+, EY-; T ve H durumu üretilmez: gerekli ise
 # satır uygulanmaz (6.4, 6.9, 6.10), ikincil ise sıfır alınır (4.12'de H).
 KOMBINASYONLAR = {
     "ts500": {
-        "ad": "Betonarme: TS 500 md. 6.2.6 + TBDY 2018 md. 4.4.4",
-        "kaynak": "TS 500:2000 md. 6.2.6 Denk. (6.3)–(6.10); TBDY 2018 md. 4.4.4.1",
+        "ad": "Betonarme: TS 500 md. 6.2.6 + TS 498 (kar) + TBDY 2018 md. 4.4.4",
+        "kaynak": "TS 500:2000 md. 6.2.6 Denk. (6.3)–(6.10); kar: TS 498:2021 md. 3.1 ve 12.1; TBDY 2018 md. 4.4.4.1",
         "dogrulandi": True,
         "liste": [
             _komb("1.4G+1.6Q", {"G": 1.4, "Q": 1.6}, "dayanim", "TS 500 Denk. (6.3)"),
+            _komb("1.4G+1.6Q+1.6S", {"G": 1.4, "Q": 1.6, "S": 1.6}, "dayanim", _TS500_KAR_63, _KAR_NOT, gerekli=("S",)),
             _komb("G+1.2Q+1.2T", {"G": 1.0, "Q": 1.2, "T": 1.2}, "dayanim", "TS 500 Denk. (6.4)", "T: sıcaklık, büzülme, farklı oturma",
                   gerekli=("T",)),
             _komb("G+1.3Q+1.3W", {"G": 1.0, "Q": 1.3, "W": 1.3}, "dayanim", "TS 500 Denk. (6.5)"),
+            _komb("G+1.3Q+1.3(S/2)+1.3W", {"G": 1.0, "Q": 1.3, "S": 0.65, "W": 1.3}, "dayanim",
+                  "TS 500 Denk. (6.5) + TS 498:2021 md. 12.1(a)", "kar ve rüzgâr birlikte: S/2 + W (eğim ≤ 45°); " + _KAR_NOT,
+                  gerekli=("S",)),
+            _komb("G+1.3Q+1.3S+1.3(W/2)", {"G": 1.0, "Q": 1.3, "S": 1.3, "W": 0.65}, "dayanim",
+                  "TS 500 Denk. (6.5) + TS 498:2021 md. 12.1(b)", "kar ve rüzgâr birlikte: S + W/2 (eğim ≤ 45°); " + _KAR_NOT,
+                  gerekli=("S",)),
             _komb("0.9G+1.3W", {"G": 0.9, "W": 1.3}, "dayanim", "TS 500 Denk. (6.6)"),
             _komb("1.4G+1.6Q+1.6H", {"G": 1.4, "Q": 1.6, "H": 1.6}, "dayanim", "TS 500 Denk. (6.9)", "H: yanal toprak itkisi",
                   gerekli=("H",)),
@@ -353,6 +363,8 @@ KOMBINASYONLAR = {
             _komb("0.9G+H+Ed(H)-0.3Ed(Z)", {"G": 0.9, "H": 1.0, "EH": 1.0, "EZ": -0.3}, "deprem", _TBDY_412,
                   "TS 500 (6.8) yerine TBDY"),
             _komb("G+Q", {"G": 1.0, "Q": 1.0}, "servis", "TS 500 md. 6.2.6(f): kullanılabilirlikte tüm yük katsayıları 1,0"),
+            _komb("G+Q+S", {"G": 1.0, "Q": 1.0, "S": 1.0}, "servis", "TS 500 md. 6.2.6(f) + TS 498:2021 md. 3.1 (kar hareketli yüktür)",
+                  gerekli=("S",)),
             _komb("G+Q+Ed(H)", {"G": 1.0, "Q": 1.0, "EH": 1.0}, "drift", _TBDY_DRIFT, "tek doğrultu (EX ya da EY), dışmerkezlik ±"),
         ],
     },
@@ -580,7 +592,8 @@ TBDY_UYGULANABILIRLIK = {
     "diger": {"kosul": "Diğer tüm binalar", "dts12": 5, "dts34": 6},
 }
 TBDY_ETKIN_RIJITLIK = {
-    "kaynak": "TBDY 2018 Tablo 4.2 (md. 4.5.8); yalnız deprem etkili yük birleşimlerinde (4.5.8.3)", "dogrulandi": True,
+    "kaynak": ("TBDY 2018 Tablo 4.2 (md. 4.5.8): betonarmede dayanıma göre tasarımda zorunlu (4.5.8.1); yalnız deprem etkili yük "
+               "birleşimlerinde ve bu birleşimlere giren yükler altındaki hesaplarda uygulanır (4.5.8.3)"), "dogrulandi": True,
     "kolon": {"egilme": 0.70, "kesme": 1.0}, "kiris": {"egilme": 0.35, "kesme": 1.0}, "bag-kirisi": {"egilme": 0.15, "kesme": 1.0},
     "perde": {"egilme": 0.50, "kesme": 0.50},
 }
@@ -594,7 +607,7 @@ TBDY_DEPREM_KURALLAR = {
     "Tp": "T_p = 2π·√(Σ m_i·d_fi² / Σ F_fi·d_fi) ≤ 1,4·T_pA — Denk. (4.26), md. 4.7.3.2",
     "TpA": "T_pA = C_t·H_N^(3/4) — Denk. (4.27)",
     "dismerkezlik": "e = ±0,05·B_i (deprem doğrultusuna dik kat boyutu); M_ib = F_iE·e — md. 4.5.10.2, Denk. (4.17)",
-    "eta_b": "η_bi = (Δ_i)max/(Δ_i)ort, (Δ)ort = ½[(Δ)max + (Δ)min]; η_bi > 1,2 → A1 düzensizliği; D_bi = (η_bi/1,2)² — Tablo 3.6, Denk. (4.29)",
+    "eta_b": "η_bi = (Δ_i)max/(Δ_i)ort, (Δ)ort = ½[(Δ)max + (Δ)min]; η_bi > 1,2 → A1 düzensizliği; 1,2 < η_bi ≤ 2,0 olan i'inci katta ±%5 ek dışmerkezlik her iki deprem doğrultusu için D_bi = (η_bi/1,2)² ile büyütülür — Tablo 3.6, md. 4.7.4, Denk. (4.29)",
     "EdH": "E_d(H) = ±E_d(X) ± 0,3·E_d(Y); ±0,3·E_d(X) ± E_d(Y) — Denk. (4.9)",
     "EdZ": "E_d(Z) ≈ (2/3)·S_DS·G — Denk. (4.10)",
     "drift": "Δ_i = u_i − u_{i−1}; δ_i = (R/I)·Δ_i; λ·δ_i,max/h_i ≤ 0,008κ (a: bitişik gevrek dolgu) | 0,016κ (b: esnek derz) — Denk. (4.32)–(4.34)",
