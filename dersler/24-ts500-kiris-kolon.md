@@ -87,7 +87,7 @@ $$
 **Dengeli donatı oranı** $\rho_b$ çeliğin aktığı anda betonun ezildiği orandır. TS 500 kapalı formül vermez; md. 7.1 varsayımlarından $c_b/d=0.003/(0.003+\varepsilon_{yd})=600/(600+f_{yd})$ ile türetilir: $\rho_b=0.85\,k_1\,(f_{cd}/f_{yd})\cdot600/(600+f_{yd})$. En az donatı çatlayan kesitte donatının kopmamasını, üst sınır ise kırılmanın sünek kalmasını sağlar.
 
 ::: etkilesim kiris-donati
-{"Md": 125.59, "b": 0.25, "h": 0.55, "beton": "C30"}
+{"Md": 108.99, "b": 0.25, "h": 0.55, "beton": "C30"}
 :::
 
 ## Çift donatı ve taşıma gücü
@@ -125,7 +125,7 @@ Eğrinin üç özel noktası vardır. **Saf basınç** $\ka{N_0=0.85f_{cd}(A_c-A
 Talep noktası $P=(N_d,M_d)$ eğrinin içindeyse kesit yeterlidir. Kapasite oranı orijinden $P$'ye çizilen ışının eğriyi kestiği $Q$ noktasıyla ölçülür: $\text{D/C}=|OP|/|OQ|$ (SAP2000 ve ETABS'taki PMM oranıyla aynı fikir).
 
 ::: etkilesim kolon-nm
-{"b": 0.45, "h": 0.45, "rho": 0.01, "beton": "C30", "N": 386.63, "M": 85.4}
+{"b": 0.45, "h": 0.45, "rho": 0.01, "beton": "C30", "N": 380.4, "M": 89.13}
 :::
 
 ## Kolon için yönetmelik koşulları
@@ -144,7 +144,7 @@ $N_{max}$ ile $M_{max}$'ı farklı kombinasyonlardan alıp tek nokta yapmak ger�
 :::
 
 ::: hata Paspayını d sanmak, birimleri karıştırmak
-$d=h-d'$; $d'$ paspayı değil, donatı ağırlık merkezinin dış yüze uzaklığıdır (paspayı + etriye + çubuk yarıçapı; burada 50 mm). Formülde $M_d$ N·mm, boyutlar mm, gerilmeler MPa (N/mm²) olmalıdır: 125.59 kN·m $=125.59\cdot10^6$ N·mm. $A_s$ mm² çıkar, cm²'ye 100'e bölerek geçilir.
+$d=h-d'$; $d'$ paspayı değil, donatı ağırlık merkezinin dış yüze uzaklığıdır (paspayı + etriye + çubuk yarıçapı; burada 50 mm). Formülde $M_d$ N·mm, boyutlar mm, gerilmeler MPa (N/mm²) olmalıdır: 108.99 kN·m $=108.99\cdot10^6$ N·mm. $A_s$ mm² çıkar, cm²'ye 100'e bölerek geçilir.
 :::
 
 ::: hata ρ_min'i unutmak
@@ -172,24 +172,24 @@ C30 ve üstünde $0.85\rho_b>0.02$ olduğundan üst sınırı Denk. 7.5 (TBDY 7.
 :::
 
 ::: ornek Ders binasının kritik kirişi: gerekli A_s
-K-A2→B2/k1 kirişinin mesnet momenti (zarfın $M_{min}$'i, Ders 22) $M_d=125.59$ kN·m; $b=250$, $h=550$, $d=500$ mm, C30, B420C. Gerekli üst donatıyı, çubuk önerisini ve $M_r$'yi bul.
+K-A2→B2/k1 kirişinin mesnet momenti (zarfın $M_{min}$'i, Ders 22) $M_d=108.99$ kN·m; $b=250$, $h=550$, $d=500$ mm, C30, B420C. Gerekli üst donatıyı, çubuk önerisini ve $M_r$'yi bul.
 --- ipucu
-$0.85f_{cd}b=0.85\cdot20\cdot250=4250$ N/mm; $M_d=125.59\cdot10^6$ N·mm.
+$0.85f_{cd}b=0.85\cdot20\cdot250=4250$ N/mm; $M_d=108.99\cdot10^6$ N·mm.
 --- cevap
 $$
 \begin{aligned}
-\kutub{a}&=500-\sqrt{500^2-\frac{2\cdot125.59\cdot10^6}{4250}}=500-436.92=\kb{63.08}\ \text{mm}\\
-\kutua{A_s}&=\frac{4250\cdot63.08}{365.22}=\ka{734.1}\ \text{mm}^2=7.34\ \text{cm}^2,\qquad \rho=\frac{734.1}{250\cdot500}=0.00587\in[\ksil{0.00277},\ \ksil{0.02}]\ \checkmark\\
-\text{öneri}&:\ 2\phi18+2\phi12=735.1\ \text{mm}^2,\qquad c=77.0\ \text{mm},\ \ \varepsilon_s=0.003\,\frac{500-77.0}{77.0}=0.0165\ge\varepsilon_{yd}\ \checkmark\\
-\kutuc{M_r}&=125.76\ \text{kN·m},\qquad \text{D/C}=\frac{125.59}{125.76}=0.9986
+\kutub{a}&=500-\sqrt{500^2-\frac{2\cdot108.99\cdot10^6}{4250}}=500-445.77=\kb{54.23}\ \text{mm}\\
+\kutua{A_s}&=\frac{4250\cdot54.23}{365.22}=\ka{631.1}\ \text{mm}^2=6.31\ \text{cm}^2,\qquad \rho=\frac{631.1}{250\cdot500}=0.00505\in[\ksil{0.00277},\ \ksil{0.02}]\ \checkmark\\
+\text{öneri}&:\ 2\phi14+3\phi12=647.2\ \text{mm}^2,\qquad c=67.8\ \text{mm},\ \ \varepsilon_s=0.003\,\frac{500-67.8}{67.8}=0.0191\ge\varepsilon_{yd}\ \checkmark\\
+\kutuc{M_r}&=111.61\ \text{kN·m},\qquad \text{D/C}=\frac{108.99}{111.61}=0.9766
 \end{aligned}
 $$
 --- kod
-tasarim.kiris_egilme_anlatimli(125.59, 0.25, 0.55, 0.05)
+tasarim.kiris_egilme_anlatimli(108.99, 0.25, 0.55, 0.05)
 --- kontrol
-r.veri["tek_donatili"] and abs(r.veri["a_mm"] - 63.0803) < 1e-3 and abs(r.veri["As_gerekli_cm2"] - 7.34059) < 1e-4 and r.veri["oneri"]["metin"] == "2Φ18 + 2Φ12" and abs(r.veri["Mr_kNm"] - 125.761) < 1e-2 and abs(r.veri["eps_s_r"] - 0.01647) < 1e-4
+r.veri["tek_donatili"] and abs(r.veri["a_mm"] - 54.2303) < 1e-3 and abs(r.veri["As_gerekli_cm2"] - 6.31073) < 1e-4 and r.veri["oneri"]["metin"] == "2Φ14 + 3Φ12" and abs(r.veri["Mr_kNm"] - 111.606) < 1e-2 and abs(r.veri["eps_s_r"] - 0.01912) < 1e-4
 --- yorum
-`tasarim.kiris_egilme(Md, b, h, paspayi)` boyutları m, momenti kN·m alır; `paspayi` burada donatı ağırlık merkezinin yüze uzaklığıdır (d′ = 0.05 m). D/C'nin 1'e bu kadar yakın çıkması tesadüf değildir: öneri gerekli alanı en az fazlalıkla karşılayan çubuk takımıdır. Bina motoru da aynı kirişe aynı öneriyi verir.
+`tasarim.kiris_egilme(Md, b, h, paspayi)` boyutları m, momenti kN·m alır; `paspayi` burada donatı ağırlık merkezinin yüze uzaklığıdır (d′ = 0.05 m). D/C'nin 1'e bu kadar yakın çıkması tesadüf değildir: öneri gerekli alanı en az fazlalıkla karşılayan çubuk takımıdır. Bina motoru da aynı kirişe aynı öneriyi verir. Bu moment çatlamış kesitli deprem birleşimindendir (TBDY 4.5.8); brüt kesitle kiriş uçları daha rijit görünür ve mesnet momenti büyür.
 :::
 
 ::: ornek Çift donatılı kesit
@@ -255,24 +255,24 @@ Dengeli nokta eğrinin en büyük momentidir (286.7 kN·m). TBDY sınırı (2430
 :::
 
 ::: ornek Kolon A1: eş zamanlı noktalar ve zarf köşesi
-Kolon A1 (1. kat, 45×45, $\rho=0.01$) için Ders 22'deki eş zamanlı çiftler: $N_{min}$ kombinasyonu $(447.54;\ 24.82)$, $M_{max}$ kombinasyonu $(386.63;\ 85.4)$, az basınç $(79.07;\ 10.9)$; zarf köşesi $(447.54;\ 85.4)$. Her biri için $e_{min}$ ve radyal D/C'yi bul (yalnız $M_x$).
+Kolon A1 (1. kat, 45×45, $\rho=0.01$) için Ders 22'deki eş zamanlı çiftler: $N_{min}$ kombinasyonu $(394.73;\ 26.27)$, $M_{max}$ kombinasyonu $(380.40;\ 89.13)$, az basınç $(76.85;\ 11.74)$; zarf köşesi $(394.73;\ 89.13)$. Her biri için $e_{min}$ ve radyal D/C'yi bul (yalnız $M_x$).
 --- ipucu
-$e_{min}=15+0.03\cdot450=28.5$ mm: $N\,e_{min}=447.54\cdot0.0285=12.75$ kN·m $<24.82$.
+$e_{min}=15+0.03\cdot450=28.5$ mm: $N\,e_{min}=394.73\cdot0.0285=11.25$ kN·m $<26.27$.
 --- cevap
 $$
 \begin{aligned}
-P_1&=(447.54;\ 24.82):\ Q=(3119.6;\ 173.0)\ \Rightarrow\ \text{D/C}=\frac{24.82}{173.0}=\ka{0.143}\\
-P_2&=(386.63;\ 85.4):\ Q=(1250.6;\ 276.2)\ \Rightarrow\ \text{D/C}=\frac{85.4}{276.2}=\kutub{0.309}\\
-P_3&=(79.07;\ 10.9):\ Q=(1958.6;\ 270.0)\ \Rightarrow\ \text{D/C}=\kc{0.040}\\
-\ksil{P_k}&=\ksil{(447.54;\ 85.4)}:\ \text{D/C}=\ksil{0.300}\ \ (\text{hiçbir kombinasyonda oluşmaz})
+P_1&=(394.73;\ 26.27):\ Q=(2932.8;\ 195.2)\ \Rightarrow\ \text{D/C}=\frac{26.27}{195.2}=\ka{0.135}\\
+P_2&=(380.40;\ 89.13):\ Q=(1159.7;\ 271.7)\ \Rightarrow\ \text{D/C}=\frac{89.13}{271.7}=\kutub{0.328}\\
+P_3&=(76.85;\ 11.74):\ Q=(1812.7;\ 277.0)\ \Rightarrow\ \text{D/C}=\kc{0.042}\\
+\ksil{P_k}&=\ksil{(394.73;\ 89.13)}:\ \text{D/C}=\ksil{0.324}\ \ (\text{hiçbir kombinasyonda oluşmaz})
 \end{aligned}
 $$
 --- kod
-tasarim.kolon_kontrol_anlatimli([447.54, 386.63, 79.073, 447.54], [24.821, 85.4, 10.9, 85.4], 0, 0.45, 0.45, 20.25, 0.05, adlar=["Nmin", "Mmax", "Nmax", "kose"])
+tasarim.kolon_kontrol_anlatimli([394.726, 380.403, 76.851, 394.726], [26.266, 89.126, 11.744, 89.126], 0, 0.45, 0.45, 20.25, 0.05, adlar=["Nmin", "Mmax", "Nmax", "kose"])
 --- kontrol
-abs(r.veri["noktalar"][0]["dc_x"] - 0.14346) < 1e-4 and abs(r.veri["noktalar"][1]["dc_x"] - 0.30916) < 1e-4 and abs(r.veri["noktalar"][2]["dc_x"] - 0.04037) < 1e-4 and abs(r.veri["noktalar"][3]["dc_x"] - 0.29979) < 1e-4 and abs(r.veri["noktalar"][0]["e_min_x_mm"] - 28.5) < 1e-9
+abs(r.veri["noktalar"][0]["dc_x"] - 0.13459) < 1e-4 and abs(r.veri["noktalar"][1]["dc_x"] - 0.32802) < 1e-4 and abs(r.veri["noktalar"][2]["dc_x"] - 0.04240) < 1e-4 and abs(r.veri["noktalar"][3]["dc_x"] - 0.32441) < 1e-4 and abs(r.veri["noktalar"][0]["e_min_x_mm"] - 28.5) < 1e-9
 --- yorum
-Bu kolonda belirleyen $M_{max}$ kombinasyonudur ve zarf köşesi onu yakalar; ama bina çözümündeki gerçek belirleyen nokta iki eksenli eğilmeli $0.9G-0.3E_X+E_Y-0.3E_Z$ birleşimidir (D/C = 0.660, son örnek). $M_y=0$ verildiğinde de $e_{min}$ y doğrultusunda $N\,e_{min}$ kadar moment doğurur; motor iki doğrultuyu ayrı denetler.
+Bu kolonda belirleyen $M_{max}$ kombinasyonudur ve zarf köşesi onu bile yakalamaz: daha büyük basınç bu kesitte moment kapasitesini artırdığı için köşenin D/C'si (0.324) gerçek noktanınkinden (0.328) küçüktür. Bina çözümündeki gerçek belirleyen nokta ise iki eksenli eğilmeli $0.9G-0.3E_X+E_Y-0.3E_Z$ birleşimidir (D/C = 0.685, son örnek). $M_y=0$ verildiğinde de $e_{min}$ y doğrultusunda $N\,e_{min}$ kadar moment doğurur; motor iki doğrultuyu ayrı denetler.
 :::
 
 ::: ornek İki eksenli eğilme: Bresler ters yük formülü
@@ -295,24 +295,24 @@ Bresler formülü yüksek basınçta iyi sonuç verir; az basınçta tutucu ya d
 :::
 
 ::: ornek Bina motoru: tasarım sonucunu okumak
-Ders binasını çöz ve `veri["tasarim"]`'dan en kritik elemanı, K-A2→B2/k1 kirişinin (bina no 3) donatı önerisini ve kolon A1'in belirleyen kombinasyonunu oku.
+Ders binasını çöz ve `veri["tasarim"]`'dan en kritik elemanı, K-A2→B2/k1 kirişinin (bina no 3) D/C'sini ve donatı önerisini, kolon A1'in belirleyen kombinasyonunu oku.
 --- ipucu
 `kritik_elemanlar[0]`; kirişte `ozet["oneri_ust"]`, `ozet["etriye"]`; kolonda `belirleyen["kombinasyon"]`.
 --- cevap
 $$
 \begin{aligned}
-\text{kritik}&:\ \text{K-A2}\rightarrow\text{B2/k1},\ \text{eğilme (mesnet, üst)},\ \texttt{G+Q+0.2S+EX++0.3EY++0.3EZ}\\
-M_d&=\ka{125.59},\quad M_r=\kb{125.76}\ \text{kN·m}\ \Rightarrow\ \text{D/C}=\kutuc{0.9986},\quad \text{üst}\ 2\phi18+2\phi12,\ \text{alt}\ 2\phi16,\ \phi8/25\\
-\text{S-A1/k1}&:\ \text{D/C}=\kutuc{0.660}\ \ (\texttt{0.9G-0.3EX-+EY--0.3EZ},\ \text{iki eksenli, alt uç}),\quad N_{dm}=447.5\le\ksil{2430}
+\text{kritik}&:\ \text{K-A1}\rightarrow\text{A2/k2},\ \text{eğilme (mesnet, üst)},\ \texttt{G+Q+0.2S+0.3EX--EY-+0.3EZ}:\ M_d=79.23,\ M_r=79.40,\ \text{D/C}=\kutuc{0.9979}\ (4\phi12)\\
+\text{K-A2}\rightarrow\text{B2/k1}&:\ M_d=\ka{108.99},\quad M_r=\kb{111.61}\ \text{kN·m}\ \Rightarrow\ \text{D/C}=0.977,\quad \text{üst}\ 2\phi14+3\phi12,\ \text{alt}\ 2\phi16,\ \phi8/25\\
+\text{S-A1/k1}&:\ \text{D/C}=\kutuc{0.685}\ \ (\texttt{0.9G-0.3EX-+EY--0.3EZ},\ \text{iki eksenli, alt uç}),\quad N_{dm}=394.7\le\ksil{2430}
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A2→B2/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 0.99862) < 1e-4 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["ozet"]["oneri_ust"] == "2Φ18 + 2Φ12" and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["dc"] - 0.65969) < 1e-4 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["belirleyen"]["kombinasyon"] == "0.9G-0.3EX-+EY--0.3EZ"
+r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A1→A2/k2" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 0.99786) < 1e-4 and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["dc"] - 0.97657) < 1e-4 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["ozet"]["oneri_ust"] == "2Φ14 + 3Φ12" and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["dc"] - 0.68522) < 1e-4 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["belirleyen"]["kombinasyon"] == "0.9G-0.3EX-+EY--0.3EZ"
 --- yorum
-Kirişlerin D/C'si 1'e yakındır çünkü donatı tasarlanır; asıl bilgi önerilen çubuklardadır. Kolonda donatı verilmediği için $\rho=0.01$ varsayıldı ve belirleyen nokta en büyük basınç değil, az basınçlı deprem birleşimidir: zarfla yapılan kolon kontrolünün kaçırdığı durum. Tek elemanın anlatımlı tahkikini (N–M eğrisi ve bütün kombinasyon noktaları) `yapi.eleman_tasarim(r.ic, "kolon", 1)` verir.
+Kirişlerin D/C'si 1'e yakındır çünkü donatı tasarlanır; asıl bilgi önerilen çubuklardadır. Şablon bütün elemanlarda D/C ≤ 1 verir (en büyük 0.998). Kolonda donatı verilmediği için $\rho=0.01$ varsayıldı ve belirleyen nokta en büyük basınç değil, az basınçlı deprem birleşimidir: zarfla yapılan kolon kontrolünün kaçırdığı durum. Tek elemanın anlatımlı tahkikini (N–M eğrisi ve bütün kombinasyon noktaları) `yapi.eleman_tasarim(r.ic, "kolon", 1)` verir.
 :::
 
 ::: muhendislik SAP2000, ETABS ve kapasite tasarımı

@@ -149,7 +149,7 @@ $$
 Kat kesmesi $V_i$ o katın ve üstündeki katların kuvvetlerinin toplamıdır; taban devrilme momenti $M_o=\sum F_{iE}H_i$ (Denk. 4.25). Kat sayısını, ağırlığı ve yüksekliği değiştir; ters üçgen, $\Delta F_N$ ve kat kesmesi canlı güncellenir.
 
 ::: etkilesim kat-kuvvetleri
-{"N": 3, "w": 1057.005, "wN": 998.505, "h": 3.2, "SDS": 1.2, "SD1": 0.45, "R": 8, "D": 3, "I": 1.0}
+{"N": 3, "w": 1006.38, "wN": 787.5, "h": 3.2, "SDS": 1.2, "SD1": 0.45, "R": 8, "D": 3, "I": 1.0}
 :::
 
 ## Rijit diyafram, dışmerkezlik ve burulma
@@ -167,7 +167,7 @@ $$
 \eta_{bi}>1.2\ \Rightarrow\ \text{A1},\quad D_{bi}=\Big(\frac{\eta_{bi}}{1.2}\Big)^2
 $$
 
-A1 düzensizliğinde ($1.2<\eta_{bi}\le2.0$) ±%5 dışmerkezlik $D_{bi}$ ile büyütülür (Denk. 4.29, md. 4.7.4); $\eta_{bi}>2$ olursa EDYY uygulanamaz.
+A1 düzensizliği olan **her katta ayrı ayrı** ($1.2<\eta_{bi}\le2.0$), o katın ±%5 dışmerkezliği **her iki deprem doğrultusu için** $D_{bi}$ ile büyütülür (Denk. 4.29, md. 4.7.4); düzensizlik yalnız Y depreminde çıksa da X depreminin dışmerkezliği de büyür. Motor $\eta_{bi}$ olarak o katın iki doğrultudaki değerinin büyüğünü alır ve birim burulmayı kat kat ayrı çözer. $\eta_{bi}>2$ ise yöntem kendiliğinden yasak değildir: bina Tablo 4.4'ün "diğer tüm binalar" satırına düşer.
 
 ## Göreli kat ötelemesi ve ikinci mertebe
 
@@ -181,7 +181,7 @@ $$
 Bu hesapta 1.4$T_{pA}$ sınırı ve Denk. (4.19) alt sınırı uygulanmaz (md. 4.9.1.1). **İkinci mertebe gösterge değeri** (Denk. 4.35–4.37) $\theta_{II,i}=(\Delta_i)_{\text{ort}}\sum_{k\ge i}w_k/(V_i\,h_i)\le0.12\,D/(C_h\,R)$; betonarmede $C_h=0.5$. Aşılırsa iç kuvvetler $\beta_{II}=0.88+(C_hR/D)\,\theta_{II,\max}\ge1$ ile büyütülür.
 
 ::: not Yöntem ne zaman kullanılabilir? (Tablo 4.4)
-Her katta $\eta_{bi}\le2.0$ olan ve yumuşak kat (B2) düzensizliği bulunmayan binalarda EDYY, DTS 1–2'de BYS ≥ 4, DTS 3–4'te BYS ≥ 5 için kullanılabilir; öteki binalarda sınırlar BYS ≥ 5 ve BYS ≥ 6'dır. Daha yüksek binalar mod birleştirme yöntemi (md. 4.8) ister. Motor $\eta_{bi}$'yi çözümden sonra denetler; B2'yi denetlemez.
+Her katta $\eta_{bi}\le2.0$ olan ve yumuşak kat (B2) düzensizliği bulunmayan binalarda EDYY, DTS 1–2'de BYS ≥ 4, DTS 3–4'te BYS ≥ 5 için kullanılabilir; öteki binalarda sınırlar BYS ≥ 5 ve BYS ≥ 6'dır. Daha yüksek binalar mod birleştirme yöntemi (md. 4.8) ister. Motor $\eta_{bi}$'yi çözümden sonra denetler ($\eta_{bi}>2$ ise ikinci satırın eşiğiyle karşılaştırır); B2'yi denetlemez.
 :::
 
 ::: hata Spektrum değerini doğrudan V_tE'ye çevirmek
@@ -189,16 +189,16 @@ $V_{tE}=m_t\,S_{ae}\,g$ yazmak deprem yükünü $R_a$ kat (betonarme çerçevede
 :::
 
 ::: hata Çatlamamış kesitle periyot hesaplamak
-Brüt kesitle bulunan Rayleigh periyodu kısa çıkar ($0.378$ s) ve plato yakınında deprem yükünü büyütür ama göreli kat ötelemesini küçük gösterir. Deprem hesabında Tablo 4.2 çarpanları kullanılır (md. 4.5.8); ders binasında periyot $0.544$ s'ye çıkar, aynı $\lambda$ ile öteleme oranı yaklaşık 1.5 katına büyür.
+Brüt kesitle bulunan Rayleigh periyodu kısa çıkar ($0.349$ s) ve plato yakınında deprem yükünü büyütür ama göreli kat ötelemesini küçük gösterir. Deprem hesabında Tablo 4.2 çarpanları zorunludur (md. 4.5.8.1); ders binasında periyot $0.502$ s'ye çıkar, aynı $\lambda$ ile 2. kattaki öteleme oranı $0.0034$'ten $0.0048$'e, yaklaşık 1.4 katına büyür. Motor betonarme binada deprem açıkken çatlamış kesiti varsayılan alır; `catlamis_rijitlik: false` yazılırsa çözer ama "TBDY 4.5.8.1'e aykırı" uyarısı verir. Yalnız deprem birleşimleri çatlamış $K$'den gelir (md. 4.5.8.3); $1.4G+1.6Q$ brüt kesitle kalır.
 :::
 
 ::: hata λ'yı unutmak ya da DD-2 spektrumuyla denetlemek
-Göreli kat ötelemesi sınırı DD-3 (sık deprem) için yazılmıştır; $\lambda$ katsayısı DD-2 ötelemesini o düzeye indirir. AFAD'dan DD-3 değerleri alınmadan $\lambda=1$ yazmak güvenli taraftadır ama ders binasında oranı $0.0126$'ya çıkarıp sınırı (0.008) "aşar"; doğru $\lambda=0.367$ ile oran $0.0046$'dır.
+Göreli kat ötelemesi sınırı DD-3 (sık deprem) için yazılmıştır; $\lambda$ katsayısı DD-2 ötelemesini o düzeye indirir. AFAD'dan DD-3 değerleri alınmadan $\lambda=1$ yazmak güvenli taraftadır ama ders binasında oranı $0.0120$'ye çıkarıp sınırı (0.008) üç katta da "aşar"; doğru $\lambda=0.40$ ile 2. katta oran $0.0048$'dir.
 :::
 
 ## Çözümlü örnekler
 
-Örnekler `betonarme-3kat-3x3` şablonunu kullanır: akslar 0–5–10 m ve 0–4–8 m, üç kat 3.2 m ($H_N=9.6$ m), 45×45 kolon, 25×55 kiriş, büro ($n=0.3$); $S_S=1.0$, $S_1=0.3$, ZC, BKS 3, A11 ($R=8$, $D=3$), rijit diyafram. Aynı binayı [Bina sayfasında aç](#bina/sablon/betonarme-3kat-3x3).
+Örnekler `betonarme-3kat-3x3` şablonunu kullanır: akslar 0–5–10 m ve 0–4–8 m, üç kat 3.2 m ($H_N=9.6$ m), 45×45 kolon, 25×55 kiriş, büro ($n=0.3$); $S_S=1.0$, $S_1=0.3$, ZC, BKS 3, A11 ($R=8$, $D=3$), rijit diyafram, çatlamış kesit (Tablo 4.2); DD-3 için $S_S=0.4$, $S_1=0.12$. Dış kirişlerde tuğla duvar, çatıda 1 m parapet. Aynı binayı [Bina sayfasında aç](#bina/sablon/betonarme-3kat-3x3).
 
 ::: ornek Ara değerli F_S, F_1 ve spektrum köşeleri
 Bir parselde $S_S=1.2$, $S_1=0.35$ (DD-2) ve zemin ZD. $F_S$, $F_1$, $S_{DS}$, $S_{D1}$, $T_A$ ve $T_B$'yi bul.
@@ -242,100 +242,97 @@ BYS büyüdükçe bina alçalır; "BYS ≥ 4" kuralı 4, 5, 6, 7 ve 8'i kapsar. 
 :::
 
 ::: ornek Kat kütleleri, T_pA ve V_tE
-Ders binasının kat ağırlıkları $w_1=w_2=1057.005$ kN, $w_3=998.505$ kN. Ampirik periyotla $V_{tE}$'yi ve alt sınırı bul.
+Ders binasının kat ağırlıkları $w_1=w_2=1006.38$ kN, $w_3=787.5$ kN. Ampirik periyotla $V_{tE}$'yi ve alt sınırı bul.
 --- ipucu
-$w_1=w_G+0.3\,w_Q=1009.005+0.3\cdot160$; çatıda üstte kolon yok, karın %30'u eklenir. $T_{pA}=0.1\cdot9.6^{0.75}$.
+$w_1=w_G+0.3\,w_Q=958.38+0.3\cdot160$; çatıda üstte kolon ve kat boyu duvar yok (1 m parapet), karın %30'u eklenir. $T_{pA}=0.1\cdot9.6^{0.75}$.
 --- cevap
 $$
 \begin{aligned}
-W_t&=2\cdot1057.005+998.505=\ka{3112.515}\ \text{kN},\qquad m_t=\frac{3112.515}{9.81}=\ka{317.28}\ \text{t}\\
+W_t&=2\cdot1006.38+787.5=\ka{2800.26}\ \text{kN},\qquad m_t=\frac{2800.26}{9.81}=\ka{285.45}\ \text{t}\\
 T_{pA}&=0.1\cdot9.6^{0.75}=\kb{0.5454}\ \text{s}>T_B=0.375\ \Rightarrow\ S_{ae}=\frac{0.45}{0.5454}=0.8251,\quad R_a=\frac{R}{I}=8\\
-S_{aR}&=\frac{0.8251}{8}=0.10314,\qquad V_{tE}=m_t\,S_{aR}\,g=3112.515\cdot0.10314=\kutuc{321.02}\ \text{kN}\\
-V_{\min}&=0.04\cdot1.0\cdot1.2\cdot3112.515=149.40\ \text{kN}<321.02\ \checkmark
+S_{aR}&=\frac{0.8251}{8}=0.10314,\qquad V_{tE}=m_t\,S_{aR}\,g=2800.26\cdot0.10314=\kutuc{288.81}\ \text{kN}\\
+V_{\min}&=0.04\cdot1.0\cdot1.2\cdot2800.26=134.41\ \text{kN}<288.81\ \checkmark
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-abs(r.veri["deprem"]["W_t"] - 3112.515) < 1e-6 and abs(r.veri["deprem"]["TpA"] - 0.5453853) < 1e-6 and r.veri["deprem"]["Tp_yontem"] == "ampirik" and abs(r.veri["deprem"]["SaR"] - 0.1031381) < 1e-6 and abs(r.veri["deprem"]["VtE"] - 321.0189) < 1e-3 and abs(r.veri["deprem"]["VtE_min"] - 149.4007) < 1e-3 and [k["w_i"] for k in r.veri["deprem"]["katlar"]] == [1057.005, 1057.005, 998.505]
+abs(r.veri["deprem"]["W_t"] - 2800.26) < 1e-6 and abs(r.veri["deprem"]["TpA"] - 0.5453853) < 1e-6 and r.veri["deprem"]["Tp_yontem"] == "ampirik" and abs(r.veri["deprem"]["SaR"] - 0.1031381) < 1e-6 and abs(r.veri["deprem"]["VtE"] - 288.8135) < 1e-3 and abs(r.veri["deprem"]["VtE_min"] - 134.4125) < 1e-3 and [k["w_i"] for k in r.veri["deprem"]["katlar"]] == [1006.38, 1006.38, 787.5]
 --- yorum
-Çatı katının ağırlığı daha azdır: üstünde kolon yoktur ($9\cdot8.1=72.9$ kN eksik), karın %30'u ($0.3\cdot48=14.4$ kN) eklenir. $V_{tE}/W_t=0.103$: binanın ağırlığının onda biri yatay kuvvet olarak tasarıma girer. Motor DTS 1 ve BYS 7 için `periyot: "otomatik"` ile ampirik periyodu seçti.
+Çatı katının ağırlığı daha azdır: üstünde kolon yoktur ($9\cdot8.1=72.9$ kN eksik), dış kirişlerde kat boyu duvar yerine 1 m parapet vardır, karın %30'u ($0.3\cdot48=14.4$ kN) eklenir. $V_{tE}/W_t=0.103$: binanın ağırlığının onda biri yatay kuvvet olarak tasarıma girer. Motor DTS 1 ve BYS 7 için `periyot: "otomatik"` ile ampirik periyodu seçti.
 :::
 
 ::: ornek Rayleigh periyodunu elle hesaplamak
-Binada `periyot: "rayleigh"` ve çatlamış kesit (Tablo 4.2) seçildi. Toplamı 100 kN olan kurgusal kuvvetler $F_{fi}=17.141$, $34.282$, $48.577$ kN altında kütle merkezinin X ötelemeleri $d_{fi}=1.0015$, $2.4872$, $3.5607$ mm; $m_i=107.748$, $107.748$, $101.784$ t. $T_p$'yi bul ve motorla karşılaştır.
+Binada `periyot: "rayleigh"` seçildi (çatlamış kesit, Tablo 4.2, betonarmede varsayılan). Toplamı 100 kN olan kurgusal kuvvetler $F_{fi}=18.700$, $37.400$, $43.899$ kN altında kütle merkezinin X ötelemeleri $d_{fi}=0.9921$, $2.4388$, $3.4471$ mm; $m_i=102.587$, $102.587$, $80.275$ t. $T_p$'yi bul ve motorla karşılaştır.
 --- ipucu
 $m$ t, $d$ m ve $F$ kN alınırsa oran s² olur. $F_{fi}$ ters üçgendir: $F_{fi}\propto m_iH_i$.
 --- cevap
 $$
 \begin{aligned}
-\sum m_i d_{fi}^2&=107.748\,(1.0015^2+2.4872^2)\cdot10^{-6}+101.784\cdot3.5607^2\cdot10^{-6}=\ka{2.0651\cdot10^{-3}}\ \text{t·m}^2\\
-\sum F_{fi}d_{fi}&=(17.141\cdot1.0015+34.282\cdot2.4872+48.577\cdot3.5607)\cdot10^{-3}=\kb{0.27540}\ \text{kN·m}\\
-T_p&=2\pi\sqrt{\frac{\ka{2.0651\cdot10^{-3}}}{\kb{0.27540}}}=2\pi\cdot0.08659=\kutuc{0.5441}\ \text{s}\ \le1.4\,T_{pA}=0.7635\ \checkmark
+\sum m_i d_{fi}^2&=102.587\,(0.9921^2+2.4388^2)\cdot10^{-6}+80.275\cdot3.4471^2\cdot10^{-6}=\ka{1.6650\cdot10^{-3}}\ \text{t·m}^2\\
+\sum F_{fi}d_{fi}&=(18.700\cdot0.9921+37.400\cdot2.4388+43.899\cdot3.4471)\cdot10^{-3}=\kb{0.26109}\ \text{kN·m}\\
+T_p&=2\pi\sqrt{\frac{\ka{1.6650\cdot10^{-3}}}{\kb{0.26109}}}=2\pi\cdot0.07986=\kutuc{0.5018}\ \text{s}\ \le1.4\,T_{pA}=0.7635\ \checkmark
 \end{aligned}
 $$
 --- kod
 b = yapi.bina_sablon("betonarme-3kat-3x3")
-b["deprem"].update({"periyot": "rayleigh", "SS_DD3": 0.4, "S1_DD3": 0.11})
-b["analiz"]["catlamis_rijitlik"] = True
+b["deprem"]["periyot"] = "rayleigh"
 r = yapi.bina_coz(b)
 r
 --- kontrol
-abs(float(2 * sp.pi) * (sum(k["m"] * k["d_f"] ** 2 for k in r.veri["deprem"]["X"]["rayleigh"]) / sum(k["F_f"] * k["d_f"] for k in r.veri["deprem"]["X"]["rayleigh"])) ** 0.5 - r.veri["deprem"]["Tp"]) < 1e-6 and abs(r.veri["deprem"]["Tp"] - 0.5440857) < 1e-6 and r.veri["deprem"]["Tp_yontem"] == "rayleigh" and r.veri["deprem"]["catlamis_rijitlik"]
+abs(float(2 * sp.pi) * (sum(k["m"] * k["d_f"] ** 2 for k in r.veri["deprem"]["X"]["rayleigh"]) / sum(k["F_f"] * k["d_f"] for k in r.veri["deprem"]["X"]["rayleigh"])) ** 0.5 - r.veri["deprem"]["Tp"]) < 1e-6 and abs(r.veri["deprem"]["Tp"] - 0.5017564) < 1e-6 and r.veri["deprem"]["Tp_yontem"] == "rayleigh" and r.veri["deprem"]["catlamis_rijitlik"]
 --- yorum
-Motor kurgusal yükün toplamını 1 kN alır (`rayleigh` listesindeki `F_f`, `d_f`); 100 kN ile her şey 100 katına çıkar, oran değişmez. Brüt kesitle aynı hesap $0.378$ s verir; çatlamış kesit binayı yumuşatır ve periyodu $T_{pA}=0.545$'e çok yaklaştırır. Y yönünde periyot $0.511$ s'dir: o doğrultudaki çerçevelerin 4 m'lik kısa açıklıkları daha rijittir.
+Motor kurgusal yükün toplamını 1 kN alır (`rayleigh` listesindeki `F_f`, `d_f`); 100 kN ile her şey 100 katına çıkar, oran değişmez. Brüt kesitle aynı hesap $0.349$ s verir; çatlamış kesit binayı yumuşatır ve periyodu $T_{pA}=0.545$'e yaklaştırır. Y yönünde periyot $0.472$ s'dir: o doğrultudaki çerçevelerin 4 m'lik kısa açıklıkları daha rijittir.
 :::
 
 ::: ornek V_tE, ΔF_NE ve kat kuvvetleri
-Rayleigh periyodu $T_p=0.5441$ s ile (çatlamış kesit) X yönünde $V_{tE}$, $\Delta F_{NE}$, $F_{iE}$ ve kat kesmelerini bul; $\sum F$'nin $V_{tE}$'ye eşit olduğunu denetle.
+Rayleigh periyodu $T_p=0.5018$ s ile (çatlamış kesit) X yönünde $V_{tE}$, $\Delta F_{NE}$, $F_{iE}$ ve kat kesmelerini bul; $\sum F$'nin $V_{tE}$'ye eşit olduğunu denetle.
 --- ipucu
-$w_iH_i$: $1057.005\cdot3.2$, $1057.005\cdot6.4$, $998.505\cdot9.6$; toplam $19732.9$.
+$w_iH_i$: $1006.38\cdot3.2$, $1006.38\cdot6.4$, $787.5\cdot9.6$; toplam $17221.2$.
 --- cevap
 $$
 \begin{aligned}
-S_{aR}&=\frac{0.45/0.5441}{8}=0.10338,\qquad V_{tE}=3112.515\cdot0.10338=\kutua{321.79}\ \text{kN}\\
-\ksil{\Delta F_{NE}}&=0.0075\cdot3\cdot321.79=\ksil{7.240}\ \text{kN},\qquad V_{tE}-\Delta F_{NE}=314.55\\
-\ka{F_{1E}}&=314.55\cdot\tfrac{3382.4}{19732.9}=\ka{53.92},\quad \ka{F_{2E}}=314.55\cdot\tfrac{6764.8}{19732.9}=\ka{107.83}\\
-\ka{F_{3E}}&=314.55\cdot\tfrac{9585.6}{19732.9}=152.80,\quad +\Delta F_{NE}=\ka{160.04}\\
-V_3&=160.04,\quad V_2=267.87,\quad V_1=\kutuc{321.79}=V_{tE}\ \checkmark
+S_{aR}&=\frac{0.45/0.5018}{8}=0.11211,\qquad V_{tE}=2800.26\cdot0.11211=\kutua{313.93}\ \text{kN}\\
+\ksil{\Delta F_{NE}}&=0.0075\cdot3\cdot313.93=\ksil{7.063}\ \text{kN},\qquad V_{tE}-\Delta F_{NE}=306.86\\
+\ka{F_{1E}}&=306.86\cdot\tfrac{3220.4}{17221.2}=\ka{57.38},\quad \ka{F_{2E}}=306.86\cdot\tfrac{6440.8}{17221.2}=\ka{114.77}\\
+\ka{F_{3E}}&=306.86\cdot\tfrac{7560}{17221.2}=134.71,\quad +\Delta F_{NE}=\ka{141.77}\\
+V_3&=141.77,\quad V_2=256.54,\quad V_1=\kutuc{313.93}=V_{tE}\ \checkmark
 \end{aligned}
 $$
 --- kod
 b = yapi.bina_sablon("betonarme-3kat-3x3")
-b["deprem"].update({"periyot": "rayleigh", "SS_DD3": 0.4, "S1_DD3": 0.11})
-b["analiz"]["catlamis_rijitlik"] = True
+b["deprem"]["periyot"] = "rayleigh"
 r = yapi.bina_coz(b)
 r
 --- kontrol
-abs(r.veri["deprem"]["VtE"] - 321.7857) < 1e-3 and abs(r.veri["deprem"]["dFN"] - 7.2402) < 1e-3 and abs(sum(k["F_x"] for k in r.veri["deprem"]["katlar"]) - r.veri["deprem"]["VtE"]) < 1e-6 and abs(r.veri["deprem"]["katlar"][0]["F_x"] - 53.9162) < 1e-3 and abs(r.veri["deprem"]["katlar"][2]["F_x"] - 160.0369) < 1e-3 and abs(r.veri["deprem"]["katlar"][0]["V_x"] - r.veri["deprem"]["VtE"]) < 1e-6
+abs(r.veri["deprem"]["VtE"] - 313.9265) < 1e-3 and abs(r.veri["deprem"]["dFN"] - 7.0633) < 1e-3 and abs(sum(k["F_x"] for k in r.veri["deprem"]["katlar"]) - r.veri["deprem"]["VtE"]) < 1e-6 and abs(r.veri["deprem"]["katlar"][0]["F_x"] - 57.3842) < 1e-3 and abs(r.veri["deprem"]["katlar"][2]["F_x"] - 141.7740) < 1e-3 and abs(r.veri["deprem"]["katlar"][0]["V_x"] - r.veri["deprem"]["VtE"]) < 1e-6
 --- yorum
-Tabloda tepe katın `F_x` değeri $\Delta F_{NE}$'yi içerir. Taban devrilme momenti $M_o=2399$ kN·m'dir. Motor E durumlarını yeniden yük yazarak değil birim durumların süperpozisyonuyla kurar: $(V_{tE}-\Delta F_{NE})\cdot$(birim ters üçgen) $+\ \Delta F_{NE}\cdot$(tepe birim yük) $\pm\,0.05\,D_b\cdot$(birim burulma).
+Tabloda tepe katın `F_x` değeri $\Delta F_{NE}$'yi içerir. Taban devrilme momenti $M_o=2279$ kN·m'dir. Motor E durumlarını yeniden yük yazarak değil birim durumların süperpozisyonuyla kurar: $(V_{tE}-\Delta F_{NE})\cdot$(birim ters üçgen) $+\ \Delta F_{NE}\cdot$(tepe birim yük) $\pm\,0.05\sum_i D_{bi}\cdot$(kat $i$'nin birim burulması).
 :::
 
 ::: ornek Dışmerkezlik, η_bi ve göreli kat ötelemesi
-Aynı çözümde X depremi için 2. katın kolon hatlarındaki göreli ötelemeler $(\Delta_2)_{\max}=5.033$ mm, $(\Delta_2)_{\min}=4.591$ mm; $h=3.2$ m. DD-3 değerleri $S_S=0.4$, $S_1=0.11$ (ZC). $e$, tepe katın burulma momenti, $\eta_{b2}$, $\lambda$, öteleme oranı ve $\theta_{II}$'yi bul ($V_2=267.87$ kN, $w_2+w_3=2055.51$ kN).
+Aynı çözümde X depremi için 2. katın kolon hatlarındaki göreli ötelemeler $(\Delta_2)_{\max}=4.785$ mm, $(\Delta_2)_{\min}=4.364$ mm; $h=3.2$ m. DD-3 değerleri $S_S=0.4$, $S_1=0.12$ (ZC). $e$, tepe katın burulma momenti, $\eta_{b2}$, $\lambda$, öteleme oranı ve $\theta_{II}$'yi bul ($V_2=256.54$ kN, $w_2+w_3=1793.88$ kN).
 --- ipucu
-X depremine dik kat boyutu $B=8$ m. DD-3: $S_{DS}=0.4\cdot1.3=0.52$, $S_{D1}=0.11\cdot1.5=0.165$; $T_p$ her iki spektrumda da inen kolda.
+X depremine dik kat boyutu $B=8$ m. DD-3: $S_{DS}=0.4\cdot1.3=0.52$, $S_{D1}=0.12\cdot1.5=0.18$; $T_p$ her iki spektrumda da inen kolda.
 --- cevap
 $$
 \begin{aligned}
-e&=0.05\cdot8=\kb{0.4}\ \text{m},\qquad M_{3b}=160.04\cdot0.4=\kb{64.01}\ \text{kN·m}\\
-(\Delta_2)_{\text{ort}}&=\tfrac12(5.033+4.591)=4.812,\qquad \eta_{b2}=\frac{5.033}{4.812}=\kutua{1.046}<1.2\ \Rightarrow\ \text{A1 yok},\ D_b=1\\
-\lambda&=\frac{0.165/T_p}{0.45/T_p}=\ka{0.3667},\qquad \lambda\,\frac{(R/I)\,\Delta_{\max}}{h}=0.3667\cdot\frac{8\cdot0.005033}{3.2}=\kutuc{0.00461}\le0.008\ \checkmark\\
-\theta_{II,2}&=\frac{0.004812\cdot2055.51}{267.87\cdot3.2}=\kc{0.0115}\le0.12\cdot\frac{3}{0.5\cdot8}=0.09\ \checkmark
+e&=0.05\cdot8=\kb{0.4}\ \text{m},\qquad M_{3b}=141.77\cdot0.4=\kb{56.71}\ \text{kN·m}\\
+(\Delta_2)_{\text{ort}}&=\tfrac12(4.785+4.364)=4.575,\qquad \eta_{b2}=\frac{4.785}{4.575}=\kutua{1.046}<1.2\ \Rightarrow\ \text{A1 yok},\ D_{b2}=1\\
+\lambda&=\frac{0.18/T_p}{0.45/T_p}=\ka{0.40},\qquad \lambda\,\frac{(R/I)\,\Delta_{\max}}{h}=0.40\cdot\frac{8\cdot0.004785}{3.2}=\kutuc{0.00478}\le0.008\ \checkmark\\
+\theta_{II,2}&=\frac{0.004575\cdot1793.88}{256.54\cdot3.2}=\kc{0.0100}\le0.12\cdot\frac{3}{0.5\cdot8}=0.09\ \checkmark
 \end{aligned}
 $$
 --- kod
 b = yapi.bina_sablon("betonarme-3kat-3x3")
-b["deprem"].update({"periyot": "rayleigh", "SS_DD3": 0.4, "S1_DD3": 0.11})
-b["analiz"]["catlamis_rijitlik"] = True
+b["deprem"]["periyot"] = "rayleigh"
 r = yapi.bina_coz(b)
 r
 --- kontrol
-abs(r.veri["deprem"]["lambda"] - 0.3666667) < 1e-6 and abs(r.veri["deprem"]["katlar"][1]["oran_x"] - 0.0046134) < 1e-6 and abs(r.veri["deprem"]["katlar"][1]["eta_bx"] - 1.04588) < 1e-4 and abs(r.veri["deprem"]["katlar"][2]["Mb_x"] - 64.0148) < 1e-3 and abs(r.veri["deprem"]["katlar"][1]["theta_x"] - 0.0115392) < 1e-6 and all(k["uygun"] for k in r.veri["deprem"]["katlar"]) and r.veri["deprem"]["theta_sinir"] == 0.09
+abs(r.veri["deprem"]["lambda"] - 0.4) < 1e-9 and abs(r.veri["deprem"]["katlar"][1]["oran_x"] - 0.0047847) < 1e-6 and abs(r.veri["deprem"]["katlar"][1]["eta_bx"] - 1.04594) < 1e-4 and abs(r.veri["deprem"]["katlar"][2]["Mb_x"] - 56.7096) < 1e-3 and abs(r.veri["deprem"]["katlar"][1]["theta_x"] - 0.0099962) < 1e-6 and all(k["uygun"] for k in r.veri["deprem"]["katlar"]) and r.veri["deprem"]["theta_sinir"] == 0.09
 --- yorum
-`veri["deprem"]["katlar"]` her kat için `delta_x` ($\Delta_{\max}$), `delta_etkin_x` ($\delta$), `oran_x`, `eta_bx`, `theta_x`, `e_x`, `Mb_x` ve `uygun` alanlarını taşır. DD-3 verilmeseydi $\lambda=1$ alınır, 2. kattaki oran $0.0126$ olur ve motor "sınır aşıldı" uyarısı verirdi.
+`veri["deprem"]["katlar"]` her kat için `delta_x` ($\Delta_{\max}$), `delta_etkin_x` ($\delta$), `oran_x`, `eta_bx`, `theta_x`, `e_x`, `Mb_x` ve `uygun` alanlarını taşır. DD-3 verilmeseydi $\lambda=1$ alınır, 2. kattaki oran $0.0120$ olur (üç katta da $>0.008$) ve motor "sınır aşıldı" uyarısı verirdi. Şablon DD-3 değerlerini taşır ve yönetmeliği sağlar.
 :::
 
 ::: muhendislik Eşdeğer yükten modal analize, oradan OMA'ya
@@ -349,7 +346,7 @@ Mevcut yapılarda periyot ölçülebilir: ortam titreşimiyle modal analiz (OMA)
 - BKS → $I$ (1.0 / 1.2 / 1.5), $S_{DS}$ → DTS, $H_N$ → BYS; Tablo 4.1'den $R$, $D$; $R_a=R/I$ ($T>T_B$) ya da $D+(R/I-D)T/T_B$; $S_{aR}=S_{ae}/R_a$.
 - $w_i=w_G+n\,w_Q$ (Tablo 4.3, çatıda karın %30'u); $T_{pA}=C_tH_N^{3/4}$; Rayleigh $T_p=2\pi\sqrt{\sum m d_f^2/\sum F_f d_f}\le1.4T_{pA}$, çatlamış kesitle (Tablo 4.2).
 - $V_{tE}=m_tS_{aR}g\ge0.04m_tIS_{DS}g$; $\Delta F_{NE}=0.0075NV_{tE}$; $F_{iE}=(V_{tE}-\Delta F_{NE})m_iH_i/\sum m_jH_j$.
-- Rijit diyafram, $e=\pm0.05B$, $M_{ib}=F_{iE}e$; $\eta_{bi}>1.2$ → A1, $D_{bi}=(\eta_{bi}/1.2)^2$. Öteleme $\lambda(R/I)\Delta_{\max}/h\le0.008\kappa$; $\theta_{II}\le0.12D/(C_hR)$. EDYY yalnız Tablo 4.4 sınırları içinde.
+- Rijit diyafram, $e=\pm0.05B$, $M_{ib}=F_{iE}e$; $\eta_{bi}>1.2$ → A1, o katta her iki doğrultu için $D_{bi}=(\eta_{bi}/1.2)^2$; $\eta_{bi}>2$ → Tablo 4.4'ün ikinci satırı. Öteleme $\lambda(R/I)\Delta_{\max}/h\le0.008\kappa$; $\theta_{II}\le0.12D/(C_hR)$. EDYY yalnız Tablo 4.4 sınırları içinde.
 :::
 
 ## Alıştırma

@@ -328,10 +328,19 @@ def test_kolon_e_min_ve_eksenel_sinirlar():
     assert p["Mx_tasarim_kNm"] == pytest.approx(2000 * 0.030) and p["My_tasarim_kNm"] == pytest.approx(2000 * 0.027)
     k = ta.kolon_kontrol(3700, 10.0, 0.0, **KOLON)    # > 0,9 fcd Ac = 3600 kN
     assert k["durum"] == "kesit büyüt"
-    k = ta.kolon_kontrol(2500, 10.0, 0.0, **KOLON)    # > 0,40 fck Ac = 2400 kN (TBDY)
-    assert any(not x["saglandi"] and "TBDY" in x["ad"] for x in k["kontroller"])
-    assert all(x["saglandi"] for x in ta.kolon_kontrol(2500, 10.0, 0.0, **KOLON, tbdy=False)["kontroller"]
-               if "Nd" in x["ad"])
+    # varsayılan tbdy=False (bağımsız API: TS 500): 0,40 fck Ac sınırı deprem dışı birleşime uygulanmaz
+    k = ta.kolon_kontrol(2500, 10.0, 0.0, **KOLON)    # > 0,40 fck Ac = 2400 kN (TBDY) ama < 0,9 fcd Ac
+    assert all(x["saglandi"] for x in k["kontroller"] if "Nd" in x["ad"]) and not any("TBDY" in x["ad"] for x in k["kontroller"])
+    assert k["tbdy"] is False
+    k = ta.kolon_kontrol(2500, 10.0, 0.0, **KOLON, tbdy=True)    # deprem listesi yok: her nokta deprem sayılır (uyarılı)
+    assert any(not x["saglandi"] and "TBDY" in x["ad"] for x in k["kontroller"]) and any("deprem" in u for u in k["uyarilar"])
+    # kombinasyon türü: yalnız deprem birleşimi noktasına (2.) uygulanır
+    k = ta.kolon_kontrol([2500, 2500], [10.0, 10.0], [0.0, 0.0], **KOLON, tbdy=True, deprem=[False, True], adlar=["1.4G+1.6Q", "G+Q+E"])
+    p1, p2 = k["noktalar"]
+    assert not any("Ndm" in x["ad"] for x in p1["kontroller"]) and any("Ndm" in x["ad"] and not x["saglandi"] for x in p2["kontroller"])
+    assert not any("deprem listesi" in u for u in k["uyarilar"])
+    with pytest.raises(mo.MatrisHatasi, match="deprem"):
+        ta.kolon_kontrol([2500, 2500], [10.0, 10.0], 0.0, **KOLON, tbdy=True, deprem=[True])
 
 
 def test_kolon_donati_orani():

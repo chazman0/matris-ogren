@@ -68,14 +68,14 @@ $$
 | Tribün, oturma yeri sabit olmayan | 7.5 | 5 |
 | Garaj (≤ 2.5 t araç) | 5.0 | 6 |
 
-Balkon 10 m²'den büyükse $q=5.0+0.35\,(A-10)$ kN/m² (2021'de eklenen tek yeni kural). Duvarlar kirişe **çizgisel** yük olarak gelir: $g_d$ bir metrekare duvarın ağırlığı (tuğla + iki yüz sıva), $h_{\text{net}}$ kat yüksekliğinden kiriş yüksekliği çıkarılmış duvar boyudur:
+Balkon 10 m²'den büyükse $q=5.0+0.35\,(A-10)$ kN/m² (2021'de eklenen tek yeni kural). Duvarlar kirişe **çizgisel** yük olarak gelir: $g_d$ bir metrekare duvarın ağırlığı (tuğla + iki yüz sıva), $h_{\text{net}}$ kat yüksekliğinden kiriş yüksekliği çıkarılmış duvar boyudur. Motorun kuralı: duvar oturduğu kirişe yük verir ve $h_{\text{net}}$ **kirişin altındaki kat yüksekliği** eksi kiriş yüksekliğidir (katlar eşit yükseklikteyse kirişin üstündeki duvarla aynı sayı). Zemin kat duvarları temele oturur; çatı kirişine kat boyu duvar konmaz, yalnız parapet ($h=1.0$ m, `duvar_h`). Kirişin öz ağırlığında döşemeyle çakışan üst kısım çıkarılır, çünkü o hacim plak ağırlığında $\gamma_{ba}h_{\text{plak}}$ olarak zaten sayıldı:
 
 $$
 \kutub{g_{\text{duvar}}}=g_d\,h_{\text{net}}\ [\text{kN/m}],\qquad
-\kutub{g_{\text{öz}}}=\gamma_{ba}\,b\,h\ [\text{kN/m}]
+\kutub{g_{\text{öz}}}=\gamma_{ba}\,b\,(h-t_{\text{döşeme}})\ [\text{kN/m}]
 $$
 
-Örneğin 19 cm yatay delikli tuğla ($\gamma=10$ kN/m³) ve 2 + 2 cm sıva ($\gamma=20$): $g_d=0.19\cdot10+0.04\cdot20=2.70$ kN/m²; 25×50 kiriş üstünde $h_{\text{net}}=3.0-0.5=2.5$ m için duvar $6.75$ kN/m, kirişin öz ağırlığı $0.25\cdot0.50\cdot25=3.125$ kN/m.
+Örneğin 19 cm yatay delikli tuğla ($\gamma=10$ kN/m³) ve 2 + 2 cm sıva ($\gamma=20$): $g_d=0.19\cdot10+0.04\cdot20=2.70$ kN/m²; 25×50 kiriş üstünde $h_{\text{net}}=3.0-0.5=2.5$ m için duvar $6.75$ kN/m, 14 cm döşemeli kirişin öz ağırlığı $0.25\cdot(0.50-0.14)\cdot25=2.25$ kN/m (brüt $b\,h$ ile $3.125$ olurdu: plağın 14 cm'si iki kez sayılırdı; brüte `analiz.kiris_oz = "brut"` ile dönülür).
 
 ## Döşemeden kirişe: 45° kuralı
 
@@ -156,7 +156,7 @@ $$
 =\sum R_{\text{temel}}
 $$
 
-Şablon bina için bu sayı $360+351+187.5+144=\kc{1042.5}$ kN'dur (G) ve 144 kN'dur (Q). Beş sayıdan biri tutmazsa ya bir yük iki kez girilmiş ya bir kiriş döşemeden pay almamış ya da bir mesnet eksiktir.
+Şablon bina için bu sayı $360+245.7+135+144=\kc{884.7}$ kN'dur (G) ve 144 kN'dur (Q). Beş sayıdan biri tutmazsa ya bir yük iki kez girilmiş ya bir kiriş döşemeden pay almamış ya da bir mesnet eksiktir.
 
 ::: hata q_eM ile kesme hesaplamak
 $q_{eM}$ yalnız açıklık momentini tutturur; onunla $R=q_{eM}L/2$ yazarsan trapez kirişte tepkiyi yüzde 20–30 fazla bulursun (5 m kirişte 19.7 yerine 15 kN). Kesme ve tepki için $q_{eV}$, moment için $q_{eM}$ kullan; sonlu elemanda ikisine de gerek yok, gerçek şekli ver.
@@ -172,7 +172,7 @@ Döşeme payını kirişe verdikten sonra aynı alanı kolonun yük alanına da 
 
 ## Çözümlü örnekler
 
-Örnekler `betonarme-2kat-3x2` şablonunu kullanır: akslar A–B–C (0, 5, 9 m) ve 1–2 (0, 4 m), iki kat 3 m, 40×40 kolon, 25×50 kiriş, 14 cm döşeme, dış kirişlerde 19 cm tuğla duvar. Aynı binayı düzenleyip çözmek için [Bina sayfasında aç](#bina/sablon/betonarme-2kat-3x2).
+Örnekler `betonarme-2kat-3x2` şablonunu kullanır: akslar A–B–C (0, 5, 9 m) ve 1–2 (0, 4 m), iki kat 3 m, 40×40 kolon, 25×50 kiriş, 14 cm döşeme, 1. kat dış kirişlerinde 19 cm tuğla duvar, çatı dış kirişlerinde 1 m parapet. Aynı binayı düzenleyip çözmek için [Bina sayfasında aç](#bina/sablon/betonarme-2kat-3x2).
 
 ::: ornek Döşeme yükü: g ve q
 D1 paneli 4×5 m, plak 14 cm, kaplama + sıva $g_{\text{ek}}=1.5$ kN/m², kullanım konut. $g$, $q$ ve panelin toplam yüklerini bul.
@@ -252,89 +252,89 @@ Moment eşdeğeri momenti, kesme eşdeğeri tepkiyi kesin tutturdu; hiçbiri iki
 ::: ornek Kiriş K1: yük dökümü, el hesabı ve FE uç kesmeleri
 1. kattaki K1 kirişi (A1→B1, 5 m) D1'den trapez pay alır; üstünde 19 cm tuğla duvar ($h_{\text{net}}=2.5$ m) vardır. $G$ dökümünü, basit kiriş tepkisini ve sonlu eleman uç kesmelerini bul.
 --- ipucu
-Döşeme payı 30 kN; duvar $2.70\cdot2.5=6.75$ kN/m; öz $0.25\cdot0.5\cdot25=3.125$ kN/m.
+Döşeme payı 30 kN; duvar $2.70\cdot2.5=6.75$ kN/m; öz $0.25\cdot(0.50-0.14)\cdot25=2.25$ kN/m (döşeme içindeki kısım plakta sayıldı).
 --- cevap
 $$
 \begin{aligned}
-W_G&=\underbrace{30}_{\text{döşeme}}+\underbrace{6.75\cdot5}_{33.75\ \text{duvar}}+\underbrace{3.125\cdot5}_{15.625\ \text{öz}}=\kutua{79.375}\ \text{kN}\\
-R_{\text{el}}&=\frac{W_G}{2}=\kutub{39.69}\ \text{kN}
+W_G&=\underbrace{30}_{\text{döşeme}}+\underbrace{6.75\cdot5}_{33.75\ \text{duvar}}+\underbrace{2.25\cdot5}_{11.25\ \text{öz}}=\kutua{75.0}\ \text{kN}\\
+R_{\text{el}}&=\frac{W_G}{2}=\kutub{37.5}\ \text{kN}
 \end{aligned}
 $$
-Sonlu eleman (eleman 13, G durumu): $V_{A1}=\kc{38.16}$, $V_{B1}=\kc{41.22}$ kN; toplam $79.375$ ✓. B1 iç kolondur ve kirişin öteki açıklığıyla süreklilik kurar; iç uca daha çok yük gider. Açıklık momenti FE'de $22.1$ kN·m, uç momentleri $-29.6$ ve $-37.2$ kN·m; basit kiriş tahmini $q_{eM}L^2/8=17.74\cdot25/8=55.4$ kN·m idi.
+Sonlu eleman (eleman 13, G durumu): $V_{A1}=\kc{35.90}$, $V_{B1}=\kc{39.10}$ kN; toplam $75.0$ ✓. B1 iç kolondur ve kirişin öteki açıklığıyla süreklilik kurar; iç uca daha çok yük gider. Açıklık momenti FE'de $21.2$ kN·m, uç momentleri $-27.5$ ve $-35.5$ kN·m; basit kiriş tahmini $q_{eM}L^2/8=16.87\cdot25/8=52.7$ kN·m idi.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))
 r
 --- kontrol
-abs(r.veri["yukler"]["kirisler"][0]["G"]["toplam_kN"] - 79.375) < 1e-9 and abs(r.veri["yukler"]["kirisler"][0]["el_hesabi"]["R_G"] - 39.6875) < 1e-9 and abs(next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][1] - 38.158) < 1e-3 and abs(next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][1] + next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][7] - 79.375) < 1e-6
+abs(r.veri["yukler"]["kirisler"][0]["G"]["toplam_kN"] - 75.0) < 1e-9 and abs(r.veri["yukler"]["kirisler"][0]["el_hesabi"]["R_G"] - 37.5) < 1e-9 and abs(next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][1] - 35.901) < 1e-3 and abs(next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][1] + next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 13)["uc_kuvvetleri"][7] - 75.0) < 1e-6
 --- yorum
-Ankastre uçlu sürekli kirişte açıklık momenti basit kiriş değerinin yarısından azdır; fark uç momentlerine gitmiştir. Toplam statik moment ($M_{\text{açıklık}}+\overline{M}_{\text{uç}}\approx22.1+33.4=55.5$) yine $q_{eM}L^2/8$'e eşittir: uç mesnetleri momenti yok etmez, paylaştırır.
+Ankastre uçlu sürekli kirişte açıklık momenti basit kiriş değerinin yarısından azdır; fark uç momentlerine gitmiştir. Toplam statik moment ($M_{\text{açıklık}}+\overline{M}_{\text{uç}}\approx21.2+31.5=52.7$) yine $q_{eM}L^2/8$'e eşittir: uç mesnetleri momenti yok etmez, paylaştırır.
 :::
 
 ::: ornek Kolon B1: yük alanı ile FE birikimi
 İç kolon B1'in çatı katındaki (kat 2) payını yük alanı yöntemiyle hesapla ve sonlu eleman eksenel kuvvetiyle karşılaştır; 1. kat kümülatif değerini de oku.
 --- ipucu
-B1 köşesine D3 (4×5) ve D4 (4×4) panellerinin çeyreği gelir: $A_{\text{trib}}=5+4=9$ m². Komşu kirişler K8 (5 m, duvarlı), K9 (4 m, duvarlı), K13 (4 m, duvarsız); kolon öz ağırlığı $25\cdot0.16\cdot3=12$ kN.
+B1 köşesine D3 (4×5) ve D4 (4×4) panellerinin çeyreği gelir: $A_{\text{trib}}=5+4=9$ m². Komşu kirişler K8 (5 m) ve K9 (4 m) çatı dış kirişidir, üstlerinde 1 m parapet ($2.70$ kN/m) vardır; K13 (4 m) duvarsız. Kiriş öz ağırlığı $2.25$ kN/m; kolon öz ağırlığı $25\cdot0.16\cdot3=12$ kN.
 --- cevap
 $$
 \begin{aligned}
-N_{\text{trib},G}&=\underbrace{5\cdot9}_{45\ \text{döşeme}}+\underbrace{\tfrac{9.875\cdot5}{2}}_{24.69\ (\text{K8})}+\underbrace{\tfrac{9.875\cdot4}{2}}_{19.75\ (\text{K9})}\\
-&\quad+\underbrace{\tfrac{3.125\cdot4}{2}}_{6.25\ (\text{K13})}+\underbrace{12}_{\text{kolon}}=\kutub{107.69}\ \text{kN}\\[2pt]
-N_{\text{FE},G}&=\kutuc{114.50}\ \text{kN}\quad(\text{fark }+6.2\text{ yüzde})\\
+N_{\text{trib},G}&=\underbrace{5\cdot9}_{45\ \text{döşeme}}+\underbrace{\tfrac{4.95\cdot5}{2}}_{12.375\ (\text{K8})}+\underbrace{\tfrac{4.95\cdot4}{2}}_{9.9\ (\text{K9})}\\
+&\quad+\underbrace{\tfrac{2.25\cdot4}{2}}_{4.5\ (\text{K13})}+\underbrace{12}_{\text{kolon}}=\kutub{83.78}\ \text{kN}\\[2pt]
+N_{\text{FE},G}&=\kutuc{88.02}\ \text{kN}\quad(\text{fark }+5.2\text{ yüzde})\\
 N_{\text{trib},Q}&=2\cdot9=18,\qquad N_{\text{FE},Q}=19.03\ \text{kN}
 \end{aligned}
 $$
-1. katta kümülatif: $N_{\text{FE}}=225.64$ kN, yük alanı $215.38$ kN (fark $+4.7$ yüzde). Köşe kolon A1'de tersi: $158.41$ FE, $162.88$ yük alanı ($-2.8$ yüzde).
+1. katta kümülatif: $N_{\text{FE}}=193.76$ kN, yük alanı $185.78$ kN (fark $+4.3$ yüzde). Köşe kolon A1'de tersi: $133.32$ FE, $136.78$ yük alanı ($-2.6$ yüzde).
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))
 r
 --- kontrol
-abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["N_trib_G"] - 107.6875) < 1e-6 and abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["N_G"] - 114.499) < 1e-3 and next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["A_trib"] == 9 and abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 3)["N_kum_G"] - 225.645) < 1e-3 and next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 1)["fark_yuzde"] < 0 < next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 3)["fark_yuzde"]
+abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["N_trib_G"] - 83.775) < 1e-6 and abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["N_G"] - 88.019) < 1e-3 and next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 9)["A_trib"] == 9 and abs(next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 3)["N_kum_G"] - 193.763) < 1e-3 and next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 1)["fark_yuzde"] < 0 < next(k for k in r.veri["akis"]["kolonlar"] if k["no"] == 3)["fark_yuzde"]
 --- yorum
 `akis.kolonlar` her kolon için `N_G` (kat payı), `N_kum_G` (kümülatif), `N_trib_G` ve `fark_yuzde` verir. İç kolonun fazla, köşenin az yüklenmesi sürekli kirişin iç mesnet etkisidir; ön boyutlandırmada yük alanı yeter, kesin kuvvet için çerçeveyi çöz.
 :::
 
 ::: ornek Temel A1: taban basıncı ve çekirdek
-A1 kolonunun 1.6×1.6×0.6 m tekil temeline kolon tabanından servis yükü $N_G+N_Q=158.41+19.34=177.75$ kN, $M_X=-3.76$, $M_Y=6.17$ kN·m geliyor; temelin öz ağırlığı $25\cdot1.6\cdot1.6\cdot0.6=38.4$ kN de tabana iner; $q_{em}=200$ kN/m². $\sigma_{\max}$, $\sigma_{\min}$, dışmerkezlikleri ve D/C oranını bul.
+A1 kolonunun 1.6×1.6×0.6 m tekil temeline kolon tabanından servis yükü $N_G+N_Q=133.32+19.34=152.66$ kN, $M_X=-3.92$, $M_Y=6.22$ kN·m geliyor; temelin öz ağırlığı $25\cdot1.6\cdot1.6\cdot0.6=38.4$ kN de tabana iner; $q_{em}=200$ kN/m². $\sigma_{\max}$, $\sigma_{\min}$, dışmerkezlikleri ve D/C oranını bul.
 --- ipucu
-$N=177.75+38.4=216.15$ kN; $A=2.56$ m²; $BL^2=4.096$ m³. Dışmerkezlik $e_X=M_Y/N$, çekirdek $B/6=0.267$ m.
+$N=152.66+38.4=191.06$ kN; $A=2.56$ m²; $BL^2=4.096$ m³. Dışmerkezlik $e_X=M_Y/N$, çekirdek $B/6=0.267$ m.
 --- cevap
 $$
 \begin{aligned}
-\frac{N}{BL}&=\frac{216.15}{2.56}=\ka{84.43}\\
-\frac{6|M_X|}{BL^2}&=\frac{22.53}{4.096}=\kb{5.50},\qquad
-\frac{6|M_Y|}{LB^2}=\frac{37.03}{4.096}=\kb{9.04}\\[2pt]
-\sigma_{\max}&=84.43+5.50+9.04=\kutuc{98.97}\ \text{kN/m}^2\\
-\sigma_{\min}&=84.43-5.50-9.04=\kutuc{69.89}\ \text{kN/m}^2\\[2pt]
-e_X&=\frac{6.17}{216.15}=0.029\le\frac{1.6}{6}=0.267\ \checkmark,\qquad \frac{\sigma_{\max}}{q_{em}}=\kc{0.49}
+\frac{N}{BL}&=\frac{191.06}{2.56}=\ka{74.63}\\
+\frac{6|M_X|}{BL^2}&=\frac{23.51}{4.096}=\kb{5.74},\qquad
+\frac{6|M_Y|}{LB^2}=\frac{37.31}{4.096}=\kb{9.11}\\[2pt]
+\sigma_{\max}&=74.63+5.74+9.11=\kutuc{89.48}\ \text{kN/m}^2\\
+\sigma_{\min}&=74.63-5.74-9.11=\kutuc{59.78}\ \text{kN/m}^2\\[2pt]
+e_X&=\frac{6.22}{191.06}=0.033\le\frac{1.6}{6}=0.267\ \checkmark,\qquad \frac{\sigma_{\max}}{q_{em}}=\kc{0.45}
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))
 r
 --- kontrol
-abs(r.veri["akis"]["temeller"][0]["sigma_max"] - 98.974) < 1e-3 and abs(r.veri["akis"]["temeller"][0]["sigma_min"] - 69.892) < 1e-3 and r.veri["akis"]["temeller"][0]["cekirdek_icinde"] and abs(r.veri["akis"]["temeller"][0]["DC"] - 0.49) < 1e-2 and abs(r.veri["akis"]["temeller"][0]["N_servis"] - (r.veri["akis"]["temeller"][0]["N_G"] + r.veri["akis"]["temeller"][0]["N_Q"] + r.veri["akis"]["temeller"][0]["N_temel"])) < 1e-6
+abs(r.veri["akis"]["temeller"][0]["sigma_max"] - 89.483) < 1e-3 and abs(r.veri["akis"]["temeller"][0]["sigma_min"] - 59.784) < 1e-3 and r.veri["akis"]["temeller"][0]["cekirdek_icinde"] and abs(r.veri["akis"]["temeller"][0]["DC"] - 0.447) < 1e-3 and abs(r.veri["akis"]["temeller"][0]["N_servis"] - (r.veri["akis"]["temeller"][0]["N_G"] + r.veri["akis"]["temeller"][0]["N_Q"] + r.veri["akis"]["temeller"][0]["N_temel"])) < 1e-6
 --- yorum
-Taban tümüyle basınçta, D/C 0.49: temel rahat. Temelin öz ağırlığı eksenel yükü artırır ama momenti değiştirmez; dolgu ağırlığı bu araçta ihmal edilir. Momentler yalnız düşey yükten geliyor (çerçeve etkisi); deprem birleşiminde $M$ büyür, $e$ çekirdeği aşabilir ve dağılım üçgene döner. `temeller` listesi `N_servis`, `N_temel`, `e_X`, `e_Y`, `DC` ve `cekirdek_icinde` alanlarını taşır.
+Taban tümüyle basınçta, D/C 0.45: temel rahat. Temelin öz ağırlığı eksenel yükü artırır ama momenti değiştirmez; dolgu ağırlığı bu araçta ihmal edilir. Momentler yalnız düşey yükten geliyor (çerçeve etkisi); deprem birleşiminde $M$ büyür, $e$ çekirdeği aşabilir ve dağılım üçgene döner. `temeller` listesi `N_servis`, `N_temel`, `e_X`, `e_Y`, `DC` ve `cekirdek_icinde` alanlarını taşır.
 :::
 
 ::: ornek Korunum: beş sayı
 Şablon bina için G yük dökümünü (döşeme, duvar, kiriş öz, kolon öz) topla; kolon tabanlarındaki $\sum N$ ve temel tepkilerinin $\sum F_Z$ değeriyle karşılaştır. Q için de yap.
 --- ipucu
-Dört panel, on dört kiriş, on iki kolon. Döşeme $2\cdot(100+80)$; kolon öz $12\cdot12$.
+Dört panel, on dört kiriş (toplam 60 m, öz $2.25$ kN/m), on iki kolon. Döşeme $2\cdot(100+80)$; duvar: 26 m dış kiriş, 1. katta $6.75$, çatıda parapet $2.70$ kN/m; kolon öz $12\cdot12$.
 --- cevap
 $$
 \begin{aligned}
-G:\quad & \underbrace{360}_{\text{döşeme}}+\underbrace{351}_{\text{duvar}}+\underbrace{187.5}_{\text{kiriş öz}}+\underbrace{144}_{\text{kolon öz}}=\kutuc{1042.5}\\
-& =\sum N_{\text{taban}}=\sum R_{\text{temel}}=1042.5\ \checkmark\\[2pt]
+G:\quad & \underbrace{360}_{\text{döşeme}}+\underbrace{245.7}_{\text{duvar}}+\underbrace{135}_{\text{kiriş öz}}+\underbrace{144}_{\text{kolon öz}}=\kutuc{884.7}\\
+& =\sum N_{\text{taban}}=\sum R_{\text{temel}}=884.7\ \checkmark\\[2pt]
 Q:\quad & 2\cdot(40+32)=\kutuc{144}=\sum N_{\text{taban}}=\sum R_{\text{temel}}\ \checkmark
 \end{aligned}
 $$
-Kat başına $G=521.25$, $Q=72$ kN; toplam servis yükü $1186.5$ kN.
+Kat 1: $G=495.0$ (duvarlı), çatı: $G=389.7$ kN (parapet); her katta $Q=72$ kN; toplam servis yükü $1028.7$ kN.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))
 r
 --- kontrol
-abs(r.veri["akis"]["korunum"]["G"]["toplam"] - 1042.5) < 1e-6 and abs(r.veri["akis"]["korunum"]["G"]["kolon_taban"] - 1042.5) < 1e-6 and abs(r.veri["akis"]["korunum"]["G"]["temel"] - 1042.5) < 1e-6 and abs(r.veri["akis"]["korunum"]["Q"]["temel"] - 144) < 1e-6 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["G"]["tepkiler"]) - 1042.5) < 1e-6
+abs(r.veri["akis"]["korunum"]["G"]["toplam"] - 884.7) < 1e-6 and abs(r.veri["akis"]["korunum"]["G"]["kolon_taban"] - 884.7) < 1e-6 and abs(r.veri["akis"]["korunum"]["G"]["temel"] - 884.7) < 1e-6 and abs(r.veri["akis"]["korunum"]["Q"]["temel"] - 144) < 1e-6 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["G"]["tepkiler"]) - 884.7) < 1e-6
 --- yorum
 Korunum, modelin değil yük girişinin denetimidir: $\mathbf{K}\mathbf{u}=\mathbf{F}$ dengeyi zaten sağlar, ama $\mathbf{F}$'ye yanlış yük yazıldıysa denge yanlış yükü doğrular. Beş sayı tutuyorsa döşemeden temele giden yolda ne bir kN kaybolmuş ne bir kN iki kez sayılmıştır.
 :::
@@ -378,7 +378,7 @@ Tarihi yığma köprüde yük yolu yine vardır ama kiriş–kolon yerine **tono
 :::
 
 ::: ozet Özet
-- TS 498:2021 yürürlüktedir (1997 kalktı): hareketli yük md. 15.1 Çizelge 6, azaltma md. 16 Çizelge 7; birim ağırlıklar TS ISO 9194. $g=h\gamma_{ba}+g_{\text{ek}}$, duvar $g_d h_{\text{net}}$ kN/m, öz $\gamma b h$.
+- TS 498:2021 yürürlüktedir (1997 kalktı): hareketli yük md. 15.1 Çizelge 6, azaltma md. 16 Çizelge 7; birim ağırlıklar TS ISO 9194. $g=h\gamma_{ba}+g_{\text{ek}}$, duvar $g_d h_{\text{net}}$ kN/m, öz $\gamma b (h-t_{\text{döşeme}})$ (döşeme içindeki kısım plakta sayılır).
 - $m=l_u/l_k\le2$ çift doğrultulu: TS 500 md. 11.4.3 45° kuralı, kısa kenara üçgen, uzun kenara trapez, tepe $p=wl_k/2$; $m>2$ tek doğrultulu: uzun kenarlara düzgün $wl_k/2$. Korunum $\sum=wl_kl_u$.
 - Eşdeğer düzgün yükler yalnız el hesabı içindir: üçgen $q_{eM}=wl_k/3$, $q_{eV}=wl_k/4$; trapez $q_{eM}=\tfrac{wl_k}{2}(1-\tfrac{1}{3m^2})$, $q_{eV}=\tfrac{wl_k}{2}(1-\tfrac{1}{2m})$. FE'ye gerçek şekil gider.
 - Kiriş: $W$ dökümü, el hesabı $R=W/2$; FE uç kesmeleri sürekliliğe göre sapar, toplamı $W$. Kolon: $N_k=N_{k+1}+\sum V+G_{\text{kolon}}$; yük alanı iç kolonda eksik, köşede fazla tahmin eder.

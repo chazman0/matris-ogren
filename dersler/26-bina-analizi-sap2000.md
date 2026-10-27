@@ -104,7 +104,7 @@ Tasarımdan sonra SAP2000 çubukları D/C oranına göre beş renk bandına boya
 | Gravity / Global Z işareti | yük yukarı bakar | yük durumları ve döşeme yükleri kartlardan; korunum tablosu yönü doğrular |
 | öz ağırlık iki kez (DEAD çarpanı + Self Mass) | Base Reaction fazla | öz ağırlık yalnız G'de; $\sum$ yük $=\sum$ tepki satırı |
 | Mass Source $G+nQ$ | periyot ve $V_t$ yanlış | TBDY Tablo 4.3 ile $w_i=w_G+n\,w_Q$ kendiliğinden |
-| tasarım kombinasyonlarını elle yazmak | eksik işaret ya da yön | 74 kombinasyon şablon satırlarından açılır |
+| tasarım kombinasyonlarını elle yazmak | eksik işaret ya da yön | 84 kombinasyon şablon satırlarından açılır |
 | $K$, $L_b$, $C_b$ varsayılanları | gizli varsayım | varsayımlar `veri["tasarim"]["varsayimlar"]` içinde yazılı |
 | mesnet unutmak, yüzen eleman | "instability" uyarısı | yüzen döşeme, kolonsuz kat gibi öğretici hatalar |
 
@@ -121,7 +121,7 @@ Diyafram yalnız aynı düzlemdeki düğümlere atanır; çatı eğimli ya da ka
 :::
 
 ::: hata Çatlamış rijitliği ve periyot üst sınırını unutmak
-Deprem hesabında TBDY Tablo 4.2 etkin rijitlikleri kullanılır (kolon $0.70EI$, kiriş $0.35EI$; md. 4.5.8). Brüt kesit periyodu kısa, ötelemeyi küçük gösterir. Rayleigh periyodu da $1.4\,T_{pA}$'yı geçemez (md. 4.7.3.2): çok yumuşak bir model deprem yükünü sınırsız azaltamaz.
+Deprem hesabında TBDY Tablo 4.2 etkin rijitlikleri kullanılır (kolon $0.70EI$, kiriş $0.35EI$; md. 4.5.8). Brüt kesit periyodu kısa, ötelemeyi küçük gösterir. Bu uygulama betonarme binada deprem açıkken çatlamış kesiti varsayılan alır ve yalnız deprem birleşimlerine uygular (md. 4.5.8.3: ikinci bir $K$); kapatılırsa "TBDY 4.5.8.1’e aykırı" uyarısı verir. SAP2000’de "Property Modifiers" ile verilen çarpanlar bütün durumlara uygulanır; düşey yük tasarımı için ayrı bir model gerekir. Rayleigh periyodu da $1.4\,T_{pA}$'yı geçemez (md. 4.7.3.2): çok yumuşak bir model deprem yükünü sınırsız azaltamaz.
 :::
 
 ::: hata Kolonu zarfla denetlemek
@@ -130,27 +130,27 @@ Zarfın $N_{max}$'ı ile $M_{max}$'ı farklı kombinasyonlardandır. SAP2000 kol
 
 ## Çözümlü örnekler
 
-Örnekler `betonarme-3kat-3x3` ders binasını kullanır: akslar 0–5–10 m ve 0–4–8 m, üç kat 3.2 m, 45×45 kolon, 25×55 kiriş, C30, büro yükü, deprem, kar ve rüzgâr açık, rijit diyafram. Aynı binayı [Bina sayfasında aç](#bina/sablon/betonarme-3kat-3x3).
+Örnekler `betonarme-3kat-3x3` ders binasını kullanır: akslar 0–5–10 m ve 0–4–8 m, üç kat 3.2 m, 45×45 kolon, 25×55 kiriş, C30, büro yükü, deprem (çatlamış kesit, DD-3 ile $\lambda=0.4$), kar ve rüzgâr açık, rijit diyafram; dış kirişlerde duvar, çatıda 1 m parapet. Aynı binayı [Bina sayfasında aç](#bina/sablon/betonarme-3kat-3x3).
 
 ::: ornek Tam çözüm ve iki denge sağlaması
 Ders binasını çöz. Düğüm, eleman ve serbestlik sayısı, durum ve kombinasyon sayısı nedir? $G$ durumunda düşey tepki toplamı ve EX+ durumunda yatay tepki toplamı neye eşit olmalı?
 --- ipucu
-Rijit diyafram her kata bir efendi düğüm ekler. Toplam sabit yük: döşeme 1260, duvar 772.74, kiriş 556.875, kolon 437.4 kN.
+Rijit diyafram her kata bir efendi düğüm ekler. Toplam sabit yük: döşeme 1260, duvar 612.36 (1. ve 2. katta tam duvar, çatıda parapet), kiriş 405 (döşeme içindeki kısım düşülmüş $b(h-t)$), kolon 437.4 kN.
 --- cevap
 $$
 \begin{aligned}
-\text{düğüm}&=36+\underbrace{3}_{\text{efendi}}=\ka{39},\qquad \text{eleman}=27+36=\ka{63},\qquad \text{durum}=12,\quad \text{kombinasyon}=74\\
-\sum R_Z(G)&=1260+772.74+556.875+437.4=\kutuc{3027.015}\ \text{kN}=\sum G\ \checkmark\\
-\sum R_X(EX+)&=\kutuc{-321.02}\ \text{kN}=-V_{tE}\ \checkmark\quad(\text{tepki kuvvete ters})
+\text{düğüm}&=36+\underbrace{3}_{\text{efendi}}=\ka{39},\qquad \text{eleman}=27+36=\ka{63},\qquad \text{durum}=12,\quad \text{kombinasyon}=84\\
+\sum R_Z(G)&=1260+612.36+405+437.4=\kutuc{2714.76}\ \text{kN}=\sum G\ \checkmark\\
+\sum R_X(EX+)&=\kutuc{-288.81}\ \text{kN}=-V_{tE}\ \checkmark\quad(\text{tepki kuvvete ters})
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-r.veri["ozet"]["dugum"] == 39 and r.veri["ozet"]["eleman"] == 63 and r.veri["ozet"]["sd_sayisi"] == 216 and r.veri["ozet"]["durum_sayisi"] == 12 and r.veri["ozet"]["kombinasyon_sayisi"] == 74 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["G"]["tepkiler"]) - 3027.015) < 1e-3 and abs(sum(t["FX"] for t in r.veri["durumlar"]["EX+"]["tepkiler"]) + r.veri["deprem"]["VtE"]) < 1e-2
+r.veri["ozet"]["dugum"] == 39 and r.veri["ozet"]["eleman"] == 63 and r.veri["ozet"]["sd_sayisi"] == 216 and r.veri["ozet"]["durum_sayisi"] == 12 and r.veri["ozet"]["kombinasyon_sayisi"] == 84 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["G"]["tepkiler"]) - 2714.76) < 1e-3 and abs(sum(t["FX"] for t in r.veri["durumlar"]["EX+"]["tepkiler"]) + r.veri["deprem"]["VtE"]) < 1e-2
 --- yorum
-`veri["akis"]["korunum"]["G"]` aynı denetimi kalem kalem yazar: döşeme + duvar + öz ağırlık = kolon tabanı = temel tepkisi. SAP2000'de karşılığı "Base Reactions" tablosudur; ilk bakılacak yer orasıdır.
+`veri["akis"]["korunum"]["G"]` aynı denetimi kalem kalem yazar: döşeme + duvar + öz ağırlık = kolon tabanı = temel tepkisi. Betonarme binada deprem durumları ayrı bir çatlamış kesitli $K$ ile çözülür (TBDY 4.5.8); $G$ ve $Q$ burada brüt $K$'nin sonucudur. SAP2000'de karşılığı "Base Reactions" tablosudur; ilk bakılacak yer orasıdır.
 :::
 
 ::: ornek Rijit diyafram elle: dört kolonlu kat
@@ -183,8 +183,8 @@ Esnek seçimde efendi düğüm yoktur; döşemenin düzlem içi rijitliği model
 $$
 \begin{aligned}
 \text{düğüm}&:\ \ka{39}\ \to\ \kb{36}\\
-\eta_{bx,1}&:\ \ka{1.053}\ \to\ \kb{1.105},\qquad u_{x,3}:\ \ka{5.440}\ \to\ \kb{5.467}\ \text{mm}\\
-\text{D/C}_{max}&:\ 0.9986\ \to\ 0.9905
+\eta_{bx,1}&:\ \ka{1.049}\ \to\ \kb{1.110},\qquad u_{x,3}:\ \ka{10.04}\ \to\ \kb{10.16}\ \text{mm}\\
+\text{D/C}_{max}&:\ 0.9979\ \to\ 1.0000
 \end{aligned}
 $$
 --- kod
@@ -192,26 +192,26 @@ b = yapi.bina_sablon("betonarme-3kat-3x3")
 b["deprem"]["diyafram"] = "esnek"
 [yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3")), yapi.bina_coz(b)]
 --- kontrol
-r[0].veri["ozet"]["dugum"] == 39 and r[-1].veri["ozet"]["dugum"] == 36 and r[-1].veri["ozet"]["diyafram"] == "esnek" and abs(r[0].veri["deprem"]["katlar"][0]["eta_bx"] - 1.0526) < 1e-3 and abs(r[-1].veri["deprem"]["katlar"][0]["eta_bx"] - 1.1045) < 1e-3 and r[-1].veri["deprem"]["katlar"][2]["d_x"] > r[0].veri["deprem"]["katlar"][2]["d_x"]
+r[0].veri["ozet"]["dugum"] == 39 and r[-1].veri["ozet"]["dugum"] == 36 and r[-1].veri["ozet"]["diyafram"] == "esnek" and abs(r[0].veri["deprem"]["katlar"][0]["eta_bx"] - 1.0491) < 1e-3 and abs(r[-1].veri["deprem"]["katlar"][0]["eta_bx"] - 1.1097) < 1e-3 and r[-1].veri["deprem"]["katlar"][2]["d_x"] > r[0].veri["deprem"]["katlar"][2]["d_x"]
 --- yorum
 Bu düzenli binada fark küçüktür; ama esnek modelde ±%5 dışmerkezlik momenti kat düğümlerine kuvvet çifti olarak dağıtılır ve kenar çerçeveler daha çok zorlanır. Kirişsiz döşemeli, büyük boşluklu ya da çok uzun planlı binalarda fark büyür; orada diyafram rijitliği ayrıca değerlendirilir.
 :::
 
 ::: ornek Kombinasyon tepkisi: süperpozisyon sağlaması
-$1.4G+1.6Q$ kombinasyonunda temel tepkilerinin düşey toplamını ve köşe kolon A1'in temel tepkisini bul. Durum toplamlarıyla karşılaştır ($\sum G=3027.015$, $\sum Q=480$ kN).
+$1.4G+1.6Q$ kombinasyonunda temel tepkilerinin düşey toplamını ve köşe kolon A1'in temel tepkisini bul. Durum toplamlarıyla karşılaştır ($\sum G=2714.76$, $\sum Q=480$ kN).
 --- ipucu
 Kombinasyon yeniden çözülmez: her tepki aynı katsayılarla toplanır.
 --- cevap
 $$
-\sum R_Z=1.4\cdot\ka{3027.015}+1.6\cdot\kb{480}=4237.821+768=\kutuc{5005.821}\ \text{kN},\qquad R_{Z,A1}=\kc{412.93}\ \text{kN}
+\sum R_Z=1.4\cdot\ka{2714.76}+1.6\cdot\kb{480}=3800.664+768=\kutuc{4568.664}\ \text{kN},\qquad R_{Z,A1}=\kc{370.06}\ \text{kN}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-abs(sum(t["FZ"] for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"]) - 5005.821) < 1e-2 and abs(next(t for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"] if t["dugum"] == 1)["FZ"] - 412.935) < 1e-2
+abs(sum(t["FZ"] for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"]) - 4568.664) < 1e-2 and abs(next(t for t in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["tepkiler"] if t["dugum"] == 1)["FZ"] - 370.064) < 1e-2
 --- yorum
-A1'in tepkisi Ders 22'deki kolon eksenel kuvvetiyle ($-412.9$ kN, basınç) aynıdır: temel düğümünde kolonun taşıdığı her şey zemine iner. SAP2000'de "Joint Reactions" tablosunda kombinasyon seçilerek aynı denetim yapılır.
+A1'in tepkisi Ders 22'deki kolon eksenel kuvvetiyle ($-370.1$ kN, basınç) aynıdır: temel düğümünde kolonun taşıdığı her şey zemine iner. SAP2000'de "Joint Reactions" tablosunda kombinasyon seçilerek aynı denetim yapılır.
 :::
 
 ::: ornek D/C okuma: dağılım, kritik eleman, belirleyen
@@ -221,16 +221,16 @@ Ders binasının tasarım özetinden D/C dağılımını, en kritik üç eleman�
 --- cevap
 $$
 \begin{aligned}
-<0.7:\ \kc{27},\quad 0.7\text{–}0.9:\ 6,\quad 0.9\text{–}1.0:\ \kb{30},\quad >1.0:\ \ksil{0}\\
-\text{kritik: K-A2}&\rightarrow\text{B2/k1 (0.9986), K-B2}\rightarrow\text{C2/k1 (0.9986), K-B1}\rightarrow\text{B2/k1 (0.9970)}\\
-\text{kolon}_{max}&:\ \text{S-A1/k1},\ \kutua{0.660},\ \texttt{0.9G-0.3EX-+EY--0.3EZ}
+<0.7:\ \kc{31},\quad 0.7\text{–}0.9:\ 2,\quad 0.9\text{–}1.0:\ \kb{30},\quad >1.0:\ \ksil{0}\\
+\text{kritik: K-A1}&\rightarrow\text{A2/k2, K-A2}\rightarrow\text{A3/k2, K-C1}\rightarrow\text{C2/k2 (hepsi 0.9979, simetri)}\\
+\text{kolon}_{max}&:\ \text{S-A1/k1},\ \kutua{0.685},\ \texttt{0.9G-0.3EX-+EY--0.3EZ}
 \end{aligned}
 $$
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-r.veri["tasarim"]["dc_dagilimi"] == {"<0.7": 27, "0.7-0.9": 6, "0.9-1.0": 30, ">1.0": 0} and [k["no"] for k in r.veri["tasarim"]["kritik_elemanlar"][:3]] == [3, 4, 9] and abs(max(e["dc"] for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon") - 0.65969) < 1e-4
+r.veri["tasarim"]["dc_dagilimi"] == {"<0.7": 31, "0.7-0.9": 2, "0.9-1.0": 30, ">1.0": 0} and [k["no"] for k in r.veri["tasarim"]["kritik_elemanlar"][:3]] == [19, 20, 23] and abs(max(e["dc"] for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon") - 0.68522) < 1e-4
 --- yorum
 Kiriş donatısı tasarlandığı için D/C $\approx1$ "yetersiz" değil "ekonomik" demektir; kirişte asıl çıktı önerilen çubuklardır. Kolonda donatı varsayılmıştır ($\rho=0.01$), D/C gerçek bir kapasite oranıdır. SAP2000'de de betonarme çerçeve tasarımı kirişte donatı alanı, kolonda (donatı verilmişse) kapasite oranı raporlar.
 :::
@@ -242,8 +242,8 @@ Kolon $\rho=0.01$ varsayılır; motor 0.01 → 0.04 aralığını 0.0025 adımla
 --- cevap
 $$
 \begin{aligned}
->1.0&:\ \kutusil{8}\ \text{eleman},\qquad \text{S-A1/k1}:\ \text{D/C}=\ksil{1.173}\ \ (\texttt{0.9G-0.3EX-+EY--0.3EZ})\\
-N_d&=94.6\ \text{kN}<0.1f_{ck}A_c=367.5\ \Rightarrow\ \frac{M_x}{M_{rx}}+\frac{M_y}{M_{ry}}=1.173\ (\text{doğrusal toplam})\\
+>1.0&:\ \kutusil{10}\ \text{eleman},\qquad \text{S-A1/k1}:\ \text{D/C}=\ksil{1.143}\ \ (\texttt{0.9G-0.3EX-+EY--0.3EZ})\\
+N_d&=86.5\ \text{kN}<0.1f_{ck}A_c=367.5\ \Rightarrow\ \frac{M_x}{M_{rx}}+\frac{M_y}{M_{ry}}=1.143\ (\text{doğrusal toplam})\\
 \rho_{gerekli}&=\kutuc{0.0125}\ \Rightarrow\ A_s=15.31\ \text{cm}^2\quad(\text{8 çubuk: } 8\phi16=16.08)
 \end{aligned}
 $$
@@ -253,9 +253,9 @@ b["kesitler"]["S45x45"].update({"b": 0.35, "h": 0.35})
 r = yapi.bina_coz(b)
 r
 --- kontrol
-r.veri["tasarim"]["dc_dagilimi"][">1.0"] == 8 and r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "S-A1/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 1.1728) < 1e-3 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["ozet"]["rho_gerekli"] == 0.0125 and r.veri["tasarim"]["kritik_elemanlar"][0]["kombinasyon"] == "0.9G-0.3EX-+EY--0.3EZ"
+r.veri["tasarim"]["dc_dagilimi"][">1.0"] == 10 and r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "S-A1/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 1.1426) < 1e-3 and next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 1)["ozet"]["rho_gerekli"] == 0.0125 and r.veri["tasarim"]["kritik_elemanlar"][0]["kombinasyon"] == "0.9G-0.3EX-+EY--0.3EZ"
 --- yorum
-Kolonlar küçülünce bina yumuşar ve kütle azalır ($V_{tE}$ 321'den 306 kN'a iner) ama kolon kapasitesi daha hızlı düşer. Belirleyen yine az basınçlı deprem birleşimidir. SAP2000'de bu döngü "analiz kesiti = tasarım kesiti olana kadar" yinelenir; kesit değişince rijitlik ve deprem yükü değiştiği için yeniden analiz şarttır. Bu kesit TBDY'nin 300 mm alt sınırını sağlar ama süneklik ve birleşim bölgesi için genellikle yetersiz kalır.
+Kolonlar küçülünce bina yumuşar ve kütle azalır ($V_{tE}$ 289'dan 274 kN'a iner) ama kolon kapasitesi daha hızlı düşer; göreli kat ötelemesi yine sınırın altındadır ($\lambda\delta/h=0.0065$). Belirleyen yine az basınçlı deprem birleşimidir. SAP2000'de bu döngü "analiz kesiti = tasarım kesiti olana kadar" yinelenir; kesit değişince rijitlik ve deprem yükü değiştiği için yeniden analiz şarttır. Bu kesit TBDY'nin 300 mm alt sınırını sağlar ama süneklik ve birleşim bölgesi için genellikle yetersiz kalır.
 :::
 
 ::: ornek Yerel eksen eşlemesi

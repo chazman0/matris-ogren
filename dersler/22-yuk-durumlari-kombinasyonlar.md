@@ -43,7 +43,7 @@ Bir kirişin mesnet momentini sorduğunda tek bir sayı beklersin; oysa bina ön
 <text x="388" y="118" text-anchor="middle" fill="var(--sema-sil,#ef4444)">veri["zarf"]</text>
 <rect x="60" y="140" width="320" height="56" rx="8" fill="none" stroke="var(--sema-cizgi,#94a3b8)" stroke-dasharray="4 3"/>
 <text x="220" y="160" text-anchor="middle">12 durum çözülür (K bir kez ayrıştırılır),</text>
-<text x="220" y="176" text-anchor="middle">74 kombinasyon toplanır, zarf her kesitte en kötüyü seçer;</text>
+<text x="220" y="176" text-anchor="middle">84 kombinasyon toplanır, zarf her kesitte en kötüyü seçer;</text>
 <text x="220" y="191" text-anchor="middle">kolon kontrolü zarftan değil kombinasyonun kendisinden okunur.</text>
 </svg>
 :::
@@ -83,6 +83,8 @@ SAP2000'de **Load Pattern** yükün yerini ve değerini, **Load Case** onun nas�
 
 ::: not Neden tek $K$?
 Doğrusal statik çözümde rijitlik matrisi yükten bağımsızdır. $K$ bir kez $LDL^T$ biçiminde ayrıştırılınca her yük durumu yalnız bir ileri ve bir geri yerine koymadır. Bu yüzden yük durumu eklemek ucuzdur; kombinasyon eklemek daha da ucuzdur, çünkü hiç çözüm gerektirmez.
+
+Betonarme binada deprem varsa **iki** $K$ vardır: TBDY md. 4.5.8 (Tablo 4.2) deprem hesabında çatlamış (etkin) kesit rijitliğini ister (kolon $0.70EI$, kiriş $0.35EI$), ama yalnız deprem birleşimlerinde ve onlara giren yükler altında (4.5.8.3). Motor brüt $K$ ile $G$, $Q$, $S$, $W$'yu; çatlamış $K$ ile deprem durumlarını ve $G$, $Q$, $S$'nin kopyaları `G~c`, `Q~c`, `S~c`'yi çözer. $1.4G+1.6Q$ brüt sonuçları, $G+Q+0.2S+E$ çatlamış sonuçları toplar; her $K$ içinde süperpozisyon yine geçerlidir.
 :::
 
 ## Doğrusallık ve süperpozisyon
@@ -108,12 +110,16 @@ P-Delta, büyük yer değiştirme, çatlayan ya da akan malzeme, yalnız basın�
 | Denklem | Birleşim | Ne zaman |
 |---|---|---|
 | (6.3) | $1.4G+1.6Q$ | düşey yükler |
+| (6.3) + TS 498 md. 3.1 | $1.4G+1.6Q+1.6S$ | kar varsa: kar hareketli yüktür |
 | (6.4) | $G+1.2Q+1.2T$ | $T$ etkisi varsa |
 | (6.5) | $G+1.3Q+1.3W$ | rüzgâr |
+| (6.5) + TS 498 md. 12.1 | $G+1.3Q+1.3(S/2)+1.3W$ ve $G+1.3Q+1.3S+1.3(W/2)$ | kar ve rüzgâr birlikte |
 | (6.6) | $0.9G+1.3W$ | rüzgâr, devrilme ve çekme |
 | (6.9) | $1.4G+1.6Q+1.6H$ | toprak itkisi |
 | (6.10) | $0.9G+1.6H$ | toprak itkisi |
-| md. 6.2.6(f) | $G+Q$ | kullanılabilirlik: bütün katsayılar 1.0 |
+| md. 6.2.6(f) | $G+Q$ (kar varsa $G+Q+S$) | kullanılabilirlik: bütün katsayılar 1.0 |
+
+TS 500 md. 6.2.6 kar terimini **ayrı vermez**. Karakteristik yükleri TS 498'e bırakır; TS 498:2021 md. 3.1 kar yükünü hareketli yük sayar, md. 12.1 de kar ile rüzgârın birlikte etkisini iki durumla verir: $S/2+W$ ya da $S+W/2$ (eğimi 45°'ye kadar çatılarda, en elverişsizi). Bu yüzden kar $Q$ gibi katsayılandırılır.
 
 TS 500'ün deprem satırları (6.7) ve (6.8) eski deprem yönetmeliğine dayanır; bugün betonarme binada deprem birleşimleri **TBDY 2018 md. 4.4.4** ile kurulur:
 
@@ -141,7 +147,7 @@ $$
 \underbrace{2}_{\text{asıl yön}}\times\underbrace{2}_{\pm E_{\text{asıl}}}\times\underbrace{2}_{\pm0.3E_{\text{ikincil}}}\times\underbrace{2}_{e_{\text{asıl}}=\pm5\%}\times\underbrace{2}_{e_{\text{ikincil}}=\pm5\%}=\kutusil{32}
 $$
 
-(4.11) ve (4.12)'nin her biri 32 kombinasyondur. Üç katlı ders binasında: $1+4+4+32+32+1=\kutuc{74}$ dayanım ve servis kombinasyonu, ayrıca göreli kat ötelemesi için dört tek doğrultulu birleşim. Elle yazılacak iş değildir; motor şablon satırlarını eldeki durumlarla otomatik açar ve her birine katsayılardan bir ad verir: `G+Q+0.2S+EX++0.3EY-+0.3EZ` gibi.
+(4.11) ve (4.12)'nin her biri 32 kombinasyondur. Kar–rüzgâr satırları da dörder yöne açılır. Üç katlı ders binasında: $1+1+4+4+4+4+32+32+1+1=\kutuc{84}$ dayanım ve servis kombinasyonu, ayrıca göreli kat ötelemesi için dört tek doğrultulu birleşim. Elle yazılacak iş değildir; motor şablon satırlarını eldeki durumlarla otomatik açar ve her birine katsayılardan bir ad verir: `G+Q+0.2S+EX++0.3EY-+0.3EZ` gibi.
 
 ## Zarf ve belirleyen kombinasyon
 
@@ -169,14 +175,14 @@ Kiriş donatısı her kesitte zarfa göre konabilir: alt donatı $M_{\max}$'a, �
 <path d="M60 22C210 26 330 80 352 130C362 160 300 196 60 200" stroke="var(--sema-cizgi,#94a3b8)" stroke-dasharray="5 4" fill="none"/>
 <text x="300" y="70" fill="var(--sema-cizgi,#94a3b8)">N–M etkileşim eğrisi</text>
 <circle cx="120" cy="58" r="5" fill="var(--sema-a,#3b82f6)"/>
-<text x="128" y="54" fill="var(--sema-a,#3b82f6)">(447.5; 24.8) N_min kombinasyonu</text>
+<text x="128" y="54" fill="var(--sema-a,#3b82f6)">(394.7; 26.3) N_min kombinasyonu</text>
 <circle cx="236" cy="80" r="5" fill="var(--sema-b,#f59e0b)"/>
-<text x="244" y="94" fill="var(--sema-b,#f59e0b)">(386.6; 85.4) M_max kombinasyonu</text>
+<text x="244" y="94" fill="var(--sema-b,#f59e0b)">(380.4; 89.1) M_max kombinasyonu</text>
 <rect x="231" y="53" width="10" height="10" fill="none" stroke="var(--sema-sil,#ef4444)" stroke-width="2"/>
-<text x="246" y="40" fill="var(--sema-sil,#ef4444)">zarf köşesi (447.5; 85.4): gerçek değil</text>
+<text x="246" y="40" fill="var(--sema-sil,#ef4444)">zarf köşesi (394.7; 89.1): gerçek değil</text>
 <path d="M120 58H231M236 80V63" stroke="var(--sema-sil,#ef4444)" stroke-dasharray="3 3" fill="none"/>
 <circle cx="80" cy="172" r="5" fill="var(--sema-c,#10b981)"/>
-<text x="88" y="168" fill="var(--sema-c,#10b981)">(79.1; 10.9) N_max: az basınç, 0.9G − E</text>
+<text x="88" y="168" fill="var(--sema-c,#10b981)">(76.9; 11.7) N_max: az basınç, 0.9G − E</text>
 </svg>
 :::
 
@@ -194,7 +200,7 @@ $$
 {"kat": 3, "h": 3.2, "B": 8, "C": 1.2}
 :::
 
-**Kar** (TS 498:2021 md. 11): karakteristik zemin kar yükü $S_k$ kar bölgesi (1–9) ve rakımla Çizelge 3'ten okunur; 1000 m üstünde 1500 m'ye kadar %10, daha yukarıda %15 artırılır. Çatı kar yükü TS EN 1991-1-3 ile $s=\mu_1\,C_e\,C_t\,S_k$ olur; düz ya da 30°'ye kadar eğimli çatıda $\mu_1=0.8$, $C_e=C_t=1$. Kar yalnız çatı döşemelerine konur ve TBDY (4.11)'de $0.2S$ ile, deprem kütlesine çatıda %30 ile girer.
+**Kar** (TS 498:2021 md. 11): karakteristik zemin kar yükü $S_k$ kar bölgesi (1–9) ve rakımla Çizelge 3'ten okunur; 1000 m üstünde 1500 m'ye kadar %10, daha yukarıda %15 artırılır. Çatı kar yükü TS EN 1991-1-3 ile $s=\mu_1\,C_e\,C_t\,S_k$ olur; düz ya da 30°'ye kadar eğimli çatıda $\mu_1=0.8$, $C_e=C_t=1$. Kar yalnız çatı döşemelerine konur; TS 500 kümesinde hareketli yük gibi $1.6S$ (ve rüzgârla $1.3\cdot S/2$ ya da $1.3S$) ile, TBDY (4.11)'de $0.2S$ ile, deprem kütlesine çatıda %30 ile girer.
 
 ::: hata Zarfın köşesiyle kolon tasarlamak
 $N_{\max}$, $N_{\min}$, $M_{\max}$ ve $M_{\min}$'i ayrı ayrı alıp $(N_{\min},M_{\max})$ gibi bir çiftle kolon denetlemek hem gerçek dışı hem de tehlikeli olabilir: az basınçlı $0.9G-E$ durumunda kolonun eğilme kapasitesi düşer ve bu çift zarfta yoktur. Her kombinasyonun kendi çiftini denetle; motor `kombinasyon_kisa(r.ic, ad)` ile her kombinasyonun tam diyagramlarını verir.
@@ -239,82 +245,82 @@ Yeniden çözüm, toplamla aynı tepkiyi ve aynı orta mesnet momentini verdi: d
 ::: ornek 1.4G + 1.6Q: kiriş diyagramı katsayılı toplamdır
 1. kattaki iç kiriş K-A2→B2 (eleman 30, 5 m) için motorun $G$ ve $Q$ moment diyagramlarından sol uç, orta ve sağ uçta $1.4G+1.6Q$ momentini elle bul; `kombinasyon_kisa` sonucuyla karşılaştır.
 --- ipucu
-$G$: $-32.24$, $24.906$, $-42.682$; $Q$: $-10.399$, $7.976$, $-12.983$ kN·m.
+$G$: $-30.821$, $23.823$, $-40.408$; $Q$: $-10.399$, $7.976$, $-12.983$ kN·m.
 --- cevap
 $$
 \begin{aligned}
-x=0:\quad & 1.4\cdot(\ka{-32.24})+1.6\cdot(\kb{-10.399})=-45.136-16.638=\kutuc{-61.77}\\
-x=2.5:\quad & 1.4\cdot\ka{24.906}+1.6\cdot\kb{7.976}=34.868+12.762=\kutuc{47.63}\\
-x=5:\quad & 1.4\cdot(\ka{-42.682})+1.6\cdot(\kb{-12.983})=-59.755-20.773=\kutuc{-80.53}\ \text{kN·m}
+x=0:\quad & 1.4\cdot(\ka{-30.821})+1.6\cdot(\kb{-10.399})=-43.149-16.638=\kutuc{-59.79}\\
+x=2.5:\quad & 1.4\cdot\ka{23.823}+1.6\cdot\kb{7.976}=33.352+12.762=\kutuc{46.11}\\
+x=5:\quad & 1.4\cdot(\ka{-40.408})+1.6\cdot(\kb{-12.983})=-56.571-20.773=\kutuc{-77.34}\ \text{kN·m}
 \end{aligned}
 $$
-Motor aynı toplamı on bir istasyonun hepsinde yapar: $-61.775$, $47.630$, $-80.528$.
+Motor aynı toplamı on bir istasyonun hepsinde yapar: $-59.788$, $46.113$, $-77.344$. Bu birleşim deprem içermediği için brüt kesitli $G$ ve $Q$'yu toplar.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-all(abs(m - (1.4 * g + 1.6 * q)) < 1e-3 for m, g, q in zip(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["Q"]["elemanlar"] if e["no"] == 30)["M"])) and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"][-1] + 80.528) < 1e-3
+all(abs(m - (1.4 * g + 1.6 * q)) < 1e-3 for m, g, q in zip(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["G"]["elemanlar"] if e["no"] == 30)["M"], next(e for e in r.veri["durumlar"]["Q"]["elemanlar"] if e["no"] == 30)["M"])) and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "1.4G+1.6Q")["elemanlar"] if e["no"] == 30)["M"][-1] + 77.344) < 1e-3
 --- yorum
 `yapi.kombinasyon_kisa(r.ic, ad)` istenen kombinasyonun bütün diyagramlarını, tepkilerini ve ötelemelerini **yeniden çözmeden** verir: içeride `_Paket.birlesim` her diziyi $\sum\gamma_i\cdot$ dizi$_i$ olarak toplar. SAP2000'de "Linear Add" kombinasyonunun yaptığı da budur.
 :::
 
 ::: ornek Deprem kombinasyonu: kolonun eksenel kuvveti
-Köşe kolon A1'in 1. kat parçası (eleman 1) için durumların eksenel kuvvetleri (basınç $-$): $N_G=-261.42$, $N_Q=-29.34$, $N_S=-2.87$, $N_{EX+}=+59.65$, $N_{EY+}=+70.04$ kN; $S_{DS}=1.2$. `G+Q+0.2S+EX++0.3EY++0.3EZ` kombinasyonunun eksenel kuvvetini bul.
+Köşe kolon A1'in 1. kat parçası (eleman 1) için deprem birleşimine giren durumların eksenel kuvvetleri (basınç $-$; $G$, $Q$, $S$ çatlamış kesitli $K$'den: `G~c`, `Q~c`, `S~c`): $N_G=-232.50$, $N_Q=-29.26$, $N_S=-2.86$, $N_{EX+}=+48.50$, $N_{EY+}=+57.65$ kN; $S_{DS}=1.2$. `G+Q+0.2S+EX++0.3EY++0.3EZ` kombinasyonunun eksenel kuvvetini bul.
 --- ipucu
-$E_d^{(Z)}=\tfrac{2}{3}\cdot1.2\cdot G=0.8\,G$; motor bunu `EZ` durumu olarak kurar ($N_{EZ}=-209.14$).
+$E_d^{(Z)}=\tfrac{2}{3}\cdot1.2\cdot G=0.8\,G$; motor bunu `EZ` durumu olarak kurar ($N_{EZ}=-186.00$).
 --- cevap
 $$
 \begin{aligned}
 N&=\ka{N_G}+\kb{N_Q}+0.2N_S+\kc{N_{EX+}}+0.3N_{EY+}+0.3\cdot\underbrace{0.8N_G}_{N_{EZ}}\\
-&=\ka{1.24}\cdot(-261.42)+(-29.34)+0.2\cdot(-2.87)+59.65+0.3\cdot70.04\\
-&=-324.16-29.34-0.57+59.65+21.01=\kutuc{-273.42}\ \text{kN}
+&=\ka{1.24}\cdot(-232.50)+(-29.26)+0.2\cdot(-2.86)+48.50+0.3\cdot57.65\\
+&=-288.30-29.26-0.57+48.50+17.29=\kutuc{-252.33}\ \text{kN}
 \end{aligned}
 $$
-+X depremi devirme momentiyle A aksındaki kolonu **çeker**: $1.4G+1.6Q$'daki $-412.9$ kN basınç burada $-273.4$'e iner.
++X depremi devirme momentiyle A aksındaki kolonu **çeker**: $1.4G+1.6Q$'daki $-370.1$ kN basınç burada $-252.3$'e iner. Brüt kesitli $G$'de $N_G=-230.80$ kN'dur; çatlamış $K$'de kirişler yumuşadığı için kolonlar arası paylaşım biraz değişir, toplam düşey yük aynıdır.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 1)["N"][0] - sum(g * next(e for e in r.veri["durumlar"][d]["elemanlar"] if e["no"] == 1)["enb"]["N"] for d, g in {"G": 1, "Q": 1, "S": 0.2, "EX+": 1, "EY+": 0.3, "EZ": 0.3}.items())) < 0.01 and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 1)["N"][0] + 273.417) < 1e-2 and r.veri["deprem"]["EZ_katsayi"] == 0.8
+abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 1)["N"][0] - sum(g * next(e for e in yapi.kombinasyon_kisa(r.ic, d)["elemanlar"] if e["no"] == 1)["N"][0] for d, g in {"G~c": 1, "Q~c": 1, "S~c": 0.2, "EX+": 1, "EY+": 0.3, "EZ": 0.3}.items())) < 1e-2 and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 1)["N"][0] + 252.332) < 1e-2 and r.veri["deprem"]["EZ_katsayi"] == 0.8
 --- yorum
-`veri["kombinasyonlar"]` her kaydın `katsayilar` sözlüğünü taşır: burada `{"G": 1, "Q": 1, "S": 0.2, "EX+": 1, "EY+": 0.3, "EZ": 0.3}`. EZ durumu $0.8\,G$ olduğundan $0.3E_d^{(Z)}$ terimi sabit yükü yüzde 24 artırır; (4.12)'de ise aynı oranda azaltır.
+`veri["kombinasyonlar"]` her kaydın `katsayilar` sözlüğünü taşır: burada `{"G": 1, "Q": 1, "S": 0.2, "EX+": 1, "EY+": 0.3, "EZ": 0.3}`; `catlamis: true` alanı $G$, $Q$, $S$'nin çatlamış kesitli kopyalardan alındığını söyler (`r.ic["kombinasyonlar"]` hesapta kullanılan `G~c`, `Q~c`, `S~c` adlarını gösterir). EZ durumu $0.8\,G$ olduğundan $0.3E_d^{(Z)}$ terimi sabit yükü yüzde 24 artırır; (4.12)'de ise aynı oranda azaltır.
 :::
 
 ::: ornek Kaç kombinasyon? Yön ve işaret çoğaltımı
 `ts500` kümesinin satırları G, Q, S, W ve E durumları açık ders binasında kaç kombinasyona açılır? Hangi satırlar uygulanmaz?
 --- ipucu
-Rüzgâr 4 yön; deprem Denk. (4.9) $\times$ dışmerkezlik $=32$; $T$ ve $H$ durumu yok.
+Rüzgâr 4 yön; kar açık olduğundan $1.6S$ satırı, kar–rüzgâr iki satırı ve $G+Q+S$ de var; deprem Denk. (4.9) $\times$ dışmerkezlik $=32$; $T$ ve $H$ durumu yok.
 --- cevap
 $$
-\underbrace{1}_{(6.3)}+\underbrace{4}_{(6.5)}+\underbrace{4}_{(6.6)}+\underbrace{32}_{(4.11)}+\underbrace{32}_{(4.12)}+\underbrace{1}_{G+Q}=\kutuc{74},\qquad \text{öteleme: }\underbrace{4}_{G+Q\pm EX,\ \pm EY}
+\underbrace{1+1}_{(6.3),\ +1.6S}+\underbrace{4}_{(6.5)}+\underbrace{4+4}_{S/2+W,\ S+W/2}+\underbrace{4}_{(6.6)}+\underbrace{32}_{(4.11)}+\underbrace{32}_{(4.12)}+\underbrace{1+1}_{G+Q,\ G+Q+S}=\kutuc{84},\qquad \text{öteleme: }\underbrace{4}_{G+Q\pm EX,\ \pm EY}
 $$
 Uygulanmayan: $\ksil{(6.4)}$ ($T$ yok), $\ksil{(6.9)}$ ve $\ksil{(6.10)}$ ($H$ yok). (4.12)'deki $H$ ikincil terimdir, sıfır alınır ve satır uygulanır.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-r.veri["zarf"]["kombinasyon_sayisi"] == 74 and r.veri["ozet"]["drift_kombinasyon_sayisi"] == 4 and sum(1 for k in r.veri["kombinasyonlar"] if k["aile"] == "G+Q+0.2S+Ed(H)+0.3Ed(Z)" and k["uygulandi"]) == 32 and sum(1 for k in r.veri["kombinasyonlar"] if k["aile"] == "G+1.3Q+1.3W" and k["uygulandi"]) == 4 and sorted(k["aile"] for k in r.veri["kombinasyonlar"] if not k["uygulandi"]) == ["0.9G+1.6H", "1.4G+1.6Q+1.6H", "G+1.2Q+1.2T"]
+r.veri["zarf"]["kombinasyon_sayisi"] == 84 and r.veri["ozet"]["drift_kombinasyon_sayisi"] == 4 and sum(1 for k in r.veri["kombinasyonlar"] if k["aile"] == "G+Q+0.2S+Ed(H)+0.3Ed(Z)" and k["uygulandi"]) == 32 and sum(1 for k in r.veri["kombinasyonlar"] if k["aile"] == "G+1.3Q+1.3W" and k["uygulandi"]) == 4 and sorted(k["aile"] for k in r.veri["kombinasyonlar"] if not k["uygulandi"]) == ["0.9G+1.6H", "1.4G+1.6Q+1.6H", "G+1.2Q+1.2T"]
 --- yorum
-Durum sayısı 12'dir (G, Q, S, dört W, dört E, EZ); kombinasyon sayısı bunun altı katı. Hepsi aynı on iki çözümün katsayılı toplamı olduğu için 74 kombinasyon motorda tek bir matris çarpımıdır: $\Gamma_{74\times12}\,D_{12\times L}$.
+Durum sayısı 12'dir (G, Q, S, dört W, dört E, EZ), pakette ayrıca deprem birleşimleri için çatlamış kesitli G~c, Q~c, S~c var. Hepsi bu on beş çözümün katsayılı toplamı olduğu için 84 kombinasyon motorda tek bir matris çarpımıdır: $\Gamma_{84\times15}\,D_{15\times L}$.
 :::
 
 ::: ornek Zarf ve belirleyen kombinasyon: kiriş mesnet momenti
-Eleman 30'un (K-A2→B2/k1) zarfında $M_{\min}$ ve $M_{\max}$ nedir, hangi kombinasyon belirler? $M_{\min}$'i sağ uçta elle doğrula ($M_G=-42.682$, $M_Q=-12.983$, $M_S=0.051$, $M_{EX+}=-59.69$, $M_{EY+}=0$).
+Eleman 30'un (K-A2→B2/k1) zarfında $M_{\min}$ ve $M_{\max}$ nedir, hangi kombinasyon belirler? $M_{\min}$'i sağ uçta elle doğrula (deprem birleşimi: çatlamış kesitli $M_G=-39.595$, $M_Q=-12.882$, $M_S=0.007$; $M_{EX+}=-47.013$, $M_{EY+}=0$).
 --- ipucu
 Sağ uçta $G$, $Q$ ve $EX+$ aynı işaretli: (4.11) $+EX$ en olumsuz.
 --- cevap
 $$
 \begin{aligned}
-M_{\min}&=\ka{1.24}\cdot(-42.682)+(-12.983)+0.2\cdot0.051+(\kc{-59.69})\\
-&=-52.926-12.983+0.010-59.69=\kutusil{-125.59}\ \text{kN·m}\quad(\texttt{G+Q+0.2S+EX++0.3EY++0.3EZ})
+M_{\min}&=\ka{1.24}\cdot(-39.595)+(-12.882)+0.2\cdot0.007+(\kc{-47.013})\\
+&=-49.098-12.882+0.001-47.013=\kutusil{-108.99}\ \text{kN·m}\quad(\texttt{G+Q+0.2S+EX++0.3EY++0.3EZ})
 \end{aligned}
 $$
-Aynı kombinasyon $x=1.5$ m'de $M_{\max}=\kutuc{52.17}$ verir: deprem kirişin bir ucunu açıklık gibi eğer. Düşey yük kombinasyonu $1.4G+1.6Q$ yalnız $-80.53$'e iner; mesnet donatısını deprem belirler.
+$M_{\max}=\kutuc{46.14}$ kN·m ise açıklık ortasında ($x=2.5$ m) karlı düşey birleşim `1.4G+1.6Q+1.6S`'ten gelir; deprem birleşimi açıklıkta en çok $43.55$ verir. Düşey yük kombinasyonu $1.4G+1.6Q$ mesnette yalnız $-77.34$'e iner; mesnet donatısını deprem, açıklık donatısını düşey yük belirler.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["M_min"] + 125.588) < 1e-3 and next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["belirleyen"]["M_min"] == "G+Q+0.2S+EX++0.3EY++0.3EZ" and abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["M_max"] - 52.1738) < 1e-3 and abs(min(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 30)["M"]) + 125.588) < 1e-3
+abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["M_min"] + 108.991) < 1e-3 and next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["belirleyen"]["M_min"] == "G+Q+0.2S+EX++0.3EY++0.3EZ" and abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["M_max"] - 46.1416) < 1e-3 and next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 30)["belirleyen"]["M_max"] == "1.4G+1.6Q+1.6S" and abs(min(next(e for e in yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")["elemanlar"] if e["no"] == 30)["M"]) + 108.991) < 1e-3
 --- yorum
 `veri["zarf"]["elemanlar"]` her eleman ve her büyüklük için `_max`, `_min` ve `belirleyen` adını verir; bütün kombinasyonlar tek matris çarpımıyla taranır. Belirleyen adı `kombinasyon_kisa`'ya verip o kombinasyonun tam diyagramını açabilirsin.
 :::
@@ -326,19 +332,19 @@ Eleman 1'in (köşe kolon A1, 1. kat) zarfında en büyük basınç ($N_{\min}$)
 --- cevap
 $$
 \begin{aligned}
-\ka{N_{\min}}:\quad & \texttt{G+Q+0.2S-0.3EX+-EY-+0.3EZ}\ \Rightarrow\ (N,M)=(\ka{-447.5},\ 24.8)\\
-\kb{M_{\max}}:\quad & \texttt{G+Q+0.2S-EX-+0.3EY-+0.3EZ}\ \Rightarrow\ (N,M)=(-386.6,\ \kb{85.4})\\
-\text{zarf köşesi:}\quad & (\ksil{-447.5},\ \ksil{85.4})\ \ \text{hiçbir kombinasyonda yok}
+\ka{N_{\min}}:\quad & \texttt{G+Q+0.2S-0.3EX+-EY-+0.3EZ}\ \Rightarrow\ (N,M)=(\ka{-394.7},\ 26.3)\\
+\kb{M_{\max}}:\quad & \texttt{G+Q+0.2S-EX--0.3EY++0.3EZ}\ \Rightarrow\ (N,M)=(-380.4,\ \kb{89.1})\\
+\text{zarf köşesi:}\quad & (\ksil{-394.7},\ \ksil{89.1})\ \ \text{hiçbir kombinasyonda yok}
 \end{aligned}
 $$
-Az basınç ucu da ayrıca denetlenir: $N_{\max}=-79.1$ kN, `0.9G+0.3EX++EY--0.3EZ`.
+Az basınç ucu da ayrıca denetlenir: $N_{\max}=-76.9$ kN, `0.9G+0.3EX++EY--0.3EZ`.
 --- kod
 r = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"))
 r
 --- kontrol
-next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["N_min"] != next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["M_max"] and abs(max(next(e for e in yapi.kombinasyon_kisa(r.ic, next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["N_min"])["elemanlar"] if e["no"] == 1)["M"]) - 24.821) < 1e-2 and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["M_max"])["elemanlar"] if e["no"] == 1)["N"][0] + 386.63) < 1e-2 and abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["N_min"] + 447.541) < 1e-3
+next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["N_min"] != next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["M_max"] and abs(max(next(e for e in yapi.kombinasyon_kisa(r.ic, next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["N_min"])["elemanlar"] if e["no"] == 1)["M"]) - 26.266) < 1e-2 and abs(next(e for e in yapi.kombinasyon_kisa(r.ic, next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["belirleyen"]["M_max"])["elemanlar"] if e["no"] == 1)["N"][0] + 380.403) < 1e-2 and abs(next(z for z in r.veri["zarf"]["elemanlar"] if z["no"] == 1)["N_min"] + 394.726) < 1e-3
 --- yorum
-Kolon etkileşim diyagramında $(447.5;\,24.8)$ ve $(386.6;\,85.4)$ noktaları ayrı ayrı denetlenir, ayrıca $(79.1;\,10.9)$ gibi az basınçlı noktalar. TBDY md. 7.3.1.2'deki $N_{dm}\le0.40f_{ck}A_c$ sınırı ise en büyük basıncı ister: orada zarfın $N_{\min}$'i doğru büyüklüktür.
+Kolon etkileşim diyagramında $(394.7;\,26.3)$ ve $(380.4;\,89.1)$ noktaları ayrı ayrı denetlenir, ayrıca $(76.9;\,11.7)$ gibi az basınçlı noktalar. TBDY md. 7.3.1.2'deki $N_{dm}\le0.40f_{ck}A_c$ sınırı ise en büyük basıncı ister: orada zarfın $N_{\min}$'i doğru büyüklüktür.
 :::
 
 ::: ornek Rüzgâr kat kuvvetleri: el hesabı ve motor
@@ -359,7 +365,7 @@ r
 --- kontrol
 [k["F_x"] for k in r.veri["ruzgar"]["katlar"]] == [15.36, 15.36, 12.288] and [k["q"] for k in r.veri["ruzgar"]["katlar"]] == [0.5, 0.5, 0.8] and abs(r.veri["ruzgar"]["toplam_x"] - 43.008) < 1e-9 and abs(sum(t["FX"] for t in r.veri["durumlar"]["W+X"]["tepkiler"]) + 43.008) < 1e-3
 --- yorum
-Temel tepkilerinin toplamı $-43.008$ kN: rüzgâr kuvveti eksiksiz zemine indi. Y yönünde cephe 10 m olduğundan $V_t=53.76$ kN. Aynı binada deprem taban kesmesi 321 kN'dur; alçak betonarme binada rüzgâr kombinasyonları zarfa nadiren girer, yüksek ya da hafif (çelik çatı) yapıda ise belirleyici olabilir.
+Temel tepkilerinin toplamı $-43.008$ kN: rüzgâr kuvveti eksiksiz zemine indi. Y yönünde cephe 10 m olduğundan $V_t=53.76$ kN. Aynı binada deprem taban kesmesi 289 kN'dur; alçak betonarme binada rüzgâr kombinasyonları zarfa nadiren girer, yüksek ya da hafif (çelik çatı) yapıda ise belirleyici olabilir.
 :::
 
 ::: ornek Kar: Çizelge 3, μ1 ve çatı yükü
@@ -381,7 +387,7 @@ r
 --- kontrol
 r.veri["kar"]["Sk"] == 1.1 and abs(r.veri["kar"]["s"] - 0.88) < 1e-9 and abs(r.veri["kar"]["S_toplam"] - 70.4) < 1e-6 and abs(sum(t["FZ"] for t in r.veri["durumlar"]["S"]["tepkiler"]) - 70.4) < 1e-2
 --- yorum
-Kar yalnız en üst kat döşemelerine 45° kuralıyla dağıtılır ve S durumu olarak çözülür. Deprem birleşiminde $0.2S$, kat kütlesinde $0.3S$ girer; TS 498:2021 md. 12.1 eğimi 45°'ye kadar çatılarda kar ile rüzgârın birlikteliğini de ($S/2+W$ ya da $S+W/2$) ister.
+Kar yalnız en üst kat döşemelerine 45° kuralıyla dağıtılır ve S durumu olarak çözülür. Deprem birleşiminde $0.2S$, kat kütlesinde $0.3S$ girer; TS 500 kümesinde kar hareketli yük gibi $1.6S$ ile (TS 498:2021 md. 3.1), rüzgârla birlikte md. 12.1'in iki durumuyla ($S/2+W$ ya da $S+W/2$, eğimi 45°'ye kadar çatılarda) girer; motor bu satırları kendisi açar.
 :::
 
 ::: ornek Çelik kolon: TS 500 mi, ÇYTHYE mi?
@@ -412,8 +418,8 @@ Tarihi yığma köprüde de aynı mantık geçerlidir ama kombinasyon daha azdı
 ::: ozet Özet
 - Yük durumları ayrı ayrı tanımlanır ve çözülür: $G$, $Q$ (TS 498:2021), $S=\mu_1S_k$ (md. 11 Çizelge 3), $W=C\,q(z)\,A$ (md. 14 Çizelge 4, $C=1.2$), $E$: EX±, EY± (±%5 dışmerkezlik) ve $E_d^{(Z)}=\tfrac{2}{3}S_{DS}G$.
 - SAP2000 zinciri: Load Pattern → Load Case ($K$ bir kez, çok sağ taraf) → Combination (Linear Add: $\sum\gamma_i\cdot$ sonuç$_i$, çözüm yok) → Envelope. Süperpozisyon yalnız doğrusal çözümde geçerlidir.
-- TS 500 md. 6.2.6: $1.4G+1.6Q$, $G+1.3Q\pm1.3W$, $0.9G\pm1.3W$, servis $G+Q$. TBDY 4.4.4: $G+Q+0.2S+E_d^{(H)}+0.3E_d^{(Z)}$ ve $0.9G+H+E_d^{(H)}-0.3E_d^{(Z)}$, $E_d^{(H)}=\pm E_X\pm0.3E_Y$. ÇYTHYE YDKT rüzgârda 1.6, TBDY 9.2.5.1 çelik depremde $1.2G$; GKT katsayıları 1 civarı.
-- Yön ve işaret çoğaltımı: rüzgâr 4, deprem 32 varyant; ders binasında 74 kombinasyon + 4 öteleme birleşimi.
+- TS 500 md. 6.2.6: $1.4G+1.6Q$, $G+1.3Q\pm1.3W$, $0.9G\pm1.3W$, servis $G+Q$; kar TS 498 md. 3.1 ile hareketli yük ($1.6S$), kar + rüzgâr md. 12.1 ($S/2+W$ ya da $S+W/2$). TBDY 4.4.4: $G+Q+0.2S+E_d^{(H)}+0.3E_d^{(Z)}$ ve $0.9G+H+E_d^{(H)}-0.3E_d^{(Z)}$, $E_d^{(H)}=\pm E_X\pm0.3E_Y$. ÇYTHYE YDKT rüzgârda 1.6, TBDY 9.2.5.1 çelik depremde $1.2G$; GKT katsayıları 1 civarı.
+- Yön ve işaret çoğaltımı: rüzgâr 4, deprem 32 varyant; ders binasında 84 kombinasyon + 4 öteleme birleşimi. Betonarme deprem birleşimleri çatlamış kesitli ikinci bir $K$'den gelir (TBDY 4.5.8.3).
 - Zarf her büyüklük ve kesit için max ve min ile belirleyen kombinasyondur; kiriş donatısı zarftan, kolon denetimi her kombinasyonun eş zamanlı $(N,M)$ çiftinden yapılır.
 :::
 

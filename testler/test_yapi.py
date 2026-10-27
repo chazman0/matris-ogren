@@ -368,6 +368,8 @@ def test_kombinasyon_superpozisyon(cozumler):
     assert not komb["0.9G+1.3W"]["uygulandi"] and "W" in komb["0.9G+1.3W"]["neden"]
     assert set(v["sonuclar"]) == {"1.4G+1.6Q"} and v["ozet"]["kombinasyon_sayisi"] == 2 == v["zarf"]["kombinasyon_sayisi"]
     assert not komb["G+1.2Q+1.2T"]["uygulandi"] and "T" in komb["G+1.2Q+1.2T"]["neden"]      # 6.4: T yoksa satır yok
+    for ad in ("1.4G+1.6Q+1.6S", "G+Q+S"):                                                     # kar kapalı: kar satırları yok
+        assert not komb[ad]["uygulandi"] and "S (kar)" in komb[ad]["neden"]
     z = v["zarf"]["elemanlar"][0]
     e_d, e_s = D["elemanlar"][0], S["elemanlar"][0]
     assert yakin(z["M_max"], max(max(e_d["M"]), max(e_s["M"])), 1e-5) and yakin(z["M_min"], min(min(e_d["M"]), min(e_s["M"])), 1e-5)
@@ -430,7 +432,7 @@ def test_sankey_ve_yuk_dokumu(cozumler):
     dG = sum(x["kN"] for x in s if x["kaynak"].startswith("D") and x["durum"] == "G")
     assert yakin(dG, v["akis"]["korunum"]["G"]["dosemeler"], 1e-6)
     zemin = sum(x["kN"] for x in s if x["hedef"] == "Zemin" and x["durum"] == "G")
-    assert yakin(zemin, v["yukler"]["toplam"]["G"], 1e-6)
+    assert yakin(zemin, v["yukler"]["toplam"]["G"], 1e-5)          # sankey bantları 6 anlamlı basamak
     for r in v["yukler"]["kirisler"]:
         assert yakin(r["G"]["toplam_kN"], r["G"]["doseme"] + r["G"]["duvar"] + r["G"]["oz"] + r["G"]["ek"], 1e-9)
         assert yakin(r["el_hesabi"]["R_G"], r["G"]["toplam_kN"] / 2, 1e-9)
@@ -762,6 +764,14 @@ def test_tablo_degerleri_arastirma_ile_ayni():
     assert ts["1.4G+1.6Q+1.6H"] == {"G": 1.4, "Q": 1.6, "H": 1.6} and ts["0.9G+1.6H"] == {"G": 0.9, "H": 1.6}
     assert ts["G+Q+0.2S+Ed(H)+0.3Ed(Z)"] == {"G": 1.0, "Q": 1.0, "S": 0.2, "EH": 1.0, "EZ": 0.3}
     assert ts["0.9G+H+Ed(H)-0.3Ed(Z)"] == {"G": 0.9, "H": 1.0, "EH": 1.0, "EZ": -0.3}
+    # kar: TS 500 terim vermez; TS 498:2021 md. 3.1 hareketli yük (Q gibi), md. 12.1 kar + rüzgâr S/2 + W ya da S + W/2
+    assert ts["1.4G+1.6Q+1.6S"] == {"G": 1.4, "Q": 1.6, "S": 1.6} and ts["G+Q+S"] == {"G": 1.0, "Q": 1.0, "S": 1.0}
+    assert ts["G+1.3Q+1.3(S/2)+1.3W"] == {"G": 1.0, "Q": 1.3, "S": 0.65, "W": 1.3}
+    assert ts["G+1.3Q+1.3S+1.3(W/2)"] == {"G": 1.0, "Q": 1.3, "S": 1.3, "W": 0.65}
+    kar = {s["ad"]: s for s in yv.KOMBINASYONLAR["ts500"]["liste"] if "S" in s["katsayilar"] and "EH" not in s["katsayilar"]}
+    assert all(s["gerekli"] == ["S"] for s in kar.values()) and len(kar) == 4
+    assert "12.1(a)" in kar["G+1.3Q+1.3(S/2)+1.3W"]["kaynak"] and "12.1(b)" in kar["G+1.3Q+1.3S+1.3(W/2)"]["kaynak"]
+    assert "md. 3.1" in kar["1.4G+1.6Q+1.6S"]["kaynak"] and "TS 498" in yv.KOMBINASYONLAR["ts500"]["kaynak"]
     yd = K["cythye_ydkt"]   # ÇYTHYE 5.3.1 (rüzgâr 1,6W) + TBDY 9.2.5.1 (4.11'de 1,2G)
     assert yd["1.4G"] == {"G": 1.4} and yd["1.2G+1.6(Qr|S|R)"] == {"G": 1.2, "S": 1.6}
     assert yd["1.2G+1.6Q+0.5(Qr|S|R)"] == {"G": 1.2, "Q": 1.6, "S": 0.5}
@@ -836,7 +846,8 @@ def test_H_i_temel_kotundan_olculur():
 
 
 def test_rayleigh_tek_serbestlik_kapali_form():
-    """Tek katlı, dört kolonlu, kirişleri çok rijit bina; rijit diyafram (kütle efendi düğümde): T = 2π√(m/k), k = 4·12EI/h³."""
+    """Tek katlı, dört kolonlu, kirişleri çok rijit bina; rijit diyafram (kütle efendi düğümde): T = 2π√(m/k), k = 4·12EI/h³;
+    betonarmede deprem hesabı çatlamış kesitle (TBDY 4.5.8, kolon EI × 0,70)."""
     b = yapi.bina_sablon("betonarme-tek-aciklik")
     b["kesitler"]["K25x50"] = {"tip": "dikdortgen", "b": 1.0, "h": 2.0, "malzeme": "C30"}
     for k in b["kirisler"]:
@@ -845,8 +856,8 @@ def test_rayleigh_tek_serbestlik_kapali_form():
     b["deprem"]["periyot"] = "rayleigh"
     r = yapi.bina_coz(b, anlat=False)
     d = r.veri["deprem"]
-    assert r.veri["ag"]["diyafram"] == "rijit" and len(r.veri["ag"]["diyaframlar"]) == 1
-    k = 4 * 12 * 32000e3 * (0.3 ** 4 / 12) / 3.0 ** 3
+    assert r.veri["ag"]["diyafram"] == "rijit" and len(r.veri["ag"]["diyaframlar"]) == 1 and d["catlamis_rijitlik"]
+    k = 4 * 12 * 32000e3 * 0.70 * (0.3 ** 4 / 12) / 3.0 ** 3
     T = 2 * math.pi * math.sqrt(d["m_t"] / k)
     assert abs(d["X"]["Tp_rayleigh"] / T - 1) < 0.01 and abs(d["Y"]["Tp_rayleigh"] / T - 1) < 0.01
     assert d["X"]["Tp_rayleigh"] >= T          # kiriş tam rijit değil: biraz daha esnek
@@ -897,6 +908,88 @@ def test_simetrik_bina_eta_bir_ve_donme_sifir():
     # %5 dışmerkezlik η_bi'yi 1'in biraz üstüne çıkarır (A1 yok)
     d5 = yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"), anlat=False).veri["deprem"]
     assert all(1.0 < k["eta_bx"] < 1.2 for k in d5["katlar"]) and d5["X"]["D_b"] == 1.0
+
+
+def _a_aksi_rijit(kesit_a=0.9, kesit=0.3):
+    """A aksı kolonları büyük (kesit_a), ötekiler küçük: rijitlik merkezi A aksına kayar → Y depreminde A1 burulma düzensizliği."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["kesitler"]["SA"] = {"tip": "dikdortgen", "b": kesit_a, "h": kesit_a, "malzeme": "C30"}
+    b["kesitler"]["SK"] = {"tip": "dikdortgen", "b": kesit, "h": kesit, "malzeme": "C30"}
+    for c in b["kolonlar"]:
+        c["kesit"] = "SA" if c["aks"][0] == "A" else "SK"
+    return b
+
+
+def test_dbi_kat_bazinda_iki_dogrultuya():
+    """TBDY md. 4.7.4: A1 düzensizliği olan i'inci katta ±%5 dışmerkezlik HER İKİ deprem doğrultusu için D_bi = (η_bi/1,2)²
+    ile büyütülür — kat bazında (η_bi o katın iki doğrultudaki değerinin büyüğü). Düzensizlik Y depreminde çıksa da X depremi
+    dışmerkezliği de büyür; katlar farklı D_bi alır."""
+    r = yapi.bina_coz(_a_aksi_rijit(), anlat=False)
+    v = r.veri
+    d = v["deprem"]
+    kat = d["katlar"]
+    assert all(k["eta_by"] > 1.2 > k["eta_bx"] for k in kat)                       # düzensizlik yalnız Y depreminde
+    for k in kat:
+        eta = max(k["eta_bx"], k["eta_by"])
+        assert yakin(k["D_b"], (eta / 1.2) ** 2, 1e-9) and yakin(d["D_b_kat"][str(k["kat"])], k["D_b"], 1e-9)
+        assert yakin(k["e_x"], 0.05 * k["D_b"] * k["B_dik_x"], 1e-9) and yakin(k["e_y"], 0.05 * k["D_b"] * k["B_dik_y"], 1e-9)
+    Db = [k["D_b"] for k in kat]
+    assert Db[0] > Db[1] > Db[2] > 1.0                                                # kat kat farklı (tek değer değil)
+    assert yakin(d["X"]["D_b"], max(Db)) and yakin(d["Y"]["D_b"], max(Db))
+    # E durumlarındaki ek burulma: EX+ ile EX− tepki torklarının farkı = 2·Σ F_i·e_i (kat bazında D_bi ile), Y için de
+    for yon, y in (("X", "x"), ("Y", "y")):
+        fark = abs(tork(v, v["durumlar"][f"E{yon}+"]) - tork(v, v["durumlar"][f"E{yon}-"]))
+        beklenen = 2 * sum(k[f"F_{y}"] * k[f"e_{y}"] for k in kat)
+        assert yakin(fark, beklenen, 2e-3), (yon, fark, beklenen)
+        tek = 2 * sum(k[f"F_{y}"] * 0.05 * max(Db) * k[f"B_dik_{y}"] for k in kat)   # eski hata: tek (en büyük) D_b
+        assert abs(fark - tek) > 0.02 * tek
+    assert any("md. 4.7.4" in u and "her iki" in u for u in d["uyarilar"]) and d["uygulanabilir"]
+
+
+def test_eta_2_ustu_tablo44_diger_satiri():
+    """η_bi > 2,0: Tablo 4.4'ün 'diğer tüm binalar' satırı (DTS 1–2: BYS ≥ 5, DTS 3–4: BYS ≥ 6) — yöntem otomatik
+    reddedilmez; alçak binada (BYS büyük) yine uygulanabilir. η_bi işaretli ötelemelerle: A–B akslarında Y doğrultusunda
+    perde gibi kolonlar, C'de narin kolonlar ve %30 dışmerkezlikle A kenarı ters yönde ötelenir, (Δ)ort küçülür, η_bi > 2."""
+    b = _a_aksi_rijit(0.3, 0.3)
+    b["kesitler"]["SA"]["h"] = 2.0
+    for c in b["kolonlar"]:
+        if c["aks"][0] in ("A", "B"):
+            c["kesit"], c["yon"] = "SA", "y"
+    b["analiz"]["catlamis_rijitlik"] = False
+    b["deprem"]["dismerkezlik"] = 0.3
+    d = yapi.bina_coz(b, anlat=False).veri["deprem"]
+    eta = max(max(k["eta_bx"], k["eta_by"]) for k in d["katlar"])
+    assert eta > 2.0, eta
+    u = d["uygulanabilirlik"]
+    assert u["satir"] == "diger" and u["esik"] == u["esik_diger"] == (5 if d["DTS"][0] in "12" else 6)
+    assert d["uygulanabilir"] == (d["BYS"] >= u["esik_diger"])
+    assert d["BYS"] >= 6 and d["uygulanabilir"]                                       # H_N = 9,6 m: BYS büyük → izinli
+    assert any("diğer tüm binalar" in x and "yine uygulanabilir" in x for x in d["uyarilar"])
+    assert not any("uygulanamaz (Tablo 4.4)" in x for x in d["uyarilar"])
+    assert all(k["D_b"] <= (2.0 / 1.2) ** 2 + 1e-9 for k in d["katlar"]) and max(k["D_b"] for k in d["katlar"]) > 2.7
+
+
+def test_rijitlik_merkezi_paydalari():
+    """X_RM = Σ(k_y·X)/Σk_y, Y_RM = Σ(k_x·Y)/Σk_x. 9 × 4 m plan (A = 0, B = 9; 1 = 0, 2 = 4), 30×60 kolonlar yön x:
+    hepsi aynı → rijitlik merkezi plan ortası (4,5; 2); A aksı kolonları büyütülünce X_RM A'ya kayar."""
+    b = yapi.bina_sablon("betonarme-tek-aciklik")
+    b["akslar"]["x"][1]["konum"] = 9.0
+    b["kesitler"]["S"] = {"tip": "dikdortgen", "b": 0.3, "h": 0.6, "malzeme": "C30"}
+    for c in b["kolonlar"]:
+        c["kesit"], c["yon"] = "S", "x"
+    rm = yapi._rijitlik_merkezi(yapi._bina_oku(b))[0]
+    assert yakin(rm["X"], 4.5, 1e-12) and yakin(rm["Y"], 2.0, 1e-12)
+    # yalnız A1 kolonu büyük (60×60): X_RM = Σ k_y X / Σ k_y, Y_RM = Σ k_x Y / Σ k_x (eski kod paydaları takas ediyordu)
+    b["kesitler"]["B"] = {"tip": "dikdortgen", "b": 0.6, "h": 0.6, "malzeme": "C30"}
+    b["kolonlar"][0]["kesit"] = "B"
+    B = yapi._bina_oku(b)
+    rm = yapi._rijitlik_merkezi(B)[0]
+    ky = {(c["ix"], c["iy"]): c["Iy_m"] for c in B.kolonlar}
+    kx = {(c["ix"], c["iy"]): c["Iz_m"] for c in B.kolonlar}
+    X = sum(v * B.xk[ix] for (ix, iy), v in ky.items()) / sum(ky.values())
+    Y = sum(v * B.yk[iy] for (ix, iy), v in kx.items()) / sum(kx.values())
+    assert yakin(rm["X"], X, 1e-12) and yakin(rm["Y"], Y, 1e-12) and 0 < rm["X"] < 4.5 and 0 < rm["Y"] < 2.0
+    assert 0 <= rm["X"] <= 9 and 0 <= rm["Y"] <= 4                                    # plan içinde (eski: Y = 8 > 4)
 
 
 def test_diyafram_koleleri_omega_carpi_r(uc_kat):
@@ -952,12 +1045,64 @@ def test_drift_alt_sinirsiz_ve_14TpA_sinirsiz():
 
 def test_catlamis_rijitlik_periyodu_uzatir():
     b = hepsi_acik("betonarme-3kat-3x3", periyot="rayleigh")
-    t1 = yapi.bina_coz(b, anlat=False).veri["deprem"]["X"]["Tp_rayleigh"]
+    b["analiz"]["catlamis_rijitlik"] = False
+    v1 = yapi.bina_coz(b, anlat=False).veri
+    t1 = v1["deprem"]["X"]["Tp_rayleigh"]
+    assert any("4.5.8.1'e aykırı" in u for u in v1["ozet"]["uyarilar"])          # açıkça kapatılırsa çözülür ama uyarılır
     b["analiz"]["catlamis_rijitlik"] = True
     v = yapi.bina_coz(b, anlat=False).veri
     t2 = v["deprem"]["X"]["Tp_rayleigh"]
     assert math.sqrt(1 / 0.7) - 1e-6 <= t2 / t1 <= math.sqrt(1 / 0.35) + 1e-6
     assert v["ag"]["rijitlik_carpani"] == {"kolon": 0.7, "kiris": 0.35} and v["deprem"]["catlamis_rijitlik"]
+    assert not any("4.5.8.1'e aykırı" in u for u in v["ozet"]["uyarilar"])
+
+
+def test_catlamis_rijitlik_varsayilani():
+    """TBDY 4.5.8.1: betonarme + deprem → varsayılan çatlamış; deprem kapalı ya da çelik → brüt (anahtar verilmezse)."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["analiz"].pop("catlamis_rijitlik")
+    assert yapi._bina_oku(b).analiz["catlamis_rijitlik"] is True
+    b["yuk_durumlari"]["E"]["acik"] = False
+    b["deprem"]["etkin"] = False
+    assert yapi._bina_oku(b).analiz["catlamis_rijitlik"] is False
+    c = yapi.bina_sablon("celik-1kat-depo")
+    c["analiz"].pop("catlamis_rijitlik", None)
+    c["yuk_durumlari"]["E"]["acik"] = True
+    assert yapi._bina_oku(c).analiz["catlamis_rijitlik"] is False
+    for ad in ("betonarme-tek-aciklik", "betonarme-2kat-3x2", "betonarme-3kat-3x3", "betonarme-4kat-4x3"):
+        assert yapi.bina_sablon(ad)["analiz"]["catlamis_rijitlik"] is True
+
+
+def test_catlamis_yalniz_deprem_birlesimlerinde():
+    """TBDY 4.5.8.3: G durumu (deprem dışı birleşimler) çatlamış ayarından bağımsız (brüt K); E durumu değişir; deprem
+    birleşimleri G'yi çatlamış kesitli kopyadan (G~c) alır, 1.4G+1.6Q brüt G'den."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    r1 = yapi.bina_coz(b, anlat=False)
+    b0 = copy.deepcopy(b)
+    b0["analiz"]["catlamis_rijitlik"] = False
+    r0 = yapi.bina_coz(b0, anlat=False)
+    G1, G0 = r1.veri["durumlar"]["G"], r0.veri["durumlar"]["G"]
+    for e1, e0 in zip(G1["elemanlar"], G0["elemanlar"]):
+        assert all(abs(a - c) <= 1e-9 * max(1.0, abs(c)) for a, c in zip(e1["uc_kuvvetleri"], e0["uc_kuvvetleri"]))
+    E1, E0 = r1.veri["durumlar"]["EX+"], r0.veri["durumlar"]["EX+"]
+    assert max(abs(d1["uX"]) for d1 in E1["dugumler"]) > 1.3 * max(abs(d0["uX"]) for d0 in E0["dugumler"])
+    p = r1.ic["paket"]
+    assert "G~c" in p.durum and "G~c" not in r1.veri["durumlar"] and "G~c" not in r0.ic["paket"].durum
+    ad = "G+Q+0.2S+EX++0.3EY++0.3EZ"
+    assert r1.ic["kombinasyonlar"][ad] == {"G~c": 1.0, "Q~c": 1.0, "S~c": 0.2, "EX+": 1.0, "EY+": 0.3, "EZ": 0.3}
+    assert r1.ic["kombinasyonlar"]["1.4G+1.6Q"] == {"G": 1.4, "Q": 1.6}
+    k = next(k for k in r1.veri["kombinasyonlar"] if k["ad"] == ad)
+    assert k["katsayilar"] == {"G": 1.0, "Q": 1.0, "S": 0.2, "EX+": 1.0, "EY+": 0.3, "EZ": 0.3} and k["catlamis"]
+    # G~c'nin toplam düşey tepkisi aynı (denge), iç kuvvetleri farklı (rijitlik dağılımı)
+    Gc = yapi.kombinasyon_kisa(r1.ic, "G~c")
+    assert yakin(sum(t["FZ"] for t in Gc["tepkiler"]), sum(t["FZ"] for t in G1["tepkiler"]), 1e-8)
+    assert any(abs(a["uc_kuvvetleri"][5] - c["uc_kuvvetleri"][5]) > 1e-3 for a, c in zip(Gc["elemanlar"], G1["elemanlar"]))
+    # çelikte çarpan uygulanmaz (yalnız beton elemanlar)
+    c = yapi.bina_sablon("celik-1kat-depo")
+    c["yuk_durumlari"]["E"]["acik"] = True
+    c["analiz"]["catlamis_rijitlik"] = True
+    vc = yapi.bina_coz(c, anlat=False).veri
+    assert all(e["rijitlik_carpani"] == 1.0 for e in vc["ag"]["elemanlar"])
 
 
 def test_ruzgar_el_hesabi(uc_kat):
@@ -992,7 +1137,7 @@ def test_EZ_duşey_deprem(uc_kat):
     assert yakin(v["deprem"]["EZ_katsayi"], kz)
     K = yapi.kombinasyon_kisa(uc_kat.ic, "EZ")
     assert yakin(sum(t["FZ"] for t in K["tepkiler"]), kz * v["yukler"]["toplam"]["G"], 1e-8)
-    G = v["durumlar"]["G"]
+    G = yapi.kombinasyon_kisa(uc_kat.ic, "G~c")         # EZ yalnız deprem birleşimlerinde: çatlamış kesitli G'nin katı
     for eg, ez in zip(G["elemanlar"], K["elemanlar"]):
         for a, b_ in zip(eg["uc_kuvvetleri"], ez["uc_kuvvetleri"]):
             assert abs(b_ - kz * a) <= 1e-7 * max(1.0, abs(a))
@@ -1012,14 +1157,76 @@ def test_kombinasyon_adlari_ve_sayilari(uc_kat):
     assert K["G+Q+EY-"]["tur"] == "drift"
     uyg = [k for k in v["kombinasyonlar"] if k["uygulandi"]]
     assert sum(1 for k in uyg if k["tur"] == "deprem") == 64 and sum(1 for k in uyg if k["tur"] == "drift") == 4
-    assert sum(1 for k in uyg if "W" in "".join(k["katsayilar"])) == 8
+    # rüzgârlı: 6.5 ve 6.6 (4 + 4) + kar–rüzgâr TS 498 md. 12.1 (a) S/2 + W ve (b) S + W/2 (4 + 4)
+    assert sum(1 for k in uyg if "W" in "".join(k["katsayilar"])) == 16
+    assert K["G+1.3Q+0.65S+1.3W+X"]["katsayilar"] == {"G": 1.0, "Q": 1.3, "S": 0.65, "W+X": 1.3} and "12.1" in K["G+1.3Q+0.65S+1.3W+X"]["kaynak"]
+    assert K["G+1.3Q+1.3S+0.65W-Y"]["katsayilar"] == {"G": 1.0, "Q": 1.3, "S": 1.3, "W-Y": 0.65}
+    assert K["1.4G+1.6Q+1.6S"]["katsayilar"] == {"G": 1.4, "Q": 1.6, "S": 1.6} and "6.3" in K["1.4G+1.6Q+1.6S"]["kaynak"]
+    assert K["G+Q+S"]["tur"] == "servis" and K["G+Q+S"]["uygulandi"]
     n = len([k for k in uyg if k["tur"] != "drift"])
-    assert n == 74 == v["ozet"]["kombinasyon_sayisi"] == v["zarf"]["kombinasyon_sayisi"] == len(v["zarf"]["kombinasyonlar"])
+    assert n == 84 == v["ozet"]["kombinasyon_sayisi"] == v["zarf"]["kombinasyon_sayisi"] == len(v["zarf"]["kombinasyonlar"])
     assert v["ozet"]["drift_kombinasyon_sayisi"] == 4 and not any(a.startswith("G+Q+E") for a in v["zarf"]["kombinasyonlar"])
     assert len({k["ad"] for k in v["kombinasyonlar"]}) == len(v["kombinasyonlar"])      # adlar tekil
     for k in uyg:                                                                         # katsayı anahtarları durum adları
         assert set(k["katsayilar"]) <= set(v["durumlar"]), k["ad"]
         assert yapi._komb_adi(k["katsayilar"]) == k["ad"]
+
+
+def test_kar_kombinasyonlari_ts500_toplam_tepki(uc_kat):
+    """Kar açık ts500 kümesi: 1,4G + 1,6Q + 1,6S ve TS 498 md. 12.1 kar–rüzgâr birleşimleri doğrusal toplam (Σ FZ tepki)."""
+    v = uc_kat.veri
+    T = {d: sum(t["FZ"] for t in v["durumlar"][d]["tepkiler"]) for d in ("G", "Q", "S")}
+    for ad, (g, q, s) in (("1.4G+1.6Q+1.6S", (1.4, 1.6, 1.6)), ("G+1.3Q+0.65S+1.3W+X", (1.0, 1.3, 0.65)),
+                          ("G+1.3Q+1.3S+0.65W+Y", (1.0, 1.3, 1.3)), ("G+Q+S", (1.0, 1.0, 1.0))):
+        K = yapi.kombinasyon_kisa(uc_kat.ic, ad)
+        assert yakin(sum(t["FZ"] for t in K["tepkiler"]), g * T["G"] + q * T["Q"] + s * T["S"], 1e-4), ad   # S ince kayıt (5 basamak)
+    assert yakin(T["S"], v["yukler"]["toplam"]["S"], 1e-4) and T["S"] > 0
+
+
+def test_duvar_parapet_ve_kiris_oz_net():
+    """Şablon: çatı kirişinde kat yüksekliğinde duvar yok, 1 m parapet (duvar_h); ara kat dış kirişinde h_kat − h_kiriş.
+    Kiriş öz ağırlığı varsayılan A_net = b·(h − t_döşeme) (döşeme içindeki kısım döşemede sayıldı); 'brut' seçeneği b·h.
+    İki durumda da korunum (toplam = kolon tabanı = temel)."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    B = yapi._bina_oku(b)
+    cati = [k for k in B.kirisler if k["kat"] == 3 and k["duvar"]]
+    ara = [k for k in B.kirisler if k["kat"] == 1 and k["duvar"]]
+    assert cati and all(k["h_duvar"] == 1.0 and k["h_duvar_kaynak"].startswith("duvar_h") for k in cati)
+    assert ara and all(yakin(k["h_duvar"], 3.2 - 0.55) for k in ara)
+    assert len(cati) == len(ara) == 8                                   # yalnız dış kirişler
+    Y = yapi._yukleri_hazirla(B)
+    w = B.duvarlar["tugla19"]["deger"]
+    r_cati = next(r for r in Y.kirisler if r["no"] == cati[0]["no"])
+    assert yakin(r_cati["kN_m"]["duvar"], w * 1.0)
+    # öz ağırlık: net (t = 0,15) ve brüt
+    k1 = B.kiris_no[1]
+    assert yakin(k1["A_oz"], 0.25 * (0.55 - 0.15)) and k1["t_doseme"] == 0.15
+    assert yakin(next(r for r in Y.kirisler if r["no"] == 1)["kN_m"]["oz"], 25.0 * 0.25 * 0.40)
+    bb = copy.deepcopy(b)
+    bb["analiz"]["kiris_oz"] = "brut"
+    vb = yapi.bina_coz(bb, anlat=False).veri
+    vn = yapi.bina_coz(b, anlat=False).veri
+    n_par = sum(1 for k in B.kirisler)
+    fark = vb["akis"]["korunum"]["G"]["kiris_oz"] - vn["akis"]["korunum"]["G"]["kiris_oz"]
+    assert yakin(fark, sum(25.0 * k["b"] * 0.15 * k["L"] for k in B.kirisler), 1e-9) and n_par == 36
+    for v in (vb, vn):
+        p = v["akis"]["korunum"]["G"]
+        assert yakin(p["toplam"], p["kolon_taban"], 1e-6) and yakin(p["toplam"], p["temel"], 1e-6)
+        assert yakin(p["toplam"], v["yukler"]["toplam"]["G"], 1e-9)
+    # çelik profilde katalog ağırlığı (döşeme payı düşülmez)
+    c = yapi._bina_oku(yapi.bina_sablon("celik-1kat-depo"))
+    yapi._yukleri_hazirla(c)
+    assert all(k["A_oz"] == k["A"] and k["t_doseme"] == 0.0 for k in c.kirisler)
+    # duvar_h hatası
+    bh = copy.deepcopy(b)
+    bh["kirisler"][0]["duvar_h"] = 25
+    with pytest.raises(mo.MatrisHatasi, match="duvar_h"):
+        yapi._bina_oku(bh)
+    bh["kirisler"][0]["duvar_h"] = 1.2
+    assert yapi._bina_oku(bh).kiris_no[bh["kirisler"][0]["no"]]["h_duvar"] == 1.2
+    bh["analiz"]["kiris_oz"] = "yarim"
+    with pytest.raises(mo.MatrisHatasi, match="kiris_oz"):
+        yapi._bina_oku(bh)
 
 
 def test_kombinasyon_dengeleri_ve_zarf_kapsar(uc_kat):
@@ -1029,7 +1236,7 @@ def test_kombinasyon_dengeleri_ve_zarf_kapsar(uc_kat):
     for k in v["kombinasyonlar"]:
         if not k["uygulandi"] or k["tur"] == "drift":
             continue
-        K = paket.kisa(paket.birlesim(k["katsayilar"]))
+        K = paket.kisa(paket.birlesim(uc_kat.ic["kombinasyonlar"][k["ad"]]))     # hesapta kullanılan katsayılar (G~c …)
         for e in K["elemanlar"]:
             z = zarf[e["no"]]
             for a in ("N", "M", "V", "My", "Vz", "T"):

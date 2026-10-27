@@ -401,7 +401,7 @@
       temeller: { tip: "tekil", varsayilan: { B: 1.6, L: 1.6, h: 0.6 }, zemin: { q_em: 200, k0: 20000 }, mesnet: "ankastre", ozel: [] },
       yuk_durumlari: { G: { acik: true }, Q: { acik: true }, S: { acik: false, bolge: 1, rakim: 100, mu: 0.8 }, W: { acik: false, C: 1.2 }, E: { acik: false } },
       deprem: { SS: 1.0, S1: 0.3, SS_DD3: 0.4, S1_DD3: 0.12, zemin_sinifi: "ZC", DD: "DD-2", BKS: 3, I: 1.0, tasiyici: celik ? "celik-cerceve-yuksek" : "betonarme-cerceve-yuksek", R: 8, D: 3, n: 0.3, Ct: celik ? 0.08 : 0.1, periyot: "ampirik", diyafram: "rijit", dismerkezlik: 0.05, dolgu: "bitisik" },
-      kombinasyon_kumesi: celik ? "cythye_ydkt" : "ts500", analiz: { catlamis_rijitlik: false, diyagram_nokta: 11 },
+      kombinasyon_kumesi: celik ? "cythye_ydkt" : "ts500", analiz: { catlamis_rijitlik: !celik, diyagram_nokta: 11 },   // TBDY 4.5.8.1: betonarmede çatlamış kesit
     };
   }
   const YERLESIK_SABLON = {
@@ -524,8 +524,8 @@
     b.deprem.I = TBDY.I[b.deprem.BKS];
     b.birim = b.birim || { kuvvet: "kN", uzunluk: "m" };
     b.kombinasyon_kumesi = b.kombinasyon_kumesi || (b.sistem === "celik" ? "cythye_ydkt" : "ts500");
-    b.analiz = Object.assign({ catlamis_rijitlik: false, diyagram_nokta: 11 }, b.analiz || {});
-    b.analiz.catlamis_rijitlik = !!b.analiz.catlamis_rijitlik;
+    b.analiz = Object.assign({ catlamis_rijitlik: b.sistem !== "celik", diyagram_nokta: 11 }, b.analiz || {});   // TBDY 4.5.8.1: betonarmede varsayılan çatlamış
+    b.analiz.catlamis_rijitlik = b.analiz.catlamis_rijitlik == null ? b.sistem !== "celik" : !!b.analiz.catlamis_rijitlik;
     if (b.analiz.celik_Lb != null && b.analiz.celik_Lb !== "boy") b.analiz.celik_Lb = "otomatik";
     return b;
   }
@@ -1087,7 +1087,8 @@
         alanH("Diyafram", '<select class="girdi" data-dep="diyafram">' + secenekler([["rijit", "Rijit (efendi–köle)"], ["esnek", "Esnek (kat kuvveti düğümlere kütleyle)"]], dp.diyafram) + "</select>") + "</div>" +
       '<div class="bn-iki">' + g("dismerkezlik", "Ek dışmerkezlik (4.5.10.2; 0,05)", dp.dismerkezlik) +
         alanH("Dolgu duvar (4.9.1.3)", '<select class="girdi" data-dep="dolgu">' + secenekler([["bitisik", "Çerçeveye bitişik gevrek dolgu (0,008κ)"], ["esnek", "Esnek derzli / bağımsız (0,016κ)"]], dp.dolgu) + "</select>") + "</div>" +
-      '<label class="bn-onay"><input type="checkbox" data-analiz="catlamis_rijitlik"' + (B.analiz.catlamis_rijitlik ? " checked" : "") + "> Çatlamış kesit rijitliği (Tablo 4.2: kiriş 0,35·EI, kolon 0,70·EI; yalnız deprem kombinasyonlarında)</label>" +
+      '<label class="bn-onay"><input type="checkbox" data-analiz="catlamis_rijitlik"' + (B.analiz.catlamis_rijitlik ? " checked" : "") + "> Çatlamış (etkin) kesit rijitliği — TBDY 4.5.8, Tablo 4.2: kiriş 0,35·EI, kolon 0,70·EI. Betonarmede zorunlu (4.5.8.1); iki K ile çözülür: deprem birleşimleri (E ve onlara giren G, Q, S) çatlamış, deprem dışı birleşimler (1,4G + 1,6Q, rüzgâr, servis) brüt kesitle (4.5.8.3)</label>" +
+      (!B.analiz.catlamis_rijitlik && B.sistem !== "celik" ? '<p class="bn-uyari-kutu">Çatlamış kesit kapalı: TBDY 4.5.8.1’e aykırı — deprem hesabı brüt kesitle yapılır (periyot kısa, öteleme küçük çıkar).</p>' : "") +
       (B.yuk_durumlari.E.acik ? "" : '<p class="bn-uyari-kutu">E yük durumu kapalı: deprem çözümde hesaba girmez. “Yükler” sekmesinden açın.</p>') +
       '<h3 class="bn-pbaslik">Spektrum önizlemesi</h3><div class="bn-spek" id="bn-spek-on"><p class="not">Hesaplanıyor…</p></div><div id="bn-spek-tablo"></div>';
     return h;

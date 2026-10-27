@@ -1176,8 +1176,13 @@ def _liste(v, ad):
 
 
 def kolon_kontrol(Nd, Mdx, Mdy, b, h, As_toplam, paspayi, beton="C30", donati="B420C", yerlesim="dort_yuz",
-                  n_cubuk=None, adlar=None, tbdy=True, n=60, anl=None) -> dict:
+                  n_cubuk=None, adlar=None, tbdy=False, n=60, anl=None, deprem=None) -> dict:
     """TS 500 kolon tahkiki: her kombinasyon (Nd kN basınç +, Mdx, Mdy kN·m) için radyal D/C.
+
+    ``tbdy=True``: TBDY 2018 kolon koşulları da denetlenir — en küçük boyut ≥ 300 mm (md. 7.3.1.1) ve Ndm ≤ 0,40 fck Ac
+    (md. 7.3.1.2). Ndm deprem birleşimindeki eksenel kuvvettir: ``deprem`` (bool ya da noktalar kadar bool listesi) hangi
+    noktaların deprem birleşimi olduğunu söyler; verilmezse bütün noktalar deprem birleşimi sayılır (güvenli taraf, uyarılır).
+    Varsayılan ``tbdy=False``: yalnız TS 500 (deprem içermeyen birleşimlere 0,40 fck Ac sınırı uygulanmaz).
 
     Nd, Mdx, Mdy sayı ya da eşit uzunlukta listeler. Her doğrultuda en küçük dışmerkezlik
     e_min = 15 mm + 0,03h (TS 500 md. 6.3.10) uygulanır (tek eksenli kontrollerde, doğrultu başına ayrı ayrı).
@@ -1198,6 +1203,12 @@ def kolon_kontrol(Nd, Mdx, Mdy, b, h, As_toplam, paspayi, beton="C30", donati="B
         adlar = [f"K{i + 1}" for i in range(m)]
     elif len(adlar) != m:
         raise MatrisHatasi("adlar listesinin uzunluğu kombinasyon sayısına eşit olmalı.")
+    if deprem is None or isinstance(deprem, bool):
+        dep_liste = [True if deprem is None else deprem] * m
+    else:
+        dep_liste = [bool(x) for x in deprem]
+        if len(dep_liste) != m:
+            raise MatrisHatasi("deprem listesinin uzunluğu kombinasyon sayısına eşit olmalı.")
     ex = kolon_etkilesim(b, h, As_toplam, paspayi, beton, donati, "x", n, yerlesim, n_cubuk)
     ey = kolon_etkilesim(b, h, As_toplam, paspayi, beton, donati, "y", n, yerlesim, n_cubuk)
     bm, dm = _malzemeler(beton, donati)
@@ -1219,7 +1230,7 @@ def kolon_kontrol(Nd, Mdx, Mdy, b, h, As_toplam, paspayi, beton="C30", donati="B
     if tbdy:
         genel.append(_kontrol("TBDY: kolon en küçük boyutu ≥ 300 mm", 300.0, min(bmm, hmm), K_TS500["kolon_boyut_tbdy"], "mm"))
     noktalar = []
-    for ad, N, Mx, My in zip(adlar, Ns, Mxs, Mys):
+    for ad, N, Mx, My, dep_i in zip(adlar, Ns, Mxs, Mys, dep_liste):
         Mx_t = max(abs(Mx), N * emin_x / 1e3) if N > 0 else abs(Mx)
         My_t = max(abs(My), N * emin_y / 1e3) if N > 0 else abs(My)
         dcx, Nrx_e, Mrx_e = _isin_kesisim(egx, N, Mx_t)
@@ -1260,7 +1271,7 @@ def kolon_kontrol(Nd, Mdx, Mdy, b, h, As_toplam, paspayi, beton="C30", donati="B
                 k.append(_kontrol("İki eksenli eğilme (Mx/Mrx + My/Mry ≤ 1)", dc2, 1.0, K_TS500["iki_eksen"], dc=dc2))
         if N > 0:
             k.append(_kontrol("Nd ≤ 0,9 fcd Ac", N, N09, K_TS500["N09"], "kN"))
-            if tbdy:
+            if tbdy and dep_i:
                 k.append(_kontrol("TBDY: Ndm ≤ 0,40 fck Ac", N, N040, K_TS500["N040"], "kN"))
         noktalar.append({"ad": str(ad), "Nd_kN": N, "Mdx_kNm": Mx, "Mdy_kNm": My, "Mx_tasarim_kNm": Mx_t,
                          "My_tasarim_kNm": My_t, "e_min_x_mm": emin_x, "e_min_y_mm": emin_y,
@@ -1282,12 +1293,14 @@ def kolon_kontrol(Nd, Mdx, Mdy, b, h, As_toplam, paspayi, beton="C30", donati="B
         durum = "yeterli"
     if any(p["iki_eksen_yontemi"] for p in noktalar):
         uyarilar.append("İki eksenli eğilme öğretici yaklaşımla denetlendi: " + K_TS500["iki_eksen"] + ".")
-    if tbdy:
-        uyarilar.append("TBDY 7.3.1.2'deki Ndm, G + Q + E birleşimi altındaki en büyük eksenel basınçtır; burada her "
-                        "kombinasyona uygulandı (güvenli tarafta). Deprem içermeyen birleşimler için tbdy=False.")
+    if tbdy and deprem is None:
+        uyarilar.append("TBDY 7.3.1.2'deki Ndm, deprem birleşimi (G + Q + E) altındaki en büyük eksenel basınçtır; deprem "
+                        "listesi verilmediği için her kombinasyona uygulandı (güvenli tarafta). Deprem içermeyen noktalar için "
+                        "deprem=[...] ile işaretleyin ya da tbdy=False kullanın.")
     sonuc = _json({"tur": "kolon_kontrol", "beton": bm["sinif"], "donati": dm["sinif"], "b_mm": bmm, "h_mm": hmm,
                    "As_cm2": ex["As_cm2"], "rho": rho, "N0_kN": N0, "noktalar": noktalar, "egri_x": ex, "egri_y": ey,
-                   "dc": dc, "durum": durum, "kontroller": kontroller, "uyarilar": uyarilar})
+                   "dc": dc, "durum": durum, "kontroller": kontroller, "uyarilar": uyarilar, "tbdy": bool(tbdy),
+                   "deprem": dep_liste})
     if anl is not None:
         _anlat_kolon_kontrol(anl, sonuc, bm, dm)
     return sonuc
@@ -1305,8 +1318,12 @@ def _anlat_kolon_kontrol(anl, s, bm, dm):
               f"e_min,x = {_f(p0['e_min_x_mm'], 1)} mm (h = {_f(s['h_mm'], 0)} mm), e_min,y = {_f(p0['e_min_y_mm'], 1)} mm. "
               "Tasarım momenti Md ≥ Nd·e_min alınır.")
     anl.mat(rf"\text{{D/C}} = \frac{{\sqrt{{N_d^2 + M_d^2}}}}{{\sqrt{{N_r^2 + M_r^2}}}}\Big|_{{\text{{aynı ışın}}}},\qquad "
-            rf"N_d \le 0{{,}}9 f_{{cd}} A_c = {_L(s['egri_x']['N_max_TS500_kN'], 1)}\ \text{{kN}},\qquad "
-            rf"N_{{dm}} \le 0{{,}}40 f_{{ck}} A_c = {_L(s['egri_x']['N_max_TBDY_kN'], 1)}\ \text{{kN}}")
+            rf"N_d \le 0{{,}}9 f_{{cd}} A_c = {_L(s['egri_x']['N_max_TS500_kN'], 1)}\ \text{{kN}}"
+            + (rf",\qquad N_{{dm}} \le 0{{,}}40 f_{{ck}} A_c = {_L(s['egri_x']['N_max_TBDY_kN'], 1)}\ \text{{kN (TBDY, deprem birleşimleri)}}"
+               if s.get("tbdy") else ""))
+    if not s.get("tbdy"):
+        anl.metin("TBDY 7.3.1.2 sınırı N_dm ≤ 0,40 f_ck A_c yalnız deprem birleşimlerine uygulanır; bu tahkik `tbdy=False` "
+                  "(TS 500, deprem içermeyen birleşimler). Deprem birleşimleri için `tbdy=True, deprem=[...]`.")
     if any(p["iki_eksen_yontemi"] == "Bresler ters yük" for p in s["noktalar"]):
         anl.metin("İki eksenli eğilme: TS 500 bir etkileşim formülü vermez; öğretici yaklaşım olarak Bresler ters yük "
                   "formülü kullanılır (Nd ≥ 0,1 fck Ac için):")

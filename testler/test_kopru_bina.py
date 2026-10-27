@@ -167,8 +167,14 @@ def test_bina_kombinasyon_onbellek(kopru):
     s = z["sonuc"]
     assert s["diyagram"] is True and all(len(e["M"]) == len(e["x"]) >= 11 for e in s["elemanlar"])
     assert all(abs(x) < 1e-6 for x in s["denge"].values())
-    # durumların (ince kayıt: uç kuvvetleri) katsayılı toplamıyla aynı uç kuvvetleri
-    D = v["durumlar"]
+    # durumların (ince kayıt: uç kuvvetleri) katsayılı toplamıyla aynı uç kuvvetleri; deprem birleşimi G, Q, S'yi çatlamış
+    # kesitli kopyalardan (G~c …, TBDY 4.5.8.3) alır — bunlar yanıtta yok, motordan tek durum olarak istenir
+    assert k["catlamis"] is True
+    D = dict(v["durumlar"])
+    for ad in ("G", "Q", "S"):
+        y = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": kimlik, "ad": ad + "~c"})
+        assert y["hata"] is None
+        D[ad] = y["sonuc"]
     for i, e in enumerate(s["elemanlar"]):
         for j in range(12):
             top = sum(g * D[ad]["elemanlar"][i]["uc_kuvvetleri"][j] for ad, g in k["katsayilar"].items())

@@ -237,6 +237,57 @@ def test_celik_sablon(cozumler):
             assert e["ozet"]["Lb_m"] > 0 and e["ozet"]["Mc_kNm"] < e1["ozet"]["Mc_kNm"] and e["dc"] > e1["dc"]
     # kolon güçlü eksen yon'a göre: HEB 240, yon x → güçlü eksen momenti motor M (bina Y ekseni etrafında)
     r = cozumler["celik-1kat-depo"]
+    _ = r
+
+
+def test_celik_kiris_negatif_moment_alt_baslik(cozumler):
+    """Döşeme yalnız üst başlığı tutar: pozitif moment L_b = 0; mesnette (negatif moment) alt başlık basınçta → L_b = açıklık,
+    C_b moment diyagramından (ÇYTHYE Denk. 9.1). İki bölge ayrı denetlenir, büyük D/C belirler. IPE 300, B mesnedi."""
+    r = cozumler["celik-1kat-depo"]
+    v = r.veri
+    k = next(k for k in v["bina"]["kirisler"] if k["kesit"] == "IPE300" and k["bas"] == ["A", "1"])
+    e = kayit(v, "kiris", k["no"])
+    o = e["ozet"]
+    assert o["Lb_m"] == 0.0 and yakin(o["Lb_neg_m"], 6.0) and o["bolge"] in ("pozitif", "negatif")
+    assert 1.0 < o["Cb_neg"] < 3.0 and o["dc_negatif"] is not None and yakin(e["dc"], max(o["dc_pozitif"], o["dc_negatif"]), 1e-4)
+    assert any("negatif M" in x["ad"] for x in e["kontroller"]) and any("pozitif M" in x["ad"] for x in e["kontroller"])
+    # C_b el hesabı: belirleyen kombinasyonun negatif momentli parça diyagramı, çeyrek noktalar
+    ad = "1.2G+1.6Q"
+    d = diyagram(yapi.kombinasyon_kisa(r.ic, ad), k["parcalar"][0]["eleman"])
+    xs, M = d["x"], d["M"]
+    L = xs[-1]
+    MA, MB, MC = (abs(float(np_interp(f * L, xs, M))) for f in (0.25, 0.5, 0.75))
+    Cb = tasarim.cb_katsayisi(max(abs(m) for m in M), MA, MB, MC)
+    assert min(M) < 0 and 1.5 < Cb < 3.0
+    assert o["Cb_neg"] <= Cb * (1 + 1e-4)                               # en küçük C_b (güvenli taraf; 5 anlamlı basamak)
+    # el hesabı: C_b = 1 ile L_b = 6 m'de kapasite çok düşer (eski L_b = 0 kabulü negatif bölgede güvensizdi)
+    Mneg = -min(M)
+    ust = tasarim.celik_egilme("IPE 300", 275.0, Lb=0.0)["Mc_kNm"]
+    alt1 = tasarim.celik_egilme("IPE 300", 275.0, Lb=6.0, Cb=1.0)["Mc_kNm"]
+    altC = tasarim.celik_egilme("IPE 300", 275.0, Lb=6.0, Cb=o["Cb_neg"])["Mc_kNm"]
+    assert alt1 < 0.6 * ust and Mneg / alt1 > 1.0 and altC <= ust + 1e-9
+    assert yakin(o["Mc_neg_kNm"], altC, 1e-4)
+    assert e["dc"] <= 1.0 and v["tasarim"]["en_buyuk_dc"] <= 1.0                         # şablon yönetmeliği sağlar
+    # 'boy' seçeneği: her yerde L_b = L, C_b = 1, tek denetim
+    b = yapi.bina_sablon("celik-1kat-depo")
+    b["analiz"]["celik_Lb"] = "boy"
+    e2 = kayit(yapi.bina_coz(b, anlat=False, goster="yok").veri, "kiris", k["no"])
+    assert e2["ozet"]["Lb_m"] == 6.0 and "Cb_neg" not in e2["ozet"] and e2["dc"] > e["dc"]
+    # anlatım: iki bölge başlığı
+    md = yapi.eleman_tasarim(r.ic, "kiris", k["no"], goster="yok").anlatim.markdown()
+    assert "pozitif moment" in md and "negatif moment" in md and "alt başlık" in md
+
+
+def np_interp(x, xs, ys):
+    for i in range(len(xs) - 1):
+        if xs[i] <= x <= xs[i + 1]:
+            return ys[i] + (ys[i + 1] - ys[i]) * (x - xs[i]) / (xs[i + 1] - xs[i])
+    return ys[-1]
+
+
+def test_celik_kolon_guclu_eksen(cozumler):
+    v = cozumler["celik-1kat-depo"].veri
+    r = cozumler["celik-1kat-depo"]
     for c in v["bina"]["kolonlar"]:
         kk = yapi.eleman_tasarim(r.ic, "kolon", c["no"], goster="yok").veri
         d = diyagram(yapi.kombinasyon_kisa(r.ic, kk["kuvvetler"][0]["ad"]), c["eleman"])

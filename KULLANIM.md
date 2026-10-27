@@ -334,17 +334,26 @@ Bina modeli bir sözlüktür (`tur: "bina"`): `akslar` (X harfli, Y sayılı; ko
 `malzemeler` (`{"kutuphane": "C30/37"}` ya da `"S275"`), `kesitler` (`dikdortgen` b/h m ya da `profil` "IPE 300"),
 `kolonlar` (`aks`, `kat`, `kesit`, `yon` x/y: güçlü eksenin çalıştığı doğrultu), `kirisler` (`bas`/`son` aynı aks çizgisinde;
 komşu olmayan akslar arasında verilirse ara kesişimlerde bölünür), `dosemeler` (tek hücrelik panel, `kullanim` TS 498 sınıfı
-ya da `q`, `g_ek` kaplama), `duvarlar`, `ek_yukler`, `temeller` (B, L, q_em, `mesnet`: ankastre / mafsal / elastik). Bina
+ya da `q`, `g_ek` kaplama), `duvarlar`, `ek_yukler`, `temeller` (B, L, q_em, `mesnet`: ankastre / mafsal / elastik). Duvar
+oturduğu kirişe yük verir; yüksekliği kirişin **altındaki** kat yüksekliği − kiriş yüksekliğidir (kirişte `duvar_h` ile açıkça
+verilir: çatıda parapet 1,0 m; şablonlar çatı kirişine kat boyu duvar koymaz). Betonarme kirişin öz ağırlığı varsayılan
+`analiz.kiris_oz = "net"`: A = b·(h − t_döşeme), döşeme içindeki kısım plak ağırlığında sayıldığı için (`"brut"`: b·h). Bina
 koordinatı X sağa, Y derinlik, Z yukarı; motor dönüşümü (`x_m = X, y_m = Z, z_m = −Y`) tek yerde yapılır ve sonuçlar
 bina koordinatında döner. Sınırlar: 12×12 aks, 12 kat, 1500 SD; hatalar öğreticidir (yüzen döşeme, kolonsuz kat, bilinmeyen
 kesit, model çok büyük…). `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü
 bunları yanıtın `ozet.uyarilar` alanına yazar.
 
-**Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları SAP2000'deki "load pattern" gibi ayrı ayrı kurulur ve tek
+**Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları SAP2000'deki "load pattern" gibi ayrı ayrı kurulur ve bir
 K ile birlikte çözülür: G, Q, S (kar, TS 498:2021 md. 11 Çizelge 3: s = μ1·S_k, çatı döşemelerine 45° kuralıyla), W+X / W−X /
 W+Y / W−Y (rüzgâr, md. 14: W_i = C·q(z_i)·B_cephe·kat payı, Çizelge 4 basamakları) ve TBDY 2018 eşdeğer deprem yükü EX+, EX−,
 EY+, EY− (± %5 dışmerkezlik) ile EZ = (2/3)·S_DS·G. Deprem açıksa her kata kütle merkezinde bir efendi düğüm konur (rijit
-diyafram, `deprem.diyafram: "esnek"` ile kapatılır).
+diyafram, `deprem.diyafram: "esnek"` ile kapatılır). Betonarme binada deprem açıkken **çatlamış (etkin) kesit rijitliği**
+(TBDY 4.5.8, Tablo 4.2: kolon 0,70·EI, kiriş 0,35·EI) varsayılandır (4.5.8.1 zorunlu kılar; `analiz.catlamis_rijitlik: false`
+yazılırsa çözülür ama "TBDY 4.5.8.1'e aykırı" uyarısı eklenir). 4.5.8.3 gereği iki K kurulur: brüt K ile G, Q, S, W (deprem
+dışı birleşimler, servis, yük akışı); çatlamış K ile deprem durumları ve deprem birleşimlerine giren G~c, Q~c, S~c kopyaları
+(`veri.kombinasyonlar[i].catlamis: true`; `kombinasyon_kisa(r.ic, "G~c")` ile okunur). A1 burulma düzensizliğinde (η_bi > 1,2)
+±%5 dışmerkezlik kat bazında ve iki doğrultu için D_bi = (max η_bi/1,2)² ile büyütülür (md. 4.7.4; `deprem.D_b_kat`);
+η_bi > 2 ise Tablo 4.4'ün "diğer tüm binalar" satırı uygulanır.
 
 ```python
 b = yapi.bina_sablon("betonarme-2kat-3x2")
@@ -354,7 +363,7 @@ b["yuk_durumlari"]["E"] = {"acik": True}
 b["deprem"].update({"SS": 1.2, "S1": 0.35, "SS_DD3": 0.45, "S1_DD3": 0.13,          # AFAD TDTH (DD-2 ve DD-3)
                     "zemin_sinifi": "ZD", "BKS": 3, "tasiyici": "betonarme-cerceve-yuksek",   # A11: R = 8, D = 3
                     "periyot": "rayleigh", "dolgu": "bitisik"})
-b["analiz"]["catlamis_rijitlik"] = True                     # Tablo 4.2: kolon 0,70·EI, kiriş 0,35·EI
+# analiz.catlamis_rijitlik: betonarme + deprem → varsayılan True (Tablo 4.2: kolon 0,70·EI, kiriş 0,35·EI)
 r = yapi.bina_coz(b)
 d = r.veri["deprem"]
 d["SDS"], d["SD1"], d["DTS"], d["BYS"]                      # spektrum ve sınıflar (kaynaklar: d["kaynaklar"]["SDS"] …)
@@ -364,14 +373,16 @@ d["VtE"], d["VtE_min"], d["dFN"]                            # taban kesme (≥ 0
 [(k["kat"], k["delta_x"], k["oran_x"], k["eta_bx"], k["theta_x"], k["uygun"]) for k in d["katlar"]]   # Δ (m), λδ/h, η_bi, θ_II
 r.veri["ruzgar"]["katlar"], r.veri["kar"]["S_toplam"], r.veri["kutle_merkezi"]
 [k["ad"] for k in r.veri["kombinasyonlar"] if k["uygulandi"]][:4]
-# ['1.4G+1.6Q', 'G+1.3Q+1.3W+X', 'G+1.3Q+1.3W-X', ...]  ad katsayılardan: 'G+Q+0.2S+EX++0.3EY++0.3EZ', '0.9G+EX-+0.3EY+-0.3EZ'
+# ['1.4G+1.6Q', '1.4G+1.6Q+1.6S', 'G+1.3Q+1.3W+X', ...]  ad katsayılardan: 'G+Q+0.2S+EX++0.3EY++0.3EZ', '0.9G+EX-+0.3EY+-0.3EZ'
 r.veri["zarf"]["kombinasyon_sayisi"]                        # öteleme (drift) birleşimleri zarfa ve sayıma girmez
 tam = yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")   # tek kombinasyonun tam diyagramları (yeniden çözüm yok)
 yapi.deprem_onizleme(b)                                     # çözümsüz hızlı önizleme (spektrum, V_tE, F_i)
 yapi.tasiyici_sistemler()                                   # Tablo 4.1 alt kümesi: ad, etiket, R, D, BYS_izin, kaynak
 ```
 
-Kombinasyon kümeleri `kombinasyon_kumesi` ile seçilir: `ts500` (TS 500 Denk. 6.3–6.6, 6.9–6.10 + TBDY Denk. 4.11/4.12),
+Kombinasyon kümeleri `kombinasyon_kumesi` ile seçilir: `ts500` (TS 500 Denk. 6.3–6.6, 6.9–6.10 + TBDY Denk. 4.11/4.12;
+TS 500 kar terimini ayrı vermez, kar TS 498:2021 md. 3.1'e göre hareketli yük: 1,4G + 1,6Q + 1,6S, md. 12.1 kar + rüzgâr
+G + 1,3Q + 1,3(S/2) + 1,3W ve G + 1,3Q + 1,3S + 1,3(W/2), servis G + Q + S),
 `cythye_ydkt` (ÇYTHYE 5.3.1, rüzgâr 1,6W; deprem satırında TBDY 9.2.5.1: 1,2G), `cythye_gkt` (ÇYTHYE 5.3.2 + TBDY 9.1a–c).
 Rüzgâr dört yöne, E_d(H) Denk. (4.9)'a göre ±EX ± 0,3EY ve ±0,3EX ± EY ile ± dışmerkezliğe (32 varyant) açılır; varlık
 nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırlarında S), ikincil terim yoksa sıfır alınır
@@ -394,13 +405,16 @@ yazılmaz, çözüm aynen çalışır.
   büyük pozitif moment → alt donatı (motor M işareti: alt lif çekme +), en büyük |V| → etriye (`kiris_egilme`, `kiris_kesme`).
   d′ = paspayı (kesitte `pas`, varsayılan 30 mm) + 20 mm; momentler kolon ekseninde, kesme yüze indirgenmeden (güvenli tarafta).
 - **Betonarme kolon (TS 500 + TBDY 7.3):** her kombinasyonun alt ve üst ucundaki **eş zamanlı** (N, Mx, My) noktaları (zarf
-  değil) N–M etkileşim eğrisiyle (`kolon_kontrol`, e_min dahil). Eksenler bina eksenleridir: Mx bina X ekseni etrafında
+  değil) N–M etkileşim eğrisiyle (`kolon_kontrol`, e_min dahil; bağımsız çağrıda varsayılan `tbdy=False` — TBDY 0,40 f_ck A_c
+  sınırı için `tbdy=True, deprem=[...]` ile deprem birleşimi noktaları işaretlenir). Eksenler bina eksenleridir: Mx bina X ekseni etrafında
   (derinlik Y yönü boyutu bY), My bina Y ekseni etrafında (derinlik bX); `yon` takası kendiliğinden işlenir. Donatı kesitte
   (`donati_orani` ya da `As` cm²) yoksa ρ = %1 varsayılır ve 0,01 → 0,04 taramasıyla "gerekli ρ" önerilir. Ek denetimler: TBDY
   en küçük boyut 300 mm, N_dm ≤ 0,40 f_ck A_c (N_dm deprem birleşimlerinden; deprem yoksa G + Q).
 - **Çelik (ÇYTHYE 2018, YDKT; GKT kümesinde GKT):** kombinasyon başına (N, güçlü eksen Mx, zayıf eksen My, V) ile
-  `celik_eleman_kontrol`; kolonda K = 1, L = kat yüksekliği; kirişte L_b = açıklık, döşemeli kirişte üst başlık tutulu (L_b = 0;
-  `analiz.celik_Lb = "boy"` ile kapatılır), C_b = 1.
+  `celik_eleman_kontrol`; kolonda K = 1, L = kat yüksekliği. Döşemeli kirişte döşeme yalnız üst başlığı tutar: pozitif moment
+  L_b = 0 ile, negatif moment (mesnet, alt başlık basınçta) L_b = parça açıklığı ve C_b moment diyagramından (ÇYTHYE Denk. 9.1)
+  ile ayrı denetlenir, büyük D/C belirler (`ozet.bolge`, `Lb_neg_m`, `Cb_neg`); `analiz.celik_Lb = "boy"`: her yerde L_b = L,
+  C_b = 1. Döşemesiz kirişte L_b = açıklık, C_b = 1.
 - Elemanın D/C'si dayanım satırlarının en büyüğüdür; yönetmelik alt/üst sınır koşulları (en az donatı, boyut, aralık,
   narinlik; satırda `kosul: true`) yalnız sağlanmadığında belirler. Deprem kombinasyonu varsa uyarı: TBDY kapasite tasarımı
   (güçlü kolon–zayıf kiriş, kapasite kesmesi, birleşim bölgesi) bu araçta yoktur — sonuçlar ön boyutlandırmadır.

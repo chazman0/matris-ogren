@@ -95,7 +95,7 @@ $P_r$ ve $M_r$ ikinci mertebe etkilerini içeren gerekli dayanımlardır (Bölü
 
 ## K seçimi ve bu aracın varsayımı
 
-$K$, çubuk uçlarının dönme ve ötelenme tutulmasına bağlıdır: ideal iki ucu mafsallı çubukta $K=1$, ideal ankastre–serbest konsolda $K=2$ (Euler çözümleri). Yanal ötelenmesi önlenmemiş çerçeve kolonunda $K>1$ olur ve ÇYTHYE bunu Bölüm 6'daki burkulma boyu yöntemiyle (ya da ikinci mertebe etkileri doğrudan hesaba katan yöntemle) belirler. Bu uygulamanın motoru bütün çelik elemanlarda $K=1$, kolonda $L$ = kat yüksekliği alır; kirişte döşemeye bağlı üst başlık için $L_b=0$ (`analiz.celik_Lb = "boy"` ile kapatılır) ve $C_b=1$ kullanır.
+$K$, çubuk uçlarının dönme ve ötelenme tutulmasına bağlıdır: ideal iki ucu mafsallı çubukta $K=1$, ideal ankastre–serbest konsolda $K=2$ (Euler çözümleri). Yanal ötelenmesi önlenmemiş çerçeve kolonunda $K>1$ olur ve ÇYTHYE bunu Bölüm 6'daki burkulma boyu yöntemiyle (ya da ikinci mertebe etkileri doğrudan hesaba katan yöntemle) belirler. Bu uygulamanın motoru bütün çelik elemanlarda $K=1$, kolonda $L$ = kat yüksekliği alır. Döşemeli kirişte döşeme yalnız **üst** başlığı tutar: pozitif momentte (açıklık, üst başlık basınçta) $L_b=0$; negatif momentte (mesnet, **alt** başlık basınçta) $L_b$ = açıklık ve $C_b$ moment diyagramının çeyrek noktalarından (Denk. 9.1). İki bölge ayrı denetlenir, büyük D/C belirler (`analiz.celik_Lb = "boy"`: her yerde $L_b=L$, $C_b=1$).
 
 ::: hata K = 1'i her yerde doğru sanmak
 $K=1$ yalnız uçları yanal ötelenmeye karşı tutulmuş (çaprazlı ya da perdeli) sistemde güvenlidir. Bir sanayi yapısının ankastre ayaklı, tepesi serbest kolonunda $K\approx2$'dir: $KL/i$ iki katına çıkar ve basınç dayanımı üçte birine kadar inebilir (örnek 4). Çaprazsız çerçeve kolonunda $K$'yı mutlaka belirle ya da ikinci mertebe çözümle.
@@ -152,7 +152,7 @@ $\phi_bM_n$: 155.53, 131.81 ve 77.44 kN·m.
 --- kontrol
 abs(r[0].veri["Mn_kNm"] - 172.81) < 1e-6 and abs(r[0].veri["Lp_m"] - 1.590033) < 1e-5 and abs(r[0].veri["Lr_m"] - 5.097474) < 1e-5 and abs(r[1].veri["Mn_kNm"] - 146.452) < 1e-3 and abs(r[-1].veri["Fcr_MPa"] - 154.4598) < 1e-3 and abs(r[-1].veri["Mc_kNm"] - 77.4446) < 1e-3 and r[-1].veri["bolge"] == "elastik YBB (Lb > Lr)"
 --- yorum
-Desteksiz boyu 1.5 m'den 6 m'ye çıkarmak dayanımı yarıya indirdi. Aynı kiriş döşemeye bağlıysa $L_b=0$ alınır ve $M_p$'nin tamamı kullanılır; depo şablonunun kirişleri böyledir.
+Desteksiz boyu 1.5 m'den 6 m'ye çıkarmak dayanımı yarıya indirdi. Aynı kiriş döşemeye bağlıysa açıklıkta $L_b=0$ alınır ve $M_p$'nin tamamı kullanılır; ama mesnette alt başlık serbesttir: depo şablonunun IPE 300 kirişinin B mesnedinde $M=-89.4$ kN·m, $L_b=6$ m ve $C_b=1$ ile $M_c=77.4$ kN·m olur, D/C $1.26$'ya çıkardı. Diyagramdan $C_b\approx2.1$ alınınca $C_bM_n$ yine $M_p$'ye ulaşır (son örnek).
 :::
 
 ::: ornek Moment düzeltme katsayısı C_b
@@ -230,13 +230,14 @@ Aynı kolonda $K=2$ alınsaydı $P_c=610.5$ kN olur ve K1'in D/C'si 1.275'e çı
 :::
 
 ::: ornek Depo şablonu: tasarım sonucunu okumak
-`celik-1kat-depo` şablonunu (HEB 240 kolonlar, IPE 400 ve IPE 300 kirişler, S275, ÇYTHYE YDKT) çöz. En kritik eleman hangisi, D/C hangi denklemden geliyor? Kirişin narinlik satırı neden 179.1?
+`celik-1kat-depo` şablonunu (HEB 240 kolonlar, IPE 400 ve IPE 300 kirişler, S275, ÇYTHYE YDKT) çöz. En kritik eleman hangisi, D/C hangi denklemden ve hangi moment bölgesinden geliyor? Kirişin narinlik satırı neden 179.1?
 --- ipucu
 `veri["tasarim"]["kritik_elemanlar"]`; kirişin kontrolleri: N, Mx, My, etkileşim, kesme, narinlik.
 --- cevap
 $$
 \begin{aligned}
-\text{K-A2}&\rightarrow\text{B2/k1 (IPE 300)},\ \texttt{1.2G+1.6Q}:\ \frac{3.65}{2\cdot261.35}+\frac{\ka{98.72}}{\ka{155.53}}+\frac{\kb{2.66}}{\kb{30.99}}=0.007+0.635+0.086=\kutuc{0.728}\ (11.1b)\\
+\text{K-A2}&\rightarrow\text{B2/k1 (IPE 300)},\ \texttt{1.2G+1.6Q},\ \text{negatif M (B mesnedi, alt başlık basınçta)}:\ L_b=6\ \text{m},\ C_b=2.08\ \Rightarrow\ C_bM_n\ge M_p,\ M_c=\phi_bM_p\\
+&\frac{3.65}{2\cdot261.35}+\frac{\ka{98.72}}{\ka{155.53}}+\frac{\kb{2.66}}{\kb{30.99}}=0.007+0.635+0.086=\kutuc{0.728}\ (11.1b);\quad \text{pozitif M bölgesi } (L_b=0):\ 0.467\\
 \frac{KL}{i_z}&=\frac{6000}{33.5}=\ksil{179.1}\le200\ \checkmark,\qquad \text{S-B2/k1 (HEB 240)}:\ \text{D/C}=\kc{0.399}
 \end{aligned}
 $$
@@ -244,9 +245,9 @@ $$
 r = yapi.bina_coz(yapi.bina_sablon("celik-1kat-depo"))
 r
 --- kontrol
-r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A2→B2/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 0.72767) < 1e-4 and r.veri["tasarim"]["kritik_elemanlar"][0]["kontrol"] == "etkileşim 11.1b" and r.veri["tasarim"]["kritik_elemanlar"][0]["kombinasyon"] == "1.2G+1.6Q" and abs(next(x for x in next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["kontroller"] if "Narinlik" in x["ad"])["talep"] - 179.1) < 0.05 and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 4)["dc"] - 0.39939) < 1e-4
+r.veri["tasarim"]["kritik_elemanlar"][0]["adres"] == "K-A2→B2/k1" and abs(r.veri["tasarim"]["en_buyuk_dc"] - 0.72767) < 1e-4 and r.veri["tasarim"]["kritik_elemanlar"][0]["kontrol"] == "etkileşim 11.1b (negatif M)" and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["ozet"]["Cb_neg"] - 2.0823) < 1e-3 and r.veri["tasarim"]["kritik_elemanlar"][0]["kombinasyon"] == "1.2G+1.6Q" and abs(next(x for x in next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kiris" and e["no"] == 3)["kontroller"] if "Narinlik" in x["ad"])["talep"] - 179.1) < 0.05 and abs(next(e for e in r.veri["tasarim"]["elemanlar"] if e["tur"] == "kolon" and e["no"] == 4)["dc"] - 0.39939) < 1e-4
 --- yorum
-Kiriş döşemeli olduğu için $L_b=0$ ve $M_c=\phi_bM_p=155.53$ kN·m; çerçeve davranışından gelen küçük eksenel kuvvet nedeniyle basınç dayanımı da hesaplanır ve zayıf eksende 6 m burkulma boyu narinlik sınırına yaklaşır. Kolonlarda D/C 0.40'ın altında: rüzgâr ve deprem açılınca (bina kartı) ÇYTHYE ve TBDY 9.2.5 birleşimleri devreye girer ve tablo değişir.
+Mesnetteki negatif moment alt başlığı bastırır; desteksiz boy açıklığın tamamıdır ($L_b=6>L_r$), ama ankastre uçlu kirişin moment diyagramı $C_b=2.08$ verir ve $C_bM_n$, $M_p$'yi aşar: $M_c=\phi_bM_p=155.53$ kN·m. $C_b=1$ ile aynı kesit D/C $\approx1.3$ ile yetmezdi; çerçeve davranışından gelen küçük eksenel kuvvet nedeniyle basınç dayanımı da hesaplanır ve zayıf eksende 6 m burkulma boyu narinlik sınırına yaklaşır. Kolonlarda D/C 0.40'ın altında: rüzgâr ve deprem açılınca (bina kartı) ÇYTHYE ve TBDY 9.2.5 birleşimleri devreye girer ve tablo değişir.
 :::
 
 ::: muhendislik SAP2000'de çelik tasarım ve ÇYTHYE
@@ -260,7 +261,7 @@ Tarihi yapılarda çelik çoğu zaman güçlendirme elemanıdır: yığma köpr�
 - Sınıf: başlık $b/2t_f$, gövde $h/t_w$; eğilmede $\lambda_p=0.38$ ve $3.76\sqrt{E/F_y}$, basınçta $\lambda_r=0.56$ ve $1.49\sqrt{E/F_y}$.
 - Eğilme: $M_p=F_yW_{pl}$; $L_b\le L_p$ akma, $L_p<L_b\le L_r$ doğrusal (Denk. 9.3), $L_b>L_r$ elastik YBB (Denk. 9.5); $C_b$ Denk. 9.1.
 - Basınç: $F_e=\pi^2E/(KL/i)^2$; $KL/i\le4.71\sqrt{E/F_y}$ ise $F_{cr}=0.658^{F_y/F_e}F_y$, değilse $0.877F_e$; $KL/i\le200$.
-- Bileşik: $P_r/P_c\ge0.2$ ise 11.1a, değilse 11.1b. $K$ ve $L_b$ dayanımı belirleyen girdilerdir; bu araç $K=1$, kirişte $L_b=0$ (döşemeli), $C_b=1$ varsayar.
+- Bileşik: $P_r/P_c\ge0.2$ ise 11.1a, değilse 11.1b. $K$ ve $L_b$ dayanımı belirleyen girdilerdir; bu araç $K=1$ alır, döşemeli kirişte açıklıkta $L_b=0$, mesnette (alt başlık) $L_b$ = açıklık ve diyagramdan $C_b$ ile iki bölgeyi ayrı denetler.
 :::
 
 ## Alıştırma
