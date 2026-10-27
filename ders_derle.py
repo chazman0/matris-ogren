@@ -50,6 +50,10 @@ ETKILESIMLER = {
     "winkler-kiris": "Winkler zeminine oturan kiriş",
     "doseme-dagilimi": "Döşemeden kirişe: 45° kuralı",
     "kolon-birikimi": "Kolonda yük birikimi ve yük alanı",
+    "deprem-spektrumu": "TBDY 2018 tasarım spektrumu",
+    "kombinasyon-zarfi": "Kombinasyon ve zarf",
+    "ruzgar-kat-kuvveti": "Rüzgâr kat kuvvetleri (TS 498:2021 md. 14)",
+    "kat-kuvvetleri": "Eşdeğer deprem yükü: kat kuvvetleri",
 }
 ALISTIRMALAR = {
     "boyut": "Boyut ve indis",
@@ -67,6 +71,8 @@ ALISTIRMALAR = {
     "sinir-kosulu": "Sınır koşulu ve çözüm",
     "yay-seri": "Seri yaylar",
     "doseme-esdeger": "Döşeme payı ve eşdeğer yük",
+    "kombinasyon": "Kombinasyon ve zarf",
+    "deprem-vt": "Taban kesme kuvveti V_tE",
 }
 # SE_GRUBU docs/etkilesim_se.js, YAPI_GRUBU docs/etkilesim_yapi.js içinde, ötekiler docs/etkilesim_matris.js içinde
 # kaydedilir. Alıştırmalar kayıtta "alistirma:<ad>" adını taşır.
@@ -76,7 +82,10 @@ SE_GRUBU = frozenset({
     "cerceve-k", "modal-titresim", "elastik-mesnet", "winkler-kiris",
     "cubuk-k", "kafes-k", "birlestir", "sinir-kosulu", "yay-seri",
 })
-YAPI_GRUBU = frozenset({"doseme-dagilimi", "kolon-birikimi", "doseme-esdeger"})
+YAPI_GRUBU = frozenset({
+    "doseme-dagilimi", "kolon-birikimi", "deprem-spektrumu", "kombinasyon-zarfi", "ruzgar-kat-kuvveti", "kat-kuvvetleri",
+    "doseme-esdeger", "kombinasyon", "deprem-vt",
+})
 
 
 def etkilesim_dosyasi(ad: str) -> str:
