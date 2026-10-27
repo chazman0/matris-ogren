@@ -1073,7 +1073,7 @@
           metin: "Yük durumlarının " + kesit + " verdiği momentler " + durum + " kN·m. TS 500 Denk. (6.3) birleşimi $1.4G+1.6Q$ için tasarım momenti $M_d$ kaç kN·m?",
           etiket: "M_d =", cevap: new Mat([[c]]), tolerans: "tam", bicim: ondalik6,
           ipucu: ["Kombinasyon yeniden çözüm değildir: her durumun sonucu katsayısıyla çarpılıp toplanır.", "$M_d=1.4\\,M_G+1.6\\,M_Q$; işaretleri koru."],
-          aciklama: "Doğrusal çözümde süperpozisyon geçerlidir: $M(1.4G+1.6Q)=1.4\\,M(G)+1.6\\,M(Q)$. SAP2000'de \"Linear Add\" kombinasyonu da yalnız bu toplamı yapar.",
+          aciklama: "Doğrusal çözümde süperpozisyon geçerlidir: $M(1.4G+1.6Q)=1.4\\,M(G)+1.6\\,M(Q)$. Yapı analiz programlarında \"Linear Add\" (doğrusal toplam) kombinasyonu da yalnız bu toplamı yapar.",
           adimlar: [{ metin: "Katsayılı toplam.", tex: "\\kutuc{M_d}=1.4\\cdot(" + Kd(G) + ")+1.6\\cdot(" + Kd(Q) + ")=" + Kd(K("1.4").carp(G)) + isaretli(K("1.6").carp(Q)) + "=\\kutuc{" + Kd(c) + "}\\ \\text{kN·m}" }]
         };
       }
@@ -1583,7 +1583,7 @@
     kap.appendChild(bilgi);
     kap.appendChild(formul);
     kap.appendChild(el("p", { class: "ky-not" }, "Eğri TS 500 md. 7.1 varsayımlarıyla, tarafsız eksen derinliği c taranarak çizilir (dört yüze dağıtılmış 8 çubuk, d′ = 50 mm, B420C; bloktaki çubuğun yerini aldığı beton düşülür). " +
-      "D/C orijinden noktaya çizilen ışın boyunca ölçülür (SAP2000 ve ETABS'taki kapasite oranıyla aynı fikir). e_min TS 500 md. 6.3.10 Denk. 6.16; içi boş daire e_min ile büyütülmüş noktadır. Narinlik etkisi yok."));
+      "D/C orijinden noktaya çizilen ışın boyunca ölçülür (ticari yapı analiz programlarındaki kapasite oranıyla aynı fikir). e_min TS 500 md. 6.3.10 Denk. 6.16; içi boş daire e_min ile büyütülmüş noktadır. Narinlik etkisi yok."));
     ciz();
   }, {
     baslik: "Kolon N–M etkileşim eğrisi",
@@ -1907,7 +1907,7 @@
     kap.appendChild(bilgi);
     kap.appendChild(tablo);
     kap.appendChild(formul);
-    kap.appendChild(el("p", { class: "ky-not" }, "Rijit diyaframda kattaki bütün düğümler efendi düğümün (kütle merkezi KM) üç serbestliğine (u_x, u_y, θ) bağlanır; SAP2000'de \"Diaphragm constraint\", bu uygulamada " +
+    kap.appendChild(el("p", { class: "ky-not" }, "Rijit diyaframda kattaki bütün düğümler efendi düğümün (kütle merkezi KM) üç serbestliğine (u_x, u_y, θ) bağlanır; yapı analiz programlarında diyafram kısıtı (\"diaphragm constraint\"), bu uygulamada " +
       "kütle merkezindeki efendi düğümdür. Kolon kesmesi kolonun yanal rijitliği k_i = 12EI/h³ (iki ucu ankastre) ile ötelemesinin çarpımıdır. RM: rijitlik merkezi."));
     ciz();
   }, {
