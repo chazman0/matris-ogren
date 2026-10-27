@@ -279,13 +279,21 @@ def _yapi_modulu():
         return None
 
 
+def _tasarim_modulu():
+    """tasarim.py (TS 500 / ÇYTHYE kesit tahkikleri) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("tasarim")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
 
 def _kod_calistir(kod: str):
     """Ders örneği kodunu çalıştırır; son satırdaki ifadenin değerini döndürür (testler/test_dersler.calistir ile aynı):
-    son deyim ayrılır, kalanı exec edilir, son ifade eval edilir. Ad alanı: mo, sp ve varsa se."""
+    son deyim ayrılır, kalanı exec edilir, son ifade eval edilir. Ad alanı: mo, sp ve varsa se, yapi, tasarim."""
     agac = ast.parse(kod)
     if not agac.body:
         raise mo.MatrisHatasi("Örnek kodu boş.")
@@ -299,6 +307,9 @@ def _kod_calistir(kod: str):
     yapi = _yapi_modulu()
     if yapi is not None:
         ad_alani["yapi"] = yapi
+    tasarim = _tasarim_modulu()
+    if tasarim is not None:
+        ad_alani["tasarim"] = tasarim
     exec(compile(agac, "<ornek>", "exec"), ad_alani)
     return eval(compile(ast.Expression(son.value), "<ornek>", "eval"), ad_alani)
 
