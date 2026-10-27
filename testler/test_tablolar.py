@@ -293,23 +293,65 @@ def test_metraj_celik():
     assert oz["Yapısal çelik (profil)"]["birim"] == "t"
 
 
-def test_metraj_surekli_ve_radye():
-    b = yapi.bina_sablon("betonarme-2kat-3x2")
+def test_metraj_ve_temel_tablosu_surekli_ve_radye():
+    b = yapi.bina_sablon("betonarme-2kat-3x2")    # A–B–C (0, 5, 9), 1–2 (0, 4)
     b["temeller"].update({"tip": "surekli", "surekli": {"yon": "xy", "B": 1.2, "h_tabla": 0.4, "b_govde": 0.5, "h_govde": 1.0, "tasma": 0.5}})
     T = tb.bina_tablolari(b, kati=True)
-    assert tb.tablo(T, "temeller") is None
+    tt = tb.tablo(T, "temeller")
+    assert tt["baslik"].startswith("Temeller (Mütemadi")
+    hat = {r["degerler"]["hat"]: r for r in tt["satirlar"]}
+    assert set(hat) == {"1", "2", "A", "B", "C"} and hat["1"]["degerler"]["L"] == pytest.approx(10.0) and hat["A"]["degerler"]["L"] == pytest.approx(5.0)
+    assert hat["1"]["yol"]["B"] == ["temeller", "surekli", "B"] and hat["1"]["degerler"]["A"] == pytest.approx(1.2 * 0.4 + 0.5 * 0.6)
+    yeni = tb.degisiklikleri_uygula(b, [{"yol": hat["A"]["yol"]["h_govde"], "deger": 1.1}])
+    assert yapi._bina_oku(yeni).temeller["surekli"]["h_govde"] == 1.1
     tem = [r["degerler"] for r in tb.tablo(T, "metraj_betonarme")["satirlar"] if r["degerler"]["tur"] == "Temel"]
-    x = [t for t in tem if "(X" in t["adres"]]
-    y = [t for t in tem if "(Y" in t["adres"]]
+    x = {t["adres"]: t for t in tem if "(X" in t["adres"]}
+    y = {t["adres"]: t for t in tem if "(Y" in t["adres"]}
     assert len(x) == 2 and len(y) == 3
-    A = 1.2 * 0.4 + 0.5 * 1.0
-    assert x[0]["beton"] == pytest.approx(A * (9 + 1.0))
-    kesisim = 1.2 * 1.2 * 0.4 + 0.5 * 0.5 * 1.0
-    assert y[0]["beton"] == pytest.approx(A * (4 + 1.0) - 2 * kesisim)
+    A = 1.2 * 0.4 + 0.5 * (1.0 - 0.4)              # ters T: h_gövde tabla dahil
+    assert x["TK-1 (X doğr.)"]["beton"] == pytest.approx(A * (9 + 1.0))
+    # kesişim hacmi y hatlarından, hat uçlarıyla kırpılmış dikdörtgenlerle düşülür (köşe 1,1 × 1,1; kenar 1,2 × 1,1 tabla)
+    assert y["TK-A (Y doğr.)"]["beton"] == pytest.approx(A * 5.0 - 2 * (1.1 * 1.1 * 0.4 + 0.5 * 0.5 * 0.6))
+    assert y["TK-B (Y doğr.)"]["beton"] == pytest.approx(A * 5.0 - 2 * (1.2 * 1.1 * 0.4 + 0.5 * 0.5 * 0.6))
+    assert tb.tablo(T, "mesnetler")["satirlar"] == []           # kolon tabanı mesnedi yok: zemin yayları
     b["temeller"].update({"tip": "radye", "radye": {"h": 0.8, "tasma": 1.0, "kiris": {"b": 0.5, "h": 1.2}}})
-    tem = [r["degerler"] for r in tb.tablo(tb.bina_tablolari(b, kati=True), "metraj_betonarme")["satirlar"] if r["degerler"]["tur"] == "Temel"]
+    T = tb.bina_tablolari(b, kati=True)
+    tt = tb.tablo(T, "temeller")
+    r = tt["satirlar"][0]
+    assert tt["baslik"] == "Temel (Radye plak)" and r["degerler"]["Lx"] == pytest.approx(11.0) and r["degerler"]["Ly"] == pytest.approx(6.0)
+    assert r["yol"]["h"] == ["temeller", "radye", "h"] and r["yol"]["kb"] == ["temeller", "radye", "kiris", "b"]
+    assert r["degerler"]["kiris"] == "50×120 cm"
+    tem = [r["degerler"] for r in tb.tablo(T, "metraj_betonarme")["satirlar"] if r["degerler"]["tur"] == "Temel"]
     assert tem[0]["adres"] == "Radye" and tem[0]["beton"] == pytest.approx((9 + 2) * (4 + 2) * 0.8)
     assert sum(t["beton"] for t in tem[1:]) == pytest.approx(0.5 * 0.4 * (2 * 9 + 3 * (4 - 2 * 0.5)))
+
+
+@pytest.mark.parametrize("ad", [a for a in SABLONLAR if yapi.bina_sablon(a)["temeller"].get("tip") in ("surekli", "radye")])
+def test_winkler_tepkileri_ve_temel_metraji(ad, cozumler):
+    """Mütemadi/radye: zemin yayı tepkileri (F_Z = k0·A·w) her durumda yükü dengeler; metraj hacmi motorun temel öz ağırlığıyla aynı."""
+    b, v = cozumler[ad]
+    tv = v["temel"]
+    T = tb.bina_tablolari(b, v, kati=True)
+    tep = tb.tablo(T, "mesnet_tepkileri")
+    assert "Winkler" in tep["aciklama"] and "zemin yayı" in tep["aciklama"]
+    sigma = {r["degerler"]["durum"]: r["degerler"] for r in tep["satirlar"] if r.get("ozet")}
+    assert sigma["G"]["FZ"] == pytest.approx(v["yukler"]["toplam"]["G"], rel=1e-6)       # temel öz ağırlığı dahil (korunum "yay")
+    assert sigma["G"]["FZ"] == pytest.approx(v["akis"]["korunum"]["G"]["yay"], rel=1e-6)
+    assert sigma["Q"]["FZ"] == pytest.approx(v["yukler"]["toplam"]["Q"], rel=1e-6)
+    satir = [r["degerler"] for r in tep["satirlar"] if r["degerler"]["durum"] == "G" and r["degerler"]["tip"] == "zemin yayı"]
+    assert len(satir) == len(tv["dugumler"])
+    d0 = tv["dugumler"][0]
+    r0 = next(r for r in satir if r["dugum"] == d0["no"])
+    uZ = next(d["uZ"] for d in v["durumlar"]["G"]["dugumler"] if d["no"] == d0["no"])
+    assert r0["FZ"] == pytest.approx(tv["model"]["k0"] * d0["A"] * -uZ, rel=1e-9) and r0["FZ"] > 0     # k_z·w, w = −u_Z
+    if tv["tip"] == "surekli":
+        assert any(abs(r["MX"]) > 1e-6 or abs(r["MY"]) > 1e-6 for r in satir), "tabla dönme yayı momentleri"
+    if "EX+" in sigma:
+        assert sigma["EX+"]["FX"] == pytest.approx(-v["deprem"]["VtE"], rel=1e-3)
+    beton = [m for m in yapi._bina_oku(copy.deepcopy(b)).malzemeler.values() if m["tur"] == "beton"][0]["gamma"]
+    tem = [r["degerler"]["beton"] for r in tb.tablo(T, "metraj_betonarme")["satirlar"] if r["degerler"]["tur"] == "Temel"]
+    assert sum(tem) == pytest.approx(tv["model"]["W_temel"] / beton, rel=1e-5)
+    assert tb.tablo(T, "temeller")["satirlar"]
 
 
 # ---------------------------------------------------------------------------- aks sistemi (§19)
@@ -522,7 +564,7 @@ def test_python_js_esdegerligi():
 def test_docs_kopyasi_ve_kabuk():
     """web_yap tablolar.py'yi docs'a kopyalar; worker isteğe bağlı yükler; servis çalışanı ve sayfa yeni dosyaları bilir."""
     assert (PROJE / "docs" / "tablolar.py").read_bytes() == (PROJE / "tablolar.py").read_bytes(), "python web_yap.py çalıştırın"
-    assert "\"tablolar.py\"" in (PROJE / "docs" / "motor.worker.js").read_text(encoding="utf-8")   # ISTEGE_BAGLI dizisinde
+    assert '"tablolar.py"' in (PROJE / "docs" / "motor.worker.js").read_text(encoding="utf-8")
     sw = (PROJE / "docs" / "sw.js").read_text(encoding="utf-8")
     assert '"./tablolar.py"' in sw and '"./tablo_editoru.js"' in sw
     assert '<script src="tablo_editoru.js" defer></script>' in (PROJE / "docs" / "index.html").read_text(encoding="utf-8")

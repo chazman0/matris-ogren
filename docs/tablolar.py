@@ -334,6 +334,16 @@ def _n(x):
     return float(f"{x:.10g}")
 
 
+def _g(x):
+    """Metin içinde sayı: kayan nokta gürültüsü atılmış, gereksiz ".0" yok (50.0 → 50, 0.25 → 0.25); None → "–"."""
+    v = _n(x)
+    if v is None:
+        return "–"
+    if isinstance(v, bool):
+        return str(v)
+    return f"{v:g}" if abs(v) < 1e15 else str(v)
+
+
 def _S(ad, baslik, birim="", tur="sayi", duzenlenebilir=False, ondalik=None, secenekler=None, **ek):
     s = {"ad": ad, "baslik": baslik, "birim": birim, "tur": tur, "duzenlenebilir": bool(duzenlenebilir)}
     if ondalik is not None:
@@ -421,9 +431,9 @@ def _ref_metin(ref):
                 return f"{on}{a[0]}-{a[1]} @ {ref['z']}"
             return f"{on}{a[0]}{a[1]}/k{ref.get('kat', 1)}"
         if "X" in ref:
-            return f"({_n(ref.get('X'))}, {_n(ref.get('Y'))}, {_n(ref.get('Z'))})"
+            return f"({_g(ref.get('X'))}, {_g(ref.get('Y'))}, {_g(ref.get('Z'))})"
     if isinstance(ref, (list, tuple)) and len(ref) == 3:
-        return f"({_n(ref[0])}, {_n(ref[1])}, {_n(ref[2])})"
+        return f"({_g(ref[0])}, {_g(ref[1])}, {_g(ref[2])})"
     return json.dumps(ref, ensure_ascii=False)
 
 
@@ -1001,7 +1011,7 @@ def _dugum_turu_ve_adresi(c, d):
             oran = float(d.get("oran", 0.5))
         except (TypeError, ValueError):
             oran = None
-        return "bölme", f"{_ref_metin(d.get('cubuk_i'))} → {_ref_metin(d.get('cubuk_j'))}, t = {_n(oran)}"
+        return "bölme", f"{_ref_metin(d.get('cubuk_i'))} → {_ref_metin(d.get('cubuk_j'))}, t = {_g(oran)}"
     if tur == "kesisim":
         a, b = d.get("a") or [], d.get("b") or []
         return "kesişim", f"[{' – '.join(_ref_metin(r) for r in a)}] × [{' – '.join(_ref_metin(r) for r in b)}]"
@@ -1270,7 +1280,7 @@ def _t_mesnetler(c):
         for m in c.veri["ag"]["mesnetler"]:
             satirlar.append(_R({"dugum": m["dugum"], "adres": adres.get(m["dugum"], ""), "tip": m.get("tip", ""),
                                 "ux": None, "uy": None, "uz": None, "rx": None, "ry": None, "rz": None}))
-    elif B:
+    elif B and _temel_tipi(c) == "tekil":
         for col in B.kolonlar:
             if col["kat"] != 1:
                 continue
@@ -1290,8 +1300,9 @@ def _t_mesnetler(c):
     return _T("mesnetler", "Mesnetler", "Model",
               [_S("dugum", "Düğüm", tur="metin"), _S("adres", "Adres", tur="metin"), _S("tip", "Tip", tur="metin")]
               + [_S(a, a, tur="bool", duzenlenebilir=True) for a in ("ux", "uy", "uz", "rx", "ry", "rz")],
-              satirlar, "Kolon tabanları temel mesnet tipine göre tutulur (ankastre: 6 SD; mafsal: ötelemeler; elastik: Winkler yayları "
-                        "k_Z = k0·B·L, k_rX = k0·B·L³/12). Mesnet tipi Temel Parametreleri tablosundan değişir.",
+              satirlar, "Tekil temelde kolon tabanları temel mesnet tipine göre tutulur (ankastre: 6 SD; mafsal: ötelemeler; elastik: Winkler "
+                        "yayları k_Z = k0·B·L, k_rX = k0·B·L³/12). Mütemadi ve radye temelde sabit mesnet yoktur: temel düğümleri Winkler "
+                        "zemin yaylarına oturur (yatayda tutulu); tepkiler Mesnet Tepkileri tablosunda 'zemin yayı' satırlarıdır.",
               "TS 500; Winkler zemin modeli")
 
 
@@ -1313,8 +1324,12 @@ def _temel_listesi(c):
 
 
 def _t_temeller(c):
-    if c.B is not None and str(c.B.temeller.get("tip", "tekil")).strip().lower() != "tekil":
-        return None             # mütemadi / radye: boyutlar Temel ve Zemin Parametreleri tablosunda
+    """Temeller — tipe göre: tekil (kolon başına B × L), mütemadi (temel kirişi hatları), radye (plak)."""
+    tip = _temel_tipi(c)
+    if tip == "surekli":
+        return _t_temeller_surekli(c)
+    if tip == "radye":
+        return _t_temeller_radye(c)
     satirlar = []
     for t in _temel_listesi(c):
         sec = {"aks": t["aks"], "_olustur": True}
@@ -1327,6 +1342,60 @@ def _t_temeller(c):
                _S("ozel", "Özel boyut", tur="bool")],
               satirlar, "Her kolon tabanında tekil temel. Varsayılan boyut Temel Parametreleri tablosundadır; burada bir temelin B/L'si "
                         "değişince o aks için 'temeller.ozel' kaydı oluşturulur.", "TS 500 md. 15", toplam=_topla(satirlar, "alan"))
+
+
+def _t_temeller_surekli(c):
+    cfg = _temel_cfg(c, "surekli")
+    A = _ters_t_alani(cfg)
+    yol = {a: ["temeller", "surekli", a] for a in ("B", "h_tabla", "b_govde", "h_govde", "tasma")}
+    satirlar = []
+    for h in _surekli_hatlari(c, cfg):
+        satirlar.append(_R({"hat": str(h["ad"]), "yon": str(h["yon"]).upper(), "kolon": h.get("kolon_sayisi"), "L": h["L"],
+                            "B": cfg["B"], "h_tabla": cfg["h_tabla"], "b_govde": cfg["b_govde"], "h_govde": cfg["h_govde"],
+                            "tasma": cfg["tasma"], "A": A, "taban": cfg["B"] * (h["L"] or 0.0)}, yol))
+    tv = (c.veri or {}).get("temel") if c.veri else None
+    ortak = ((tv or {}).get("model") or {}).get("ortak_alan") if isinstance(tv, dict) else None
+    return _T("temeller", "Temeller (Mütemadi — temel kirişi hatları)", "Model",
+              [_S("hat", "Hat (aks)", tur="metin"), _S("yon", "Doğrultu", tur="metin"), _S("kolon", "Kolon", ondalik=0),
+               _S("L", "Uzunluk", "m", ondalik=2), _S("B", "Tabla genişliği B", "m", duzenlenebilir=True, ondalik=2),
+               _S("h_tabla", "Tabla kalınlığı", "m", duzenlenebilir=True, ondalik=2),
+               _S("b_govde", "Gövde genişliği", "m", duzenlenebilir=True, ondalik=2),
+               _S("h_govde", "Gövde yüksekliği (tabla dahil)", "m", duzenlenebilir=True, ondalik=2),
+               _S("tasma", "Uç taşma", "m", duzenlenebilir=True, ondalik=2), _S("A", "Kesit alanı", "m²", ondalik=3),
+               _S("taban", "Tabla alanı B·L", "m²", ondalik=2)],
+              satirlar, "Kolonlar seçilen aks çizgileri boyunca ters T kesitli temel kirişlerine oturur; kiriş uç kolonlardan taşma kadar "
+                        "uzar ve Winkler yaylarına (k_z = k0·B·l_etki) oturur. Kesit bütün hatlarda ortaktır: bir satırda B, tabla, gövde "
+                        "ya da taşma değişince temeller.surekli güncellenir (bütün hatlar)."
+                        + (f" xy kesişimlerinde ortak tabla alanı {_g(ortak)} m² bir kez sayılır." if ortak else ""),
+              "TS 500 md. 10.4; temel.py (§13)", toplam=_topla(satirlar, "L", "taban"))
+
+
+def _t_temeller_radye(c):
+    cfg = _temel_cfg(c, "radye")
+    p = _radye_plak(c, cfg)
+    if p is None:
+        return None
+    kir = cfg.get("kiris") if isinstance(cfg.get("kiris"), dict) else None
+    yol = {"h": ["temeller", "radye", "h"], "tasma": ["temeller", "radye", "tasma"], "ag": ["temeller", "radye", "ag"]}
+    if kir:
+        yol.update({"kb": ["temeller", "radye", "kiris", "b"], "kh": ["temeller", "radye", "kiris", "h"]})
+    Lx, Ly = p["X1"] - p["X0"], p["Y1"] - p["Y0"]
+    satirlar = [_R({"ad": "Radye plağı", "X0": p["X0"], "X1": p["X1"], "Y0": p["Y0"], "Y1": p["Y1"], "Lx": Lx, "Ly": Ly, "h": cfg["h"],
+                    "tasma": cfg["tasma"], "ag": cfg["ag"], "alan": Lx * Ly, "hacim": Lx * Ly * cfg["h"],
+                    "kiris": f"{_g(kir['b'] * 100)}×{_g(kir['h'] * 100)} cm" if kir else "kirişsiz",
+                    "kb": kir["b"] if kir else None, "kh": kir["h"] if kir else None}, yol)]
+    return _T("temeller", "Temel (Radye plak)", "Model",
+              [_S("ad", "Eleman", tur="metin"), _S("X0", "X başı", "m", ondalik=2), _S("X1", "X sonu", "m", ondalik=2),
+               _S("Y0", "Y başı", "m", ondalik=2), _S("Y1", "Y sonu", "m", ondalik=2), _S("Lx", "L_x", "m", ondalik=2),
+               _S("Ly", "L_y", "m", ondalik=2), _S("h", "Kalınlık h", "m", duzenlenebilir=True, ondalik=2),
+               _S("tasma", "Aks dışına taşma", "m", duzenlenebilir=True, ondalik=2),
+               _S("ag", "Izgara aralığı", "m", duzenlenebilir=True, ondalik=2), _S("alan", "Plak alanı", "m²", ondalik=2),
+               _S("hacim", "Hacim", "m³", ondalik=2), _S("kiris", "Aks kirişi b×h", tur="metin"),
+               _S("kb", "Kiriş b", "m", duzenlenebilir=True, ondalik=2, bos_olur=True),
+               _S("kh", "Kiriş h (plak dahil)", "m", duzenlenebilir=True, ondalik=2, bos_olur=True)],
+              satirlar, "Plak aks dış zarfını taşma kadar aşar; iki doğrultulu ızgara (grillage) ile Winkler yaylarına (k_z = k0·A_etki) "
+                        "oturur. Kirişli radyede aks çizgilerinde temel kirişleri (kiriş eklemek için Temel Parametreleri / model).",
+              "TS 500 md. 10.4.2 (kirişsiz radye h ≥ 300 mm); temel.py (§13)")
 
 
 # ============================================================================
@@ -1464,7 +1533,7 @@ def _t_kar_ruzgar(c):
         _R({"grup": "Kar", "parametre": "C_e · C_t", "deger": (kar.get("Ce", 1.0) or 1.0) * (kar.get("Ct", 1.0) or 1.0), "birim": "", "kaynak": ""}),
         _R({"grup": "Kar", "parametre": "s = μ1·C_e·C_t·S_k (çatı)", "deger": kar.get("s"), "birim": "kN/m²", "kaynak": "TS EN 1991-1-3 Denk. 5.1"}),
         _R({"grup": "Kar", "parametre": "Çatı alanı / toplam S", "deger": kar.get("S_toplam"), "birim": "kN",
-            "kaynak": f"çatı alanı {_n(kar.get('cati_alani'))} m²" if kar.get("cati_alani") is not None else ""}),
+            "kaynak": f"çatı alanı {_g(kar.get('cati_alani'))} m²" if kar.get("cati_alani") is not None else ""}),
         _R({"grup": "Rüzgâr", "parametre": "Rüzgâr yükü etkin", "deger": bool(rz) if B else bool(W.get("acik")), "birim": "", "kaynak": ""},
            {"deger": ["yuk_durumlari", "W", "acik"]}, hucre={"deger": {"tur": "bool"}}),
         _R({"grup": "Rüzgâr", "parametre": "C (basınç + emme)", "deger": (rz or {}).get("C", W.get("C", yv.TS498_RUZGAR["C"])), "birim": "",
@@ -1473,9 +1542,9 @@ def _t_kar_ruzgar(c):
             "kaynak": "TS 498:2021 md. 14.3"}, {"deger": ["yuk_durumlari", "W", "sarp"]}, hucre={"deger": {"tur": "bool"}}),
     ]
     for kt in ((c.veri or {}).get("ruzgar") or {}).get("katlar") or []:
-        satirlar.append(_R({"grup": "Rüzgâr", "parametre": f"Kat {kt['kat']}: q(z = {_n(kt['z'])} m), F_x / F_y",
+        satirlar.append(_R({"grup": "Rüzgâr", "parametre": f"Kat {kt['kat']}: q(z = {_g(kt['z'])} m), F_x / F_y",
                             "deger": kt.get("q"), "birim": "kN/m²",
-                            "kaynak": f"F_x = {_n(kt.get('F_x'))} kN, F_y = {_n(kt.get('F_y'))} kN (cephe {_n(kt.get('cephe_x'))} / {_n(kt.get('cephe_y'))} m²)"}))
+                            "kaynak": f"F_x = {_g(kt.get('F_x'))} kN, F_y = {_g(kt.get('F_y'))} kN (cephe {_g(kt.get('cephe_x'))} / {_g(kt.get('cephe_y'))} m²)"}))
     return _T("kar_ruzgar", "Kar ve Rüzgâr Yükleri", "Yükler",
               [_S("grup", "Yük", tur="metin"), _S("parametre", "Parametre", tur="metin"), _S("deger", "Değer", duzenlenebilir=True, ondalik=3),
                _S("birim", "Birim", tur="metin"), _S("kaynak", "Kaynak / not", tur="metin")],
@@ -1823,26 +1892,77 @@ def _t_yer_degistirmeler(c):
               "Sonlu eleman çözümü (cerceve3b, 6 SD/düğüm)")
 
 
+def _winkler(c):
+    """Mütemadi/radye temel zemin yayları: (k0, [(no, A)], {no: [k_rX, k_rY]}) ya da None. k_z = k0·A (A: düğüm etki alanı,
+    veri.temel.dugumler[].A); mütemadide kiriş ekseni etrafında dönme yayı k_θ = k0·B³/12·l_etki (l_etki: komşu düğümlere yarı
+    uzaklıklar toplamı, hat boyunca — temel.py ile aynı)."""
+    tv = (c.veri or {}).get("temel") if c.veri else None
+    if not isinstance(tv, dict) or tv.get("tip") not in ("surekli", "radye") or not tv.get("dugumler"):
+        return None
+    model = tv.get("model") or {}
+    k0 = model.get("k0")
+    if not k0:
+        return None
+    dug = [(d["no"], d.get("A") or 0.0) for d in tv["dugumler"]]
+    kr = {}
+    Bt = (model.get("kesit") or {}).get("B")
+    if tv["tip"] == "surekli" and Bt:
+        konum = {d["no"]: (d["X"], d["Y"]) for d in tv["dugumler"]}
+        for h in tv.get("hatlar") or []:
+            eks = 0 if h.get("yon") == "x" else 1
+            dn = sorted((n for n in h.get("dugumler") or [] if n in konum), key=lambda n: konum[n][eks])
+            pts = [konum[n][eks] for n in dn]
+            for i, n in enumerate(dn):
+                l_etki = ((pts[i] - pts[i - 1]) / 2.0 if i > 0 else 0.0) + ((pts[i + 1] - pts[i]) / 2.0 if i < len(pts) - 1 else 0.0)
+                kr.setdefault(n, [0.0, 0.0])[eks] += k0 * Bt ** 3 / 12.0 * l_etki
+    return k0, dug, kr
+
+
 def _t_tepkiler(c):
     if c.veri is None:
         return None
     adres = {d["no"]: d.get("adres", "") for d in (c.veri.get("ag") or {}).get("dugumler") or []}
+    wk = _winkler(c)
     satirlar = []
+    alanlar = ("FX", "FY", "FZ", "MX", "MY", "MZ")
     for ad in _durum_sirasi(c):
         k = _kisa(c, ad) or {}
-        tep = k.get("tepkiler") or []
-        for t in tep:
-            satirlar.append(_R({"durum": ad, "dugum": t["dugum"], "adres": adres.get(t["dugum"], ""),
-                                **{a: t.get(a) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}}))
-        if tep:
-            satirlar.append(_R({"durum": ad, "dugum": None, "adres": "Σ (toplam)",
-                                **{a: sum(t.get(a) or 0.0 for t in tep) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}}, ozet=True))
-    return _T("mesnet_tepkileri", "Mesnet Tepkileri", "Analiz",
+        tep = {t["dugum"]: dict(t) for t in k.get("tepkiler") or []}
+        kayit = []
+        if wk:
+            k0, dug, kr = wk
+            dk = {d["no"]: d for d in k.get("dugumler") or []}
+            for no, A in dug:
+                d = dk.get(no)
+                if d is None:
+                    continue
+                t = tep.pop(no, {"dugum": no})
+                t["FZ"] = (t.get("FZ") or 0.0) + k0 * A * (-(d.get("uZ") or 0.0))          # F_Z = k_z·w, w = −u_Z (oturma)
+                krx, kry = kr.get(no, (0.0, 0.0))
+                t["MX"] = (t.get("MX") or 0.0) - krx * (d.get("rX") or 0.0)
+                t["MY"] = (t.get("MY") or 0.0) - kry * (d.get("rY") or 0.0)
+                t["tip"] = "zemin yayı"
+                kayit.append(t)
+        for t in tep.values():
+            t["tip"] = "mesnet"
+            kayit.append(t)
+        for t in kayit:
+            satirlar.append(_R({"durum": ad, "dugum": t["dugum"], "adres": adres.get(t["dugum"], ""), "tip": t["tip"],
+                                **{a: t.get(a) for a in alanlar}}))
+        if kayit:
+            satirlar.append(_R({"durum": ad, "dugum": None, "adres": "Σ (toplam)", "tip": "",
+                                **{a: sum(t.get(a) or 0.0 for t in kayit) for a in alanlar}}, ozet=True))
+    aciklama = "Bina koordinatında mesnet tepkileri; her durumun Σ satırı toplam yükü dengeler (korunum: ΣF_Z = durumun düşey yükü)."
+    if wk:
+        aciklama = ("Mütemadi/radye temel: sabit mesnet yok; zemin yayı tepkisi (Winkler) F_Z = k_z·w, k_z = k0·A_etki, w = −u_Z (oturma)"
+                    + ("; tabla dönme yayı M = −k_θ·θ, k_θ = k0·B³/12·l_etki" if wk[2] else "")
+                    + ". F_X, F_Y, M_Z temel düzlemindeki yatay tutulmadan. Σ F_Z (G) temel öz ağırlığı dahil toplam düşey yükü dengeler.")
+    return _T("mesnet_tepkileri", "Mesnet ve Zemin Yayı Tepkileri" if wk else "Mesnet Tepkileri", "Analiz",
               [_S("durum", "Durum / birleşim", tur="metin"), _S("dugum", "Düğüm", ondalik=0), _S("adres", "Adres", tur="metin"),
+               _S("tip", "Tür", tur="metin"),
                _S("FX", "F_X", "kN", ondalik=2), _S("FY", "F_Y", "kN", ondalik=2), _S("FZ", "F_Z", "kN", ondalik=2),
                _S("MX", "M_X", "kN·m", ondalik=2), _S("MY", "M_Y", "kN·m", ondalik=2), _S("MZ", "M_Z", "kN·m", ondalik=2)],
-              satirlar, "Bina koordinatında mesnet tepkileri; her durumun Σ satırı toplam yükü dengeler (korunum: ΣF_Z = durumun düşey yükü).",
-              "Sonlu eleman çözümü")
+              satirlar, aciklama, "Sonlu eleman çözümü" + ("; Winkler zemin modeli (TS 500 md. 10.4.2)" if wk else ""))
 
 
 def _t_zarf(c):
@@ -2079,7 +2199,7 @@ def _t_temel_dugumleri(c):
     return _T("temel_dugumleri", "Temel Düğümleri: Taban Basıncı ve Oturma", "Temel",
               [_S("no", "Düğüm", ondalik=0), _S("X", "X", "m", ondalik=2), _S("Y", "Y", "m", ondalik=2), _S("w_mm", "Oturma w", "mm", ondalik=2),
                _S("p", "Taban basıncı p", "kN/m²", ondalik=2), _S("dc", "p / q_em", ondalik=3, vurgu="dc")],
-              satirlar, f"Temel tipi: {tv.get('tip', '')}; p_maks = {_n(tv.get('p_maks'))} kN/m², en büyük oturma {_n(tv.get('oturma_maks_mm'))} mm.",
+              satirlar, f"Temel tipi: {tv.get('tip', '')}; p_maks = {_g(tv.get('p_maks'))} kN/m², en büyük oturma {_g(tv.get('oturma_maks_mm'))} mm.",
               "Winkler zemin modeli; TS 500")
 
 
@@ -2171,13 +2291,13 @@ def _metraj_hesap(c):
             As = tas["ozet"]["As_toplam_cm2"] * 1e-4
             et = _etriye_ayristir((tas.get("ozet") or {}).get("etriye")) or KOLON_ETRIYE
             donati = As * col["L"] * CELIK_YOGUNLUK + _etriye_kg(et[0], et[1], col["bX"], col["bY"], col["L"], ks.get("pas") or 0.03)
-            kaynak = f"tasarım A_s = {_n(tas['ozet']['As_toplam_cm2'])} cm² + etriye Φ{_n(et[0])}/{_n(et[1] * 100)}" + \
+            kaynak = f"tasarım A_s = {_g(tas['ozet']['As_toplam_cm2'])} cm² + etriye Φ{_g(et[0])}/{_g(et[1] * 100)}" + \
                      ("" if (tas.get("ozet") or {}).get("etriye") else " (varsayım)")
         else:
             oran = _donati_orani(c, "kolon")
-            donati, kaynak = V * oran, f"yaklaşık {_n(oran)} kg/m³"
+            donati, kaynak = V * oran, f"yaklaşık {_g(oran)} kg/m³"
         beton.append({"tur": "kolon", "no": col["no"], "adres": col["adres"], "kat": col["kat"], "sinif": sinif,
-                      "olcu": f"{_n(col['bX'] * 100)}×{_n(col['bY'] * 100)} cm", "uzunluk": H, "alan": None, "beton": V, "kalip": kalip,
+                      "olcu": f"{_g(col['bX'] * 100)}×{_g(col['bY'] * 100)} cm", "uzunluk": H, "alan": None, "beton": V, "kalip": kalip,
                       "donati": donati, "donati_kaynak": kaynak, "t": t})
     for k in B.kirisler:
         ks = B.kesitler[k["kesit"]]
@@ -2207,12 +2327,12 @@ def _metraj_hesap(c):
                 As = (oz["As_ust_cm2"] + oz["As_alt_cm2"]) * 1e-4
                 et = _etriye_ayristir(oz.get("etriye"))
                 donati = As * k["L"] * CELIK_YOGUNLUK + (_etriye_kg(et[0], et[1], k["b"], k["h"], Lnet, ks.get("pas") or 0.03) if et else 0.0)
-                kaynak = f"tasarım A_s üst + alt = {_n(oz['As_ust_cm2'] + oz['As_alt_cm2'])} cm²" + (f" + etriye {oz.get('etriye')}" if et else "")
+                kaynak = f"tasarım A_s üst + alt = {_g(oz['As_ust_cm2'] + oz['As_alt_cm2'])} cm²" + (f" + etriye {oz.get('etriye')}" if et else "")
             else:
                 oran = _donati_orani(c, "kiris")
-                donati, kaynak = V * oran, f"yaklaşık {_n(oran)} kg/m³"
+                donati, kaynak = V * oran, f"yaklaşık {_g(oran)} kg/m³"
             beton.append({"tur": "kiris", "no": k["no"], "adres": k["adres"], "kat": k["kat"], "sinif": sinif,
-                          "olcu": f"{_n(k['b'] * 100)}×{_n(k['h'] * 100)} cm (t = {_n(t * 100)} cm)", "uzunluk": Lnet, "alan": None,
+                          "olcu": f"{_g(k['b'] * 100)}×{_g(k['h'] * 100)} cm (t = {_g(t * 100)} cm)", "uzunluk": Lnet, "alan": None,
                           "beton": V, "kalip": kalip, "donati": donati, "donati_kaynak": kaynak, "t": t})
         if k["duvar"]:
             dv = B.duvarlar[k["duvar"]]
@@ -2244,8 +2364,8 @@ def _metraj_hesap(c):
         V = alan * d["h"]
         oran = _donati_orani(c, "doseme")
         beton.append({"tur": "doseme", "no": d["no"], "adres": d["adres"], "kat": d["kat"], "sinif": beton_sinif or "",
-                      "olcu": f"{_n(d['dx'])}×{_n(d['dy'])} m, t = {_n(d['h'] * 100)} cm", "uzunluk": None, "alan": alan, "beton": V,
-                      "kalip": kalip, "donati": V * oran, "donati_kaynak": f"yaklaşık {_n(oran)} kg/m³"})
+                      "olcu": f"{_g(d['dx'])}×{_g(d['dy'])} m, t = {_g(d['h'] * 100)} cm", "uzunluk": None, "alan": alan, "beton": V,
+                      "kalip": kalip, "donati": V * oran, "donati_kaynak": f"yaklaşık {_g(oran)} kg/m³"})
     # tekil temeller
     if str(B.temeller.get("tip", "tekil")) == "tekil":
         for t in _temel_listesi(c):
@@ -2253,8 +2373,8 @@ def _metraj_hesap(c):
             V = t["B"] * t["L"] * h
             oran = _donati_orani(c, "temel")
             beton.append({"tur": "temel", "no": t["kolon_no"], "adres": f"T-{t['aks'][0]}{t['aks'][1]}", "kat": 0, "sinif": beton_sinif or "",
-                          "olcu": f"{_n(t['B'])}×{_n(t['L'])}×{_n(h)} m", "uzunluk": None, "alan": t["B"] * t["L"], "beton": V,
-                          "kalip": 2 * (t["B"] + t["L"]) * h, "donati": V * oran, "donati_kaynak": f"yaklaşık {_n(oran)} kg/m³"})
+                          "olcu": f"{_g(t['B'])}×{_g(t['L'])}×{_g(h)} m", "uzunluk": None, "alan": t["B"] * t["L"], "beton": V,
+                          "kalip": 2 * (t["B"] + t["L"]) * h, "donati": V * oran, "donati_kaynak": f"yaklaşık {_g(oran)} kg/m³"})
     _surekli_radye_metraji(c, beton, beton_sinif)
     # serbest çubuklar ve paneller (surum 3)
     for cb in _cubuk_kayitlari(c):
@@ -2272,8 +2392,8 @@ def _metraj_hesap(c):
             V = ks["A"] * cb["L"]
             oran = _donati_orani(c, "diger")
             beton.append({"tur": cb["tur"], "no": cb["no"], "adres": cb["adres"], "kat": cb["kat"], "sinif": sinif,
-                          "olcu": f"{_n(ks['b'] * 100)}×{_n(ks['h'] * 100)} cm", "uzunluk": cb["L"], "alan": None, "beton": V,
-                          "kalip": 2 * (ks["b"] + ks["h"]) * cb["L"], "donati": V * oran, "donati_kaynak": f"yaklaşık {_n(oran)} kg/m³"})
+                          "olcu": f"{_g(ks['b'] * 100)}×{_g(ks['h'] * 100)} cm", "uzunluk": cb["L"], "alan": None, "beton": V,
+                          "kalip": 2 * (ks["b"] + ks["h"]) * cb["L"], "donati": V * oran, "donati_kaynak": f"yaklaşık {_g(oran)} kg/m³"})
     for i, p in enumerate(ham.get("paneller") or []):
         if not isinstance(p, dict):
             continue
@@ -2285,8 +2405,8 @@ def _metraj_hesap(c):
             V = alan * tk
             oran = _donati_orani(c, "doseme")
             beton.append({"tur": "panel", "no": p.get("no", i + 1), "adres": f"P{p.get('no', i + 1)}", "kat": p.get("kat"), "sinif": beton_sinif or "",
-                          "olcu": f"t = {_n(tk * 100)} cm", "uzunluk": None, "alan": alan, "beton": V, "kalip": alan, "donati": V * oran,
-                          "donati_kaynak": f"yaklaşık {_n(oran)} kg/m³"})
+                          "olcu": f"t = {_g(tk * 100)} cm", "uzunluk": None, "alan": alan, "beton": V, "kalip": alan, "donati": V * oran,
+                          "donati_kaynak": f"yaklaşık {_g(oran)} kg/m³"})
         else:
             diger["panel"] += alan
     for e in celik:
@@ -2308,67 +2428,153 @@ def _sayi_al(d, a, vars_):
         return vars_
 
 
+_TEMEL_VARS = {"surekli": {"yon": "xy", "akslar": "tum", "B": 1.2, "h_tabla": 0.40, "b_govde": 0.50, "h_govde": 1.00, "tasma": 0.5, "ag": 0.5},
+               "radye": {"h": 0.80, "tasma": 1.0, "ag": 0.5, "kiris": None}}
+
+
+def _temel_tipi(c):
+    if c.B is not None:
+        return str(c.B.temeller.get("tip", "tekil")).strip().lower()
+    t = c.ham.get("temeller") if isinstance(c.ham.get("temeller"), dict) else {}
+    tip = str(t.get("tip") or "tekil").strip().lower()
+    return {"sürekli": "surekli", "mutemadi": "surekli", "mütemadi": "surekli"}.get(tip, tip)
+
+
+def _temel_cfg(c, tip):
+    """Mütemadi/radye yapılandırması: motorun okuduğu (temel.oku, B.temeller[tip]) ya da ham bina + varsayılanlar (temel.VARSAYILAN)."""
+    try:
+        import temel as _tm
+        vars_ = dict(_tm.VARSAYILAN.get(tip) or {})
+    except Exception:  # noqa: BLE001 — temel.py yoksa yerel varsayılanlar
+        vars_ = dict(_TEMEL_VARS[tip])
+    if c.B is not None and isinstance(c.B.temeller.get(tip), dict):
+        cfg = dict(vars_)
+        cfg.update({a: v for a, v in c.B.temeller[tip].items() if a != "kesit"})
+        return cfg
+    t = c.ham.get("temeller") if isinstance(c.ham.get("temeller"), dict) else {}
+    h = t.get(tip) if isinstance(t.get(tip), dict) else {}
+    cfg = dict(vars_)
+    for a, v in vars_.items():
+        if a in h:
+            cfg[a] = _sayi_al(h, a, v) if isinstance(v, float) else h[a]
+    return cfg
+
+
+def _tabanlar(c):
+    return [(col["ix"], col["iy"]) for col in c.B.kolonlar if col["kat"] == 1] if c.B is not None else []
+
+
+def _surekli_hatlari(c, cfg):
+    """Mütemadi temel kirişi hatları: [{ad, yon, sabit_ad, bas, son, L, kolon_sayisi}] — çözüm varsa veri.temel.hatlar (motorun
+    kurduğu), yoksa aks çizgisindeki uç kolonlar ± taşma (motor kuralı)."""
+    tv = (c.veri or {}).get("temel") if c.veri else None
+    if isinstance(tv, dict) and tv.get("tip") == "surekli" and tv.get("hatlar"):
+        return [{"ad": h.get("ad"), "yon": h.get("yon"), "sabit": h.get("sabit"), "bas": h.get("bas"), "son": h.get("son"), "L": h.get("L"),
+                 "kolon_sayisi": len(h.get("kolonlar") or [])} for h in tv["hatlar"]]
+    B = c.B
+    tab = _tabanlar(c)
+    if B is None or not tab:
+        return []
+    yon = str(cfg.get("yon") or "xy").lower()
+    secili = cfg.get("akslar", "tum")
+    secili = None if secili in (None, "tum") else {str(a) for a in secili}
+    tasma = cfg["tasma"]
+    hatlar = []
+    if "x" in yon:
+        for iy in sorted({iy for _, iy in tab}):
+            if secili is None or B.yad[iy] in secili:
+                xs = [B.xk[ix] for ix, jy in tab if jy == iy]
+                hatlar.append({"ad": B.yad[iy], "yon": "x", "sabit": B.yk[iy], "bas": min(xs) - tasma, "son": max(xs) + tasma,
+                               "L": max(xs) - min(xs) + 2 * tasma, "kolon_sayisi": len(xs)})
+    if "y" in yon:
+        for ix in sorted({ix for ix, _ in tab}):
+            if secili is None or B.xad[ix] in secili:
+                ys = [B.yk[iy] for jx, iy in tab if jx == ix]
+                hatlar.append({"ad": B.xad[ix], "yon": "y", "sabit": B.xk[ix], "bas": min(ys) - tasma, "son": max(ys) + tasma,
+                               "L": max(ys) - min(ys) + 2 * tasma, "kolon_sayisi": len(ys)})
+    return hatlar
+
+
+def _radye_plak(c, cfg):
+    """Radye plağı: aks dış zarfı + taşma (motor kuralı; çözüm varsa veri.temel.model.plak)."""
+    tv = (c.veri or {}).get("temel") if c.veri else None
+    p = ((tv or {}).get("model") or {}).get("plak") if isinstance(tv, dict) and tv.get("tip") == "radye" else None
+    if isinstance(p, dict) and p.get("alan") is not None:
+        return {"X0": p["X0"], "X1": p["X1"], "Y0": p["Y0"], "Y1": p["Y1"]}
+    B = c.B
+    if B is None:
+        return None
+    t = cfg["tasma"]
+    return {"X0": B.xk[0] - t, "X1": B.xk[-1] + t, "Y0": B.yk[0] - t, "Y1": B.yk[-1] + t}
+
+
+def _ters_t_katmanlari(cfg):
+    """Ters T kesit katmanları [(genişlik, kalınlık)] (h_gövde tabla dahil toplam yükseklik; temel.ters_t_kesit ile aynı:
+    h_tabla = 0, b_gövde = B ya da h_tabla = h_gövde → dikdörtgen)."""
+    Bt, ht, bg, hg = cfg["B"], cfg["h_tabla"], cfg["b_govde"], cfg["h_govde"]
+    if ht <= 1e-12 or abs(bg - Bt) <= 1e-12 or abs(ht - hg) <= 1e-12:
+        gen = Bt if (abs(bg - Bt) <= 1e-12 or abs(ht - hg) <= 1e-12) else bg
+        return [(gen, hg)]
+    return [(Bt, ht), (bg, hg - ht)]
+
+
+def _ters_t_alani(cfg):
+    """Ters T kesit alanı: B·h_tabla + b_gövde·(h_gövde − h_tabla)."""
+    return sum(g * k for g, k in _ters_t_katmanlari(cfg))
+
+
+def _surekli_ortak_hacim(hatlar, cfg):
+    """xy kesişimlerinde iki kez sayılan hacim, y hattı adına göre: her katmanda (tabla, gövde) kesişim dikdörtgeni hat uçlarıyla
+    kırpılır (temel.py ile aynı kural)."""
+    dus = {}
+    for a in (h for h in hatlar if h["yon"] == "x"):
+        for b in (h for h in hatlar if h["yon"] == "y"):
+            if a.get("sabit") is None or b.get("sabit") is None:
+                continue
+            for gen, kalin in _ters_t_katmanlari(cfg):
+                ox0, ox1 = max(a["bas"], b["sabit"] - gen / 2), min(a["son"], b["sabit"] + gen / 2)
+                oy0, oy1 = max(b["bas"], a["sabit"] - gen / 2), min(b["son"], a["sabit"] + gen / 2)
+                if ox1 - ox0 > 1e-12 and oy1 - oy0 > 1e-12:
+                    dus[b["ad"]] = dus.get(b["ad"], 0.0) + (ox1 - ox0) * (oy1 - oy0) * kalin
+    return dus
+
+
 def _surekli_radye_metraji(c, beton, beton_sinif):
     """Mütemadi (sürekli) temel ve radye metrajı (§13, yaklaşık): temel kirişi boyu = aks çizgisi üzerindeki uç kolonlar arası +
-    2·taşma; ters T kesit V = (B·h_tabla + b_gövde·h_gövde)·L, xy'de kesişim hacmi bir kez düşülür. Radye: kolonları çevreleyen
-    dikdörtgen + taşma, V = alan·h; kirişli radyede aks çizgisi kirişlerinin plak üstünde kalan kısmı eklenir."""
-    B, ham = c.B, c.ham
-    t = ham.get("temeller") if isinstance(ham.get("temeller"), dict) else {}
-    tip = str(t.get("tip") or "tekil").strip().lower()
-    if tip not in ("surekli", "radye"):
+    2·taşma; ters T kesit V = (B·h_tabla + b_gövde·(h_gövde − h_tabla))·L (h_gövde tabla dahil), xy'de kesişim hacmi bir kez
+    düşülür. Radye: aks dış zarfı + taşma, V = alan·h; kirişli radyede aks çizgisi kirişlerinin plak üstünde kalan kısmı eklenir."""
+    B = c.B
+    tip = _temel_tipi(c)
+    if tip not in ("surekli", "radye") or B is None:
         return
-    tabanlar = [(col["ix"], col["iy"]) for col in B.kolonlar if col["kat"] == 1]
+    tabanlar = _tabanlar(c)
     if not tabanlar:
         return
     oran = _donati_orani(c, "temel")
-    kaynak = f"yaklaşık {_n(oran)} kg/m³"
+    kaynak = f"yaklaşık {_g(oran)} kg/m³"
+    cfg = _temel_cfg(c, tip)
     if tip == "surekli":
-        s = t.get("surekli") if isinstance(t.get("surekli"), dict) else {}
-        Bt, ht = _sayi_al(s, "B", 1.2), _sayi_al(s, "h_tabla", 0.40)
-        bg, hg = _sayi_al(s, "b_govde", 0.50), _sayi_al(s, "h_govde", 1.00)
-        tasma = _sayi_al(s, "tasma", 0.5)
-        yon = str(s.get("yon") or "xy").lower()
-        secili = s.get("akslar", "tum")
-        secili = None if secili in (None, "tum") else {str(a) for a in secili}
-        hatlar = []          # (yön, sabit indeks, bas konum, son konum)
-        if "x" in yon:
-            for iy in sorted({iy for _, iy in tabanlar}):
-                if secili is None or B.yad[iy] in secili:
-                    xs = [B.xk[ix] for ix, jy in tabanlar if jy == iy]
-                    hatlar.append(("x", iy, min(xs) - tasma, max(xs) + tasma))
-        if "y" in yon:
-            for ix in sorted({ix for ix, _ in tabanlar}):
-                if secili is None or B.xad[ix] in secili:
-                    ys = [B.yk[iy] for jx, iy in tabanlar if jx == ix]
-                    hatlar.append(("y", ix, min(ys) - tasma, max(ys) + tasma))
-        A_kesit = Bt * ht + bg * hg
-        for k, (yn, sabit, a0, a1) in enumerate(hatlar, start=1):
-            L = a1 - a0
-            V = A_kesit * L
-            dus = 0.0
-            if yn == "y":       # kesişimler y hatlarından düşülür (bir kez)
-                X = B.xk[sabit]
-                for yn2, s2, b0, b1 in hatlar:
-                    if yn2 == "x" and b0 <= X <= b1 and a0 <= B.yk[s2] <= a1:
-                        dus += Bt * Bt * ht + bg * bg * hg
-            V = max(V - dus, 0.0)
-            ad = B.yad[sabit] if yn == "x" else B.xad[sabit]
-            beton.append({"tur": "temel", "no": k, "adres": f"TK-{ad} ({yn.upper()} doğr.)", "kat": 0, "sinif": beton_sinif or "",
-                          "olcu": f"tabla {_n(Bt)}×{_n(ht)} + gövde {_n(bg)}×{_n(hg)} m", "uzunluk": L, "alan": Bt * L, "beton": V,
-                          "kalip": 2 * (ht + hg) * L, "donati": V * oran, "donati_kaynak": kaynak})
+        Bt, ht, bg, hg = cfg["B"], cfg["h_tabla"], cfg["b_govde"], cfg["h_govde"]
+        A_kesit = _ters_t_alani(cfg)
+        hatlar = _surekli_hatlari(c, cfg)
+        ortak = _surekli_ortak_hacim(hatlar, cfg)          # kesişim hacmi y hatlarından düşülür (bir kez)
+        for k, h in enumerate(hatlar, start=1):
+            L = h["L"]
+            dus = ortak.get(h["ad"], 0.0) if h["yon"] == "y" else 0.0
+            V = max(A_kesit * L - dus, 0.0)
+            beton.append({"tur": "temel", "no": k, "adres": f"TK-{h['ad']} ({h['yon'].upper()} doğr.)", "kat": 0, "sinif": beton_sinif or "",
+                          "olcu": f"tabla {_g(Bt)}×{_g(ht)} + gövde {_g(bg)}×{_g(hg)} m", "uzunluk": L, "alan": Bt * L, "beton": V,
+                          "kalip": 2 * hg * L, "donati": V * oran, "donati_kaynak": kaynak})
     else:
-        r = t.get("radye") if isinstance(t.get("radye"), dict) else {}
-        h = _sayi_al(r, "h", 0.80)
-        tasma = _sayi_al(r, "tasma", 1.0)
-        xs = [B.xk[ix] for ix, _ in tabanlar]
-        ys = [B.yk[iy] for _, iy in tabanlar]
-        Lx, Ly = max(xs) - min(xs) + 2 * tasma, max(ys) - min(ys) + 2 * tasma
+        p = _radye_plak(c, cfg)
+        h = cfg["h"]
+        Lx, Ly = p["X1"] - p["X0"], p["Y1"] - p["Y0"]
         alan = Lx * Ly
         V = alan * h
         beton.append({"tur": "temel", "no": 1, "adres": "Radye", "kat": 0, "sinif": beton_sinif or "",
-                      "olcu": f"{_n(Lx)}×{_n(Ly)} m, h = {_n(h * 100)} cm", "uzunluk": None, "alan": alan, "beton": V,
+                      "olcu": f"{_g(Lx)}×{_g(Ly)} m, h = {_g(h * 100)} cm", "uzunluk": None, "alan": alan, "beton": V,
                       "kalip": 2 * (Lx + Ly) * h, "donati": V * oran, "donati_kaynak": kaynak})
-        kir = r.get("kiris") if isinstance(r.get("kiris"), dict) else None
+        kir = cfg.get("kiris") if isinstance(cfg.get("kiris"), dict) else None
         if kir:
             bk, hk = _sayi_al(kir, "b", 0.5), _sayi_al(kir, "h", 1.2)
             ust = max(hk - h, 0.0)
@@ -2378,7 +2584,7 @@ def _surekli_radye_metraji(c, beton, beton_sinif):
                 L = max(xx) - min(xx)
                 if L > 0:
                     beton.append({"tur": "temel", "no": no, "adres": f"Radye kirişi {B.yad[iy]} (X)", "kat": 0, "sinif": beton_sinif or "",
-                                  "olcu": f"{_n(bk * 100)}×{_n(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
+                                  "olcu": f"{_g(bk * 100)}×{_g(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
                                   "kalip": 2 * ust * L, "donati": bk * ust * L * oran, "donati_kaynak": kaynak})
                     no += 1
             for ix in sorted({ix for ix, _ in tabanlar}):
@@ -2390,7 +2596,7 @@ def _surekli_radye_metraji(c, beton, beton_sinif):
                 L = max(yy) - min(yy) - bk * kesisen          # kesişim hacmi X kirişlerinde sayıldı
                 if L > 0:
                     beton.append({"tur": "temel", "no": no, "adres": f"Radye kirişi {B.xad[ix]} (Y)", "kat": 0, "sinif": beton_sinif or "",
-                                  "olcu": f"{_n(bk * 100)}×{_n(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
+                                  "olcu": f"{_g(bk * 100)}×{_g(hk * 100)} cm", "uzunluk": L, "alan": None, "beton": bk * ust * L,
                                   "kalip": 2 * ust * L, "donati": bk * ust * L * oran, "donati_kaynak": kaynak})
                     no += 1
 
@@ -2448,7 +2654,7 @@ def _t_metraj_profil(c, mh):
                _S("L", "Toplam uzunluk", "m", ondalik=2), _S("g", "Birim ağırlık", "kg/m", ondalik=1), _S("kutle", "Net kütle", "kg", ondalik=1),
                _S("pay", "Bağlantı payı", "%", ondalik=1), _S("kutle_payli", "Kütle (paylı)", "kg", ondalik=1),
                _S("ton", "Kütle (paylı)", "t", ondalik=3), _S("boya", "Boya yüzeyi", "m²", ondalik=2)],
-              satirlar, f"Bağlantı (levha, bulon, kaynak) payı %{_n(pay * 100)} — Metraj Varsayımları tablosundan değiştirilebilir.",
+              satirlar, f"Bağlantı (levha, bulon, kaynak) payı %{_g(pay * 100)} — Metraj Varsayımları tablosundan değiştirilebilir.",
               "Yaklaşık keşif", toplam=_topla(satirlar, "adet", "L", "kutle", "kutle_payli", "ton", "boya"))
 
 
@@ -2477,13 +2683,13 @@ def _t_metraj_ozet(c, mh):
         top_v = sum(b["beton"] for b in beton)
         yaklasik = sum(1 for b in beton if b["donati_kaynak"].startswith("yaklaşık"))
         satirlar.append(_R({"kalem": "Donatı çeliği", "malzeme": dad or "B420C", "miktar": donati / 1000.0, "birim": "t",
-                            "aciklama": f"{_n(round(donati, 1))} kg; ortalama {_n(round(donati / top_v, 1)) if top_v else 0} kg/m³; "
+                            "aciklama": f"{_g(round(donati, 1))} kg; ortalama {_g(round(donati / top_v, 1)) if top_v else 0} kg/m³; "
                                         f"{yaklasik}/{len(beton)} eleman yaklaşık oranla"}))
     if celik:
         net = sum(e["kutle"] for e in celik)
         siniflar = sorted({e["sinif"] for e in celik})
         satirlar.append(_R({"kalem": "Yapısal çelik (profil)", "malzeme": ", ".join(siniflar), "miktar": net * (1 + pay) / 1000.0, "birim": "t",
-                            "aciklama": f"net {_n(round(net, 1))} kg + bağlantı payı %{_n(pay * 100)}"}))
+                            "aciklama": f"net {_g(round(net, 1))} kg + bağlantı payı %{_g(pay * 100)}"}))
         satirlar.append(_R({"kalem": "Boya yüzeyi", "malzeme": "", "miktar": sum(e["boya"] or 0.0 for e in celik), "birim": "m²",
                             "aciklama": "profil çevresi × uzunluk"}))
     for anahtar, alan in diger["duvar"].items():
@@ -2513,7 +2719,7 @@ def _t_metraj_varsayimlari(c):
                            {"deger": ["metraj", "donati_orani", tur]}))
     satirlar += [
         _R({"parametre": "Çelik / donatı yoğunluğu", "deger": CELIK_YOGUNLUK, "birim": "kg/m³", "aciklama": "TS 498: 78,5 kN/m³"}),
-        _R({"parametre": "Kolon etriyesi (tasarım vermezse)", "deger": f"Φ{_n(KOLON_ETRIYE[0])}/{_n(KOLON_ETRIYE[1] * 100)}", "birim": "",
+        _R({"parametre": "Kolon etriyesi (tasarım vermezse)", "deger": f"Φ{_g(KOLON_ETRIYE[0])}/{_g(KOLON_ETRIYE[1] * 100)}", "birim": "",
             "aciklama": "varsayım"}, hucre={"deger": {"tur": "metin"}}),
     ]
     return _T("metraj_varsayimlari", "Metraj Varsayımları", "Metraj",
