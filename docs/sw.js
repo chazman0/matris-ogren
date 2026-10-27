@@ -15,7 +15,7 @@ const CDN = "https://cdn.jsdelivr.net/";
 const KABUK = [
   "./", "./index.html", "./style.css", "./app.js", "./motor.worker.js", "./web_kopru.py", "./matris_ogren.py",
   "./sonlu_eleman.py", "./yapi.py", "./yapi_veri.py", "./tasarim.py", "./etkilesim.js", "./etkilesim_matris.js", "./etkilesim_se.js", "./etkilesim_yapi.js", "./se.js",
-  "./cizim3b.js", "./bina.js", "./galeri.html",
+  "./cizim3b.js", "./bina.js", "./tablolar.py", "./tablo_editoru.js", "./galeri.html",
   "./dersler.json", "./surum.json", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",

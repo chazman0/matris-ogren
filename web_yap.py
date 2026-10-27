@@ -3,7 +3,7 @@
 
 Yaptıkları:
   1. matris_ogren.py motorunu docs\\ altına kopyalar (uygulama bu dosyayı Pyodide içinde çalıştırır);
-     sonlu_eleman.py, yapi.py, yapi_veri.py ve tasarim.py de (varsa) aynı biçimde kopyalanır.
+     sonlu_eleman.py, yapi.py, yapi_veri.py, tasarim.py ve tablolar.py de (varsa) aynı biçimde kopyalanır.
   2. Matris_Ogren.ipynb defterinin markdown hücrelerini docs\\dersler.json olarak çıkarır (Dersler sekmesi).
   3. İkon PNG'lerini icon.svg / icon-maskable.svg'den üretir (pymupdf varsa; yoksa mevcut PNG'ler kalır).
   4. docs\\ dosyalarının içeriğinden bir sürüm damgası hesaplar, sw.js içindeki SURUM satırına ve surum.json'a yazar
@@ -45,9 +45,9 @@ def se_kopyala() -> str:
 
 
 def yapi_kopyala() -> str:
-    """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py, varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir."""
+    """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py + tablolar.py, varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir."""
     bilgi = []
-    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py"):
+    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py", "tablolar.py"):
         kaynak = KOK / ad
         if not kaynak.exists():
             bilgi.append(f"{ad}: yok (atlandı)")

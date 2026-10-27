@@ -44,6 +44,10 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
                     kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
                     "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
+  "bina_tablolar":  girdi {"cozum_kimligi" | "bina"} → {"tablolar": [TABLO...] (tablolar.bina_tablolari şeması: ad, baslik, grup,
+                    sutunlar, satirlar (degerler, yol), toplam, aciklama, kaynak), "cozum_kimligi" (kullanılan çözüm ya da null),
+                    "cozumlu": bool, "hata": null}. Önbellekte bu binanın çözümü varsa (kimlik eşleşir) Analiz/Deprem/Tasarım/Temel
+                    tabloları da gelir; yoksa çözmeden Model + Yükler + Metraj (deprem kartı varsa önizleme) tabloları.
 """
 from __future__ import annotations
 
@@ -415,10 +419,10 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon", "bina_eleman_tasarim")
+# "bina_kombinasyon", "bina_eleman_tasarim", "bina_tablolar")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim"}
+                 "bina_eleman_tasarim", "bina_tablolar"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -452,8 +456,12 @@ def _bina_girdisi(girdi: dict):
 
 def _bina_coz_yaniti(girdi: dict) -> dict:
     yapi = _yapi_zorunlu()
-    r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
-    _onbellege_koy(getattr(r, "ic", None) or {})
+    bina = _bina_girdisi(girdi)
+    r = yapi.bina_coz(bina, goster="yok")
+    ic = getattr(r, "ic", None) or {}
+    if ic:
+        ic["veri"], ic["bina"] = r.veri, bina      # bina_tablolar (ve rapor) çözümü yeniden kurmadan kullanır
+    _onbellege_koy(ic)
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
     return {
         "ad": "bina", "bloklar": _bloklar(r.anlatim),
@@ -485,8 +493,10 @@ def _bina_ic(yapi, girdi: dict) -> dict:
     if ic is not None:
         _BINA_ONBELLEK.move_to_end(str(kimlik))
     elif girdi.get("bina") is not None:
-        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        bina = _bina_girdisi(girdi)
+        r = yapi.bina_coz(bina, goster="yok", anlat=False)
         ic = r.ic
+        ic["veri"], ic["bina"] = r.veri, bina
         _onbellege_koy(ic)
     else:
         raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
@@ -512,7 +522,47 @@ def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
             "hata": None}
 
 
+def _tablolar_modulu():
+    """tablolar.py (tablo editörü ve metraj) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("tablolar")
+    except ImportError:
+        return None
+
+
+def _bina_tablolar_yaniti(girdi: dict) -> dict:
+    """Tablo editörü: önbellekteki çözüm (kimlik eşleşirse) ile bütün tablolar; yoksa çözmeden model/yük/metraj tabloları."""
+    yapi = _yapi_zorunlu()
+    tb = _tablolar_modulu()
+    if tb is None:
+        raise mo.MatrisHatasi("Tablo modülü (tablolar.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    kimlik = girdi.get("cozum_kimligi")
+    bina = girdi.get("bina")
+    if bina is not None:
+        bina = _bina_girdisi(girdi)
+        if isinstance(bina, str):
+            try:
+                bina = json.loads(bina)
+            except ValueError as e:
+                raise mo.MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
+        try:   # verilen binanın kimliği: önbellekteki çözüm ancak aynı binaya aitse kullanılır (düzenlenmiş binada eski sonuç yok)
+            kimlik = yapi._cozum_kimligi(yapi._bina_oku(bina))
+        except mo.MatrisHatasi:
+            kimlik = None
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None and ic.get("veri") is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+        tablolar = tb.bina_tablolari(bina if bina is not None else ic.get("bina"), ic["veri"])
+        return {"tablolar": _sonlu_sayilar(tablolar), "cozum_kimligi": kimlik, "cozumlu": True, "hata": None}
+    if bina is None:
+        raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
+                              + " çözümün dışında kaldı); tablolar için 'bina' alanını da gönderin ya da binayı yeniden çözün.")
+    return {"tablolar": _sonlu_sayilar(tb.bina_tablolari(bina)), "cozum_kimligi": None, "cozumlu": False, "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_tablolar":
+        return _bina_tablolar_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":
