@@ -7,10 +7,12 @@ Kullanım::
     r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"))   # sözlük ya da JSON metni
     r.deger      # G durumu yer değiştirme vektörü (motor SD sırası, sympy Matrix)
     r.veri       # yapılı sonuçlar (aşağıdaki şema; bina koordinatında)
-    r.anlatim    # 12 adımlı anlatım (md / math / sema / kod blokları)
+    r.anlatim    # 13 adımlı anlatım (md / math / sema / kod blokları; 12. adım kesit tahkikleri)
     yapi.yuk_yolu(bina, r.veri, {"tur": "doseme", "no": 1, "durum": "G"})   # tek nesneden zemine yük zinciri
     yapi.kombinasyon_kisa(r.ic, "G+Q+0.2S+EX++0.3EY++0.3EZ")              # tek kombinasyonun tam kaydı (tembel)
     yapi.deprem_onizleme(bina)                                             # TBDY spektrum, V_tE, F_i (çözümsüz)
+    r.veri["tasarim"]                                                      # kesit tahkikleri (tasarim.py varsa; §11)
+    yapi.eleman_tasarim(r.ic, "kolon", 1)                                  # tek elemanın anlatımlı tahkiki, N–M eğrileri
 
 Bina veri modeli (``tur: "bina"``, ``surum: 1``; birimler kN, m, kN/m², kN/m³; MPa yalnız malzeme kartında)::
 
@@ -45,6 +47,7 @@ Koordinatlar: **bina** sistemi X sağa (harfli akslar), Y plan derinliği (sayı
 from __future__ import annotations
 
 import copy
+import importlib
 import json
 import math
 from types import SimpleNamespace
@@ -600,8 +603,12 @@ def _bina_oku(bina):
     gost = an.get("gosterilecek", bina.get("gosterilecek"))
     if gost is not None and not isinstance(gost, (list, tuple)):
         raise MatrisHatasi("analiz.gosterilecek bir kombinasyon adı listesi olmalı, örn. [\"1.4G+1.6Q\", \"G+Q\"].")
+    lb = str(an.get("celik_Lb", "otomatik")).strip().lower()
+    if lb not in ("otomatik", "boy"):
+        raise MatrisHatasi(f"analiz.celik_Lb {lb!r} tanımsız; 'otomatik' (döşemeli kirişte üst başlık tutulu, L_b = 0) ya da 'boy' "
+                           "(L_b = kiriş açıklığı) olmalı.")
     B.analiz = {"catlamis_rijitlik": bool(an.get("catlamis_rijitlik", False)), "diyagram_nokta": max(3, min(41, nokta)),
-                "gosterilecek": [str(x) for x in gost] if gost is not None else None}
+                "gosterilecek": [str(x) for x in gost] if gost is not None else None, "celik_Lb": lb}
     # --- yük durumları (S, W, E) ve deprem kartı ---
     _yuk_durumlarini_oku(B, bina)
     return B
@@ -2357,7 +2364,7 @@ def _adim_9(B, akis, anl):
 
 
 # ============================================================================
-# Adım 12: bağımsız numpy betiği (ağ kurma + G çözümü + kolon taban toplamları; sonlu_eleman içe aktarmaz)
+# Adım 13: bağımsız numpy betiği (ağ kurma + G çözümü + kolon taban toplamları; sonlu_eleman içe aktarmaz)
 # ============================================================================
 _PY_GOVDE = '''
 GAUSS = ((-0.7745966692414834, 5/9), (0.0, 8/9), (0.7745966692414834, 5/9))   # 3 noktalı Gauss-Legendre (4. derece kesin)
@@ -2545,8 +2552,8 @@ def _py_deprem(deprem):
     return s
 
 
-def _adim_12(B, ag, model, durumlar, Y, anl, deprem=None):
-    se._basla(anl, 12, "Aynı hesap Python'da",
+def _adim_13(B, ag, model, durumlar, Y, anl, deprem=None):
+    se._basla(anl, 13, "Aynı hesap Python'da",
               "Ağ kurma, parçalı yayılı yükün Gauss integrasyonuyla eşdeğer düğüm yüklerine çevrilmesi, birleştirme, çözüm ve "
               "kolon taban kuvvetleri tek bir numpy betiğinde"
               + ("; ardından TBDY 2018 eşdeğer deprem kat kuvvetleri (spektrum → V_tE → F_iE)" if deprem else "")
@@ -3377,6 +3384,574 @@ def _adim_11(B, Y, akis, kombinasyonlar, ozetler, anl):
 
 
 # ============================================================================
+# Adım 12: kesit tahkikleri (Dilim 3) — TS 500 / TBDY 2018 betonarme kiriş ve kolon, ÇYTHYE 2018 çelik eleman.
+# Hesaplar tasarim.py'dedir; burada bina kuvvetleri (kombinasyon başına, eş zamanlı) elemanlara dağıtılır. tasarim.py
+# yoksa (eski kurulum) bu bölüm atlanır ve veri["tasarim"] yazılmaz.
+# ============================================================================
+_PAS_EK = 0.02           # paspayı + etriye (Φ8) + boyuna çubuk yarıçapı ≈ paspayı + 20 mm: donatı ağırlık merkezi
+_RHO_VARSAYILAN = 0.01   # TS 500 md. 7.4.1 / TBDY 2018 md. 7.3.2 en az kolon boyuna donatısı
+_RHO_TARAMA = tuple(round(0.01 + 0.0025 * i, 4) for i in range(13))   # 0,01 → 0,04 (gerekli ρ önerisi)
+_KONTROL_EN_FAZLA = 8
+_TASARIM_TURLERI = ("dayanim", "deprem")
+_DURUM_SIRA = {"yeterli": 0, "donatı artır": 1, "kesit büyüt": 2, "yetersiz": 2}
+_DC_ARALIKLARI = (("<0.7", 0.7), ("0.7-0.9", 0.9), ("0.9-1.0", 1.0 + 1e-9), (">1.0", math.inf))
+_I_N, _I_V, _I_M, _I_VZ, _I_MY = 0, 1, 2, 3, 4      # _DIYAGRAM sırası
+
+
+def _tasarim_modulu():
+    """tasarim.py (kesit hesapları) varsa (tembel) içe aktarır; yoksa None: bina çözümü tasarımsız sürer."""
+    try:
+        return importlib.import_module("tasarim")
+    except ImportError:
+        return None
+
+
+def _tasarim_baglam(B, Y, ag, paket, kombinasyonlar):
+    """Dayanım (TS 500 / ÇYTHYE) ve deprem (TBDY 4.4.4) kombinasyonlarının bütün diyagramları tek matris çarpımıyla:
+    C (nk × L) = Γ (nk × ndurum) @ D (ndurum × L). Köprü ayrıntısı için önbellekte (ic["tasarim"]) saklanır."""
+    kombs = [k for k in kombinasyonlar if k["uygulandi"] and k["tur"] in _TASARIM_TURLERI]
+    adlar_d = list(paket.durum)
+    G = np.zeros((len(kombs), len(adlar_d)))
+    for i, k in enumerate(kombs):
+        for d, g in k["katsayilar"].items():
+            if d in paket.durum:
+                G[i, adlar_d.index(d)] = g
+    D = np.array([paket.durum[d]["diy"] for d in adlar_d])
+    GQ = np.zeros(paket.L)
+    for d in ("G", "Q"):
+        if d in paket.durum:
+            GQ = GQ + paket.durum[d]["diy"]
+    dosemeli = {p["kiris_no"] for d in Y.dosemeler for p in d["paylar"]}
+    return SimpleNamespace(B=B, ag=ag, paket=paket, kombs=kombs, adlar=[k["ad"] for k in kombs],
+                           deprem=[k["tur"] == "deprem" for k in kombs], C=G @ D, GQ=GQ, dosemeli=dosemeli,
+                           el={e["no"]: e for e in ag["elemanlar"]}, idx={no: j for j, no in enumerate(paket.el_no)},
+                           dno=ag["dno"], sonuclar={})
+
+
+def _blok(T, eleman_no, dizi=None):
+    """Eleman diyagram bloğu: (nk, 6, ns) = kombinasyon × (N, V, M, Vz, My, T) × istasyon (dizi verilirse (6, ns))."""
+    p, j = T.paket, T.idx[eleman_no]
+    if dizi is not None:
+        return dizi[p.ofs[j]:p.ofs[j] + 6 * p.ns[j]].reshape(6, p.ns[j])
+    return T.C[:, p.ofs[j]:p.ofs[j] + 6 * p.ns[j]].reshape(len(T.kombs), 6, p.ns[j])
+
+
+def _kesit_bilgi(T, kesit_ad):
+    """Tasarım için kesit kartı: betonarme (b, h, beton, donatı, paspayı, donatı ağırlık merkezi) ya da çelik profil."""
+    B = T.B
+    ks = B.kesitler[kesit_ad]
+    m = B.malzemeler[ks["malzeme"]]
+    if ks["tip"] == "profil":
+        if m["tur"] != "celik":
+            raise MatrisHatasi(f"Kesit {kesit_ad!r}: profil kesitin malzemesi çelik olmalı (S235, S275, S355).")
+        return {"sistem": "celik", "profil": ks["profil"], "celik": m["kutuphane"], "malzeme_ad": ks["malzeme"]}
+    if m["tur"] != "beton":
+        raise MatrisHatasi(f"Kesit {kesit_ad!r}: dikdörtgen kesit beton malzemeli olmalı (dikdörtgen çelik kesit tahkiki yok).")
+    ham = (B.ham.get("kesitler") or {}).get(kesit_ad) or {}
+    don = ks.get("donati")
+    if don and str(don) in B.malzemeler and B.malzemeler[str(don)]["tur"] == "donati":
+        donati, donati_varsayim = B.malzemeler[str(don)]["kutuphane"], False
+    elif don and str(don) in yv.DONATILAR:
+        donati, donati_varsayim = str(don), False
+    else:
+        donati, donati_varsayim = "B420C", True
+    pas = _sayi(ks.get("pas") if ks.get("pas") is not None else 0.03, f"Kesit {kesit_ad!r}: pas (paspayı, m)", pozitif=True, sifir_olur=False)
+    return {"sistem": "betonarme", "b": ks["b"], "h": ks["h"], "beton": m["kutuphane"], "donati": donati,
+            "donati_varsayim": donati_varsayim, "pas": pas, "d_ust": pas + _PAS_EK, "malzeme_ad": ks["malzeme"], "ham": ham}
+
+
+_KAYNAK_KISA = {   # yanıt boyutu: uzun kaynak metinlerinin kısa biçimi (tam metin elemanın ayrıntı anlatımında)
+    "Öğretici yaklaşım (Bresler": "Öğretici yaklaşım (Bresler ters yük / doğrusal moment toplamı); TS 500 iki eksenli etkileşim formülü vermez",
+}
+
+
+def _kontrol_kaydi(x, kombinasyon=None, ad=None, etiket=None, kosul=False):
+    """tasarim.py kontrol satırı → §11 satırı (sayılar 5 anlamlı basamak). ``kosul``: yönetmelik alt/üst sınır koşulu (en az
+    donatı, boyut, aralık, narinlik…) — elemanın D/C'sini yalnız sağlanmadığında belirler (sınırda D/C = 1 bilgi taşımaz).
+    _etiket / _kosul belirleyen için, yanıttan silinir."""
+    kaynak = x["kaynak"]
+    for on, kisa in _KAYNAK_KISA.items():
+        if kaynak.startswith(on):
+            kaynak = kisa
+    return {"ad": ad or x["ad"], "talep": _r5(x["talep"]), "kapasite": _r5(x["kapasite"]), "dc": _r5(min(float(x["dc"]), 99.0)),
+            "birim": x.get("birim", ""), "kaynak": kaynak, "saglandi": bool(x["saglandi"]), "kombinasyon": kombinasyon,
+            "kosul": bool(kosul), "_etiket": etiket or (ad or x["ad"])}
+
+
+def _yeni_kontrol(ad, talep, kapasite, kaynak, birim, kombinasyon=None, etiket=None, kosul=False):
+    dc = 99.0 if kapasite <= 0 else min(max(talep / kapasite, 0.0), 99.0)
+    return _kontrol_kaydi({"ad": ad, "talep": talep, "kapasite": kapasite, "dc": dc, "birim": birim, "kaynak": kaynak,
+                           "saglandi": dc <= 1.0 + 1e-9}, kombinasyon, etiket=etiket, kosul=kosul)
+
+
+def _kiris_kuvvetleri(T, kir):
+    """Bina kirişinin FE parçaları, dayanım/deprem kombinasyonları: mesnet (parça uçlarında en büyük −M, üst donatı), açıklık
+    (en büyük +M, alt donatı), en büyük |V|; her biri [değer, kombinasyon, yer]. M işareti motor kuralı: alt lif çekme +."""
+    mes, acik, kes = [0.0, None, None], [0.0, None, None], [0.0, None, None]
+    for p in kir["parcalar"]:
+        b = _blok(T, p["eleman"])
+        e = T.el[p["eleman"]]
+        xs = T.paket.el_x[T.idx[p["eleman"]]]
+        M, V = b[:, _I_M, :], b[:, _I_V, :]
+        for s, dg in ((0, e["dugumler"][0]), (-1, e["dugumler"][1])):
+            i = int(np.argmin(M[:, s]))
+            if -M[i, s] > mes[0]:
+                mes = [float(-M[i, s]), T.adlar[i], f"{T.dno[dg]['adres']} ucu"]
+        i, s = np.unravel_index(int(np.argmax(M)), M.shape)
+        if M[i, s] > acik[0]:
+            acik = [float(M[i, s]), T.adlar[i], f"{_kenar_adres(T.B, p['key'])}, x = {_f(xs[s])} m"]
+        i, s = np.unravel_index(int(np.argmax(np.abs(V))), V.shape)
+        if abs(V[i, s]) > kes[0]:
+            kes = [float(abs(V[i, s])), T.adlar[i], f"{_kenar_adres(T.B, p['key'])}, x = {_f(xs[s])} m"]
+    return {"mesnet": mes, "aciklik": acik, "kesme": kes}
+
+
+def _kolon_noktalari(T, e):
+    """Kolon FE elemanının her kombinasyonda alt (x = 0) ve üst (x = L) ucundaki EŞ ZAMANLI iç kuvvetleri (zarf değil):
+    N basınç + (motor N çekme + olduğundan −N), Mx / My bina X / Y eksenleri etrafında. Yerel eksenler (lam: bina
+    koordinatında x′, y′, z′ satırları) kullanılır: motor M (z′ etrafında) ve My (y′ etrafında) bina eksenlerine izdüşürülür;
+    yon takası (§2) böylece kendiliğinden işlenir (kolonda y′ = −X, z′ = −Y; yalnız büyüklükler kullanılır)."""
+    b = _blok(T, e["no"])
+    lam = e["lam"]
+    out = []
+    for i, ad in enumerate(T.adlar):
+        for uc, s in (("alt", 0), ("üst", -1)):
+            Mz, My = float(b[i, _I_M, s]), float(b[i, _I_MY, s])
+            out.append({"ad": f"{ad} ({uc})", "kombinasyon": ad, "uc": uc, "N": -float(b[i, _I_N, s]),
+                        "Mx": My * lam[1][0] + Mz * lam[2][0], "My": My * lam[1][1] + Mz * lam[2][1],
+                        "deprem": T.deprem[i]})
+    return out
+
+
+def _kayit_kur(tur, kayit, kb, fe, kontroller, durum, ozet):
+    """§11 eleman kaydı. D/C = dayanım satırlarının (ve sağlanmayan koşul satırlarının) en büyüğü; satırlar önce dayanım,
+    sonra koşullar (sağlanmayanlar önce, D/C azalan; sağlanan koşullardan yalnız en büyük D/C’li olanı — yanıt boyutu), en çok _KONTROL_EN_FAZLA.
+    ``kosul`` alanı yalnız koşul satırlarında yazılır (true)."""
+    etkin = [x for x in kontroller if not x["kosul"] or not x["saglandi"]] or kontroller
+    en = max(etkin, key=lambda x: x["dc"])
+    dc = en["dc"]
+    kosul = sorted((x for x in kontroller if x["kosul"]), key=lambda x: (x["saglandi"], -x["dc"]))
+    kota = 1 + sum(1 for x in kosul if not x["saglandi"])
+    kontroller = [x for x in kontroller if not x["kosul"]] + kosul[:kota]
+    if dc > 1.0 + 1e-9 and durum == "yeterli":
+        durum = "donatı artır" if kb["sistem"] == "betonarme" else "kesit büyüt"
+    return {"no": kayit["no"], "tur": tur, "kat": kayit["kat"], "adres": kayit["adres"], "kesit": kayit["kesit"],
+            "malzeme": kb["malzeme_ad"], "sistem": kb["sistem"], "fe_elemanlar": fe, "dc": dc, "durum": durum,
+            "belirleyen": {"kontrol": en["_etiket"], "kombinasyon": en["kombinasyon"]},
+            "kontroller": [{a: v for a, v in x.items() if a[0] != "_" and (a != "kosul" or v)} for x in kontroller[:_KONTROL_EN_FAZLA]],
+            "ozet": {a: (_r5(v) if isinstance(v, float) else v) for a, v in ozet.items()}}
+
+
+def _kiris_ba(ts, T, kir, kb, anl=None):
+    kv = _kiris_kuvvetleri(T, kir)
+    mes, acik, kes = kv["mesnet"], kv["aciklik"], kv["kesme"]
+    arg = (kb["b"], kb["h"], kb["d_ust"], kb["beton"], kb["donati"])
+    if anl is not None:
+        anl.baslik(f"Mesnet kesiti (üst donatı): M_d = {_f(mes[0])} kN·m — {mes[1] or '–'}, {mes[2] or '–'}", 2)
+    em = ts.kiris_egilme(mes[0], *arg, anl=anl)
+    if anl is not None:
+        anl.baslik(f"Açıklık kesiti (alt donatı): M_d = {_f(acik[0])} kN·m — {acik[1] or '–'}, {acik[2] or '–'}", 2)
+    ea = ts.kiris_egilme(acik[0], *arg, anl=anl)
+    if anl is not None:
+        anl.baslik(f"Kesme: V_d = {_f(kes[0])} kN — {kes[1] or '–'}, {kes[2] or '–'}", 2)
+    kk = ts.kiris_kesme(kes[0], kb["b"], kb["h"], kb["d_ust"], kb["beton"], kb["donati"], anl=anl)
+    ana = [_kontrol_kaydi(em["kontroller"][0], mes[1], "Eğilme (mesnet, üst) Md ≤ Mr", "eğilme (mesnet, üst)"),
+           _kontrol_kaydi(ea["kontroller"][0], acik[1], "Eğilme (açıklık, alt) Md ≤ Mr", "eğilme (açıklık, alt)"),
+           _kontrol_kaydi(kk["kontroller"][1], kes[1], "Kesme Vd ≤ Vc + Vw", "kesme"),
+           _kontrol_kaydi(kk["kontroller"][0], kes[1], "Kesme üst sınırı Vd ≤ 0,22 fcd bw d", "kesme (üst sınır)")]
+    diger, gorulen = [], set()
+    for on, r, komb, bas in (("mesnet: ", em, mes[1], 1), ("açıklık: ", ea, acik[1], 1), ("kesme: ", kk, kes[1], 2)):
+        for x in r["kontroller"][bas:]:
+            if x["birim"] == "mm" and "aralığı" not in x["ad"]:      # boyut koşulları iki eğilme kesitinde aynı
+                if x["ad"] in gorulen:
+                    continue
+                gorulen.add(x["ad"])
+                diger.append(_kontrol_kaydi(x, None, etiket="boyut", kosul=True))
+            else:
+                diger.append(_kontrol_kaydi(x, komb, on + x["ad"], kosul=True))
+    diger.sort(key=lambda x: (x["saglandi"], -x["dc"]))
+    kontroller = ana + diger[:_KONTROL_EN_FAZLA - len(ana)]
+    durum = max((em["durum"], ea["durum"], kk["durum"]), key=lambda d: _DURUM_SIRA.get(d, 2))
+    o = kk["oneri"]
+    ozet = {"As_ust_cm2": em["As_gerekli_cm2"], "As_alt_cm2": ea["As_gerekli_cm2"],
+            "oneri_ust": em["oneri"]["metin"] if em.get("oneri") else None, "oneri_alt": ea["oneri"]["metin"] if ea.get("oneri") else None,
+            "etriye": f"Φ{o['cap']}/{o['s_mm'] / 10:.0f}" if o else None, "Md_mesnet": mes[0], "Md_aciklik": acik[0], "Vd": kes[0],
+            "d_m": kb["h"] - kb["d_ust"], "b": kb["b"], "h": kb["h"]}
+    T.sonuclar[("kiris", kir["no"])] = {"egilme_mesnet": em, "egilme_aciklik": ea, "kesme": kk, "kuvvet": kv, "kb": kb}
+    uyar = [u for r in (em, ea, kk) for u in r["uyarilar"]]
+    return _kayit_kur("kiris", kir, kb, [p["eleman"] for p in kir["parcalar"]], kontroller, durum, ozet), uyar, {}
+
+
+def _kolon_ba(ts, T, kol, kb, anl=None):
+    e = T.el[kol["eleman"]]
+    nok = _kolon_noktalari(T, e)
+    bX, bY = kol["bX"], kol["bY"]
+    Ac = bX * bY
+    ham = kb["ham"]
+    rho_ver = None
+    if ham.get("As") is not None:
+        rho_ver = _sayi(ham["As"], f"Kesit {kol['kesit']!r}: As (toplam boyuna donatı, cm²)", pozitif=True, sifir_olur=False) / (Ac * 1e4)
+    elif ham.get("donati_orani") is not None:
+        rho_ver = _sayi(ham["donati_orani"], f"Kesit {kol['kesit']!r}: donati_orani (ρ = As/Ac)", pozitif=True, sifir_olur=False)
+        if rho_ver >= 0.2:
+            raise MatrisHatasi(f"Kesit {kol['kesit']!r}: donati_orani = {rho_ver} çok büyük; oran girilir (%1 → 0.01).")
+    rho = rho_ver if rho_ver is not None else _RHO_VARSAYILAN
+
+    def kontrol(r, sec=None, anl_=None):
+        p_ = nok if sec is None else [nok[i] for i in sec]
+        return ts.kolon_kontrol([p["N"] for p in p_], [p["Mx"] for p in p_], [p["My"] for p in p_], bX, bY, r * Ac * 1e4,
+                                kb["d_ust"], kb["beton"], kb["donati"], adlar=[p["ad"] for p in p_], tbdy=False, anl=anl_)
+
+    def nokta_dc(r):
+        return max(p["dc"] for p in r["noktalar"])
+
+    if anl is not None:
+        anl.baslik(f"Kolon kesiti {_f(bX * 100, 1)} × {_f(bY * 100, 1)} cm (X × Y), ρ = {rho:.4f}"
+                   + (" (varsayım)" if rho_ver is None else ""), 2)
+    r0 = kontrol(rho, anl_=anl)
+    sirali = sorted(range(len(nok)), key=lambda i: -r0["noktalar"][i]["dc"])[:10]
+    rho_ger = None
+    for rr in _RHO_TARAMA:
+        if abs(rr - rho) < 1e-12:
+            d = nokta_dc(r0)
+        else:
+            d = nokta_dc(kontrol(rr, sirali))
+            if d <= 1.0 + 1e-9 and len(sirali) < len(nok):
+                d = nokta_dc(kontrol(rr))
+        if d <= 1.0 + 1e-9:
+            rho_ger = rr
+            break
+    i_en = max(range(len(nok)), key=lambda i: r0["noktalar"][i]["dc"])
+    en, pn = r0["noktalar"][i_en], nok[i_en]
+    kontroller = []
+    for x in en["kontroller"]:
+        et = "N–M" if ("etkileşim" in x["ad"] or "İki eksenli" in x["ad"]) else ("eksenel (0,9 fcd Ac)" if "0,9" in x["ad"] else x["ad"])
+        kontroller.append(_kontrol_kaydi(x, pn["kombinasyon"], f"{x['ad']} — {pn['uc']} uç", et))
+    genel = r0["kontroller"][len(en["kontroller"]):]
+    for x in genel:
+        if "ρ" in x["ad"]:
+            kontroller.append(_kontrol_kaydi(x, None, etiket="donatı oranı", kosul=True))
+    bm = ts.beton_malzeme(kb["beton"])
+    N040 = 0.40 * bm["fck"] * Ac * 1000.0
+    N09 = 0.9 * bm["fcd"] * Ac * 1000.0
+    dep = [p for p in nok if p["deprem"]]
+    if dep:
+        pdm = max(dep, key=lambda p: p["N"])
+        Ndm, kdm = pdm["N"], pdm["kombinasyon"]
+    else:
+        gq = _blok(T, e["no"], T.GQ)
+        Ndm, kdm = float(max(-gq[_I_N, 0], -gq[_I_N, -1])), "G+Q"
+    kontroller.append(_yeni_kontrol("TBDY: kolon en küçük boyutu ≥ 300 mm", 300.0, min(bX, bY) * 1000.0, ts.K_TS500["kolon_boyut_tbdy"],
+                                    "mm", etiket="boyut", kosul=True))
+    kontroller.append(_yeni_kontrol("TBDY: Ndm ≤ 0,40 fck Ac", max(Ndm, 0.0), N040,
+                                    ts.K_TS500["N040"] + ("" if dep else "; deprem durumu yok: Ndm ≈ G + Q (E = 0)"), "kN", kdm,
+                                    "TBDY Ndm ≤ 0,40 fck Ac"))
+    boyut_eksenel = any(not x["saglandi"] for x in kontroller if x["_etiket"] in ("boyut", "eksenel (0,9 fcd Ac)", "TBDY Ndm ≤ 0,40 fck Ac"))
+    dc = max(x["dc"] for x in kontroller)
+    if boyut_eksenel or (dc > 1.0 + 1e-9 and rho_ger is None):
+        durum = "kesit büyüt"
+    elif dc > 1.0 + 1e-9:
+        durum = "donatı artır"
+    else:
+        durum = "yeterli"
+    ozet = {"rho": rho, "rho_varsayim": rho_ver is None, "rho_gerekli": rho_ger, "As_toplam_cm2": rho * Ac * 1e4,
+            "As_gerekli_cm2": rho_ger * Ac * 1e4 if rho_ger is not None else None,
+            "N_max_kN": max(p["N"] for p in nok), "N_min_kN": min(p["N"] for p in nok), "N_sinir_TBDY_kN": N040, "N_sinir_TS500_kN": N09,
+            "Ndm_kN": Ndm, "bX": bX, "bY": bY, "yon": kol["yon"]}
+    T.sonuclar[("kolon", kol["no"])] = {"kontrol": r0, "noktalar": nok, "kb": kb, "en": i_en, "Ndm": (Ndm, kdm), "rho": rho}
+    uyar = list(r0["uyarilar"])
+    ek = {"egri_x": [{"N": _r5(p["N_kN"]), "M": _r5(p["M_kNm"])} for p in r0["egri_x"]["noktalar"]],
+          "egri_y": [{"N": _r5(p["N_kN"]), "M": _r5(p["M_kNm"])} for p in r0["egri_y"]["noktalar"]],
+          "noktalar": [{"ad": p["ad"], "kombinasyon": p["kombinasyon"], "uc": p["uc"], "N": _r5(p["N"]), "Mx": _r5(p["Mx"]),
+                        "My": _r5(p["My"]), "dc": _r5(q["dc"])} for p, q in zip(nok, r0["noktalar"])],
+          "egri_eksen": {"egri_x": "bina X ekseni etrafında eğilme (derinlik bY, Y yönü boyutu)",
+                         "egri_y": "bina Y ekseni etrafında eğilme (derinlik bX, X yönü boyutu)"}}
+    return _kayit_kur("kolon", kol, kb, [kol["eleman"]], kontroller, durum, ozet), uyar, ek
+
+
+def _celik_etiket(ad, dal):
+    if ad.startswith("Bileşik"):
+        return f"etkileşim {dal}" if dal else "etkileşim"
+    for on, et in (("Kesme", "kesme"), ("Eksenel", "eksenel"), ("Güçlü", "eğilme (güçlü eksen)"), ("Zayıf", "eğilme (zayıf eksen)"),
+                   ("Narinlik", "narinlik")):
+        if ad.startswith(on):
+            return et
+    return ad
+
+
+def _celik(ts, T, tur, kayit, kb, anl=None):
+    """ÇYTHYE çelik eleman: kombinasyon başına (N basınç +, güçlü eksen Mx, zayıf eksen My, güçlü eksen V) — her biri o
+    kombinasyonda eleman boyunca en büyük mutlak değer (aynı kombinasyon: eş zamanlı yük durumu)."""
+    if tur == "kiris":
+        fe = [p["eleman"] for p in kayit["parcalar"]]
+        L = max(p["L"] for p in kayit["parcalar"])
+        tutulu = T.B.analiz["celik_Lb"] == "otomatik" and kayit["no"] in T.dosemeli
+        Lb = 0.0 if tutulu else L
+        ig, iz, iv = _I_M, _I_MY, _I_V
+    else:
+        fe = [kayit["eleman"]]
+        L = Lb = kayit["L"]
+        tutulu = False
+        ig, iz, iv = (_I_M, _I_MY, _I_V) if kayit["yon"] == "x" else (_I_MY, _I_M, _I_VZ)   # §2: yon takası
+    bl = [_blok(T, no) for no in fe]
+    kuvvetler = []
+    for i, ad in enumerate(T.adlar):
+        Nv = np.concatenate([-b[i, _I_N, :] for b in bl])
+        kuvvetler.append({"ad": ad, "N": float(Nv[int(np.argmax(np.abs(Nv)))]),
+                          "Mx": float(max(np.max(np.abs(b[i, ig, :])) for b in bl)),
+                          "My": float(max(np.max(np.abs(b[i, iz, :])) for b in bl)),
+                          "V": float(max(np.max(np.abs(b[i, iv, :])) for b in bl))})
+    yontem = "GKT" if T.B.kombinasyon_kumesi == "cythye_gkt" else "YDKT"
+    if anl is not None:
+        anl.baslik(f"{kb['profil']} {kb['celik']}: L = {_f(L)} m, L_b = {_f(Lb)} m"
+                   + (" (döşeme üst başlığı yanal tutar)" if tutulu else "") + ", K = 1, C_b = 1", 2)
+    r = ts.celik_eleman_kontrol(kb["profil"], kb["celik"], L=L, Lb=Lb, K=1.0, kuvvetler=kuvvetler, yontem=yontem, Cb=1.0, anl=anl)
+    en = max(r["kombinasyonlar"], key=lambda c: c["dc"]) if r["kombinasyonlar"] else None
+    kontroller = []
+    for x in r["kontroller"]:
+        komb, ad = None, x["ad"]
+        if en and ad.startswith(en["ad"] + ": "):
+            komb, ad = en["ad"], ad[len(en["ad"]) + 2:]
+        kontroller.append(_kontrol_kaydi(x, komb, ad, _celik_etiket(ad, en["dal"] if en else None), kosul=ad.startswith("Narinlik")))
+    eg, bs, ks = r["egilme"], r["basinc"], r["kesme"]
+    sinif = r["sinif"]
+    ozet = {"sinif": f"eğilme: {sinif.get('egilme', '?')}; basınç: {sinif.get('basinc', '?')}" if isinstance(sinif, dict) else str(sinif),
+            "Mn_kNm": eg["Mn_kNm"], "Mc_kNm": eg["Mc_kNm"], "Pn_kN": bs["Pn_kN"], "Pc_kN": bs["Pc_kN"], "Vn_kN": ks["Vn_kN"],
+            "Vc_kN": ks["Vc_kN"], "L_m": L, "Lb_m": Lb, "K": 1.0, "yontem": r["yontem"],
+            "N_kN": en["N"] if en else 0.0, "Mx_kNm": en["Mx"] if en else 0.0, "My_kNm": en["My"] if en else 0.0,
+            "V_kN": en["V"] if en else 0.0}
+    T.sonuclar[(tur, kayit["no"])] = {"celik": r, "kb": kb, "en": en, "Lb_tutulu": tutulu}
+    uyar = list(r["uyarilar"])
+    durum = "yeterli" if r["dc"] <= 1.0 + 1e-9 else "kesit büyüt"
+    ek = {"kuvvetler": [{a: (_r5(v) if isinstance(v, float) else v) for a, v in k.items()} for k in kuvvetler]}
+    return _kayit_kur(tur, kayit, kb, fe, kontroller, durum, ozet), uyar, ek
+
+
+def _eleman_tasarla(ts, T, tur, kayit, anl=None):
+    """Bir bina elemanının (kiriş: bütün FE parçaları; kolon) tahkiki → (§11 kaydı, uyarılar, köprü ayrıntısı ekleri)."""
+    kb = _kesit_bilgi(T, kayit["kesit"])
+    if kb["sistem"] == "celik":
+        return _celik(ts, T, tur, kayit, kb, anl)
+    if tur == "kiris":
+        return _kiris_ba(ts, T, kayit, kb, anl)
+    return _kolon_ba(ts, T, kayit, kb, anl)
+
+
+def _tasarim_varsayimlari(T, kayitlar):
+    B = T.B
+    v = []
+    ba = [k for k in kayitlar if k["sistem"] == "betonarme"]
+    if ba:
+        paslar = sorted({_f(T.sonuclar[(k["tur"], k["no"])]["kb"]["pas"] * 1000, 0) for k in ba if (k["tur"], k["no"]) in T.sonuclar})
+        v.append(f"Paspayı {'/'.join(paslar) or '30'} mm (kesit kartındaki pas; verilmezse 30 mm); donatı ağırlık merkezi = paspayı "
+                 "+ 20 mm (etriye Φ8 + boyuna çubuk yarıçapı) → 30 mm paspayında d′ = 50 mm (kiriş ve kolon).")
+        v.append("Kiriş momentleri kolon ekseninde (mesnet yüzüne indirgenmedi), kesme en büyük |V| (yüzden d uzaklığa indirgenmedi): "
+                 "güvenli tarafta. Kirişte eksenel kuvvet, zayıf eksen eğilmesi ve burulma ihmal edildi (kesmede Nd = 0).")
+        if any(k["tur"] == "kolon" and k["ozet"].get("rho_varsayim") for k in ba):
+            v.append("Kolon boyuna donatısı kesitte (donati_orani ya da As, cm²) verilmediyse ρ = %1 (TS 500 md. 7.4.1 / TBDY 2018 "
+                     "md. 7.3.2 en az değeri) varsayıldı; dört yüze dağıtılmış 8 çubuk. 'Gerekli ρ' 0,01 → 0,04 aralığında 0,0025 adımla "
+                     "taranır (ilk D/C ≤ 1; öneri).")
+        if any(k["tur"] == "kolon" for k in ba):
+            v.append("Kolon: her dayanım/deprem kombinasyonunun alt ve üst ucundaki eş zamanlı (N, Mx, My) noktaları (zarf değil); en "
+                     "küçük dışmerkezlik TS 500 md. 6.3.10; narinlik (ikinci mertebe) moment büyütmesi yapılmadı; iki eksenli eğilme "
+                     "öğretici yaklaşımla (Bresler / doğrusal toplam). TBDY Ndm = deprem birleşimlerindeki en büyük N (deprem yoksa G + Q).")
+        if any(T.sonuclar.get((k["tur"], k["no"]), {}).get("kb", {}).get("donati_varsayim") for k in ba):
+            v.append("Kesitte donatı sınıfı verilmediyse B420C alındı.")
+    if any(k["sistem"] == "celik" for k in kayitlar):
+        v.append("Çelik: K = 1, kolonda L = kat yüksekliği; kirişte L_b = açıklık, döşemeli kirişte üst başlık yanal tutulu (L_b = 0"
+                 + (", analiz.celik_Lb = 'boy' ile kapatılır" if B.analiz["celik_Lb"] == "otomatik" else "; bu çözümde kapalı: analiz.celik_Lb = 'boy'")
+                 + "); C_b = 1; ikinci mertebe etkiler (B1/B2) yok; kesme güçlü eksende; kombinasyon başına N, Mx, My, V eleman boyunca "
+                 "en büyük mutlak değerler.")
+    v.append(f"Tahkik kombinasyonları: dayanım ve deprem birleşimleri ({len(T.kombs)} adet); servis (G+Q) ve öteleme denetim birleşimleri "
+             "tahkike girmez.")
+    return v
+
+
+def _tasarim(ts, T):
+    """§11 veri["tasarim"]: bütün bina kirişleri ve kolonları; D/C dağılımı, kritik elemanlar, varsayımlar, uyarılar."""
+    B = T.B
+    kayitlar, uyarilar = [], {}
+    if T.kombs:
+        for tur, liste in (("kiris", sorted(B.kirisler, key=lambda k: k["no"])), ("kolon", sorted(B.kolonlar, key=lambda c: c["no"]))):
+            for k in liste:
+                try:
+                    kayit, uy, _ = _eleman_tasarla(ts, T, tur, k)
+                except MatrisHatasi as h:
+                    kayit = {"no": k["no"], "tur": tur, "kat": k["kat"], "adres": k["adres"], "kesit": k["kesit"],
+                             "malzeme": B.kesitler[k["kesit"]]["malzeme"],
+                             "sistem": "celik" if B.kesitler[k["kesit"]]["tip"] == "profil" else "betonarme",
+                             "fe_elemanlar": [p["eleman"] for p in k["parcalar"]] if tur == "kiris" else [k["eleman"]],
+                             "dc": None, "durum": "hesaplanamadı", "belirleyen": None, "kontroller": [], "ozet": {}, "hata": str(h)}
+                    uy = [f"tahkik yapılamadı — {h}"]
+                kayitlar.append(kayit)
+                for u in uy:
+                    uyarilar.setdefault(u, []).append(k["adres"])
+    gecerli = [k for k in kayitlar if k["dc"] is not None]
+    sirali = sorted(gecerli, key=lambda k: -k["dc"])
+    dag = {ad: 0 for ad, _ in _DC_ARALIKLARI}
+    for k in gecerli:
+        dag[next(ad for ad, ust in _DC_ARALIKLARI if k["dc"] < ust)] += 1
+    genel = []
+    if any(T.deprem):
+        genel.append("Deprem kombinasyonları (TBDY 2018 md. 4.4.4) tahkike girdi; TBDY kapasite tasarımı (güçlü kolon–zayıf kiriş, "
+                     "kapasite kesmesi / kesme güvenliği, kolon–kiriş birleşim bölgesi, sünek detaylar) bu araçta yok: sonuçlar ön "
+                     "boyutlandırmadır.")
+    if not T.kombs:
+        genel.append("Uygulanan dayanım kombinasyonu yok (G ve Q durumları gerekir); kesit tahkikleri yapılamadı.")
+    tekil = [f"{u} ({', '.join(a[:3])}{f' … +{len(a) - 3} eleman' if len(a) > 3 else ''})" for u, a in uyarilar.items()]
+    if len(tekil) > 12:
+        tekil = tekil[:12] + [f"… ve {len(tekil) - 12} uyarı daha (her elemanın ayrıntısında)."]
+    return {
+        "yontem": {"betonarme": "TS 500:2000 (+TBDY 2018 Bölüm 7 boyut ve eksenel kuvvet sınırları)",
+                   "celik": f"ÇYTHYE 2018 {'GKT' if B.kombinasyon_kumesi == 'cythye_gkt' else 'YDKT'}"},
+        "varsayimlar": _tasarim_varsayimlari(T, gecerli),
+        "kombinasyon_sayisi": len(T.adlar),
+        "elemanlar": kayitlar,
+        "en_buyuk_dc": sirali[0]["dc"] if sirali else 0.0,
+        "kritik": [k["no"] for k in sirali[:5]],
+        "kritik_elemanlar": [{"tur": k["tur"], "no": k["no"], "adres": k["adres"], "dc": k["dc"], "kontrol": k["belirleyen"]["kontrol"],
+                              "kombinasyon": k["belirleyen"]["kombinasyon"]} for k in sirali[:10]],
+        "dc_dagilimi": dag,
+        "uyarilar": genel + tekil,
+    }
+
+
+def _adim_12(T, tas, anl):
+    se._basla(anl, 12, "Kesit tahkikleri: TS 500 / TBDY 2018 betonarme, ÇYTHYE 2018 çelik",
+              "Analiz bize her kesitteki iç kuvvetleri verdi; şimdi kesitin bunları taşıyıp taşımadığını soruyoruz. Her dayanım ve "
+              "deprem kombinasyonu için talep (Md, Vd, Nd…) kesitin tasarım dayanımıyla karşılaştırılır: D/C = talep / kapasite ≤ 1. "
+              "Betonarme kirişte donatı tasarlanır (mesnette üst, açıklıkta alt, kesmede etriye), kolonda kombinasyon noktaları N–M "
+              "etkileşim eğrisiyle, çelik elemanda ÇYTHYE bileşik etki denklemleriyle denetlenir.")
+    anl.metin(f"**Yöntem:** betonarme {tas['yontem']['betonarme']}; çelik {tas['yontem']['celik']}. "
+              f"{tas['kombinasyon_sayisi']} kombinasyon, {len(tas['elemanlar'])} bina elemanı.")
+    anl.metin("**Varsayımlar:**\n\n" + "\n".join(f"- {v}" for v in tas["varsayimlar"]))
+    dag = tas["dc_dagilimi"]
+    anl.metin("**D/C dağılımı** (eleman sayısı):\n\n" + _tablo(["D/C < 0,7", "0,7 – 0,9", "0,9 – 1,0", "> 1,0", "En büyük D/C"],
+                                                             [[dag["<0.7"], dag["0.7-0.9"], dag["0.9-1.0"], dag[">1.0"], _f(tas["en_buyuk_dc"], 3)]]))
+    gecerli = sorted((k for k in tas["elemanlar"] if k["dc"] is not None), key=lambda k: -k["dc"])
+    sat = []
+    for k in gecerli[:10]:
+        bel = next((x for x in k["kontroller"] if x["dc"] == k["dc"]), k["kontroller"][0] if k["kontroller"] else None)
+        kalin = "**" if k["dc"] > 1 else ""
+        sat.append([k["adres"], k["kesit"], k["belirleyen"]["kontrol"],
+                    f"`{k['belirleyen']['kombinasyon']}`" if k["belirleyen"]["kombinasyon"] else "–",
+                    f"{_f(bel['talep'], 4)} {bel['birim']}" if bel else "–", f"{_f(bel['kapasite'], 4)} {bel['birim']}" if bel else "–",
+                    kalin + _f(k["dc"], 3) + kalin, k["durum"]])
+    if sat:
+        anl.metin("**En kritik 10 eleman:**\n\n" + _tablo(["Eleman", "Kesit", "Kontrol", "Kombinasyon", "Talep", "Kapasite", "D/C", "Durum"], sat))
+    kiris = next((k for k in gecerli if k["tur"] == "kiris"), None)
+    kolon = next((k for k in gecerli if k["tur"] == "kolon"), None)
+    if kiris is not None:
+        _kisa_hesap(T, kiris, anl)
+    if kolon is not None:
+        _kisa_hesap(T, kolon, anl)
+    for u in tas["uyarilar"][:6]:
+        anl.uyari(u)
+    anl.metin("Her elemanın ayrıntılı hesabı (malzeme, kesit şeması, formüller, N–M eğrisi ve kombinasyon noktaları) **Bina sayfasında "
+              "elemana dokununca** açılır (köprü `bina_eleman_tasarim`).")
+
+
+def _kisa_hesap(T, k, anl):
+    s = T.sonuclar.get((k["tur"], k["no"]))
+    if not s:
+        return
+    if k["sistem"] == "celik":
+        r, en = s["celik"], s["en"]
+        anl.metin(f"**Kritik {'kiriş' if k['tur'] == 'kiris' else 'kolon'} {k['adres']}** ({r['profil']}, {r['malzeme']['sinif']}, "
+                  f"{r['yontem']}), belirleyen `{en['ad'] if en else '–'}`: P_c = {_f(r['basinc']['Pc_kN'], 1)} kN, "
+                  f"M_cx = {_f(r['egilme']['Mc_kNm'], 1)} kN·m, M_cy = {_f(r['egilme']['Mcy_kNm'], 1)} kN·m, V_c = {_f(r['kesme']['Vc_kN'], 1)} kN "
+                  f"(L_b = {_f(r['Lb_m'])} m).")
+        if en:
+            et = en["etkilesim"]
+            Mc, Mcy = _f(r["egilme"]["Mc_kNm"], 1), _f(r["egilme"]["Mcy_kNm"], 1)
+            if et["dal"] == "11.1a":
+                anl.mat(rf"\frac{{P_r}}{{P_c}} + \frac{{8}}{{9}}\left(\frac{{M_{{rx}}}}{{M_{{cx}}}} + \frac{{M_{{ry}}}}{{M_{{cy}}}}\right) = "
+                        rf"\frac{{{_f(abs(en['N']), 1)}}}{{{_f(en['Pc_kN'], 1)}}} + \frac{{8}}{{9}}\left(\frac{{{_f(en['Mx'], 1)}}}{{{Mc}}}"
+                        rf" + \frac{{{_f(en['My'], 1)}}}{{{Mcy}}}\right) = {_f(et['dc'], 3)}\ (11.1a)")
+            else:
+                anl.mat(rf"\frac{{P_r}}{{2P_c}} + \frac{{M_{{rx}}}}{{M_{{cx}}}} + \frac{{M_{{ry}}}}{{M_{{cy}}}} = "
+                        rf"\frac{{{_f(abs(en['N']), 1)}}}{{2\cdot{_f(en['Pc_kN'], 1)}}} + \frac{{{_f(en['Mx'], 1)}}}{{{Mc}}}"
+                        rf" + \frac{{{_f(en['My'], 1)}}}{{{Mcy}}} = {_f(et['dc'], 3)}\ (11.1b)")
+        return
+    if k["tur"] == "kiris":
+        em, ea, kk, kv = s["egilme_mesnet"], s["egilme_aciklik"], s["kesme"], s["kuvvet"]
+        anl.metin(f"**Kritik kiriş {k['adres']}** ({k['kesit']}: b = {_f(em['b_mm'], 0)} mm, h = {_f(em['h_mm'], 0)} mm, "
+                  f"d = {_f(em['d_mm'], 0)} mm; f_cd = {_f(em['fcd'], 2)}, f_yd = {_f(em['fyd'], 2)} MPa):")
+        for ad, r, kvv in (("Mesnet (üst)", em, kv["mesnet"]), ("Açıklık (alt)", ea, kv["aciklik"])):
+            if r["tek_donatili"] and r["As_gerekli_cm2"] is not None:
+                anl.mat(rf"\text{{{ad}: }} M_d = {_f(kvv[0], 1)}\ \text{{kN·m}},\quad "
+                        rf"a = d - \sqrt{{d^2 - \frac{{2M_d}}{{0{{,}}85 f_{{cd}} b}}}} = {_f(r['a_mm'], 1)}\ \text{{mm}},\quad "
+                        rf"A_s = \max\left(\frac{{0{{,}}85 f_{{cd}} b a}}{{f_{{yd}}}},\ \rho_{{min}} b d\right) = {_f(r['As_gerekli_cm2'], 2)}\ \text{{cm}}^2"
+                        rf"\ \Rightarrow\ \text{{{r['oneri']['metin'] if r.get('oneri') else '–'}}}")
+            else:
+                anl.metin(f"{ad}: M_d = {_f(kvv[0], 1)} kN·m — {'çift donatılı' if r['As_gerekli_cm2'] is not None else 'kesit yetersiz'} "
+                          f"({r['durum']}); ayrıntı elemanda.")
+            if kvv[1]:
+                anl.metin(f"{ad}: belirleyen `{kvv[1]}`, {kvv[2]}.")
+        anl.mat(rf"\text{{Kesme: }} V_d = {_f(kv['kesme'][0], 1)}\ \text{{kN}},\quad V_{{cr}} = 0{{,}}65 f_{{ctd}} b_w d = {_f(kk['V_cr_kN'], 1)},\quad "
+                rf"V_c = 0{{,}}8V_{{cr}} = {_f(kk['V_c_kN'], 1)},\quad V_{{max}} = 0{{,}}22 f_{{cd}} b_w d = {_f(kk['V_max_kN'], 1)}\ \text{{kN}}"
+                rf"\ \Rightarrow\ \text{{{kk['oneri']['metin']}}}")
+        return
+    r, nok, i = s["kontrol"], s["noktalar"], s["en"]
+    p, q = nok[i], r["noktalar"][i]
+    anl.metin(f"**Kritik kolon {k['adres']}** ({k['kesit']}: bX × bY = {_f(r['b_mm'], 0)} × {_f(r['h_mm'], 0)} mm, ρ = {s['rho']:.4f}"
+              f"{' (varsayım)' if k['ozet'].get('rho_varsayim') else ''}, A_s = {_f(r['As_cm2'], 2)} cm²); belirleyen nokta "
+              f"`{p['kombinasyon']}`, {p['uc']} uç (N, Mx, My aynı kombinasyondan):")
+    anl.mat(rf"N_d = {_f(p['N'], 1)}\ \text{{kN}},\ M_{{dx}} = {_f(abs(p['Mx']), 1)},\ M_{{dy}} = {_f(abs(p['My']), 1)}\ \text{{kN·m}};\quad "
+            rf"e_{{min}} = 15 + 0{{,}}03h \Rightarrow M_x = {_f(q['Mx_tasarim_kNm'], 1)},\ M_y = {_f(q['My_tasarim_kNm'], 1)}\ \text{{kN·m}};\quad "
+            rf"\text{{D/C}}_x = {_f(q['dc_x'], 3)},\ \text{{D/C}}_y = {_f(q['dc_y'], 3)}"
+            + (rf",\ \text{{D/C}}_{{2\,eksen}} = {_f(q['dc_iki_eksen'], 3)}" if q.get("dc_iki_eksen") is not None else ""))
+    rg = k["ozet"].get("rho_gerekli")
+    anl.metin(f"Mx bina X ekseni etrafındadır: basınç ve çekme yüzleri ±Y'de, derinlik Y yönü boyutu bY = {_f(r['h_mm'], 0)} mm; "
+              f"My için derinlik bX = {_f(r['b_mm'], 0)} mm (kolon yön takası, §2). Gerekli ρ: "
+              f"{_f(rg, 4) if rg is not None else '0,04 ile de sağlanmıyor → kesit büyüt'}. "
+              f"TBDY: N_dm = {_f(s['Ndm'][0], 1)} kN (`{s['Ndm'][1]}`) ≤ 0,40 f_ck A_c = {_f(k['ozet']['N_sinir_TBDY_kN'], 1)} kN.")
+
+
+def eleman_tasarim(ic, tur, no, goster=None):
+    """Köprü ``bina_eleman_tasarim``: ``bina_coz(...).ic`` paketinden tek bina elemanının (tur = "kiris" | "kolon", bina no'su)
+    anlatımlı tahkiki. Dönüş ``mo.Sonuc``: ``.veri`` = §11 eleman kaydı + kolonda ``egri_x``, ``egri_y`` [{N, M}] ve ``noktalar``
+    [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte ``kuvvetler`` (kombinasyon başına N, Mx, My, V), ``uyarilar``; ``.anlatim``
+    tasarim.py anlatımı (kesit şeması, formüller, N–M eğrisi)."""
+    if not isinstance(ic, dict) or "paket" not in ic:
+        raise MatrisHatasi("Önce bina çözülmeli (önbellekte çözüm yok ya da süresi doldu); binayı yeniden çözün.")
+    T = ic.get("tasarim")
+    ts = _tasarim_modulu()
+    if T is None or ts is None:
+        raise MatrisHatasi("Kesit tahkik modülü (tasarim.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    tur = str(tur or "").strip().lower()
+    if tur not in ("kiris", "kolon"):
+        raise MatrisHatasi(f"tur {tur!r} tanımsız; 'kiris' ya da 'kolon' olmalı.")
+    no = _tam(no, "eleman no")
+    liste = T.B.kirisler if tur == "kiris" else T.B.kolonlar
+    kayit = next((k for k in liste if k["no"] == no), None)
+    if kayit is None:
+        raise MatrisHatasi(f"{'Kiriş' if tur == 'kiris' else 'Kolon'} {no} bu binada yok. Mevcut: "
+                           f"{', '.join(str(k['no']) for k in liste[:20])}{'…' if len(liste) > 20 else ''}.")
+    if not T.kombs:
+        raise MatrisHatasi("Uygulanan dayanım kombinasyonu yok (G ve Q durumları gerekir); kesit tahkiki yapılamaz.")
+    anl = mo.Anlatim()
+    anl.baslik(f"{kayit['adres']} — {kayit['kesit']}: kesit tahkiki", 2)
+    anl.metin(f"Tahkik kombinasyonları ({len(T.adlar)}): " + ", ".join(f"`{a}`" for a in T.adlar[:12])
+              + (" …" if len(T.adlar) > 12 else "") + ". Kuvvetler aynı kombinasyondan alınır (eş zamanlı); varsayımlar bina "
+              "anlatımının 12. adımında.")
+    k, uy, ek = _eleman_tasarla(ts, T, tur, kayit, anl)
+    if tur == "kolon" and k["sistem"] == "betonarme":
+        s = T.sonuclar[("kolon", no)]
+        rg = k["ozet"]["rho_gerekli"]
+        anl.metin("Gerekli ρ taraması (0,01 → 0,04, adım 0,0025; ilk D/C ≤ 1): **"
+                  + (f"ρ = {rg:.4f}" if rg is not None else "0,04 ile de sağlanmıyor — kesit büyütülmeli")
+                  + f"**. TBDY N_dm = {_f(s['Ndm'][0], 1)} kN (`{s['Ndm'][1]}`) ≤ 0,40 f_ck A_c = {_f(k['ozet']['N_sinir_TBDY_kN'], 1)} kN.")
+    anl.sonuc(rf"\text{{D/C}}_{{max}} = {_f(k['dc'], 3)}", f"Durum: **{k['durum']}** — belirleyen: {k['belirleyen']['kontrol']}"
+              + (f" (`{k['belirleyen']['kombinasyon']}`)" if k["belirleyen"]["kombinasyon"] else ""))
+    mo.son_anlatim = anl
+    anl.goster(goster)
+    s = mo.Sonuc(k["dc"], anl, f"{tur} {no}")
+    s.veri = dict(k, **ek, uyarilar=uy)
+    return s
+
+
+# ============================================================================
 # Ana işlev ve köprü yardımcıları
 # ============================================================================
 def _gosterilecek_sec(B, kombinasyonlar, zarf):
@@ -3411,7 +3986,7 @@ def bina_coz(bina, *, goster=None, anlat=True):
     ÇYTHYE YDKT/GKT + TBDY 9.2.5) ve zarf → yük akışı tabloları, korunum, sankey.
 
     Dönüş ``mo.Sonuc``: ``.deger`` G durumu u vektörü (motor SD sırası), ``.veri`` §4 şeması (bina koordinatında),
-    ``.anlatim`` 12 adım (``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
+    ``.anlatim`` 13 adım (12. adım kesit tahkikleri, ``tasarim.py`` varsa; ``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
     ``.ic`` tembel kombinasyon üretimi için paket (``kombinasyon_kisa``)."""
     B = _bina_oku(bina)
     Y = _yukleri_hazirla(B)
@@ -3443,6 +4018,13 @@ def bina_coz(bina, *, goster=None, anlat=True):
     kimlik = _cozum_kimligi(B)
     veri = _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol,
                          deprem=deprem, ruzgar=ruzgar, kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik)
+    ts = _tasarim_modulu()
+    T = tas = None
+    if ts is not None:      # Dilim 3: kesit tahkikleri (tasarim.py yoksa alan yazılmaz)
+        T = _tasarim_baglam(B, Y, ag, paket, kombinasyonlar)
+        tas = _tasarim(ts, T)
+        veri["tasarim"] = tas
+        veri["ozet"]["en_buyuk_dc"] = tas["en_buyuk_dc"]
     if B.analiz["gosterilecek"] is None and veri["sonuclar"] and len(json.dumps(veri, ensure_ascii=False)) > YANIT_BUTCESI:
         # büyük model: varsayılan tam kombinasyon da yanıta yazılmaz (arayüz bina_kombinasyon ile tembel alır ya da G, Q'dan toplar)
         veri["sonuclar"], veri["gosterilecek"] = {}, []
@@ -3464,12 +4046,14 @@ def bina_coz(bina, *, goster=None, anlat=True):
         _adim_9(B, akis, anl)
         _adim_10(B, kombinasyonlar, zarf, ag, ozet, anl)
         _adim_11(B, Y, akis, kombinasyonlar, ozetler, anl)
-        kod, cikti = _adim_12(B, ag, model, durumlar, Y, anl, deprem)
+        if tas is not None:
+            _adim_12(T, tas, anl)
+        kod, cikti = _adim_13(B, ag, model, durumlar, Y, anl, deprem)
     else:
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", kod, cikti)
     sonuc.veri = veri
-    sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum)}
+    sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T}
     mo.son_anlatim = anl
     anl.goster(goster)
     return sonuc
