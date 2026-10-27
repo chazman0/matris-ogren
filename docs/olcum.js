@@ -1,7 +1,11 @@
-/* Matris Öğren — ölçüm geometrisi ve yakalama (window.MatrisOlcum; node'da module.exports). Tasarım belgesi §17.1 "Ölçme".
-   Saf çekirdek (DOM yok): uzaklık, açı, alan, kot farkı, koordinat, eleman boyu; bina JSON'dan düğüm/çubuk geometrisi;
-   yakalama (düğüm, orta nokta, kesişim, dik iz düşüm, çubuk üzeri, aks/ızgara). İsteğe bağlı SVG: ölçü çizgileri ve yakalama
-   işaretleri — ekran dönüşümü `cevir(P) -> [x, y]` ile (Cizim3B izdüşümü için `cevirici(T, bakis)`).
+/* Matris Öğren — ölçüm geometrisi ve yakalama (window.MatrisOlcum; node'da module.exports). Tasarım belgesi §17.1 "Ölçme", §19.
+   Saf çekirdek (DOM yok): uzaklık, açı, alan, kot farkı, koordinat sorgu, eleman boyu; bina JSON'dan (aks sistemi §19 dahil) düğüm/çubuk/panel
+   geometrisi; aks kesişimleri (window.MatrisAks varsa ondan, yoksa bina.akslar'dan türetilir); yakalama:
+     kip "cizim" — yalnız aks kesişimleri, düğümler (bölme/kesişim düğümleri dahil) ve çubuk kesişimleri (serbest nokta YOK, §19);
+     kip "olcum" — bunlara ek olarak orta nokta, dik iz düşüm ve çubuk üzerindeki nokta.
+   SVG: ölçü çizgileri ve yakalama işaretleri — ekran dönüşümü `cevir(P) -> [x, y]` ile (Cizim3B izdüşümü için `cevirici(T, bakis)`).
+   DOM'lu küçük denetleyici `Arac` / `bagla(svg, sec)`: imleçte yakalama önizlemesi, dokunuşla nokta, Enter (alanı bitir), Esc (temizle),
+   Geri (son noktayı al) — tarayıcıda kullanılır; node testleri yalnız saf kısmı çalıştırır.
 
    Koordinat: bina sistemi (X sağa, Y derinlik, Z yukarı; m). Açılar derece. Yakalama ekran kipinde (sec.cevir verilirse)
    tolerans piksel, aksi hâlde metre. Sayı biçimi uygulamayla aynı: ondalık virgül, eksi işareti "−". */
@@ -14,9 +18,9 @@
   "use strict";
 
   const D2R = Math.PI / 180;
-  const ONCELIK = { dugum: 0, aks: 0.6, kesisim: 1, orta: 2, dik: 3, cubuk: 4, izgara: 5, serbest: 9 };
-  const YAKALAMA_ADI = { dugum: "Düğüm", aks: "Aks kesişimi", kesisim: "Kesişim", orta: "Orta nokta", dik: "Dik iz düşüm",
-    cubuk: "Çubuk üzerinde", izgara: "Izgara", serbest: "Serbest" };
+  const ONCELIK = { dugum: 0, aks: 0.6, kesisim: 1, orta: 2, dik: 3, cubuk: 4 };
+  const YAKALAMA_ADI = { dugum: "Düğüm", aks: "Aks kesişimi", kesisim: "Çubuk kesişimi", orta: "Orta nokta", dik: "Dik iz düşüm",
+    cubuk: "Çubuk üzerinde" };
   const GEREKEN = { uzaklik: 2, aci: 3, alan: 3, kot: 2, koordinat: 1, boy: 2 };
   const KIP_ADI = { uzaklik: "Uzaklık", aci: "Açı", alan: "Alan", kot: "Kot farkı", koordinat: "Koordinat", boy: "Eleman boyu" };
 
@@ -43,7 +47,8 @@
   function bicim(v, ondalik) {
     if (typeof v !== "number" || !isFinite(v)) return "—";
     const n = ondalik == null ? 3 : ondalik;
-    let t = (Math.round(v * Math.pow(10, n)) / Math.pow(10, n)).toFixed(n);
+    const k = Math.pow(10, n);
+    let t = (Math.sign(v) * Math.round(Math.abs(v) * k) / k).toFixed(n);   // yarımlar sıfırdan uzağa (simetrik)
     if (/^-0(\.0*)?$/.test(t)) t = t.slice(1);
     return t.replace(".", ",").replace("-", "−");
   }
@@ -126,92 +131,266 @@
     }
   }
 
-  // ---------------------------------------------------------------- bina JSON → geometri
+  // ---------------------------------------------------------------- bina JSON → geometri (§19 aks sistemi)
   function sirala(l) {
-    return (l || []).map(function (a) { return { ad: String(a.ad), k: +a.konum }; }).sort(function (a, b) { return a.k - b.k; });
+    return (l || []).filter(function (a) { return a && a.ad != null && isFinite(+a.konum); })
+      .map(function (a) { return { ad: String(a.ad), k: +a.konum, kat: a.kat != null && a.kat !== "" ? +a.kat : null, gorunur: a.gorunur !== false }; })
+      .sort(function (a, b) { return a.k - b.k; });
   }
-  /** Bina JSON'dan (surum 1–3) düğüm ve çubuk geometrisi. Aks–kat düğüm no = 1000·kat + 20·ix + iy + 1 (model_ops ile aynı). */
-  function geometri(bina) {
+  /** Kat/Z aksı okunur adı: Z aksı adı ya da kat adı ("1. kat"), yoksa kot. */
+  function zEtiket(z) { return z.ad != null && z.ad !== "" ? String(z.ad) : (z.kat != null ? "k" + z.kat : bicim(z.k, 2)); }
+  /**
+   * Aks verisi (§19.1): GLOBAL sistem (akslar.x/y/z; z yoksa katlar'dan türetilir) + aks_sistemleri (kartezyen döndürülmüş/ötelenmiş,
+   * silindirik). Dönüş: { sistemler: [{ad, tur, orijin, aci, xs, ys, zs}], katZ: Map(kat → z kaydı) }.
+   */
+  function aksVerisi(bina) {
+    const b = bina || {}, ak = b.akslar || {};
+    const katZ = new Map();
+    let zs;
+    if (Array.isArray(ak.z) && ak.z.length) {
+      zs = sirala(ak.z);
+      zs.forEach(function (z) { if (z.kat != null && !katZ.has(z.kat)) katZ.set(z.kat, z); });
+    } else zs = [];
+    (b.katlar || []).forEach(function (k, i) {
+      if (!k || !isFinite(+k.kot)) return;
+      const n = k.no != null ? +k.no : i;
+      if (katZ.has(n)) return;
+      const z = { ad: k.ad != null ? String(k.ad) : "k" + n, k: +k.kot, kat: n, gorunur: true };
+      katZ.set(n, z);
+      if (!(Array.isArray(ak.z) && ak.z.length)) zs.push(z);
+    });
+    zs.sort(function (a, c) { return a.k - c.k; });
+    const sistemler = [{ ad: "GLOBAL", tur: "kartezyen", orijin: [0, 0, 0], aci: 0, xs: sirala(ak.x), ys: sirala(ak.y), zs: zs, global: true }];
+    (b.aks_sistemleri || []).forEach(function (s) {
+      if (!s || s.ad == null) return;
+      const o = Array.isArray(s.orijin) && s.orijin.length === 3 ? s.orijin.map(Number) : [0, 0, 0];
+      const silindirik = s.tur === "silindirik";
+      sistemler.push({ ad: String(s.ad), tur: silindirik ? "silindirik" : "kartezyen", orijin: o, aci: +s.aci || 0,
+        xs: sirala(silindirik ? s.r : s.x), ys: sirala(silindirik ? s.teta : s.y), zs: Array.isArray(s.z) && s.z.length ? sirala(s.z) : zs, globalZ: !(Array.isArray(s.z) && s.z.length) });
+    });
+    return { sistemler: sistemler, katZ: katZ };
+  }
+  /** Sistemdeki (a, c, z) aks kesişiminin bina koordinatı. */
+  function sistemNokta(s, a, c, z) {
+    if (s.global) return [a.k, c.k, z.k];
+    const t = s.aci * D2R;
+    let u, v;
+    if (s.tur === "silindirik") { const th = c.k * D2R + t; u = a.k * Math.cos(th); v = a.k * Math.sin(th); }
+    else { u = a.k * Math.cos(t) - c.k * Math.sin(t); v = a.k * Math.sin(t) + c.k * Math.cos(t); }
+    return [r9(s.orijin[0] + u), r9(s.orijin[1] + v), r9(s.globalZ ? z.k : s.orijin[2] + z.k)];
+  }
+  function aksAdresi(s, a, c, z) { return (s.global ? "" : s.ad + ": ") + a.ad + "-" + c.ad + " / " + zEtiket(z); }
+  /** İsteğe bağlı aks modülü (docs/aks_sistemi.js, window.MatrisAks); yoksa null. */
+  function aksModulu(sec) {
+    if (sec && Object.prototype.hasOwnProperty.call(sec, "aks") && sec.aks !== true) return sec.aks || null;
+    return (typeof window !== "undefined" && window.MatrisAks) || null;
+  }
+  function kesisimNormal(k) {
+    if (!k) return null;
+    let P = null;
+    try { P = nokta(Array.isArray(k) ? k : (k.P || k.konum || [k.X, k.Y, k.Z])); } catch (e) { return null; }
+    return { P: P, etiket: String(k.etiket || k.adres || k.ad || ("(" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + "; " + bicim(P[2], 2) + ")")),
+      ref: k.ref || null, sistem: k.sistem || "GLOBAL" };
+  }
+  /**
+   * Bütün aks kesişimleri (her sistemde X × Y × Z). MatrisAks varsa (kesisimler | kesisimNoktalari) ondan alınır, yoksa bina.akslar'dan
+   * türetilir. sec: { aks? (modül ya da null), gizli? (true: görünmez aksları da) }. Dönüş: [{P, etiket, ref, sistem}].
+   */
+  function aksKesisimleri(bina, sec) {
+    const A = aksModulu(sec);
+    if (A) {
+      const f = A.kesisimler || A.kesisimNoktalari || A.tumKesisimler;
+      if (typeof f === "function") {
+        try { const l = f.call(A, bina); if (Array.isArray(l)) return l.map(kesisimNormal).filter(Boolean); } catch (e) { /* kendi türetmemize düş */ }
+      }
+    }
+    const v = aksVerisi(bina), out = [], gizli = sec && sec.gizli;
+    v.sistemler.forEach(function (s) {
+      s.zs.forEach(function (z) {
+        if (!gizli && z.gorunur === false) return;
+        s.xs.forEach(function (a) {
+          if (!gizli && a.gorunur === false) return;
+          s.ys.forEach(function (c) {
+            if (!gizli && c.gorunur === false) return;
+            const ref = s.global ? (z.kat != null ? { aks: [a.ad, c.ad], kat: z.kat } : { aks: [a.ad, c.ad], z: z.ad }) : { sistem: s.ad, aks: [a.ad, c.ad], z: z.ad };
+            out.push({ P: sistemNokta(s, a, c, z), etiket: aksAdresi(s, a, c, z), ref: ref, sistem: s.ad });
+          });
+        });
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Bina JSON'dan (surum 1–3, §19 aks sistemi) düğüm, çubuk ve panel geometrisi.
+   *  Düğüm başvuruları: sayı (düğüm no), {"dugum": no}, {"aks": [x, y], "kat": k}, {"aks": [x, y], "z": "Saçak"},
+   *  {"sistem": ad, "aks": [..], "z": ..}; dugumler kayıtları: {no, X, Y, Z} (geriye uyum), {no, tur: "bolme", cubuk_i, cubuk_j, oran},
+   *  {no, tur: "kesisim", a: [REF, REF], b: [REF, REF]} (yinelemeli). Aks–kat düğüm no = 1000·kat + 20·ix + iy + 1 (motorla aynı).
+   *  Dönüş: { dugumler: [{anahtar, no, P, etiket, tur, aks?, kat?}], cubuklar, paneller, aks: aksVerisi, coz(ref), izgaraNo(aks, kat), bina }
+   */
+  function geometri(bina, sec) {
     const b = bina || {};
-    const xs = sirala(b.akslar && b.akslar.x), ys = sirala(b.akslar && b.akslar.y);
-    const ix = new Map(xs.map(function (a, i) { return [a.ad, i]; })), iy = new Map(ys.map(function (a, i) { return [a.ad, i]; }));
-    const kotlar = new Map();
-    (b.katlar || []).forEach(function (k, i) { kotlar.set(k.no != null ? +k.no : i, +k.kot); });
+    const av = aksVerisi(b), G = av.sistemler[0], A = aksModulu(sec);
+    const ix = new Map(G.xs.map(function (a, i) { return [a.ad, i]; })), iy = new Map(G.ys.map(function (a, i) { return [a.ad, i]; }));
     const dugumler = new Map(), cubuklar = [], paneller = [];
+    const kayitlar = new Map();
+    (b.dugumler || []).forEach(function (d) { if (d && d.no != null && isFinite(+d.no)) kayitlar.set(+d.no, d); });
     function izgaraNo(aks, kat) {
       if (!Array.isArray(aks) || aks.length !== 2) return null;
       const a = ix.get(String(aks[0])), c = iy.get(String(aks[1])), k = kat == null ? 1 : +kat;
-      if (a == null || c == null || !kotlar.has(k)) return null;
+      if (a == null || c == null || !av.katZ.has(k)) return null;
       return 1000 * k + 20 * a + c + 1;
     }
+    function ekle(d) { dugumler.set(d.anahtar, d); return d; }
     function izgaraDugum(no) {
-      if (dugumler.has(no)) return dugumler.get(no);
+      const an = "n" + no;
+      if (dugumler.has(an)) return dugumler.get(an);
       const k = Math.floor(no / 1000), r = no % 1000 - 1, a = Math.floor(r / 20), c = r % 20;
-      if (!kotlar.has(k) || !xs[a] || !ys[c]) return null;
-      const d = { no: no, P: [xs[a].k, ys[c].k, kotlar.get(k)], etiket: xs[a].ad + ys[c].ad + "/k" + k, aks: [xs[a].ad, ys[c].ad], kat: k, izgara: true };
-      dugumler.set(no, d);
-      return d;
+      const z = av.katZ.get(k);
+      if (!z || !G.xs[a] || !G.ys[c] || r < 0) return null;
+      return ekle({ anahtar: an, no: no, P: [G.xs[a].k, G.ys[c].k, z.k], etiket: aksAdresi(G, G.xs[a], G.ys[c], z), tur: "aks",
+        aks: [G.xs[a].ad, G.ys[c].ad], kat: k, z: z.ad });
     }
-    (b.dugumler || []).forEach(function (d) {
-      if (!d || d.no == null || !isFinite(+d.X) || !isFinite(+d.Y) || !isFinite(+d.Z)) return;
-      dugumler.set(+d.no, { no: +d.no, P: [+d.X, +d.Y, +d.Z], etiket: d.ad ? String(d.ad) : "D" + d.no, serbest: true });
-    });
-    function coz(ref) {
-      if (ref == null) return null;
-      if (typeof ref === "number" || (typeof ref === "string" && /^\d+$/.test(ref))) {
-        const n = +ref;
-        return dugumler.get(n) || (n < 100000 ? izgaraDugum(n) : null);
-      }
-      if (Array.isArray(ref)) return koordinatDugum(ref);
-      if (typeof ref === "object") {
-        if (ref.dugum != null) return coz(+ref.dugum);
-        if (ref.aks != null) { const n = izgaraNo(ref.aks, ref.kat); return n == null ? null : izgaraDugum(n); }
-        if (ref.X != null || ref.Y != null || ref.Z != null) return koordinatDugum([ref.X, ref.Y, ref.Z]);
-      }
-      return null;
+    function aksDugum(ref) {
+      const sad = ref.sistem != null ? String(ref.sistem) : "GLOBAL";
+      if (sad === "GLOBAL" && ref.z == null) { const n = izgaraNo(ref.aks, ref.kat); return n == null ? null : izgaraDugum(n); }
+      const s = av.sistemler.find(function (q) { return q.ad === sad; });
+      if (!s || !Array.isArray(ref.aks) || ref.aks.length !== 2) return null;
+      const a = s.xs.find(function (q) { return q.ad === String(ref.aks[0]); }), c = s.ys.find(function (q) { return q.ad === String(ref.aks[1]); });
+      let z = null;
+      if (ref.z != null) z = s.zs.find(function (q) { return q.ad === String(ref.z); }) || null;
+      else if (ref.kat != null) z = av.katZ.get(+ref.kat) || null;
+      if (!a || !c || !z) return null;
+      if (s.global && z.kat != null) { const n = izgaraNo([a.ad, c.ad], z.kat); if (n != null) return izgaraDugum(n); }
+      const an = "a|" + s.ad + "|" + a.ad + "|" + c.ad + "|" + z.ad;
+      if (dugumler.has(an)) return dugumler.get(an);
+      return ekle({ anahtar: an, no: null, P: sistemNokta(s, a, c, z), etiket: aksAdresi(s, a, c, z), tur: "aks", aks: [a.ad, c.ad], z: z.ad, sistem: s.ad });
+    }
+    const cozuluyor = new Set();
+    function kayitDugum(no) {
+      const an = "n" + no;
+      if (dugumler.has(an)) return dugumler.get(an);
+      const d = kayitlar.get(no);
+      if (!d) return no < 100000 ? izgaraDugum(no) : null;
+      if (cozuluyor.has(no)) return null;          // döngülü bölme/kesişim tanımı
+      cozuluyor.add(no);
+      try {
+        if (d.tur === "bolme") {
+          const p = coz(d.cubuk_i), q = coz(d.cubuk_j), t = +d.oran;
+          if (!p || !q || !isFinite(t)) return null;
+          const ana = cubukUclariyla(p, q);
+          return ekle({ anahtar: an, no: no, P: ara(p.P, q.P, t).map(r9), tur: "bolme", oran: t, uclar: [p.anahtar, q.anahtar],
+            etiket: d.ad ? String(d.ad) : "bölme: " + (d.cubuk != null ? "çubuk " + d.cubuk : ana ? ana : p.etiket + " → " + q.etiket) + ", t=" + bicim(t, 3).replace(/,?0+$/, "") });
+        }
+        if (d.tur === "kesisim") {
+          if (!Array.isArray(d.a) || !Array.isArray(d.b)) return null;
+          const a1 = coz(d.a[0]), a2 = coz(d.a[1]), b1 = coz(d.b[0]), b2 = coz(d.b[1]);
+          if (!a1 || !a2 || !b1 || !b2) return null;
+          const k = dogruKesisim(a1.P, a2.P, b1.P, b2.P);
+          if (!k) return null;
+          return ekle({ anahtar: an, no: no, P: k.map(r9), tur: "kesisim", etiket: d.ad ? String(d.ad) : "kesişim: " + a1.etiket + "–" + a2.etiket + " × " + b1.etiket + "–" + b2.etiket });
+        }
+        if ([d.X, d.Y, d.Z].every(function (x) { return x != null && x !== "" && isFinite(+x); })) {
+          return ekle({ anahtar: an, no: no, P: [+d.X, +d.Y, +d.Z], tur: "serbest", etiket: d.ad ? String(d.ad) : "D" + no });
+        }
+        return null;
+      } finally { cozuluyor.delete(no); }
+    }
+    function cubukUclariyla(p, q) {
+      const c = (b.cubuklar || []).find(function (x) {
+        if (!x) return false;
+        const i = coz(x.i), j = coz(x.j);
+        return i && j && ((i.anahtar === p.anahtar && j.anahtar === q.anahtar) || (i.anahtar === q.anahtar && j.anahtar === p.anahtar));
+      });
+      return c ? "çubuk " + c.no : null;
     }
     function koordinatDugum(v) {
       let P;
       try { P = nokta(v); } catch (e) { return null; }
       for (const d of dugumler.values()) if (mesafe(d.P, P) <= 0.001) return d;
-      return { no: null, P: P, etiket: "(" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + "; " + bicim(P[2], 2) + ")" };
+      const an = "k|" + P.join(",");
+      return ekle({ anahtar: an, no: null, P: P, tur: "koordinat", etiket: "(" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + "; " + bicim(P[2], 2) + ")" });
     }
-    function ekle(tur, no, di, dj, kaynak, ek) {
+    function coz(ref) {
+      if (ref == null) return null;
+      if (typeof ref === "number" || (typeof ref === "string" && /^\d+$/.test(ref))) return kayitDugum(+ref);
+      if (Array.isArray(ref)) return koordinatDugum(ref);
+      if (typeof ref === "object") {
+        if (ref.dugum != null) return coz(+ref.dugum);
+        if (ref.aks != null) {
+          if (A && (ref.sistem != null || ref.z != null)) {
+            const f = A.refKoordinat || A.koordinat || A.refKonum;
+            if (typeof f === "function") {
+              try {
+                const P = nokta(f.call(A, b, ref));
+                const an = "a|" + (ref.sistem || "GLOBAL") + "|" + ref.aks.join("|") + "|" + (ref.z != null ? ref.z : "k" + ref.kat);
+                if (dugumler.has(an)) return dugumler.get(an);
+                return ekle({ anahtar: an, no: null, P: P, tur: "aks", aks: ref.aks.slice(), z: ref.z, sistem: ref.sistem || "GLOBAL",
+                  etiket: (ref.sistem ? ref.sistem + ": " : "") + ref.aks.join("-") + " / " + (ref.z != null ? ref.z : "k" + ref.kat) });
+              } catch (e) { /* kendi çözümümüz */ }
+            }
+          }
+          return aksDugum(ref);
+        }
+        if (ref.X != null || ref.Y != null || ref.Z != null) return koordinatDugum([ref.X, ref.Y, ref.Z]);
+      }
+      return null;
+    }
+    function cubukEkle(tur, no, di, dj, kaynak, ek) {
       if (!di || !dj) return;
-      cubuklar.push(Object.assign({ anahtar: kaynak + ":" + no, kaynak: kaynak, tur: tur, no: no, i: di.no, j: dj.no, A: di.P, B: dj.P,
-        etiket: (kaynak === "kolon" ? "Kolon " : kaynak === "kiris" ? "Kiriş " : "Çubuk ") + no }, ek || {}));
+      const etk = kaynak === "kolon" ? "Kolon " : kaynak === "kiris" ? "Kiriş " : (CUBUK_TUR_ADI[tur] || "Çubuk") + " ";
+      cubuklar.push(Object.assign({ anahtar: kaynak + ":" + no, kaynak: kaynak, tur: tur, no: no, i: di.anahtar, j: dj.anahtar, A: di.P, B: dj.P,
+        etiket: etk + no }, ek || {}));
     }
     (b.kolonlar || []).forEach(function (k) {
+      if (!k) return;
       const kat = +k.kat, a = izgaraNo(k.aks, kat - 1), u = izgaraNo(k.aks, kat);
       if (a == null || u == null) return;
-      ekle("kolon", k.no, izgaraDugum(a), izgaraDugum(u), "kolon", { kat: kat, aks: k.aks, etiket: "Kolon " + k.no + " (S-" + k.aks.join("") + "/k" + kat + ")" });
+      cubukEkle("kolon", k.no, izgaraDugum(a), izgaraDugum(u), "kolon", { kat: kat, aks: k.aks, etiket: "Kolon " + k.no + " (S-" + k.aks.join("") + "/k" + kat + ")" });
     });
     (b.kirisler || []).forEach(function (k) {
+      if (!k) return;
       const a = izgaraNo(k.bas, k.kat), u = izgaraNo(k.son, k.kat);
       if (a == null || u == null) return;
-      ekle("kiris", k.no, izgaraDugum(a), izgaraDugum(u), "kiris", { kat: +k.kat,
+      cubukEkle("kiris", k.no, izgaraDugum(a), izgaraDugum(u), "kiris", { kat: +k.kat,
         etiket: "Kiriş " + k.no + " (K-" + (k.bas || []).join("") + "→" + (k.son || []).join("") + "/k" + k.kat + ")" });
     });
     (b.cubuklar || []).forEach(function (c) {
       if (!c || c.no == null) return;
-      ekle(c.tur || "diger", c.no, coz(c.i), coz(c.j), "cubuk", { aci: +c.aci || 0 });
+      cubukEkle(c.tur || "diger", c.no, coz(c.i), coz(c.j), "cubuk", { aci: +c.aci || 0 });
     });
     (b.dosemeler || []).forEach(function (d) {
-      if (!Array.isArray(d.kose) || d.kose.length !== 2) return;
+      if (!d || !Array.isArray(d.kose) || d.kose.length !== 2) return;
       const a = d.kose[0], c = d.kose[1];
       const ref = [[a[0], a[1]], [c[0], a[1]], [c[0], c[1]], [a[0], c[1]]].map(function (q) { const n = izgaraNo(q, d.kat); return n == null ? null : izgaraDugum(n); });
       if (ref.some(function (q) { return !q; })) return;
-      paneller.push({ anahtar: "doseme:" + d.no, kaynak: "doseme", tur: "doseme", no: d.no, kose: ref.map(function (q) { return q.P; }), dugumler: ref.map(function (q) { return q.no; }) });
+      paneller.push({ anahtar: "doseme:" + d.no, kaynak: "doseme", tur: "doseme", no: d.no, kose: ref.map(function (q) { return q.P; }),
+        dugumler: ref.map(function (q) { return q.anahtar; }), etiket: "Döşeme " + d.no });
     });
     (b.paneller || []).forEach(function (p) {
       if (!p || !Array.isArray(p.kose)) return;
       const ref = p.kose.map(coz);
       if (ref.some(function (q) { return !q; })) return;
-      paneller.push({ anahtar: "panel:" + p.no, kaynak: "panel", tur: p.tur || "doseme", no: p.no, kose: ref.map(function (q) { return q.P; }), dugumler: ref.map(function (q) { return q.no; }) });
+      paneller.push({ anahtar: "panel:" + p.no, kaynak: "panel", tur: p.tur || "doseme", no: p.no, kose: ref.map(function (q) { return q.P; }),
+        dugumler: ref.map(function (q) { return q.anahtar; }), etiket: "Panel " + p.no });
     });
-    return { dugumler: Array.from(dugumler.values()), cubuklar: cubuklar, paneller: paneller,
-      izgara: { xs: xs, ys: ys, kotlar: Array.from(kotlar.entries()).map(function (e) { return { kat: e[0], kot: e[1] }; }) },
-      coz: coz, izgaraNo: izgaraNo };
+    // kayıtlı ama hiçbir elemana bağlanmamış bölme/kesişim düğümleri de yakalama noktasıdır
+    kayitlar.forEach(function (d, no) { kayitDugum(no); });
+    // koordinat REF'lerinin geçici düğümleri yakalama listesine girmez
+    const liste = Array.from(dugumler.values()).filter(function (d) { return d.tur !== "koordinat"; });
+    return { dugumler: liste, cubuklar: cubuklar, paneller: paneller, aks: av,
+      izgara: { xs: G.xs, ys: G.ys, kotlar: Array.from(av.katZ.entries()).map(function (e) { return { kat: e[0], kot: e[1].k, ad: e[1].ad }; }) },
+      coz: coz, izgaraNo: izgaraNo, bina: b, _aksMod: A };
+  }
+  const CUBUK_TUR_ADI = { kolon: "Kolon", kiris: "Kiriş", capraz: "Çapraz", "makas-ust": "Makas üst başlık", "makas-alt": "Makas alt başlık",
+    "makas-dikme": "Makas dikmesi", "makas-diyagonal": "Makas diyagonali", asik: "Aşık", kren: "Kren kirişi", bag: "Bağ", diger: "Çubuk" };
+  /** İki sonsuz doğrunun (3B) en yakın noktalarının ortası; paralelse null. */
+  function dogruKesisim(P1, P2, Q1, Q2) {
+    const d1 = cikar(P2, P1), d2 = cikar(Q2, Q1), r = cikar(P1, Q1);
+    const a = ic(d1, d1), e = ic(d2, d2), b = ic(d1, d2), c = ic(d1, r), f = ic(d2, r), den = a * e - b * b;
+    if (a < 1e-18 || e < 1e-18 || Math.abs(den) < 1e-14 * a * e) return null;
+    const s = (b * f - c * e) / den, t = (a * f - b * c) / den;
+    return olcek(topla(ara(P1, P2, s), ara(Q1, Q2, t)), 0.5);
   }
   function cubukBul(geo, anahtar) {
     if (!geo) return null;
@@ -278,39 +457,74 @@
     t = Math.max(0, Math.min(1, t));
     return { t: t, d: Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy) };
   }
+  /** Yakalama kipleri: çizimde yalnız aks kesişimleri, düğümler (bölme/kesişim düğümleri dahil) ve çubuk kesişimleri (§19). */
+  const KIP_TURLERI = {
+    cizim: ["dugum", "aks", "kesisim"],
+    olcum: ["dugum", "aks", "kesisim", "orta", "dik", "cubuk"],
+  };
+  function duzlemde(P, dz) {
+    if (!dz) return true;
+    const tol = dz.tol != null ? +dz.tol : 0.001;
+    if (dz.X != null && Math.abs(P[0] - dz.X) > tol) return false;
+    if (dz.Y != null && Math.abs(P[1] - dz.Y) > tol) return false;
+    if (dz.Z != null && Math.abs(P[2] - dz.Z) > tol) return false;
+    return true;
+  }
+  /** Aks kesişimleri (geo başına önbellekli; sec.aks/gizli değişmedikçe). */
+  function geoAksKesisimleri(geo) {
+    if (geo._aksK) return geo._aksK;
+    const l = geo.bina ? aksKesisimleri(geo.bina, { aks: geo._aksMod }) : [];
+    try { Object.defineProperty(geo, "_aksK", { value: l, enumerable: false, configurable: true }); } catch (e) { /* donmuş */ }
+    return l;
+  }
+  function dugumRef(n) {
+    if (n.no != null) return n.tur === "aks" && n.kat != null ? { aks: n.aks.slice(), kat: n.kat } : { dugum: n.no };
+    if (n.tur === "aks") return n.sistem && n.sistem !== "GLOBAL" ? { sistem: n.sistem, aks: n.aks.slice(), z: n.z } : { aks: n.aks.slice(), z: n.z };
+    return null;
+  }
 
   /**
    * En uygun yakalama noktası.
    *  hedef: ekran kipinde [x, y] (sec.cevir ile), yoksa bina noktası [X, Y, Z].
-   *  sec: { cevir?, tol? (px: 14 | m: 0.25), turler? (dizi; varsayılan hepsi), onceki? (dik iz düşüm için [X,Y,Z]),
-   *         izgara? {adim (m), Z (düzlem kotu)}, aks? (true: kullanılmayan aks kesişimleri de), haric? (anahtar kümesi) }
-   *  dönüş: { tur, ad, P: [X,Y,Z], d, etiket, cubuk?, cubuklar?, dugum? } | null
+   *  sec: { kip? ("cizim" | "olcum"; varsayılan "olcum"), cevir?, tol? (px: 14 | m: 0.25), turler? (kipin türlerini daraltır/değiştirir),
+   *         onceki? ([X,Y,Z]: dik iz düşüm için), duzlem? ({X|Y|Z: değer, tol}: yalnız etkin çizim düzlemindeki noktalar), aks? (false: aks kesişimi yok) }
+   *  dönüş: { tur, ad, P: [X,Y,Z], d, etiket, ref? (çizim için düğüm başvurusu), cubuk?, cubuklar?, dugum?, t? } | null
+   *  Çizim kipinde dönen `ref` doğrudan model işlemlerine verilebilir: aks kesişimi {"aks": [x, y], "kat": k} | {"aks": [..], "z": ad}
+   *  | {"sistem", "aks", "z"}; düğüm {"dugum": no}; çubuk kesişimi {"tur": "kesisim", "a": [REF, REF], "b": [REF, REF]} (yeni kesişim düğümü kaydı).
    */
   function yakala(hedef, geo, sec) {
     sec = sec || {};
+    const kip = sec.kip === "cizim" ? "cizim" : "olcum";
     const ekran = typeof sec.cevir === "function";
     const tol = sec.tol != null ? +sec.tol : (ekran ? 14 : 0.25);
-    const izin = new Set(sec.turler || Object.keys(ONCELIK));
+    const izin = new Set(sec.turler || KIP_TURLERI[kip]);
+    if (sec.aks === false) izin.delete("aks");
     const cv = ekran ? sec.cevir : null;
     const h = ekran ? [+hedef[0], +hedef[1]] : nokta(hedef);
+    const dz = sec.duzlem || null;
     const uz = function (P) { return ekran ? ekranUzak(h, cv(P)) : mesafe(h, P); };
     let en = null;
     function aday(tur, P, ek) {
+      if (!duzlemde(P, dz)) return;
       const d = uz(P);
       if (d > tol) return;
       const puan = d / Math.max(tol, 1e-9) + 0.18 * ONCELIK[tur];
       if (!en || puan < en.puan) en = Object.assign({ tur: tur, ad: YAKALAMA_ADI[tur], P: P.slice(), d: d, puan: puan }, ek || {});
     }
     geo = geo || { dugumler: [], cubuklar: [] };
-    if (izin.has("dugum")) geo.dugumler.forEach(function (n) { aday("dugum", n.P, { dugum: n.no, etiket: n.etiket }); });
-    if (izin.has("aks") && sec.aks && geo.izgara) {
-      const g = geo.izgara;
-      g.kotlar.forEach(function (k) {
-        g.xs.forEach(function (a) { g.ys.forEach(function (c) { aday("aks", [a.k, c.k, k.kot], { etiket: a.ad + c.ad + "/k" + k.kat }); }); });
-      });
-    }
+    const anahtarRef = new Map();
+    geo.dugumler.forEach(function (n) { anahtarRef.set(n.anahtar, n); });
+    if (izin.has("dugum")) geo.dugumler.forEach(function (n) {
+      aday("dugum", n.P, { dugum: n.no, anahtar: n.anahtar, dugumTur: n.tur, etiket: n.etiket, ref: dugumRef(n) });
+    });
+    if (izin.has("aks")) geoAksKesisimleri(geo).forEach(function (k) { aday("aks", k.P, { etiket: k.etiket, ref: k.ref, sistem: k.sistem }); });
+    if (izin.has("kesisim")) kesisimler(geo).forEach(function (k) {
+      const c1 = cubukBul(geo, k.cubuklar[0]), c2 = cubukBul(geo, k.cubuklar[1]);
+      const r = function (an) { const n = anahtarRef.get(an); return n ? dugumRef(n) : null; };
+      const ref = c1 && c2 && r(c1.i) && r(c1.j) && r(c2.i) && r(c2.j) ? { tur: "kesisim", a: [r(c1.i), r(c1.j)], b: [r(c2.i), r(c2.j)] } : null;
+      aday("kesisim", k.P, { cubuklar: k.cubuklar, etiket: "Kesişim: " + (c1 ? c1.etiket : "") + " × " + (c2 ? c2.etiket : ""), ref: ref });
+    });
     if (izin.has("orta")) geo.cubuklar.forEach(function (c) { aday("orta", ara(c.A, c.B, 0.5), { cubuk: c.anahtar, etiket: c.etiket + " ortası" }); });
-    if (izin.has("kesisim")) kesisimler(geo).forEach(function (k) { aday("kesisim", k.P, { cubuklar: k.cubuklar, etiket: "Kesişim" }); });
     if (izin.has("dik") && sec.onceki) {
       const P0 = nokta(sec.onceki);
       geo.cubuklar.forEach(function (c) {
@@ -325,14 +539,6 @@
         else { const f = dikIzdusum(h, c.A, c.B); t = f ? Math.max(0, Math.min(1, f.t)) : 0; }
         aday("cubuk", ara(c.A, c.B, t), { cubuk: c.anahtar, t: t, etiket: c.etiket + " (" + bicim(t * mesafe(c.A, c.B), 2) + " m)" });
       });
-    }
-    if (izin.has("izgara") && sec.izgara && +sec.izgara.adim > 0) {
-      const a = +sec.izgara.adim, Z = +sec.izgara.Z || 0;
-      const Q = ekran ? ekrandanDuzleme(h[0], h[1], cv, Z) : [h[0], h[1], Z];
-      if (Q) {
-        const P = [r9(Math.round(Q[0] / a) * a), r9(Math.round(Q[1] / a) * a), Z];
-        aday("izgara", P, { etiket: "Izgara (" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + ")" });
-      }
     }
     if (en) delete en.puan;
     return en;
@@ -543,11 +749,116 @@
     return satir.join("\n");
   }
 
+  // ---------------------------------------------------------------- etkileşim denetleyicisi (DOM'a dokunmaz; katman verilirse çizer)
+  /**
+   * Ölçme aracı denetleyicisi. Sahne kendi işaretçi olaylarını yönetiyorsa yalnız `hareket(p)`, `dokun(p)`, `tus(ad)` çağrılır.
+   *  sec: { geo: geometri ya da () => geometri, cevir: fn ya da () => fn (bina → svg koordinatı), katman?: SVG <g> (içine çizer),
+   *         kip?: "uzaklik" | "aci" | "alan" | "kot" | "koordinat" | "boy", tol?: px (14), duzlem?: yakalama düzlemi,
+   *         degisti?(arac, sonuc|null): her değişiklikte, ipucu?(metin): durum satırı için }
+   *  Yöntemler: kipSec(kip), hareket([x, y]), dokun([x, y]) -> sonuç | null, tus("Escape" | "Enter" | "Backspace") -> işlendi mi,
+   *  temizle(hepsi), geriAl(), ciz(), svg() -> metin, tsv(), yakalanan (son yakalama).
+   */
+  function Arac(sec) {
+    this.sec = sec || {};
+    this.olcer = new Olcer(this.sec.kip || "uzaklik");
+    this.yakalanan = null;
+  }
+  Arac.prototype._geo = function () { const g = this.sec.geo; return typeof g === "function" ? g() : g; };
+  Arac.prototype._cevir = function () { const c = this.sec.cevir; return c && c.length === 0 ? c() : c; };
+  Arac.prototype._bildir = function (s) {
+    if (this.sec.ipucu) this.sec.ipucu(s ? ozet(s) : this.olcer.ipucu());
+    if (this.sec.degisti) this.sec.degisti(this, s || null);
+  };
+  Arac.prototype.kipSec = function (kip) { this.olcer.kipSec(kip); this.ciz(); this._bildir(null); return this; };
+  Arac.prototype.hareket = function (p) {
+    const b = this.olcer.bekleyen;
+    this.yakalanan = p ? yakala(p, this._geo(), { cevir: this._cevir(), tol: this.sec.tol, kip: "olcum", duzlem: this.sec.duzlem,
+      onceki: b.length ? b[b.length - 1] : null }) : null;
+    this.ciz();
+    return this.yakalanan;
+  };
+  Arac.prototype.dokun = function (p) {
+    const y = p ? this.hareket(p) : this.yakalanan;
+    if (!y) { if (this.sec.ipucu) this.sec.ipucu("Yakalanacak nokta yok — bir düğüme, aks kesişimine ya da çubuğa dokunun."); return null; }
+    let s;
+    if (this.olcer.kip === "boy" && !this.olcer.bekleyen.length && y.cubuk && (y.tur === "cubuk" || y.tur === "orta")) s = this.olcer.eleman(this._geo(), y.cubuk);
+    else s = this.olcer.nokta(y.P);
+    this.ciz();
+    this._bildir(s);
+    return s;
+  };
+  Arac.prototype.tus = function (ad) {
+    if (ad === "Escape") { const v = this.olcer.temizle(false); this.ciz(); this._bildir(null); return v; }
+    if (ad === "Enter") { const s = this.olcer.bitir(); this.ciz(); this._bildir(s); return !!s; }
+    if (ad === "Backspace") { const v = this.olcer.bekleyen.length > 0 || this.olcer.sonuclar.length > 0; this.olcer.geriAl(); this.ciz(); this._bildir(null); return v; }
+    return false;
+  };
+  Arac.prototype.temizle = function (hepsi) { this.olcer.temizle(hepsi !== false); this.yakalanan = null; this.ciz(); this._bildir(null); return this; };
+  Arac.prototype.geriAl = function () { this.olcer.geriAl(); this.ciz(); this._bildir(null); return this; };
+  Arac.prototype.svg = function () {
+    const cv = this._cevir();
+    if (!cv) return "";
+    return this.olcer.svg(cv, this.yakalanan ? this.yakalanan.P : null) + (this.yakalanan ? yakalamaSvg(this.yakalanan, cv) : "");
+  };
+  Arac.prototype.ciz = function () { if (this.sec.katman) this.sec.katman.innerHTML = this.svg(); return this; };
+  Arac.prototype.tsv = function () { return tsv(this.olcer.sonuclar); };
+
+  /**
+   * Tarayıcı kolaylığı: bir SVG öğesine işaretçi ve klavye dinleyicileri bağlar (sahne kendi olaylarını yönetmiyorsa).
+   *  sec: Arac seçenekleri + { nokta(olay) -> [x, y] (SVG/viewBox koordinatı; verilmezse getScreenCTM ile) }.
+   *  Dönüş: Arac (+ kaldir()).
+   */
+  function bagla(svg, sec) {
+    sec = Object.assign({}, sec || {});
+    if (!sec.katman && svg && svg.ownerDocument) {
+      const g = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "olcum-kok");
+      svg.appendChild(g);
+      sec.katman = g;
+    }
+    const arac = new Arac(sec);
+    const nokta_ = sec.nokta || function (e) {
+      const m = svg.getScreenCTM && svg.getScreenCTM();
+      if (!m) return [e.offsetX, e.offsetY];
+      const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+      const q = p.matrixTransform(m.inverse());
+      return [q.x, q.y];
+    };
+    let bas = null;
+    const hareket = function (e) { arac.hareket(nokta_(e)); };
+    const asagi = function (e) { bas = [e.clientX, e.clientY]; };
+    const yukari = function (e) {
+      if (!bas || Math.hypot(e.clientX - bas[0], e.clientY - bas[1]) > 6) { bas = null; return; }
+      bas = null;
+      arac.dokun(nokta_(e));
+    };
+    const ayril = function () { arac.yakalanan = null; arac.ciz(); };
+    const tus = function (e) {
+      const t = e.target && e.target.tagName;
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+      if (arac.tus(e.key)) e.preventDefault();
+    };
+    svg.addEventListener("pointermove", hareket);
+    svg.addEventListener("pointerdown", asagi);
+    svg.addEventListener("pointerup", yukari);
+    svg.addEventListener("pointerleave", ayril);
+    svg.ownerDocument.addEventListener("keydown", tus);
+    arac.kaldir = function () {
+      svg.removeEventListener("pointermove", hareket); svg.removeEventListener("pointerdown", asagi);
+      svg.removeEventListener("pointerup", yukari); svg.removeEventListener("pointerleave", ayril);
+      svg.ownerDocument.removeEventListener("keydown", tus);
+      if (sec.katman && sec.katman.parentNode && sec.katman.getAttribute("class") === "olcum-kok") sec.katman.parentNode.removeChild(sec.katman);
+    };
+    arac.ciz();
+    return arac;
+  }
+
   return Object.freeze({
-    ONCELIK: ONCELIK, YAKALAMA_ADI: YAKALAMA_ADI, KIP_ADI: KIP_ADI, GEREKEN: GEREKEN,
+    ONCELIK: ONCELIK, YAKALAMA_ADI: YAKALAMA_ADI, KIP_ADI: KIP_ADI, GEREKEN: GEREKEN, KIP_TURLERI: KIP_TURLERI,
     bicim: bicim, uzaklik: uzaklik, aci: aci, alan: alan, kotFarki: kotFarki, koordinat: koordinat, elemanBoyu: elemanBoyu, ozet: ozet,
-    geometri: geometri, cubukBul: cubukBul, parcaKesisim: parcaKesisim, kesisimler: kesisimler, dikIzdusum: dikIzdusum,
-    ekrandanDuzleme: ekrandanDuzleme, yakala: yakala, Olcer: Olcer,
+    aksVerisi: aksVerisi, aksKesisimleri: aksKesisimleri, sistemNokta: sistemNokta,
+    geometri: geometri, cubukBul: cubukBul, parcaKesisim: parcaKesisim, dogruKesisim: dogruKesisim, kesisimler: kesisimler, dikIzdusum: dikIzdusum,
+    ekrandanDuzleme: ekrandanDuzleme, yakala: yakala, Olcer: Olcer, Arac: Arac, bagla: bagla,
     izdusum: izdusum, cevirici: cevirici, olcuSvg: olcuSvg, yakalamaSvg: yakalamaSvg, tsv: tsv,
   });
 });
