@@ -48,7 +48,7 @@ Ortak şablon: SD → şekil fonksiyonu → K (kapalı form / sayısal integrasy
 
 **Dinamik katman (her aşamaya paralel):** M seçimi (tutarlı/yığılı); Kφ = ω²Mφ (mevcut `ozdeger`); yığılı M'de dönme kütlesi 0 → M tekil → dönme SD'leri Guyan yoğunlaştırmasıyla atılır ya da tutarlı M kullanılır (öğretici not); kütle-normalizasyon φᵀMφ = 1; Rayleigh sönüm C = a₀M + a₁K, eşit ξ için a₀ = 2ξω_iω_j/(ω_i+ω_j), a₁ = 2ξ/(ω_i+ω_j); basit kiriş ω_n = (nπ/L)²√(EI/ρA) doğrulaması.
 
-**Yığma / HBIM bağı:** kemer → poligonal çerçeve (aşama 2; Heyman itme çizgisi el kontrolü); kemer + dolgu → düzlem şekil değiştirme Q4/Q8 makro-modeli (aşama 5; homojenleştirilmiş E, ρ); hafifletme odacığı → ağ geometrisi parametresi (odacıklı / dolu kesit frekans farkı); 3B katı yalnız kavram (aşama 8). Tam köprü modeli uygulamanın değil tez çözücüsünün (ANSYS/Abaqus) işidir.
+**Yığma / HBIM bağı:** kemer → poligonal çerçeve (aşama 2; Heyman itme çizgisi el kontrolü); kemer + dolgu → düzlem şekil değiştirme Q4/Q8 makro-modeli (aşama 5; homojenleştirilmiş E, ρ); hafifletme odacığı → ağ geometrisi parametresi (odacıklı / dolu kesit frekans farkı); 3B katı yalnız kavram (aşama 8). Tam köprü modeli uygulamanın değil tez çözücüsünün (genel amaçlı sonlu eleman programları) işidir.
 
 ## 3. Yükler, mesnetler, sınır koşulları
 
@@ -94,7 +94,7 @@ Aynı model iki modda çözülür; fark raporlanır (§5).
 | Denge ve enerji | ∑tepki + ∑yük = 0; ½uᵀKu = ½uᵀF |
 | Ağ yakınsaması | h-yarılamada hata monoton azalır; mertebe eleman teorisiyle uyumlu |
 | Dinamik | analitik frekanslar (çubuk, kiriş); φᵀMφ = I, φᵀKφ = Λ |
-| Çapraz yazılım | aynı model SAP2000 (OAPI, Windows) ve OpenSeesPy'de; çerçeve ≤ %0,1; sürekli ortamda formülasyon farkı notuyla birkaç % |
+| Çapraz yazılım | aynı model bağımsız iki yapı analiz programında; çerçeve ≤ %0,1; sürekli ortamda formülasyon farkı notuyla birkaç % |
 
 **Referans kitaplar (gerçek; yıl/sayfa uygulama içinde yalnız elde baskı varken girilir):** Logan — *A First Course in the Finite Element Method*; Hutton — *Fundamentals of Finite Element Analysis*; Chandrupatla & Belegundu — *Introduction to Finite Elements in Engineering*; Cook, Malkus, Plesha & Witt — *Concepts and Applications of Finite Element Analysis*; Bathe — *Finite Element Procedures*; Kassimali — *Matrix Analysis of Structures*; McGuire, Gallagher & Ziemian — *Matrix Structural Analysis*; Przemieniecki — *Theory of Matrix Structural Analysis*; Chopra — *Dynamics of Structures*; Timoshenko & Woinowsky-Krieger — *Theory of Plates and Shells*; Friswell & Mottershead — *Finite Element Model Updating in Structural Dynamics*. Türkçe (başlık düzeyinde biliniyor, baskı/yıl teyit edilecek): Çakıroğlu & Çetmeli — *Yapı Sistemlerinin Hesabı için Matris Metodları ve Elektronik Hesap Makinası Programları*; Omurtag — *Çubuk Sonlu Elemanlar*; Topçu — *Sonlu Elemanlar Metodu* (ESOGÜ ders notları, çevrim içi); Celep & Kumbasar — *Yapı Dinamiği*.
 
@@ -148,7 +148,7 @@ Aynı model iki modda çözülür; fark raporlanır (§5).
 - Kontak, zemin–yapı etkileşimi, eklenmiş su kütlesi: tez hattına ait.
 - Lineer burkulma: olası ileri modül, şimdilik dışarıda.
 - Tasarım tahkiki (TS 500, TBDY 2018, Eurocode): uygulama analiz aracıdır, tasarım aracı değil; ekranda beyan.
-- Büyük model çözücüsü: tarayıcı belleği; SAP2000/OpenSees yerine geçmez.
+- Büyük model çözücüsü: tarayıcı belleği; ticari yapı analiz programlarının yerine geçmez.
 
 **Riskler ve önlemler:**
 
@@ -252,7 +252,7 @@ Faz 1 bu arayüzün karşılığı olan yardımcı fonksiyonlarla başlar; sın�
 - **Sonlu Eleman sayfası:** hazır örnek modeller; telefonda kullanılabilen düğüm, eleman, mesnet ve yük tabloları; canlı SVG model çizimi.
 - **Sonuçlar:** ölçek kaydırıcılı şekil değiştirmiş biçim, N, V ve M diyagramları, tepki tablosu; dinamik katmanla birlikte mod animasyonu.
 - Ok şeması adımlayıcısı dönüşüm, birleştirme ve mesnet satır ve sütunlarının silinmesi adımlarında yeniden kullanılır.
-- Model JSON olarak içe ve dışa aktarılır; ileride AutoCAD DXF çizgilerinden model okunur.
+- Model JSON olarak içe ve dışa aktarılır; ileride DXF çizgilerinden model okunur.
 
 ### 9.9 Dersler 2.0
 

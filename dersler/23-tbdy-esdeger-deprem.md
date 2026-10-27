@@ -154,7 +154,7 @@ Kat kesmesi $V_i$ o katın ve üstündeki katların kuvvetlerinin toplamıdır; 
 
 ## Rijit diyafram, dışmerkezlik ve burulma
 
-Betonarme döşeme kendi düzleminde çok rijittir: bir kattaki bütün düğümler birlikte ötelenir ve döner. Bu **rijit diyafram** varsayımı kat başına üç serbestlik ($u_X$, $u_Y$, $\theta_Z$) bırakır; SAP2000'de "Diaphragm constraint", bu motorda kütle merkezindeki efendi düğümdür. Kat kuvveti kütle merkezine etkir, ama kütlenin yeri ve deprem hareketinin dönme bileşeni belirsiz olduğu için kuvvet **±%5 kaydırılır** (md. 4.5.10.2):
+Betonarme döşeme kendi düzleminde çok rijittir: bir kattaki bütün düğümler birlikte ötelenir ve döner. Bu **rijit diyafram** varsayımı kat başına üç serbestlik ($u_X$, $u_Y$, $\theta_Z$) bırakır; yapı analiz programlarında diyafram kısıtı ("diaphragm constraint"), bu motorda kütle merkezindeki efendi düğümdür. Kat kuvveti kütle merkezine etkir, ama kütlenin yeri ve deprem hareketinin dönme bileşeni belirsiz olduğu için kuvvet **±%5 kaydırılır** (md. 4.5.10.2):
 
 $$
 e_i=\pm0.05\,B_i,\qquad M_{ib}=F_{iE}\,e_i\qquad(\text{Denk. 4.17};\ B_i:\ \text{depreme dik kat boyutu})
@@ -336,7 +336,7 @@ abs(r.veri["deprem"]["lambda"] - 0.4) < 1e-9 and abs(r.veri["deprem"]["katlar"][
 :::
 
 ::: muhendislik Eşdeğer yükten modal analize, oradan OMA'ya
-EDYY birinci modun ters üçgen olduğunu ve kütlenin büyük kısmının o modda titreştiğini varsayar; bu yüzden alçak ve düzenli binalarla sınırlıdır (Tablo 4.4). Daha yüksek ya da düzensiz binada mod birleştirme yöntemi (md. 4.8) her modu spektrumdan ayrı alır ve etkin kütle katılımının en az %95'ini ister. SAP2000 ve ETABS'ta Rayleigh periyodunu modal analizin birinci periyoduyla karşılaştırmak iyi bir model denetimidir.
+EDYY birinci modun ters üçgen olduğunu ve kütlenin büyük kısmının o modda titreştiğini varsayar; bu yüzden alçak ve düzenli binalarla sınırlıdır (Tablo 4.4). Daha yüksek ya da düzensiz binada mod birleştirme yöntemi (md. 4.8) her modu spektrumdan ayrı alır ve etkin kütle katılımının en az %95'ini ister. Bir yapı analiz programıyla çalışırken Rayleigh periyodunu modal analizin birinci periyoduyla karşılaştırmak iyi bir model denetimidir.
 
 Mevcut yapılarda periyot ölçülebilir: ortam titreşimiyle modal analiz (OMA) gerçek $T_1$'i verir. Tarihi yığma köprülerde ölçülen frekanslar sonlu eleman modelinin rijitliğini ve dolgu kütlesini güncellemekte kullanılır; güncellenmiş model, Rayleigh formülündeki $d_{fi}$'lerin gerçekçi olmasını sağlar.
 :::
