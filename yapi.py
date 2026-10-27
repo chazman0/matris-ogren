@@ -4420,7 +4420,10 @@ def bina_coz(bina, *, goster=None, anlat=True):
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", kod, cikti)
     sonuc.veri = veri
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T,
-                "temel": tm.basinc_meta(ag["temel"]) if ag["temel"] is not None else None}
+                "temel": tm.basinc_meta(ag["temel"]) if ag["temel"] is not None else None,
+                # alan.py (ısı haritaları, eleman bilgisi): normalize bina, ağ, motor modeli, yükler, tasarım sonucu, kombinasyon türleri
+                "alan": {"B": B, "ag": ag, "model": model, "Y": Y, "tasarim": tas,
+                         "komb_tur": {k["ad"]: k["tur"] for k in kombinasyonlar if k["uygulandi"]}}}
     mo.son_anlatim = anl
     anl.goster(goster)
     return sonuc

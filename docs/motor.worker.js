@@ -5,7 +5,24 @@
 "use strict";
 
 const PYODIDE_SURUM = "314.0.7";
-const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";
+const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";
+// Pyodide'nin yerel kopyası (masaüstü sürümü, çevrimdışı denemeler): önce worker adresindeki ?pyodide=… sorgu
+// parametresi (yalnız aynı kökenden bir adres), sonra self.MATRIS_PYODIDE_URL. İkisi de yoksa web sürümündeki gibi CDN.
+const PYODIDE_URL = pyodideAdresi();
+
+function pyodideAdresi() {
+  const klasor = function (adres) { return adres.endsWith("/") ? adres : adres + "/"; };
+  try {
+    const burasi = new URL(self.location.href);
+    const sorgu = burasi.searchParams.get("pyodide");
+    if (sorgu) {
+      const u = new URL(sorgu, burasi);
+      if (u.origin === burasi.origin) return klasor(u.href);
+    }
+    if (typeof self.MATRIS_PYODIDE_URL === "string" && self.MATRIS_PYODIDE_URL) return klasor(new URL(self.MATRIS_PYODIDE_URL, burasi).href);
+  } catch (e) { /* geçersiz adres: CDN kullanılır */ }
+  return PYODIDE_CDN;
+}
 
 let pyodide = null;
 let kopru = null;
@@ -33,8 +50,9 @@ async function hazirla() {
   // İsteğe bağlı modüller (eski kurulumlarda yok): alınamazsa motor onlarsız çalışır (ders örnekleri "se" adını,
   // Bina sayfası "bina_*" işlemlerini bulamaz; arayüz yerleşik şablon/kütüphaneyle çizilir). tasarim.py: kesit tahkikleri
   // (TS 500, ÇYTHYE); rapor.py: statik hesap raporu (bina_rapor); temel.py: mütemadi ve radye temel (Winkler);
-  // tablolar.py: tablo editörü ve metraj (bina_tablolar); yapi_serbest.py: genel (surum 3) bina modeli ve kesit önerisi.
-  const ISTEGE_BAGLI = ["sonlu_eleman.py", "yapi_veri.py", "yapi.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py", "yapi_serbest.py"];
+  // tablolar.py: tablo editörü ve metraj (bina_tablolar); alan.py: ısı haritası alanları (bina_alan);
+  // yapi_serbest.py: genel (surum 3) bina modeli ve kesit önerisi (bina_kesit_oner).
+  const ISTEGE_BAGLI = ["sonlu_eleman.py", "yapi_veri.py", "yapi.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py", "alan.py", "yapi_serbest.py"];
   const istege = function (ad) { return dosyaAl(ad).catch(function () { return null; }); };
   const dosyalar = await Promise.all([dosyaAl("matris_ogren.py"), dosyaAl("web_kopru.py")].concat(ISTEGE_BAGLI.map(istege)));
   pyodide.FS.writeFile("/home/pyodide/matris_ogren.py", dosyalar[0], { encoding: "utf8" });
