@@ -850,17 +850,30 @@ test("koparak taşıma: taşı / döndür / ayna (kopyasız) ya geçerli model y
     assert.equal(!!r.reddedildi, red, ad + ": " + JSON.stringify(r.uyarilar));
     if (r.reddedildi) { assert.deepEqual(r.model, model, ad + ": ret modeli değiştirmez"); assert.ok(r.uyarilar.length, ad); continue; }
     assert.deepEqual(engeller(r.model), [], ad);
-    // seçilmeyen çubuklar yerinde (uç konumları aynı)
+    // seçilmeyen çubuklar yerinde (uç konumları aynı); yeni uç düğümü iç noktasına düşen çubuk orada bölünür: i ucu aynı, j ucu
+    // eski doğru parçasının üstünde (kalan parça yeni çubuk)
+    const bolunen = new Set(r.uyarilar.map(function (u) { const x = /^Çubuk (\d+), yeni uç düğümü \d+ üzerine düştüğü için orada bölündü/.exec(u); return x ? +x[1] : null; }).filter(Boolean));
     for (const c of model.cubuklar) {
       if (c.no === no) continue;
-      yakin(uclar(r.model, c.no)[0], uclar(model, c.no)[0], 1e-9, ad + " çubuk " + c.no);
-      yakin(uclar(r.model, c.no)[1], uclar(model, c.no)[1], 1e-9, ad + " çubuk " + c.no);
+      const o = uclar(model, c.no), y = uclar(r.model, c.no);
+      yakin(y[0], o[0], 1e-9, ad + " çubuk " + c.no);
+      if (!bolunen.has(c.no)) { yakin(y[1], o[1], 1e-9, ad + " çubuk " + c.no); continue; }
+      const L = Math.hypot(o[1][0] - o[0][0], o[1][1] - o[0][1], o[1][2] - o[0][2]);
+      const a1 = Math.hypot(y[1][0] - o[0][0], y[1][1] - o[0][1], y[1][2] - o[0][2]), a2 = Math.hypot(o[1][0] - y[1][0], o[1][1] - y[1][1], o[1][2] - y[1][2]);
+      yakin(a1 + a2, L, 1e-9, ad + ": bölünen çubuk " + c.no + " eski doğru parçasında");
     }
-    assert.equal(r.model.cubuklar.length, model.cubuklar.length, ad);
+    assert.equal(r.model.cubuklar.length, model.cubuklar.length + bolunen.size, ad);
   }
   // taşınan kirişin yükü numarasıyla birlikte gider; yük kopyalanmaz
   const t = M.tasi(m, { cubuklar: [13] }, 0, 2.5, 0);
   assert.equal(t.model.ek_yukler.filter(function (y) { return y.cubuk === 13; }).length, 1);
+  // aks arasına taşınan kirişin uçları A ve B akslarındaki kirişlerin iç noktası: o kirişler bölünür, taşınan kiriş bağlı kalır
+  assert.equal(t.uyarilar.filter(function (u) { return /bölündü \(bağlantı\)/.test(u); }).length, 2, JSON.stringify(t.uyarilar));
+  assert.deepEqual(M.denetle(t.model).uyarilar.filter(function (u) { return u.kod === "bagsiz-parca" || u.kod === "yuzen-dugum"; }), []);
+  // kopya (doğrusal dizi) da aynı: yeni uç mevcut çubuğun iç noktasına düşerse o çubuk bölünür
+  const d = M.dogrusalDizi(m, { cubuklar: [13] }, 0, 2.5, 0, 1);
+  assert.equal(d.uyarilar.filter(function (u) { return /bölündü \(bağlantı\)/.test(u); }).length, 2, JSON.stringify(d.uyarilar));
+  assert.deepEqual(M.denetle(d.model).uyarilar.filter(function (u) { return u.kod === "bagsiz-parca" || u.kod === "yuzen-dugum"; }), []);
 });
 
 test("koparak taşıma: dönme merkezindeki uç numarasını korur; yalnız seçime ait serbest düğüm silinir, mesnedi ve yükü taşınır", function () {

@@ -823,6 +823,31 @@
     const n = this.bul(P);
     return { no: n != null ? n : this.dugumEkle(P), bolundu: adaylar.length > 0 };
   };
+  /**
+   * Taşıma / kopyalamanın YENİ açtığı uç düğümleri mevcut bir çubuğun iç noktasına düşüyorsa o çubuk orada bölünür: bağlantısız
+   * (çubuğun üstünde duran ama ona bağlı olmayan) düğüm mafsallı uçlarda mekanizma olur, motor çözmez (ör. ters V çaprazını
+   * bölünmemiş bir kirişin altına taşımak). haric: bölünmeyecek çubuk numaraları (taşınan seçim). Dönüş: bölünen çubuk numaraları.
+   */
+  P_.uclardaBol = function (dugumler, haric) {
+    const tol = this.tol, bolunen = [];
+    for (const n of new Set(dugumler)) {
+      let P;
+      try { P = this.kon(n); } catch (e) { continue; }
+      for (const c of this.m.cubuklar.slice()) {
+        if (haric && haric.has(+c.no)) continue;
+        let u;
+        try { u = this.uclar(c); } catch (e) { continue; }
+        if (u[0] === n || u[1] === n) continue;
+        const A = this.kon(u[0]), B = this.kon(u[1]), L = uzaklik(A, B);
+        if (L <= tol) continue;
+        const r = dogruyaUzaklik(P, A, B);
+        if (r.d > tol || r.t * L <= tol || (1 - r.t) * L <= tol) continue;
+        const parca = this.bolIc(+c.no, [r.t]);
+        if (parca.length > 1) { bolunen.push(+c.no); this.uyar("Çubuk " + c.no + ", yeni uç düğümü " + n + " üzerine düştüğü için orada bölündü (bağlantı)."); }
+      }
+    }
+    return bolunen;
+  };
 
   // ================================================================= zincirler ve birleştirme
   P_.zincirler = function (nolar) {
@@ -1111,7 +1136,11 @@
   P_.kopyalaIc = function (s, f, R, sec) {
     sec = sec || {};
     const self = this, esle = new Map(), cesle = new Map(), yeniP = [];
-    const yd = function (n) { if (!esle.has(n)) esle.set(n, self.dugumEkle(f(self.kon(n)))); return esle.get(n); };
+    const yeniDg = [];
+    const yd = function (n) {
+      if (!esle.has(n)) { const P = f(self.kon(n)), var_ = self.bul(P); esle.set(n, var_ != null ? var_ : self.dugumEkle(P)); if (var_ == null) yeniDg.push(esle.get(n)); }
+      return esle.get(n);
+    };
     for (const no of s.cubuklar) {
       const c = this.cubuk(no), u = this.uclar(c);
       const na = yd(u[0]), nb = yd(u[1]);
@@ -1160,6 +1189,8 @@
         this.m.mesnetler.push(r);
       }
     }
+    // kopyanın yeni uçları mevcut bir çubuğun iç noktasına düşüyorsa o çubuk orada bölünür (kopyaların kendisi hariç)
+    this.uclardaBol(yeniDg, new Set(cesle.values()));
     return { cubuklar: [...cesle.values()], paneller: yeniP.map(function (x) { return x[1]; }), dugumler: [...new Set(esle.values())] };
   };
   /** Yeni serbest düğüm kaydı (konumda başka düğüm olsa da: taşınırken yerini boşaltacak düğümün konumu için). */
@@ -1215,11 +1246,12 @@
     const bosalan = new Set([...kendi].filter(function (n) { const d = self.harita().get(n); return d && !d.izgara && uzaklik(T.get(n), P0.get(n)) > tol; }));
     const mesnetliOnce = new Map([...dg].map(function (n) { return [n, self.mesnetli(n)]; }));
     const eksen = new Map(cs.map(function (c) { return [c, self.cubukEksen(c)]; }));
-    const hedef = new Map();
+    const hedef = new Map(), yeniDg = [];
     for (const n of dg) {
       if (uzaklik(T.get(n), P0.get(n)) <= tol) { hedef.set(n, n); continue; }
       const o = this.bul(T.get(n), tol, bosalan);
-      hedef.set(n, o != null ? o : this.dugumZorla(T.get(n)));
+      if (o != null) hedef.set(n, o);
+      else { const z = this.dugumZorla(T.get(n)); yeniDg.push(z); hedef.set(n, z); }
     }
     // ret denetimleri
     const red = [];
@@ -1295,6 +1327,8 @@
     }
     this._h = null;
     this.yetimSil([...kendi].filter(function (n) { return hedef.get(n) !== n; }));
+    // yeni uç düğümü seçilmeyen bir çubuğun iç noktasına düştüyse o çubuk orada bölünür (bağlantısız düğüm mekanizma olurdu)
+    this.uclardaBol(yeniDg, secC);
     return esle;
   };
 

@@ -428,16 +428,19 @@ test("aksa bağla: genelleştirilmiş modelde yanlış 'aks ekleyin' yok; eski a
   assert.ok(!BC.aksaBaglaHepsi(m).uyarilar.some(function (u) { return /aks ekleyin/.test(u); }));
 });
 
-test("aks–kat özellik yazımı (genelleştirmeden): kesit, grup, kolon açısı 0/90 → yon, kiriş duvarı; desteklenmeyen alan → null", function () {
+test("aks–kat özellik yazımı (genelleştirmeden): kesit, kolon açısı 0/90 → yon, kiriş duvarı; desteklenmeyen alan → null", function () {
   const b = aksKatModel();
-  let r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "kiris", no: 2 }], { kesit: "K25x50", grup: "G1" });
+  let r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "kiris", no: 2 }], { kesit: "K25x50" });
   assert.equal(r.sayi, 2);
-  assert.equal(r.model.kolonlar[0].kesit, "K25x50"); assert.equal(r.model.kirisler[1].grup, "G1"); assert.equal(r.model.surum, 1);
+  assert.equal(r.model.kolonlar[0].kesit, "K25x50"); assert.equal(r.model.kirisler[1].kesit, "K25x50"); assert.equal(r.model.surum, 1);
+  // grup ve duvar_h bina.js aks–kat normalleştirmesinde (binaYukle) atılır: genel modelde yazılır (null → çubuk özelliği yolu)
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { kesit: "K25x50", grup: "G1" }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar_h: 2.5 }), null);
   r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { aci: 90 });
   assert.equal(r.model.kolonlar[0].yon, "y");
   assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kolon", no: 1 }], { aci: 180 }).model.kolonlar[0].yon, "x");
-  r = BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar: "tugla19", duvar_h: 2.5 });
-  assert.deepEqual([r.model.kirisler[0].duvar, r.model.kirisler[0].duvar_h], ["tugla19", 2.5]);
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar: "tugla19" });
+  assert.equal(r.model.kirisler[0].duvar, "tugla19");
   assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kiris", no: 1 }], { duvar: null }).model.kirisler[0].duvar, null);
   assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { aci: 30 }), null);
   assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { aci: 90 }), null);
@@ -469,6 +472,31 @@ test("yeni engeller: işlemin ürettiği sıfır boylu / çakışan çubuk ve bo
   assert.deepEqual(BC.yeniEngeller(s, s), [], "zaten var olan bulgu yeni sayılmaz");
   const z = cubukEkle(m, G("C", "1", "+3.00"), G("C", "1", "+3.00"));
   assert.deepEqual(BC.yeniEngeller(m, z).map(function (u) { return u.kod; }), ["sifir-boy"]);
+  // bulgunun kimliği eleman(lar)dır, ileti değil: aynı çubuk çiftinin üst üste binmesi biçim değiştirse de yeni sayılmaz
+  const u1 = cubukEkle(m, G("A", "1", "+3.00"), G("C", "1", "+3.00"));          // 1–2 eş doğrusal, üst üste (6 m)
+  const u2 = JSON.parse(JSON.stringify(u1)); u2.cubuklar[0].j = G("C", "1", "+3.00");   // 1–2 artık aynı iki düğüm (12 m)
+  assert.notEqual(BC.yeniEngeller(m, u1)[0].mesaj, BC.yeniEngeller(m, u2)[0].mesaj);
+  assert.deepEqual(BC.yeniEngeller(u1, u2), []);
+});
+
+test("taşıyan kenar: panel kenarı bulgusu dağıtıma göre motorun reddettiği kenarda mı (iki, tek-13, tek-24, yok, otomatik)", function () {
+  // A1–B1–B2–A2 gözü (6 × 5) +3.00'te; 1. kenar A1–B1 çubuksuz
+  let m = bos();
+  m = cubukEkle(m, G("B", "1", "+3.00"), G("B", "2", "+3.00"));
+  m = cubukEkle(m, G("B", "2", "+3.00"), G("A", "2", "+3.00"));
+  m = cubukEkle(m, G("A", "2", "+3.00"), G("A", "1", "+3.00"));
+  m.paneller = [{ no: 1, kose: [G("A", "1", "+3.00"), G("B", "1", "+3.00"), G("B", "2", "+3.00"), G("A", "2", "+3.00")], kalinlik: 0.12, dagitim: "iki" }];
+  const bul = function (mm) { return O.denetle(mm).uyarilar.filter(function (u) { return u.kod === "panel-kenari"; }); };
+  const u = bul(m);
+  assert.equal(u.length, 1); assert.equal(u[0].kenar, 1);
+  const dag = function (d) { const k = JSON.parse(JSON.stringify(m)); k.paneller[0].dagitim = d; return BC.tasiyanKenarMi(k, u[0]); };
+  assert.equal(dag("iki"), true);
+  assert.equal(dag("tek-13"), true);
+  assert.equal(dag("tek-24"), false);
+  assert.equal(dag("yok"), false);
+  assert.equal(dag("otomatik"), true, "6 / 5 ≤ 2 → iki doğrultulu: bütün kenarlar taşır");
+  assert.equal(dag("tek"), true, "tek: uzun kenarlar (1. ve 3., 6 m) taşır");
+  assert.equal(BC.tasiyanKenarMi(m, { kod: "sifir-boy", panel: 1, kenar: 1 }), false);
 });
 
 // ------------------------------------------------------------------ kesit önerisi (C4)

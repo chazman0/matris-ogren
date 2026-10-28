@@ -20,7 +20,7 @@
    Genel model kapısı (sözleşme C1): aks–kat (surum 1) modelini genel modele (surum 3) çeviren her yol — seçimli değiştirme
    işlemleri, mesnet, çubuk/çapraz/panel çizimi, üreteçler — önce kullanıcıya sorar (genelModeleGec → genellestirHazirla;
    mütemadi/radye temel tekil olur). Model çevirmeden yapılabilenler aks–kat biçiminde yazılır: ek yükler (C10: düğüm, kiriş,
-   döşeme), kolon/kiriş kesit, grup, kolon yönü, kiriş duvarı. Motorun her zaman reddettiği yeni bozukluk üreten işlem uygulanmaz. */
+   döşeme), kolon/kiriş kesit, kolon yönü, kiriş duvarı. Motorun her zaman reddettiği yeni bozukluk üreten işlem uygulanmaz. */
 (function (kok, fabrika) {
   "use strict";
   let aksNode = null, opsNode = null;
@@ -488,8 +488,10 @@
     });
   }
   /**
-   * Aks–kat kolon/kiriş seçimine GENELLEŞTİRMEDEN özellik yazar (bina.js Özellikler paneli gibi): kesit, grup, kolonda açı 0/90 → yon
-   * "x"/"y", kirişte duvar / duvar_h. Seçimde başka tür ya da desteklenmeyen alan varsa null (işlem genel modelde yapılır).
+   * Aks–kat kolon/kiriş seçimine GENELLEŞTİRMEDEN özellik yazar (bina.js Özellikler paneli gibi): kesit, kolonda açı 0/90 → yon
+   * "x"/"y", kirişte duvar. Yalnız bina.js aks–kat normalleştirmesinin (binaYukle: kolon {no, aks, kat, kesit, yon}, kiriş
+   * {no, kat, bas, son, kesit, duvar}) koruduğu alanlar: grup ve duvar_h orada atılır (binaAyarla "değişiklik yok" der), bu yüzden
+   * genel modelde (çubuk özelliği) yazılır. Seçimde başka tür ya da desteklenmeyen alan varsa null (işlem genel modelde yapılır).
    * Dönüş: {model, sayi}
    */
   function aksKatOzellikYaz(model, secim, oz) {
@@ -499,13 +501,13 @@
     if (!anahtarlar.length) return null;
     const kolonVar = s.some(function (x) { return x.tur === "kolon"; }), kirisVar = s.some(function (x) { return x.tur === "kiris"; });
     for (const k of anahtarlar) {
-      if (k === "kesit" || k === "grup") continue;
+      if (k === "kesit") continue;
       if (k === "aci") {
         const a = ((+oz.aci % 180) + 180) % 180;
         if (!isFinite(a) || (kolonVar && Math.abs(a) > 1e-9 && Math.abs(a - 90) > 1e-9) || (kirisVar && Math.abs(a) > 1e-9)) return null;
         continue;
       }
-      if ((k === "duvar" || k === "duvar_h") && !kolonVar) continue;
+      if (k === "duvar" && !kolonVar) continue;
       return null;
     }
     const m = kopya(model);
@@ -517,8 +519,7 @@
         const v = oz[k];
         if (k === "aci") { if (x.tur === "kolon") e.yon = Math.abs(((+v % 180) + 180) % 180 - 90) < 1e-9 ? "y" : "x"; }
         else if (k === "duvar") e.duvar = v == null || v === "" ? null : String(v);
-        else if (v == null) delete e[k];
-        else e[k] = kopya(v);
+        else e[k] = String(v);
       });
       n++;
     });
@@ -526,7 +527,15 @@
   }
   /** Bu kodlu denetim bulguları motorca her zaman reddedilir: işlem bunları YENİ üretiyorsa uygulanmaz. */
   const ENGEL_KODLARI = Object.freeze(["sifir-boy", "panel-geometri", "cakisan-cubuk"]);
-  /** sonra modelinde olup once modelinde olmayan denetim bulguları ([{kod, mesaj}]); kodlar verilmezse engelleyiciler (ENGEL_KODLARI). */
+  /**
+   * Bulgunun kimliği: ilgili eleman (çubuk / çubuk çifti / panel ve kenarı / düğüm) — ileti metni değil: önceden bozuk olan elemanın
+   * ölçüsü değişse de (boşluk aralığı, üst üste binme boyu, düğüm numarası) bulgu "yeni" sayılmaz. Eleman bilgisi yoksa ileti.
+   */
+  function bulguAnahtari(u) {
+    const l = [u.cubuk, Array.isArray(u.cubuklar) ? u.cubuklar.slice().sort(function (x, y) { return x - y; }).join(",") : null, u.panel, u.kenar, u.dugum];
+    return l.some(function (v) { return v != null; }) ? u.kod + "|" + l.map(function (v) { return v == null ? "" : v; }).join("|") : u.kod + "|" + u.mesaj;
+  }
+  /** sonra modelinde olup once modelinde olmayan denetim bulguları ([{kod, mesaj, …}]); kodlar verilmezse engelleyiciler (ENGEL_KODLARI). */
   function yeniEngeller(once, sonra, kodlar) {
     kodlar = kodlar || ENGEL_KODLARI;
     const O = MO(), suz = function (m) { return O.denetle(m).uyarilar.filter(function (u) { return kodlar.indexOf(u.kod) >= 0; }); };
@@ -534,9 +543,36 @@
     try { b = suz(sonra); } catch (e) { return []; }
     if (!b.length) return [];
     let a = [];
-    try { a = suz(once).map(function (u) { return u.mesaj; }); } catch (e) { a = []; }
+    try { a = suz(once).map(bulguAnahtari); } catch (e) { a = []; }
     const eski = new Set(a);
-    return b.filter(function (u) { return !eski.has(u.mesaj); });
+    return b.filter(function (u) { return !eski.has(bulguAnahtari(u)); });
+  }
+  /**
+   * "panel-kenari" bulgusu panelin TAŞIYAN kenarında mı (yapi_serbest._panelleri_oku ile aynı kural): dağıtım "iki" → bütün
+   * kenarlar, "tek-13" → 1. ve 3., "tek-24" → 2. ve 4., "yok" → hiçbiri; "otomatik" / "cift" / "tek" dört köşede kenar boylarından
+   * çözülür (uzun / kısa ≤ 2 → iki doğrultulu, değilse uzun kenarlara tek doğrultulu). Taşıyan kenarında çubuk zinciri eksik panel
+   * motorca her zaman reddedilir (bina.js s3Dogrula da hata sayar); taşımayan kenardaki eksik yalnız bilgidir.
+   */
+  function tasiyanKenarMi(model, u) {
+    if (!u || u.kod !== "panel-kenari") return false;
+    const p = liste(model, "paneller").filter(function (x) { return x && +x.no === +u.panel; })[0];
+    if (!p || !Array.isArray(p.kose)) return false;
+    let dag = String(p.dagitim || "iki").trim().toLowerCase();
+    if (dag === "otomatik" || dag === "cift" || dag === "tek") {
+      let P = null;
+      if (p.kose.length === 4) { try { P = p.kose.map(function (r) { return MO().dugumKonumu(model, r); }); } catch (e) { P = null; } }
+      if (!P) dag = "iki";
+      else {
+        const l13 = (uzaklik(P[0], P[1]) + uzaklik(P[2], P[3])) / 2, l24 = (uzaklik(P[1], P[2]) + uzaklik(P[3], P[0])) / 2;
+        const tek = l13 >= l24 - 1e-9 ? "tek-13" : "tek-24", oran = Math.max(l13, l24) / Math.max(Math.min(l13, l24), 1e-9);
+        dag = dag === "cift" ? "iki" : dag === "tek" ? tek : (oran <= 2 + 1e-9 ? "iki" : tek);
+      }
+    }
+    const k = +u.kenar;
+    if (dag === "iki") return true;
+    if (dag === "tek-13") return k === 1 || k === 3;
+    if (dag === "tek-24") return k === 2 || k === 4;
+    return false;
   }
 
   // ================================================================= kesit önerisi (bina_kesit_oner, sözleşme C4)
@@ -925,7 +961,7 @@
     // genel model kapısı (C1) ve aks–kat yolları
     genelMi: genelMi, aksKatElemanVar: aksKatElemanVar, genelGecisGerekli: genelGecisGerekli, genelGecisMetni: genelGecisMetni,
     genellestirHazirla: genellestirHazirla, aksKatAdresi: aksKatAdresi, aksRefZ: aksRefZ, cubukAksKatAdi: cubukAksKatAdi, cubukAdlari: cubukAdlari,
-    aksKatOzellikYaz: aksKatOzellikYaz, ENGEL_KODLARI: ENGEL_KODLARI, yeniEngeller: yeniEngeller,
+    aksKatOzellikYaz: aksKatOzellikYaz, ENGEL_KODLARI: ENGEL_KODLARI, yeniEngeller: yeniEngeller, tasiyanKenarMi: tasiyanKenarMi,
     // kesit önerisi (C4)
     oneriEtiketi: oneriEtiketi, oneriUygulanir: oneriUygulanir, oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
     // üreteç düzenleme
@@ -1098,14 +1134,17 @@
       if (r.reddedildi) { S.sonUyari = adla(r.uyarilar, m0).join(" "); toast(S.sonUyari || "İşlem uygulanmadı."); MB.ipucuYenile(); return null; }
       let m = r.model, uy = notlar.concat(adla(r.uyarilar, r.model));
       if (sc.bagla !== false) { try { const b = aksaBaglaHepsi(m); m = b.model; uy = uy.concat(b.uyarilar); } catch (e) { uy.push(e.message); } }
-      const yeni = yeniEngeller(B(), m, ENGEL_KODLARI.concat(["panel-kenari"]));
-      const engel = yeni.filter(function (u) { return ENGEL_KODLARI.indexOf(u.kod) >= 0; });
-      // panel kenarında çubuk kalmadıysa uygulanır ama söylenir (motor taşıyan kenarda çubuk ister)
-      yeni.filter(function (u) { return u.kod === "panel-kenari"; }).slice(0, 2).forEach(function (u) { uy.push(u.mesaj); });
+      // yeni bozukluklar işlemden önceki modele göre (kapıdan geçtiyse genelleştirilmiş model; numaralar aynı)
+      const yeni = yeniEngeller(m0, m, ENGEL_KODLARI.concat(["panel-kenari"]));
+      // motorun her zaman reddettikleri: sıfır boy, bozuk panel, çakışan çubuk ve panelin TAŞIYAN kenarında eksik çubuk zinciri
+      const engel = yeni.filter(function (u) { return ENGEL_KODLARI.indexOf(u.kod) >= 0 || tasiyanKenarMi(m, u); });
+      // taşımayan kenarda çubuk kalmadıysa uygulanır ama söylenir
+      yeni.filter(function (u) { return u.kod === "panel-kenari" && engel.indexOf(u) < 0; }).slice(0, 2).forEach(function (u) { uy.push(u.mesaj); });
       if (engel.length) {
-        S.sonUyari = "İşlem uygulanmadı (motor bu modeli çözmez): " + adla(engel.slice(0, 3).map(function (u) { return u.mesaj; }), m).join(" ") +
+        S.sonUyari = "İşlem uygulanmadı (motor bu modeli çözmez): " + adla(engel.slice(0, 3).map(function (u) { return u.mesaj + (u.kod === "panel-kenari" ? " (taşıyan kenar)" : ""); }), m).join(" ") +
           (engel.length > 3 ? " … (+" + (engel.length - 3) + ")" : "") +
-          (engel.some(function (u) { return u.kod === "cakisan-cubuk"; }) ? " Üst üste binen mevcut elemanı önce silin ya da işlemi başka yerde yapın." : "");
+          (engel.some(function (u) { return u.kod === "cakisan-cubuk"; }) ? " Üst üste binen mevcut elemanı önce silin ya da işlemi başka yerde yapın." : "") +
+          (engel.some(function (u) { return u.kod === "panel-kenari"; }) ? " Panel yükü kenarındaki çubuklara aktarılır: elemanı kopya olarak taşıyın (Doğrusal dizi / kopyalı Döndür, Ayna), paneli de seçin ya da panelin dağıtımını değiştirin." : "");
         toast(S.sonUyari); MB.ipucuYenile(); return null;
       }
       const oz = ozet(r);
@@ -2175,7 +2214,7 @@
       const turler = [["kolon", "Kolon"], ["kiris", "Kiriş"], ["capraz", "Çapraz"], ["makas-ust", "Makas üst başlık"], ["makas-alt", "Makas alt başlık"], ["makas-dikme", "Makas dikmesi"], ["makas-diyagonal", "Makas diyagonali"], ["asik", "Aşık"], ["kren", "Kren kirişi"], ["bag", "Bağ"], ["diger", "Diğer"]];
       const duvarlar = [["", "Yok"]].concat(Object.keys(b.duvarlar || {}).map(function (d) { return [d, d]; }));
       const aci0 = c0 ? (c0.aci != null ? c0.aci : c0.yon === "y" ? 90 : 0) : 0;
-      k.govde.innerHTML = '<p class="not">İşaretli alanlar seçili bütün çubuklara uygulanır.' + (ay.aksKat.length && !ay.cubuklar.length ? " Aks–kat kolon/kirişinde kesit, grup, kolon açısı (0° / 90°) ve kiriş duvarı modeli çevirmeden yazılır; öteki alanlar modeli genel modele çevirir." : "") + "</p>" +
+      k.govde.innerHTML = '<p class="not">İşaretli alanlar seçili bütün çubuklara uygulanır.' + (ay.aksKat.length && !ay.cubuklar.length ? " Aks–kat kolon/kirişinde kesit, kolon açısı (0° / 90°) ve kiriş duvarı modeli çevirmeden yazılır; öteki alanlar (grup, duvar yüksekliği dahil) modeli genel modele çevirir." : "") + "</p>" +
         satir("kesit", "Kesit", sec("kesit", kesitListesi(b, "kiris"), c0 && c0.kesit)) + satir("tur", "Tür", sec("tur", turler, c0 ? c0.tur || (ak0 ? ak0.tur : "diger") : "diger")) +
         satir("aci", "Yerel eksen açısı (°)", girdi("aci", aci0, ' inputmode="decimal"')) + satir("grup", "Grup", girdi("grup", c0 && c0.grup || "")) +
         satir("Lb", "Lb (m; boş = otomatik)", girdi("Lb", c0 && c0.Lb != null ? c0.Lb : "", ' inputmode="decimal"')) + satir("K", "K güçlü / zayıf", girdi("K", c0 && Array.isArray(c0.K) ? c0.K.join(" ") : "1 1")) +

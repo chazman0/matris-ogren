@@ -131,13 +131,17 @@ process.stdin.on("end", () => {
       sonuc.gecerli++;
       const yeni = engel(r.model).filter(e => !once.includes(e));
       if (yeni.length) sonuc.hatalar.push(c.tur + " " + ad + ": " + yeni.join(" "));
+      // yeni uç düğümü iç noktasına düşen seçilmeyen çubuk orada bölünür (i ucu aynı, j ucu eski doğru parçasında)
+      const bolunen = new Set(r.uyarilar.map(u => { const x = /^Çubuk (\d+), yeni uç düğümü \d+ üzerine düştüğü için orada bölündü/.exec(u); return x ? +x[1] : null; }).filter(Boolean));
+      const uz = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
       for (const d of g.cubuklar) {
         if (d.no === c.no) continue;
         const a = kon(g, d.no), b = kon(r.model, d.no);
-        if (Math.hypot(a[0][0] - b[0][0], a[0][1] - b[0][1], a[0][2] - b[0][2]) + Math.hypot(a[1][0] - b[1][0], a[1][1] - b[1][1], a[1][2] - b[1][2]) > 1e-9) {
-          sonuc.hatalar.push(c.tur + " " + ad + ": seçilmeyen çubuk " + d.no + " yer değiştirdi"); break;
-        }
+        const tamam = bolunen.has(d.no) ? uz(a[0], b[0]) < 1e-9 && Math.abs(uz(b[1], a[0]) + uz(a[1], b[1]) - uz(a[0], a[1])) < 1e-9
+          : uz(a[0], b[0]) + uz(a[1], b[1]) < 1e-9;
+        if (!tamam) { sonuc.hatalar.push(c.tur + " " + ad + ": seçilmeyen çubuk " + d.no + " yer değiştirdi"); break; }
       }
+      if (r.model.cubuklar.length !== g.cubuklar.length + bolunen.size) sonuc.hatalar.push(c.tur + " " + ad + ": çubuk sayısı");
       if (ad === "dondur180") {
         const t = r.model.cubuklar.find(x => x.no === c.no);
         if (JSON.stringify(t.i) !== JSON.stringify(c.i)) sonuc.hatalar.push(c.tur + " dondur180: dönme merkezindeki uç değişti");

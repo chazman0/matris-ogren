@@ -228,3 +228,56 @@ def test_genel_model_kapisi_kablolamasi():
     # C8 neden alanları
     assert KAYNAK.count("neden: secimNedeni") >= 7 and "Yalnız çapraz/bağ çubuklarında kullanılır" in KAYNAK
     assert 'SECIM_NEDENI = "Önce bir çubuk, kolon ya da kiriş seçin."' in KAYNAK
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Taşıyan kenar (uygula'nın engeli): SAF tasiyanKenarMi motorla aynı karar verir — taşıyan kenarı boşalan panel motorca
+# reddedilir, kenar taşımayan dağıtımda çözülür; şablonda zaten var olan (taşımayan) kenar bulguları engel sayılmaz.
+_KENAR_BETIGI = r"""
+const BC = require(process.argv[1]);
+const O = require(process.argv[2]);
+let veri = "";
+process.stdin.on("data", d => veri += d);
+process.stdin.on("end", () => {
+  const t = JSON.parse(veri);
+  const g = (t.kolonlar || []).length ? O.genellestir(t).model : t;
+  const kenar = m => O.denetle(m).uyarilar.filter(u => u.kod === "panel-kenari");
+  const once = kenar(g);
+  const out = { once: once.length, onceTasiyan: once.filter(u => BC.tasiyanKenarMi(g, u)).length };
+  if ((t.kolonlar || []).length) {
+    // 1. kattaki ilk kiriş çubuğu kendi ucu çevresinde 180° döndürülür (koparak): komşu panellerin kenarı boşalır
+    const k = g.cubuklar.find(c => c.tur === "kiris" && c.kat === 1);
+    const P = O.dugumKonumu(g, k.i);
+    const r = O.dondur(g, { cubuklar: [k.no] }, { nokta: P, yon: [0, 0, 1] }, 180);
+    const yeni = BC.yeniEngeller(g, r.model, ["panel-kenari"]);
+    out.reddedildi = !!r.reddedildi;
+    out.yeni = yeni.map(u => ({ panel: u.panel, kenar: u.kenar, tasiyan: BC.tasiyanKenarMi(r.model, u) }));
+    out.model = r.model;
+    // aynı modelde boşalan kenarları taşımayan dağıtım (tek-13 ↔ tek-24)
+    const m2 = JSON.parse(JSON.stringify(r.model));
+    for (const u of yeni) { const p = m2.paneller.find(x => x.no === u.panel); p.dagitim = (u.kenar % 2) ? "tek-24" : "tek-13"; }
+    out.model2 = m2;
+    out.yeni2 = BC.yeniEngeller(g, m2, ["panel-kenari"]).map(u => BC.tasiyanKenarMi(m2, u));
+  }
+  process.stdout.write(JSON.stringify(out));
+});
+"""
+
+
+@node_gerekli
+@pytest.mark.parametrize("ad", ["betonarme-2kat-3x2", "celik-sanayi-4hol"])
+def test_tasiyan_kenar_motorla_ayni(ad, kopru):
+    import yapi
+    r = subprocess.run([NODE, "-e", _KENAR_BETIGI, str(MODUL), str(PROJE / "docs" / "model_ops.js")],
+                       input=json.dumps(yapi.bina_sablon(ad)), capture_output=True, text=True, timeout=300, cwd=PROJE)
+    assert r.returncode == 0, r.stderr
+    o = json.loads(r.stdout)
+    assert o["onceTasiyan"] == 0, "çözülen şablonda taşıyan kenar bulgusu olmamalı"
+    if ad == "celik-sanayi-4hol":
+        assert o["once"] > 0      # cephe / çatı panellerinin taşımayan kenarları: engel sayılmaz
+        return
+    assert not o["reddedildi"] and o["yeni"] and all(u["tasiyan"] for u in o["yeni"]), o["yeni"]
+    y = json.loads(kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": o["model"]}})))
+    assert y.get("hata") and "kenarında" in y["hata"], "motor taşıyan kenarı boş paneli reddeder"
+    assert o["yeni2"] and not any(o["yeni2"])
+    _coz(kopru, o["model2"])
