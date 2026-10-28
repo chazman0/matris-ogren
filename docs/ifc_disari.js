@@ -653,10 +653,16 @@
     return null;
   }
   // Motorun {tip, boyutlar (mm)} biçimi: kutu {H, B, t}, boru {D, t}, L {b, t}, 2L {b, t, s}, U {h, b, tw, tf} → kesit | null
+  // tip "basit" (motorun iç kesit kartındaki genel ad): tür ölçü adlarından (D → boru; tw, tf → U; s → 2L; H/B → kutu; b, t → L)
   function basitBoyutlar(tip, boyutlar) {
-    const tur = BASIT_TIP[String(tip || "").trim().toUpperCase().replace(/\s+/g, "_").replace(/İ/g, "I")];
-    if (!tur || !boyutlar || typeof boyutlar !== "object") return null;
+    if (!boyutlar || typeof boyutlar !== "object") return null;
     const b = Object.assign({}, boyutlar);
+    let tur = BASIT_TIP[String(tip || "").trim().toUpperCase().replace(/\s+/g, "_").replace(/İ/g, "I")];
+    if (!tur && String(tip || "").trim().toLowerCase() === "basit") {
+      const v = function (a) { return b[a] !== undefined && b[a] !== null && b[a] !== ""; };
+      tur = v("D") || v("d") ? "boru" : (v("tw") && v("tf") ? "U" : (v("s") ? "2L" : (v("H") || v("B") ? "kutu" : (v("b") && v("t") ? "L" : null))));
+    }
+    if (!tur) return null;
     if (tur === "2L" && b.s === undefined) b.s = IKI_L_ARA;
     return basitHesap(tur, b);
   }
@@ -723,7 +729,7 @@
     }
     const ozel = profilTipiCoz(tip, k);
     if (ozel) return Object.assign(sonuc, ozel);
-    if (BASIT_TIP[tip.toUpperCase().replace(/\s+/g, "_")]) {
+    if (BASIT_TIP[tip.toUpperCase().replace(/\s+/g, "_")] || (tip !== "dikdortgen" && k.boyutlar && typeof k.boyutlar === "object")) {
       uyarilar.push("Kesit '" + ad + "' (tip " + tip + "): ölçüler eksik ya da tutarsız; b × h dikdörtgen katı ile gösterildi.");
     }
     return Object.assign(sonuc, { tur: "dikdortgen", b: metre(k.b) || 0.3, h: metre(k.h) || 0.3 });
@@ -781,30 +787,32 @@
     this.w = new Yazici();
     this.kullanilanId = {};
     this.kesitOnbellek = {};
+    this.kesitUyari = {};          // kesit uyarısı metni → {i: uyarilar'daki yeri, adet: kullanan eleman sayısı}
   }
-  // Kesit çözümü (ad başına bir kez). Uyarılar ad başına bir kez yazılır; birden çok elemanda kullanılmışsa sonunda adet eklenir
+  // Kesit çözümü (ad başına bir kez). Kesit uyarıları metin başına bir kez yazılır (aynı profili kullanan farklı kesit adları ve
+  // temel kesitinin uyarısını taşıyan vute de aynı satırda toplanır); birden çok elemanda kullanılmışsa sonunda adet eklenir
   // ("… gösterildi (26 eleman)."). say === false: analiz modeli çağrısı (sayılmaz, uyarı yazmaz).
   Uretici.prototype.kesit = function (ad, say) {
     const a = String(ad);
     let c = this.kesitOnbellek[a];
     if (!c) {
       const u = [];
-      c = this.kesitOnbellek[a] = { k: kesitCoz(this.Bm, ad, u), uyarilar: u, adet: 0, yer: null };
+      const k = kesitCoz(this.Bm, ad, u);
+      c = this.kesitOnbellek[a] = { k: k, uyarilar: u.filter(function (m, i) { return u.indexOf(m) === i; }) };
     }
     if (say !== false) {
-      if (c.yer === null) {
-        c.yer = [];
-        c.uyarilar.forEach(function (m) { c.yer.push(this.uyarilar.length); this.uyarilar.push(m); }, this);
-      }
-      c.adet += 1;
+      c.uyarilar.forEach(function (m) {
+        let x = this.kesitUyari[m];
+        if (!x) { x = this.kesitUyari[m] = { i: this.uyarilar.length, adet: 0 }; this.uyarilar.push(m); }
+        x.adet += 1;
+      }, this);
     }
     return c.k;
   };
   Uretici.prototype.kesitUyarilariniKapat = function () {
-    Object.keys(this.kesitOnbellek).forEach(function (a) {
-      const c = this.kesitOnbellek[a];
-      if (!c.yer || c.adet < 2) return;
-      c.yer.forEach(function (i, j) { this.uyarilar[i] = c.uyarilar[j].replace(/\.$/, "") + " (" + c.adet + " eleman)."; }, this);
+    Object.keys(this.kesitUyari).forEach(function (m) {
+      const x = this.kesitUyari[m];
+      if (x.adet >= 2) this.uyarilar[x.i] = m.replace(/\.$/, "") + " (" + x.adet + " eleman).";
     }, this);
   };
   Uretici.prototype.gid = function (anahtar) {
@@ -989,7 +997,9 @@
     if (k.tur === "I") {
       ref = w.ekle("IFCISHAPEPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.tw, k.tf, k.r || null, null, null]);
     } else if (k.tur === "kutu") {
-      ref = w.ekle("IFCRECTANGLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.t, k.ri || null, k.ro || null]);
+      // köşe yarıçapları IFC kurallarına sığdırılır (r_i ≤ min(b, h)/2 − t, r_o ≤ min(b, h)/2; kalın et/küçük kutu)
+      const yari = Math.min(k.b, k.h) / 2, ri = k.ri ? Math.min(k.ri, yari - k.t) : 0, ro = k.ro ? Math.min(k.ro, yari) : 0;
+      ref = w.ekle("IFCRECTANGLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.t, ri > 0 ? ri : null, ro > 0 ? ro : null]);
     } else if (k.tur === "boru") {
       ref = w.ekle("IFCCIRCLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.D / 2, k.t]);
       derinlik = k.D;

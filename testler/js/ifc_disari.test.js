@@ -552,6 +552,31 @@ test("kesit dili: basit kesit adları, {tip, boyutlar (mm)}, 2L → IfcComposite
     "Kesit 'EKSIK' (tip boru): ölçüler eksik ya da tutarsız; b × h dikdörtgen katı ile gösterildi."]);
 });
 
+test("kesit uyarıları metin başına tek satır (aynı profilli iki kesit adı, temel kesiti tanınmayan vute); tip 'basit' + boyutlar; kutu köşe yarıçapı IFC sınırında", function () {
+  const kes = {
+    A: { tip: "profil", profil: "XYZ 300", malzeme: "S275" }, B: { tip: "profil", profil: "XYZ 300", malzeme: "S275" },
+    V: { tip: "vute", temel: "A", ek_yukseklik: 0.3 },
+    BK: { tip: "basit", boyutlar: { H: 200, B: 100, t: 6 }, malzeme: "S275" }, BB: { tip: "basit", boyutlar: { D: 114.3, t: 4 }, malzeme: "S275" },
+    BU: { tip: "basit", boyutlar: { h: 200, b: 75, tw: 8.5, tf: 11.5 }, malzeme: "S275" }, BL: { tip: "basit", boyutlar: { b: 100, t: 10 }, malzeme: "S275" },
+    B2: { tip: "basit", boyutlar: { b: 70, t: 7, s: 12 }, malzeme: "S275" }, TUHAF: { tip: "xyz", boyutlar: { b: 70, t: 7 }, malzeme: "S275" },
+    KALIN: { tip: "profil", profil: "KUTU 40x40x12", malzeme: "S275" },
+  };
+  const m = tekCubuk(kes, "A");
+  m.cubuklar = ["A", "A", "B", "V", "V", "V", "BK", "BB", "BU", "BL", "B2", "TUHAF", "KALIN"].map(function (k, i) {
+    return { no: i + 1, i: { X: 0, Y: i, Z: 3 }, j: { X: 2, Y: i, Z: 3 }, tur: "kiris", kesit: k };
+  });
+  const r = uret(m);
+  assert.deepEqual(r.uyarilar, ["Profil 'XYZ 300' tabloda yok; b × h dikdörtgen katı ile gösterildi (6 eleman).",
+    "Kesit 'TUHAF' (tip xyz): ölçüler eksik ya da tutarsız; b × h dikdörtgen katı ile gösterildi."]);
+  assert.match(r.metin, /IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 200x100x6',\$,0\.1,0\.2,0\.006,0\.006,0\.009\)/);
+  assert.match(r.metin, /IFCCIRCLEHOLLOWPROFILEDEF\(\.AREA\.,'BORU 114\.3x4',\$,0\.05715,0\.004\)/);
+  assert.match(r.metin, /IFCUSHAPEPROFILEDEF\(\.AREA\.,'U 200x75x8\.5x11\.5',\$,0\.2,0\.075,0\.0085,0\.0115,/);
+  assert.match(r.metin, /IFCLSHAPEPROFILEDEF\(\.AREA\.,'L 100x100x10',\$,0\.1,0\.1,0\.01,0\.012,0\.006,\$\)/);
+  assert.match(r.metin, /IFCCOMPOSITEPROFILEDEF\(\.AREA\.,'2L 70x70x7 s=12',/);
+  // KUTU 40x40x12: r_i = t = 12 mm > b/2 − t = 8 mm → 8 mm (IfcRectangleHollowProfileDef ValidInnerRadius); r_o = 18 ≤ 20
+  assert.match(r.metin, /IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 40x40x12',\$,0\.04,0\.04,0\.012,0\.008,0\.018\)/);
+});
+
 // Sentetik genel model çözümü (yapi_serbest veri şeması): z = 3 m'de 6 × 4 m tek doğrultulu (tek-13) panel. 1. kenar (0,0)→(6,0)
 // iki çubuklu zincir: Ç1 (0→3) ve Ç2 (6→3, kenara ters; FE parçası E2 çubuğa da ters). 3. kenar (6,4)→(0,4): Ç3 (0→6, kenara ters,
 // iki FE parçası E3, E4); birim yük kenar boyunca 1 → 3 (Ç3'ün i ucunda 3). g = 2, q = 3 kN/m². Öz ağırlık 0,2 kN/m.
