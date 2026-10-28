@@ -137,6 +137,33 @@ def test_is_akisi():
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u), u
 
 
+def test_testler_is_akisi():
+    """.github/workflows/testler.yml: her itme ve çekme isteğinde docs eşleşmesi, ders denetimi, pytest ve node testleri."""
+    yaml = pytest.importorskip("yaml")
+    w = yaml.safe_load((PROJE / ".github" / "workflows" / "testler.yml").read_text(encoding="utf-8"))
+    tetik = w.get("on", w.get(True))
+    assert "push" in tetik and "pull_request" in tetik
+    assert w["permissions"] == {"contents": "read"}
+    (is_,) = w["jobs"].values()
+    assert is_["runs-on"] == "ubuntu-latest" and "permissions" not in is_
+    adimlar = is_["steps"]
+    kullan = [a["uses"] for a in adimlar if "uses" in a]
+    for u in kullan:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u), u
+    py = next(a for a in adimlar if a.get("uses", "").startswith("actions/setup-python@"))
+    assert str(py["with"]["python-version"]) == "3.13"
+    dugum = next(a for a in adimlar if a.get("uses", "").startswith("actions/setup-node@"))
+    assert str(dugum["with"]["node-version"]) == "22"
+    calistir = [a.get("run", "") for a in adimlar]
+    metin = "\n".join(calistir)
+    for paket in ("numpy", "sympy", "pytest", "PyYAML"):
+        assert paket in metin, paket
+    sira = ["python3 web_yap.py", "git diff --exit-code -- docs/ ':!docs/sw.js' ':!docs/surum.json'", "python3 ders_derle.py --denetle",
+            "python3 -m pytest testler", "node --test testler/js/*.test.js"]
+    yer = [metin.index(k) for k in sira]
+    assert yer == sorted(yer), "adım sırası: docs eşleşmesi → ders denetimi → pytest → node"
+
+
 # ---------------------------------------------------------------------------------------------- git, güvenlik, belgeler
 def test_uretilen_dosyalar_gitte_yok():
     satirlar = (PROJE / ".gitignore").read_text(encoding="utf-8").splitlines()
@@ -194,6 +221,34 @@ def test_web_sayfasi_kopruyu_yukler():
     w = (DOCS / "motor.worker.js").read_text(encoding="utf-8")
     assert "self.MATRIS_PYODIDE_URL" in w and 'searchParams.get("pyodide")' in w
     assert 'const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";' in w
+
+
+@nodeli
+def test_surum_damgasi_uretilmis_dosyalari_saymaz(tmp_path, monkeypatch):
+    """web_yap.py sürüm damgası git'e girmeyen üretilmiş dosyaları (docs/__pycache__/*.pyc, işletim sistemi artıkları) saymaz;
+    masaustu/hazirla.js dosya listesiyle aynı kural. Böylece aynı kaynaktan her makinede aynı SURUM çıkar."""
+    import importlib.util
+    ozellik = importlib.util.spec_from_file_location("web_yap_deneme", PROJE / "web_yap.py")
+    wy = importlib.util.module_from_spec(ozellik)
+    ozellik.loader.exec_module(wy)
+    k = tmp_path / "docs"
+    for y in ("a.js", "alt/b.py", "icons/i.svg", "__pycache__/b.cpython-313.pyc", "alt/__pycache__/c.cpython-313.pyc", "alt/d.pyc",
+              "Thumbs.db", ".DS_Store", "alt/desktop.ini", "sw.js", "surum.json"):
+        (k / y).parent.mkdir(parents=True, exist_ok=True)
+        (k / y).write_text("x", encoding="utf-8")
+    monkeypatch.setattr(wy, "DOCS", k)
+    damga = [p.relative_to(k).as_posix() for p in wy.damga_dosyalari()]
+    assert damga == ["a.js", "alt/b.py", "icons/i.svg"]
+    r = _node("-e", f"process.stdout.write(JSON.stringify(require('./hazirla.js').dosyaListesi({json.dumps(str(k))})))", cwd=MASAUSTU)
+    assert r.returncode == 0, r.stderr
+    assert [y for y in json.loads(r.stdout) if y not in ("sw.js", "surum.json")] == damga
+    # önbellek klasörü değişince damga değişmez
+    (k / "sw.js").write_text('const SURUM = "x";\n', encoding="utf-8")
+    once = wy.surum_damgala()
+    (k / "__pycache__" / "yeni.cpython-313.pyc").write_bytes(b"\x00\x01")
+    assert wy.surum_damgala() == once
+    (k / "a.js").write_text("y", encoding="utf-8")
+    assert wy.surum_damgala() != once
 
 
 # ---------------------------------------------------------------------------------------------- hazirla.js çıktısı
