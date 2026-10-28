@@ -4916,6 +4916,14 @@
         try { r = M.aksSil(B, { yon: e, ad: a.ad, secenek: "elemanlarla" }); } catch (x) { A.toast(x.message); return; }
       }
       if (r.silindi === false) { if (r.uyarilar && r.uyarilar.length) A.toast(r.uyarilar.join(" ")); return; }
+      // çizim aracındaki “Aks sil” ile aynı kapı (MatrisBinaCizim.aksSilEngelleri): motorun her zaman reddettiği yeni bozukluk kalırsa silinmez
+      const BC = window.MatrisBinaCizim, engelFn = BC && (BC.aksSilEngelleri || (BC.SAF && BC.SAF.aksSilEngelleri));
+      const engel = engelFn ? engelFn(B, r.model) : [];
+      if (engel.length) {
+        A.toast("Aks " + a.ad + " silinmedi (motor bu modeli çözmez): " + engel.slice(0, 3).map(function (u) { return u.mesaj; }).join(" ") +
+          (engel.length > 3 ? " … (+" + (engel.length - 3) + ")" : "") + " — elemanları önce düzenleyin ya da çizimdeki “Aks sil” aracının “en yakın aksa taşı” seçeneğini kullanın.");
+        return;
+      }
       binaAyarla(r.model, { etiket: "Aks " + a.ad + " silindi" + (r.uyarilar && r.uyarilar.length ? ": " + r.uyarilar.join(" ") : ".") });
       return;
     }

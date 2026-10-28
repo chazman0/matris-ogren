@@ -530,15 +530,19 @@ kren yolu) ve `celik-cbf-3kat` (3 katlı merkezi çaprazlı çerçeve: ters V ve
 **Kesit önerisi** (`yapi_serbest.kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0)`; köprü `bina_kesit_oner`): her hedef
 çubuk için aynı aileden D/C ≤ 1 en hafif çelik profil ya da betonarme b × h. `ic` genel model paketi doğrudan kullanılır; aks–kat
 paketi verilirse bina genel motorla bir kez yeniden çözülür (mütemadi / radye temel tekil temel mesnetleriyle, uyarıyla) ve D/C önce
-görünen aks–kat tasarım tablosundan alınır. `yinele` > 0 (en çok 3): öneriler binaya uygulanıp yeniden çözülür (aynı kesit ve
-türdeki çubuklara grubun en ağır önerisi) ve önerilen bina JSON'u döner.
+görünen aks–kat tasarım tablosundan alınır. `dc_oneri` mevcut iç kuvvetlerle bir tahmindir. Betonarme kolonda b × h aynı kalıp
+gerekli ρ büyükse `degisim` "donatı" olur ve `uygula` yeni bir kart verir (ör. `B30x30-ρ%2.00`, `donati_orani` ile). `yinele` > 0
+(en çok 3): ilk turda bütün öneriler uygulanır (aynı kesit ve türdeki çubuklara grubun en ağır önerisi; betonarme kolon grubunda ρ
+bütün üyeler yeniden doğrulanarak seçilir), sonraki turlar yalnız D/C > 1 kalan grupları büyütür (küçültmez). Son çözümde D/C > 1
+kalırsa `uyarilar` "… turda yakınsamadı" der; yakınsadıysa bu çalışmada açılan kolon kartlarının ρ'su son kuvvetlerle yeterli en
+küçük değere indirilir (`donati_azaltma`). Önerilen bina JSON'u döner.
 
 ```python
 o = yapi_serbest.kesit_oner(b, ic=r.ic, hedef=[{"tur": "cubuk", "no": 5}])
 x = o["oneriler"][0]                                # {cubuk, tur, kesit, oneri, sistem, malzeme, b, h, kaynak, gerekce,
 x["oneri"], x["dc_once"], x["dc_oneri"], x["degisim"]   #  dc_once, dc_oneri, dc_sonra, degisim, uygula}
 x["uygula"]                                         # {"ad": "IPE270", "tanim": {"tip": "profil", "profil": "IPE 270", ...}, "yeni": True}
-o2 = yapi_serbest.kesit_oner(b, ic=r.ic, hedef="hepsi", yinele=1)    # o2["bina"]: önerileri uygulanmış bina, o2["uyarilar"]
+o2 = yapi_serbest.kesit_oner(b, ic=r.ic, hedef="hepsi", yinele=3)    # o2["bina"]: önerileri uygulanmış bina, o2["dc_sonra"], o2["uyarilar"]
 ```
 
 Sınır: genel modelde en çok 2000 serbestlik (`yapi_serbest.EN_FAZLA_SD`), aks sınırı yok.
@@ -640,9 +644,10 @@ Bina işlemleri:
   “Motor ayrıntısı” olarak eklenir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Kesit öner ve uygula, Gizle, Yalıt, Sil.
   Klavyede sahneyi seçip Shift+F10. Denetçi açıkken model yeniden çözülürse içeriği tazelenir.
 - **Kesit önerisi:** “Kesit öner ve uygula” komutu sağ tıkta tek eleman için; araç kutusunda (Özelleştir ile eklenir) ve masaüstünde
-  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir
-  öneriyi, “Hepsini uygula” hepsini binaya yazar ve modeli yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi
-  verilir).
+  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler (sonraki D/C
+  “tahmini, mevcut iç kuvvetlerle”; yalnız donatı artışı gereken betonarme kolonda öneri “B30x30-ρ%2.00” gibi görünür). “Uygula” bir
+  öneriyi yazar; “Hepsini uygula” en çok 3 turda uygular ve yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi),
+  sonra modeli çözer; son çözümde D/C > 1 kalan çubuk varsa ⚠ uyarısıyla listelenir. Geri al önceki modele döner.
 - **📄 Statik Rapor:** çözüm yoksa önce çözer; önizleme, “Yazdır / PDF”, “HTML indir”. Proje künyesi (ad, yer, ada/parsel, hazırlayan…)
   bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer. Masaüstünde Rapor › Yazdır…
   (Ctrl+Shift+P) Bina sayfasında statik raporu yazdırır.

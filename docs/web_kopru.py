@@ -50,10 +50,10 @@ Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_kesit_oner": girdi {"cozum_kimligi" | "bina", "hedef": "hepsi" | [{"tur", "no"}], "yinele": 0..3} → {"oneriler":
                     [{cubuk, tur, kesit, oneri (profil adı ya da "bxh" cm), sistem ("celik" | "betonarme"), malzeme, b, h (m,
                     betonarme), kaynak ({aks_kat, no} | null), gerekce [metin], dc_once (tasarım tablosundaki D/C), dc_oneri
-                    (önerilen kesitle aynı kural), dc_sonra, degisim ("büyüt" | "küçült" | "aynı"), uygula ({ad, tanim, yeni,
+                    (önerilen kesitle aynı kural), dc_sonra, degisim ("büyüt" | "küçült" | "aynı" | "donatı": betonarme kolonda b × h aynı, gerekli ρ büyük), uygula ({ad, tanim, yeni,
                     ek_kesitler?} | null: atanacak kesit adı, yeni ise kesitler'e eklenecek tanım; vute çubuğunda temel profil
                     kartı ek_kesitler'de; değişiklik yoksa null)}], "turlar": [{tur, dc_maks, oneri_sayisi, degisen}], "dc_once",
-                    "dc_sonra", "bina" (yinele > 0: öneriler uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır
+                    "dc_sonra", "donati_azaltma" ([{kesit, yeni, donati_orani, rho_once, cubuklar}]: yakınsamadan sonra en küçük yeterli ρ), "bina" (yinele > 0: öneriler uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır
                     önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
                     çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
                     kez yeniden çözülüp önbelleğe alınır (mütemadi/radye temel tekil temel mesnetleriyle, uyarıyla); dc_once

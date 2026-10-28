@@ -109,9 +109,10 @@ birim ağırlıklar, duvar ve kaplama takımları; TBDY tabloları; kombinasyon 
 - Arayüz: Tasarım sekmesi (D/C bantları, süzgeç, kayıt ↔ sahne eşlemesi), `bina_eleman_tasarim` (anlatımlı ayrıntı; genel modelde
   `tur: "cubuk"` ve çubuk numarası).
 - **Kesit önerisi:** `yapi_serbest.kesit_oner` (köprü `bina_kesit_oner`). Yanıt alanları: `cubuk, tur, kesit, oneri, sistem, malzeme,
-  b, h, kaynak, dc_once` (Tasarım tablosunda görünen D/C), `dc_oneri, degisim` (büyüt / küçült / aynı), `uygula` (`{ad, tanim, yeni}`
-  ya da null), `gerekce` (metin listesi), `dc_sonra` (`yinele` > 0 ise yeniden çözümdeki D/C, yoksa `dc_oneri`); üst düzeyde
-  `uyarilar`. Aks–kat çözümü genel motorla bir kez yeniden çözülür. Arayüz: "Kesit öner ve uygula" komutu (sağ tıkta tek eleman;
+  b, h, kaynak, dc_once` (Tasarım tablosunda görünen D/C), `dc_oneri` (mevcut iç kuvvetlerle tahmin), `degisim` (büyüt / küçült / aynı / donatı: betonarme
+  kolonda b × h aynı, gerekli ρ büyük), `uygula` (`{ad, tanim, yeni, ek_kesitler?}` ya da null), `gerekce` (metin listesi), `dc_sonra`
+  (`yinele` > 0 ise yeniden çözümdeki D/C, yoksa `dc_oneri`); üst düzeyde `dc_sonra`, `donati_azaltma` ve `uyarilar` (yakınsamadıysa
+  D/C > 1 kalan çubuklar). `yinele` (en çok 3): 0. tur bütün önerileri uygular, sonraki turlar yalnız D/C > 1 grupları büyütür. Aks–kat çözümü genel motorla bir kez yeniden çözülür. Arayüz: "Kesit öner ve uygula" komutu (sağ tıkta tek eleman;
   araç kutusunda ve masaüstü Tasarım menüsünde seçim ya da bütün model; "Hepsini uygula" yeniden çözer).
 
 ## §12 Genel 3B model (surum 3)
