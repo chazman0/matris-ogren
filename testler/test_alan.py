@@ -558,3 +558,140 @@ def test_js_python_tutarliligi(sablon, durum):
         assert js["ext"][ad][1] == pytest.approx(hi * olc, rel=1e-4, abs=1e-9)
     assert js["ag"]["maxI"] < js["ag"]["kose"] and all(s > 0 for s in js["ag"]["aralik"])
     assert js["ag"]["mz"] == pytest.approx(a["aralik"]["Mz"], rel=1e-4)
+
+
+# ---------------------------------------------------------------------------------------------
+# Genel model (surum 3, yapi_serbest): ısı haritası paketi, döşeme panelleri, çubuk parçaları, iç durumlar
+# ---------------------------------------------------------------------------------------------
+def _R(x, y, z):
+    return {"aks": [x, y], "z": z}
+
+
+def _portal_genel(yalniz_cekme=True, vute_parca=1):
+    """X–Z düzleminde vuteli kirişli, yalnız-çekme X çaprazlı tek açıklıklı çelik portal (surum 3)."""
+    mafsal = {"i": ["My", "Mz"], "j": ["My", "Mz"]}
+    return {"tur": "bina", "surum": 3, "sistem": "celik",
+            "akslar": {"x": [{"ad": "A", "konum": 0.0}, {"ad": "B", "konum": 6.0}], "y": [{"ad": "1", "konum": 0.0}],
+                       "z": [{"ad": "±0.00", "konum": 0.0, "kat": 0}, {"ad": "Üst", "konum": 4.0, "kat": 1}]},
+            "malzemeler": {"S275": {"kutuphane": "S275"}},
+            "kesitler": {"K": {"tip": "profil", "profil": "HEB 200", "malzeme": "S275"},
+                         "KIRIS": {"tip": "profil", "profil": "IPE 300", "malzeme": "S275"},
+                         "VUTE": {"tip": "vute", "temel": "KIRIS", "ek_yukseklik": 0.2, "boy": 6.0},
+                         "CAP": {"tip": "boru", "D": 0.0889, "t": 0.004, "malzeme": "S275"}},
+            "cubuklar": [{"no": 1, "i": _R("A", "1", "±0.00"), "j": _R("A", "1", "Üst"), "tur": "kolon", "kesit": "K"},
+                         {"no": 2, "i": _R("B", "1", "±0.00"), "j": _R("B", "1", "Üst"), "tur": "kolon", "kesit": "K"},
+                         {"no": 3, "i": _R("A", "1", "Üst"), "j": _R("B", "1", "Üst"), "tur": "kiris", "kesit": "VUTE"},
+                         {"no": 4, "i": _R("A", "1", "±0.00"), "j": _R("B", "1", "Üst"), "tur": "capraz", "kesit": "CAP",
+                          "serbest": mafsal, "yalniz_cekme": yalniz_cekme},
+                         {"no": 5, "i": _R("B", "1", "±0.00"), "j": _R("A", "1", "Üst"), "tur": "capraz", "kesit": "CAP",
+                          "serbest": mafsal, "yalniz_cekme": yalniz_cekme}],
+            "mesnetler": [{"dugum": _R("A", "1", "Üst"), "uy": True}, {"dugum": _R("B", "1", "Üst"), "uy": True}],
+            "temeller": {"mesnet": "mafsal"},
+            "ek_yukler": [{"tur": "dugum", "dugum": _R("A", "1", "Üst"), "durum": "Q", "FX": 20.0},
+                          {"tur": "cubuk", "cubuk": 3, "durum": "G", "yon": "Z", "q": -5.0}],
+            "kombinasyon_kumesi": "cythye_ydkt", "analiz": {"vute_parca": vute_parca}}
+
+
+@pytest.fixture(scope="module")
+def portal_genel():
+    return yapi.bina_coz(_portal_genel(vute_parca=3), goster="yok", anlat=False)
+
+
+def test_genel_model_alan_paketi_ve_ic_durumlar(portal_genel):
+    ic = portal_genel.ic
+    assert ic["serbest"] and isinstance(ic["alan"], dict) and ic["temel"] is None
+    assert any(a.startswith("#") for a in ic["paket"].durum)          # yalnız-çekme birleşimlerinin doğrudan çözümleri
+    sec = alan.durum_listesi(ic)
+    assert sec["durumlar"] and not any(a.startswith("#") or a.endswith("~c") for a in sec["durumlar"])
+    a = alan.eleman_alanlari(ic, "zarf+")
+    assert len(a["elemanlar"]) == len(portal_genel.veri["ag"]["elemanlar"]) and a["paneller"] == []
+    cap = next(e for e in a["elemanlar"] if e["tur"] == "capraz")
+    assert cap["kesit"]["sekil"] == "boru" and cap["kesit"]["D"] == pytest.approx(0.0889)
+    vute = [e for e in a["elemanlar"] if e["bina_no"] == 3]
+    assert len(vute) == 3 and all(e["kesit"]["sekil"] == "I" and e["kesit"]["eksen"] == "y" for e in vute)
+    with pytest.raises(Exception, match="bulunamadı"):
+        alan.eleman_alanlari(ic, "#yok")
+    json.dumps(a)
+
+
+def test_genel_model_cubuk_parcalari(portal_genel):
+    ic = portal_genel.ic
+    fe = alan.fe_elemanlari(ic, "cubuk", 3)                           # vute: üç FE parçası
+    assert len(fe) == 3 and {e["cubuk"] for e in fe} == {3} and [e["parca"] for e in fe] == [1, 2, 3]
+    assert [e["no"] for e in alan.fe_elemanlari(ic, "fe", fe[1]["no"])] == [fe[1]["no"]]
+    assert [e["cubuk"] for e in alan.fe_elemanlari(ic, "kolon", 2)] == [2]
+    b = alan.eleman_bilgi_alani(ic, "cubuk", 3, "G")
+    assert b["fe"] == [e["no"] for e in fe] and len(b["parcalar"]) == 3 and len(b["uclar"]) == 3
+    from matris_ogren import MatrisHatasi
+    with pytest.raises(MatrisHatasi, match="ağında yok"):
+        alan.fe_elemanlari(ic, "cubuk", 99)
+
+
+def test_genel_model_paketsiz_iletisi():
+    from matris_ogren import MatrisHatasi
+    with pytest.raises(MatrisHatasi, match="genel model çözümü ısı haritası bilgisi taşımıyor") as h:
+        alan.eleman_alanlari({"paket": object(), "serbest": True}, "G")
+    assert "eski bina modülü" not in str(h.value)
+
+
+@pytest.fixture(scope="module")
+def kopru_genel():
+    oz = importlib.util.spec_from_file_location("web_kopru_alan_genel_testi", PROJE / "docs" / "web_kopru.py")
+    m = importlib.util.module_from_spec(oz)
+    oz.loader.exec_module(m)
+    return m
+
+
+@pytest.mark.parametrize("ad", ["celik-cbf-3kat", "celik-sanayi-4hol"])
+def test_kopru_bina_alan_genel_model(kopru_genel, ad):
+    c = _iste(kopru_genel, "bina_coz", {"bina": yapi.bina_sablon(ad)})
+    kim = c["veri"]["cozum_kimligi"]
+    for durum in ("G", "zarf+"):
+        y = _iste(kopru_genel, "bina_alan", {"cozum_kimligi": kim, "durum": durum})
+        assert y["hata"] is None, y["hata"]
+        a = y["alan"]
+        assert len(a["elemanlar"]) == len(c["veri"]["ag"]["elemanlar"]) > 0 and a["dugumler"]
+        assert not any(d.startswith("#") for d in a["secenekler"]["durumlar"])
+        plak = [p for p in a["paneller"] if p["izgara"]]
+        if ad == "celik-cbf-3kat":
+            assert len(plak) == 18 == len(a["paneller"])              # 18 betonarme döşeme paneli (3 kat × 6 göz)
+            p = plak[0]
+            assert p["izgara"]["t"] == pytest.approx(0.12) and p["izgara"]["q"] > 0 and len(p["kose"]) == 4
+            assert {yp["kenar"] for yp in p["yuk_payi"]} == {"alt", "ust", "sol", "sag"}
+            assert sum(yp["alan"] for yp in p["yuk_payi"]) == pytest.approx(36.0)
+            assert all(yp["kiris"] in yp["cubuklar"] for yp in p["yuk_payi"])
+        else:
+            assert plak == [] and a["paneller"] == []                  # çatı / cephe panelleri plak değildir
+        assert any(e["kullanim"] for e in a["elemanlar"])              # çelik: von Mises / F_y
+
+
+def test_genel_model_egik_ve_ucgen_panel_notla_atlanir():
+    b = _portal_genel(yalniz_cekme=False)
+    b["akslar"]["y"].append({"ad": "2", "konum": 5.0})
+    for n, (x, y) in enumerate((("A", "2"), ("B", "2")), start=6):
+        b["cubuklar"].append({"no": n, "i": _R(x, y, "±0.00"), "j": _R(x, y, "Üst"), "tur": "kolon", "kesit": "K"})
+    b["cubuklar"] += [{"no": 8, "i": _R("A", "2", "Üst"), "j": _R("B", "2", "Üst"), "tur": "kiris", "kesit": "KIRIS"},
+                      {"no": 9, "i": _R("A", "1", "Üst"), "j": _R("A", "2", "Üst"), "tur": "kiris", "kesit": "KIRIS"},
+                      {"no": 10, "i": _R("B", "1", "Üst"), "j": _R("B", "2", "Üst"), "tur": "kiris", "kesit": "KIRIS"},
+                      {"no": 11, "i": _R("A", "1", "Üst"), "j": _R("B", "2", "Üst"), "tur": "kiris", "kesit": "KIRIS"}]
+    b["mesnetler"] = []
+    b["paneller"] = [{"no": 1, "kose": [_R("A", "1", "Üst"), _R("B", "1", "Üst"), _R("B", "2", "Üst")], "tur": "doseme", "kalinlik": 0.12},
+                     {"no": 2, "kose": [_R("A", "1", "Üst"), _R("B", "2", "Üst"), _R("A", "2", "Üst")], "tur": "doseme", "kalinlik": 0.12}]
+    r = yapi.bina_coz(b, goster="yok", anlat=False)
+    p = alan.panel_alanlari(r.ic, "G")
+    assert len(p) == 2 and all(x["izgara"] is None and "3 köşeli" in x["not"] and len(x["kose"]) == 3 for x in p)
+
+
+def test_genel_model_betonarme_kullanim():
+    """Genel modelin betonarme kaydı (satır adları kombinasyon ekli) ile kullanım: kirişte M/Mr, V/Vr — en büyüğü kaydın D/C'si."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["surum"] = 3
+    r = yapi.bina_coz(b, goster="yok", anlat=False)
+    a = alan.eleman_alanlari(r.ic, "1.4G+1.6Q", paneller=True)
+    kir = [e for e in a["elemanlar"] if e["tur"] == "kiris"]
+    assert kir and all(e["kullanim"] is not None for e in kir)
+    for e in kir:
+        if e["tasarim"]["belirleyen"]["kontrol"].startswith("eğilme"):
+            assert e["ekstremum"]["kullanim"]["deger"] == pytest.approx(e["tasarim"]["dc"], rel=1e-3)
+    assert all(e["kullanim"] is not None for e in a["elemanlar"] if e["tur"] == "kolon")
+    assert len([p for p in a["paneller"] if p["izgara"]]) == 4          # aks–kat döşemeleri panel olarak da plak alanı verir

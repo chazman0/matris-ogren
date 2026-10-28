@@ -35,6 +35,10 @@ mesnetli dikdörtgen plak için çift Fourier (Navier) serisi: w, m_x, m_y (ν =
 Radye / mütemadi temel (temel modülü çözüm paketine taban basıncı metası koyduysa): Winkler düğüm oturması w = −u_Z ve
 taban basıncı p = k0·w, düğümler ızgaraya dizilerek (``radye_alani``).
 
+Genel model (surum 3, ``yapi_serbest``): paket aynı biçimdedir (``ic["alan"]``); FE elemanları çubuk parçalarıdır (``cubuk``,
+``parca``), döşeme plakları yatay, dört köşeli, eksenlere paralel dikdörtgen ``doseme`` panellerinden kurulur (öteki paneller
+açıklama notuyla atlanır).
+
 Dışa açık yardımcılar (köprü ``bina_alan`` ve eleman bilgi paneli ``bina_eleman_bilgi`` için):
 ``eleman_alanlari``, ``panel_alanlari``, ``radye_alani``, ``alan_paketi``, ``durum_katsayilari``, ``durum_listesi``,
 ``fe_elemanlari``, ``eleman_kaydi``, ``istasyon_kuvvetleri``, ``uc_yer_degistirmeleri``, ``eleman_bilgi_alani``,
@@ -250,17 +254,21 @@ def kesit_geometrisi(ks, me, mal=None):
     tip = str(ks.get("tip") or "dikdortgen").lower()
     I_g = float(ks.get("I_guclu") or max(Iy, Iz))
     eksen = "y" if abs(Iz - I_g) <= abs(Iy - I_g) else "z"
+    if tip == "vute":        # vute parçası temel kesitten derin: güçlü eksen büyük atalet momentli eksendir
+        eksen = "y" if Iz >= Iy else "z"
     k = {"sekil": "dikdortgen", "eksen": eksen, "A": A, "Iy": Iy, "Iz": Iz, "J": J, "not": None}
-    prof = _profil_kaydi(ks.get("profil")) if tip == "profil" else None
+    prof = _profil_kaydi(ks.get("profil")) if tip in ("profil", "vute") else None     # vute: temel profilin geometrisi
     basit = None
-    if tip == "profil" and prof is None and ks.get("profil"):
-        basit = _basit_profil(ks.get("profil"))
+    if tip in ("profil", "basit", "vute") and prof is None and ks.get("profil"):
+        basit = _basit_profil(ks.get("profil"))      # genel model basit kesiti ("BORU 168.3x6.3", "KUTU 150x8" …)
     elif tip in ("kutu", "boru", "l", "2l", "u"):
         basit = ({"l": "L", "2l": "2L", "u": "U"}.get(tip, tip), ks)
     if prof is not None:
         ad, p = prof
         h, b, tw, tf = p["h"] / 1000.0, p["b"] / 1000.0, p["tw"] / 1000.0, p["tf"] / 1000.0
         k.update({"sekil": "I", "profil": ad, "h": h, "b": b, "tw": tw, "tf": tf, "r": p.get("r", 0.0) / 1000.0})
+        if tip == "vute":
+            k["not"] = "Vute: temel profilin kesit modülleriyle (derin parçalarda lif gerilmesi güvenli yanda)."
         W_g, W_z = p["Wely"] * 1e-6, p["Welz"] * 1e-6
         Wp_g, Wp_z = p["Wply"] * 1e-6, p["Wplz"] * 1e-6
         Av_g = (p.get("Avz") or p["h"] * p["tw"] / 100.0) * 1e-4
@@ -355,6 +363,8 @@ def _ic_kontrol(ic):
     if not isinstance(ic, dict) or "paket" not in ic:
         raise MatrisHatasi("Önce bina çözülmeli (önbellekte çözüm yok ya da süresi doldu); binayı yeniden çözün.")
     if not isinstance(ic.get("alan"), dict):
+        if ic.get("serbest"):
+            raise MatrisHatasi("Bu genel model çözümü ısı haritası bilgisi taşımıyor; binayı yeniden çözün.")
         raise MatrisHatasi("Bu çözüm paketi ısı haritası bilgisi taşımıyor (eski bina modülü); binayı yeniden çözün.")
 
 
@@ -419,11 +429,17 @@ def alan_paketi(ic, istasyon=ISTASYON):
     return on
 
 
+def _gorunur_durum(ad):
+    """Seçicide ve iletilerde gösterilen durum: çatlamış kopyalar (G~c …) ve iç durumlar (yalnız-çekme birleşimlerinin doğrudan
+    çözümleri '#…', yapi_serbest._yalniz_cekme_coz) hariç."""
+    return not ad.endswith(_CATLAMIS_EK) and not ad.startswith("#")
+
+
 def durum_listesi(ic):
-    """Arayüz seçicisi için: yük durumları (çatlamış kopyalar hariç), uygulanan kombinasyonlar (tür), zarf."""
+    """Arayüz seçicisi için: yük durumları (çatlamış kopyalar ve '#' iç durumları hariç), uygulanan kombinasyonlar (tür), zarf."""
     _ic_kontrol(ic)
     komb_tur = ic["alan"].get("komb_tur") or {}
-    return {"durumlar": [a for a in ic["paket"].durum if not a.endswith(_CATLAMIS_EK)],
+    return {"durumlar": [a for a in ic["paket"].durum if _gorunur_durum(a)],
             "kombinasyonlar": [{"ad": a, "tur": komb_tur.get(a)} for a in ic.get("kombinasyonlar", {})],
             "zarf": ["zarf+", "zarf-"]}
 
@@ -440,7 +456,7 @@ def durum_katsayilari(ic, durum, katsayilar=None):
         tur = ic["alan"].get("komb_tur") or {}
         liste = [(a, k) for a, k in komb.items() if tur.get(a) != "drift"]
         if not liste:
-            liste = [(a, {a: 1.0}) for a in paket.durum if not a.endswith(_CATLAMIS_EK)]
+            liste = [(a, {a: 1.0}) for a in paket.durum if _gorunur_durum(a)]
         return liste
     if durum in komb:
         return [(durum, dict(komb[durum]))]
@@ -450,12 +466,13 @@ def durum_katsayilari(ic, durum, katsayilar=None):
         kat = {}
         for d, g in katsayilar.items():
             if str(d) not in paket.durum:
-                raise MatrisHatasi(f"{d!r} yük durumu bu çözümde yok. Mevcut durumlar: {', '.join(paket.durum)}.")
+                raise MatrisHatasi(f"{d!r} yük durumu bu çözümde yok. Mevcut durumlar: "
+                                   f"{', '.join(a for a in paket.durum if _gorunur_durum(a))}.")
             kat[str(d)] = float(g)
         return [(durum or "birleşim", kat)]
     if not durum:
         raise MatrisHatasi("Durum adı (durum) boş: bir yük durumu (G, Q…), kombinasyon adı ya da \"zarf+\" / \"zarf-\" verin.")
-    raise MatrisHatasi(f"Durum ya da kombinasyon bulunamadı: {durum!r}. Durumlar: {', '.join(a for a in paket.durum if not a.endswith(_CATLAMIS_EK))}; "
+    raise MatrisHatasi(f"Durum ya da kombinasyon bulunamadı: {durum!r}. Durumlar: {', '.join(a for a in paket.durum if _gorunur_durum(a))}; "
                        f"kombinasyonlardan bazıları: {', '.join(list(komb)[:6])}…; ya da \"zarf+\" / \"zarf-\".")
 
 
@@ -476,6 +493,16 @@ def _kapasite(kay, bas, uc=None):
     for k in (kay or {}).get("kontroller") or []:
         ad = str(k.get("ad", ""))
         if ad.startswith(bas) and k.get("kapasite") and (uc is None or ad.endswith(uc)):
+            return float(k["kapasite"])
+    return None
+
+
+def _kapasite_icerir(kay, *parcalar, birim=None):
+    """Genel model kaydında adı bütün ``parcalar``ı içeren ilk kontrol satırının kapasitesi (satır adları kombinasyon ekli:
+    "Mesnet (üst donatı): Eğilme taşıma gücü …", "N–M: 1.4G+1.6Q (j): N–Mx etkileşimi …")."""
+    for k in (kay or {}).get("kontroller") or []:
+        ad = str(k.get("ad", ""))
+        if all(p_ in ad for p_ in parcalar) and k.get("kapasite") and (birim is None or k.get("birim") == birim):
             return float(k["kapasite"])
     return None
 
@@ -511,6 +538,22 @@ def _turet(F, el):
     kul = None
     if mal.get("tur") == "celik" and mal.get("fy"):
         kul = vm / float(mal["fy"])
+    elif el.get("tasarim") and el["tasarim"].get("cubuk") is not None:
+        # genel model (yapi_serbest) betonarme kaydı: kiriş Md/Mr (açıklık/mesnet) ve V/Vr; kolon yerel |Mz|/Mrx + |My|/Mry
+        # (belirleyen noktadaki kapasitelerle, eleman boyunca sabit)
+        kay = el["tasarim"]
+        if el.get("tur") == "kolon":
+            Mrx, Mry = _kapasite_icerir(kay, "N–Mx etkileşimi", birim="kN·m"), _kapasite_icerir(kay, "N–My etkileşimi", birim="kN·m")
+            if Mrx and Mry:
+                kul = np.abs(Mz) / Mrx + np.abs(My) / Mry
+        else:
+            Mn = _kapasite_icerir(kay, "Mesnet (üst donatı)", "Eğilme taşıma gücü")
+            Mp = _kapasite_icerir(kay, "Açıklık (alt donatı)", "Eğilme taşıma gücü")
+            Vr = _kapasite_icerir(kay, "Kesme dayanımı")
+            if Mn or Mp:
+                kul = np.where(Mz >= 0, Mz / (Mp or Mn), -Mz / (Mn or Mp))
+                if Vr:
+                    kul = np.maximum(kul, np.abs(Vy) / Vr)
     elif el.get("tasarim"):
         kay = el["tasarim"]
         if el.get("tur") == "kiris":
@@ -745,6 +788,8 @@ def panel_alanlari(ic, durum, *, katsayilar=None, nx=PLAK_IZGARA, ny=PLAK_IZGARA
     _ic_kontrol(ic)
     A = ic["alan"]
     B, Y = A["B"], A.get("Y")
+    if getattr(B, "serbest", False):
+        return _panel_alanlari_genel(ic, durum, katsayilar=katsayilar, nx=nx, ny=ny)
     dosemeler = list(getattr(Y, "dosemeler", None) or getattr(B, "dosemeler", None) or [])
     if not dosemeler:
         return []
@@ -814,6 +859,113 @@ def panel_alanlari(ic, durum, *, katsayilar=None, nx=PLAK_IZGARA, ny=PLAK_IZGARA
     return out
 
 
+_KENAR_SIRA = ("alt", "ust", "sol", "sag")
+_PLAK_NOT = ("Yaklaşık plak çözümü: dört kenar basit mesnetli (Navier serisi, ν = 0,2); sürekli kenar etkisi yok sayılır. TS 500 "
+             "md. 11.4.3 (Denk. 11.3, m_d = α·p_d·l_sn², α Çizelge 11.1) sürekli kenarlarda mesnet momenti ve daha küçük açıklık "
+             "momenti verir; buradaki α = m/(q·l_s²) dört kenarı basit mesnetli üst sınır karşılaştırmasıdır.")
+
+
+def _panel_alanlari_genel(ic, durum, *, katsayilar=None, nx=PLAK_IZGARA, ny=PLAK_IZGARA):
+    """Genel model (surum 3) döşeme panelleri: yatay, dört köşeli ve kenarları eksenlere paralel dikdörtgen ``doseme`` panelinde
+    aks–kat döşemesiyle aynı alanlar (Navier plağı, 45° / tek doğrultulu yük payı poligonları; plak kalınlığı ve g / q / s panelin
+    kendi yükleri). Öteki paneller (eğik, üçgen, dönük, çatı/cephe) ``not`` ile atlanır (``izgara`` None)."""
+    A = ic["alan"]
+    B = A["B"]
+    liste = durum_katsayilari(ic, durum, katsayilar)
+    kz = _plak_yuk_katsayilari(ic)
+    eksi = str(durum) == "zarf-"
+    out = []
+    for p in getattr(B, "paneller", None) or []:
+        if p.get("tur") != "doseme":
+            continue
+        P = [tuple(float(v) for v in q) for q in p["P"]]
+        z = sum(q[2] for q in P) / len(P)
+        kose3 = [[q[0], q[1], q[2]] for q in P]
+        taban = {"no": p["no"], "kat": p.get("kat"), "adres": p.get("adres") or f"P{p['no']}", "z": z, "kose": kose3,
+                 "izgara": None, "yuk_payi": [], "tip": None}
+        xs, ys = sorted({round(q[0], 6) for q in P}), sorted({round(q[1], 6) for q in P})
+        neden = None
+        if len(P) != 4:
+            neden = f"{len(P)} köşeli panel"
+        elif max(abs(q[2] - z) for q in P) > 1e-4:
+            neden = "panel yatay değil"
+        elif len(xs) != 2 or len(ys) != 2 or {(round(q[0], 6), round(q[1], 6)) for q in P} != {(x, y) for x in xs for y in ys}:
+            neden = "kenarlar X / Y eksenlerine paralel bir dikdörtgen oluşturmuyor"
+        elif p.get("kalinlik", 0.0) <= 0:
+            neden = "kalınlık 0 (taşıyıcı olmayan kaplama)"
+        if neden is not None:
+            out.append(dict(taban, **{"not": f"Plak alanı yok: {neden}. Navier plak çözümü yalnız yatay, dört köşeli, eksenlere paralel "
+                                             "dikdörtgen döşeme panelinde kurulur; yük çubuklara panel dağıtımıyla aktarılır."}))
+            continue
+        x0, x1, y0, y1 = xs[0], xs[1], ys[0], ys[1]
+        yk = {"G": float(p.get("g_yuzey", 0.0)), "Q": float(p.get("q", 0.0)) + float(p.get("ek_q", 0.0)),
+              "S": float(p.get("s", 0.0)) + float(p.get("ek_s", 0.0))}
+
+        def p_durum(ad):
+            temel = ad[:-len(_CATLAMIS_EK)] if ad.endswith(_CATLAMIS_EK) else ad
+            if temel in yk:
+                return yk[temel]
+            if ad == "EZ":
+                return kz * yk["G"]
+            return 0.0
+        qs = [sum(g * p_durum(a) for a, g in kat.items()) for _, kat in liste]
+        q = (min(qs) if eksi else max(qs)) if len(qs) > 1 else qs[0]
+        # kenar adları (alt: küçük Y, ust: büyük Y, sol: küçük X, sag: büyük X) ve taşıyan kenarlar
+        kenar_ad = {}
+        D = B.coz.dugum
+        for k in p["kenarlar"]:
+            a, b = (D[n] for n in k["dugumler"])
+            if abs(a["Y"] - b["Y"]) < 1e-6:
+                kenar_ad[k["kenar"]] = "alt" if abs(a["Y"] - y0) < 1e-6 else "ust"
+            else:
+                kenar_ad[k["kenar"]] = "sol" if abs(a["X"] - x0) < 1e-6 else "sag"
+        dag = p.get("dagitim", "iki")
+        if dag == "iki":
+            pol = yuk_payi_poligonlari(x0, y0, x1, y1, "cift")
+        else:
+            tas = tuple(kenar_ad[k["kenar"]] for k in p["kenarlar"] if k["tasiyan"])
+            pol = yuk_payi_poligonlari(x0, y0, x1, y1, "tek", tasiyan=tas)
+        E = None
+        for k in p["kenarlar"]:           # plak rijitliği: kenar çubuklarından birinin betonu (yoksa C30)
+            for cno, *_ in k["parcalar"]:
+                c = B.cubuk_no.get(cno)
+                ks = B.kesitler.get(c["kesit"]) if c else None
+                m = (getattr(B, "malzemeler", {}) or {}).get((ks or {}).get("malzeme")) if ks else None
+                if m and m.get("tur") == "beton":
+                    E = float(m["E"])
+                    break
+            if E:
+                break
+        E = E or 32.0e6
+        t = float(p["kalinlik"])
+        Dp = E * t ** 3 / (12.0 * (1.0 - PLAK_NU ** 2))
+        pl = navier_plak(x1 - x0, y1 - y0, q, Dp, nx=nx, ny=ny)
+        fe_ilk = {c["no"]: (c.get("fe") or [None])[0] for c in getattr(B, "cubuklar", [])}
+        sekil = {k["kenar"]: k.get("sekil") for k in (p.get("dag") or {}).get("kenarlar", [])}
+        paylar = []
+        for k in sorted(p["kenarlar"], key=lambda k: _KENAR_SIRA.index(kenar_ad[k["kenar"]])):
+            ad = kenar_ad[k["kenar"]]
+            poli = pol.get(ad, [])
+            cub = [x[0] for x in k["parcalar"]]
+            paylar.append({"kiris": cub[0] if cub else None, "cubuklar": cub, "eleman": fe_ilk.get(cub[0]) if cub else None,
+                           "kenar": ad, "sekil": sekil.get(k["kenar"]) or ("yok" if not k["tasiyan"] else None),
+                           "poligon": [[round(a, 6), round(b, 6)] for a, b in poli], "alan": round(poligon_alani(poli), 6) if poli else 0.0})
+        ls = min(x1 - x0, y1 - y0)
+        mx_e, my_e, w_e = float(np.max(np.abs(pl["mx"]))), float(np.max(np.abs(pl["my"]))), float(np.max(np.abs(pl["w"])))
+        qls2 = abs(q) * ls * ls
+        out.append(dict(taban, **{
+            "tip": "cift" if dag == "iki" else "tek", "dagitim": dag,
+            "kose": [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]],
+            "izgara": {"nx": nx, "ny": ny, "x": _yuvarla(pl["x"] + x0, 6), "y": _yuvarla(pl["y"] + y0, 6),
+                       "w": _yuvarla(pl["w"]), "mx": _yuvarla(pl["mx"]), "my": _yuvarla(pl["my"]), "q": q, "D": Dp,
+                       "t": t, "E": E, "nu": PLAK_NU},
+            "en_buyuk": {"w": float(f"{w_e:.5g}"), "mx": float(f"{mx_e:.5g}"), "my": float(f"{my_e:.5g}")},
+            "alfa": ({"ls": ls, "x": float(f"{mx_e / qls2:.4g}"), "y": float(f"{my_e / qls2:.4g}")} if qls2 > 0 else None),
+            "yuk_payi": paylar,
+            "not": _PLAK_NOT + " Çubuklara aktarım panel dağıtımıyla (renkli poligonlar: dikdörtgende 45° kuralı) yapılır."}))
+    return out
+
+
 def _radye_meta(ic):
     """Temel modülü (mütemadi/radye) çözüm paketine taban basıncı metası koyduysa: (tip, k0, [(no, X, Y)], q_em)."""
     A = ic.get("alan") or {}
@@ -880,10 +1032,12 @@ def radye_alani(ic, durum, *, katsayilar=None):
 
 
 # ============================================================================
-# Eleman bilgi paneli için ortak yardımcılar (köprü bina_eleman_bilgi)
+# Eleman bilgi paneli için ortak yardımcılar (köprü bina_eleman_bilgi → docs/web_kopru.py, "Motor ayrıntısı")
 # ============================================================================
 def fe_elemanlari(ic, tur, no):
-    """Bina elemanı (tur: 'kolon' | 'kiris' | 'fe', no) → FE eleman kayıtları (ağ sırasıyla; kiriş parçaları dahil)."""
+    """Bina elemanı → FE eleman kayıtları (ağ sırasıyla). tur 'fe' / 'eleman': tek FE eleman (no = FE no); 'cubuk' (genel
+    model): çubuğun bütün FE parçaları (vute parçaları; ``e["cubuk"] == no``); 'kolon' / 'kiris': aks–kat elemanının parçaları
+    (``kaynak_no``) — genel modelde aynı türden çubuk numarası."""
     _ic_kontrol(ic)
     ag = ic["alan"]["ag"]
     tur = str(tur or "").lower()
@@ -891,8 +1045,10 @@ def fe_elemanlari(ic, tur, no):
         no_i = int(no)
     except (TypeError, ValueError):
         raise MatrisHatasi(f"Eleman numarası (no) tamsayı olmalı: {no!r}.") from None
-    if tur in ("fe", "eleman", "cubuk"):
+    if tur in ("fe", "eleman"):
         sec = [e for e in ag["elemanlar"] if e["no"] == no_i]
+    elif tur == "cubuk":
+        sec = [e for e in ag["elemanlar"] if e.get("cubuk") == no_i]
     else:
         sec = [e for e in ag["elemanlar"] if e.get("tur") == tur and e.get("kaynak_no") == no_i]
     if not sec:
@@ -941,9 +1097,9 @@ def uc_yer_degistirmeleri(ic, fe_no, durum, katsayilar=None):
 
 
 def eleman_bilgi_alani(ic, tur, no, durum, *, katsayilar=None, istasyon=ISTASYON):
-    """Bina elemanı (kolon / kiriş: bütün FE parçaları; 'fe': tek FE eleman) için alan özeti (bilgi paneli,
-    ``bina_eleman_bilgi``): {"tur", "no", "durum", "fe": [no], "parcalar": [eleman_alanlari kaydı], "uclar": [uç yer
-    değiştirmeleri] (zarfta None), "en_buyuk": {büyüklük: {deger, fe, x}}}."""
+    """Bina elemanı (kolon / kiriş: bütün FE parçaları; 'cubuk' (genel model): çubuğun bütün FE parçaları; 'fe': tek FE eleman)
+    için alan özeti (bilgi paneli, köprü ``bina_eleman_bilgi`` → "Motor ayrıntısı"): {"tur", "no", "durum", "fe": [no],
+    "parcalar": [eleman_alanlari kaydı], "uclar": [uç yer değiştirmeleri] (zarfta None), "en_buyuk": {büyüklük: {deger, fe, x}}}."""
     fe = [e["no"] for e in fe_elemanlari(ic, tur, no)]
     al = eleman_alanlari(ic, durum, katsayilar=katsayilar, elemanlar=fe, paneller=False, istasyon=istasyon)
     zarf = str(durum).startswith("zarf")
