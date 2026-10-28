@@ -336,6 +336,27 @@ def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
                                                              if k["tur"] == "kolon" and k["no"] == 5))
 
 
+def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
+    """surum 1 kolon önerisi gerekli boyuna donatı oranını uygula tanımına yazar (aks–kat motoru verilmeyen ρ'yu 0,01 alır):
+    öneri uygulanıp aks–kat motoruyla çözülünce kolonun tablo D/C'si ≤ 1. Eskiden betonarme-3kat-3x3'te 30x30 önerisi
+    uygulanınca D/C 2,17 'donatı artır' görünürdü (öneri ρ = 0,04'e kadar taranmış D/C ile 0,98 derdi)."""
+    kopru._BINA_ONBELLEK.clear()
+    kopru._GENEL_ONBELLEK.clear()
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 1}]})
+    o = y["oneriler"][0]
+    u = o["uygula"]
+    assert y["hata"] is None and o["degisim"] == "küçült" and o["dc_oneri"] <= 1.0
+    assert o["donati_orani"] > 0.01 and u["tanim"]["donati_orani"] == pytest.approx(o["donati_orani"]) and "ρ" in u["ad"]
+    b["kesitler"][u["ad"]] = u["tanim"]
+    next(k for k in b["kolonlar"] if k["no"] == 1)["kesit"] = u["ad"]
+    z = iste(kopru, "bina_coz", {"bina": b})
+    assert z["hata"] is None
+    k1 = next(k for k in z["veri"]["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
+    assert k1["kesit"] == u["ad"] and k1["dc"] <= 1.0 and k1["durum"] == "yeterli"
+
+
 def test_kesit_oner_genel_model_c4(kopru):
     kopru._BINA_ONBELLEK.clear()
     v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-cbf-3kat")})["veri"]

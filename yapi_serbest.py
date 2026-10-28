@@ -2800,16 +2800,16 @@ def _on_ele(kuv, anahtarlar, n=3, en_cok=14):
     return [kuv[i] for i in tut]
 
 
-def _kolon_on_ele(ts, kuv, kt, d_ust, beton, donati, n=10, en_cok=16):
-    """Kolon noktaları (her kombinasyonun iki ucu): bütün noktalar ρ = 0,01 ile bir kez N–M'den geçirilir, D/C'si en büyük ``n`` nokta
-    ve büyüklük ön elemesinin seçtikleri (kesme için) tutulur. Büyüklükle eleme düşük N – büyük M noktalarını (0,9G ± E) kaçırır;
-    aks–kat motoru (yapi._kolon_ba) da en büyük D/C'li 10 noktayla tarar."""
+def _kolon_on_ele(ts, kuv, kt, d_ust, beton, donati, n=10, en_cok=16, As=None):
+    """Kolon noktaları (her kombinasyonun iki ucu): bütün noktalar ρ = 0,01 (ya da verilen ``As``, cm²) ile bir kez N–M'den geçirilir,
+    D/C'si en büyük ``n`` nokta ve büyüklük ön elemesinin seçtikleri (kesme için) tutulur. Büyüklükle eleme düşük N – büyük M
+    noktalarını (0,9G ± E) kaçırır; aks–kat motoru (yapi._kolon_ba) da en büyük D/C'li 10 noktayla tarar."""
     if len(kuv) <= en_cok:
         return kuv
     sec = {id(k) for k in _on_ele(kuv, ["N", "Mx", "My", "V"], n=3, en_cok=en_cok)}
     try:
         on = ts.kolon_kontrol([k["N"] for k in kuv], [k["Mx"] for k in kuv], [k["My"] for k in kuv], kt["b"], kt["h"],
-                              0.01 * kt["b"] * kt["h"] * 1e4, d_ust, beton, donati, adlar=[k["ad"] for k in kuv], tbdy=False)
+                              As or 0.01 * kt["b"] * kt["h"] * 1e4, d_ust, beton, donati, adlar=[k["ad"] for k in kuv], tbdy=False)
         sira = sorted(range(len(kuv)), key=lambda i: -on["noktalar"][i]["dc"])[:n]
         sec |= {id(kuv[i]) for i in sira}
     except MatrisHatasi:
@@ -3011,15 +3011,21 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
             for k_ in kuv[n0:]:
                 ad_komb[k_["ad"]] = ad
         kuv_tum = kuv
+        # kolon boyuna donatısı (yapi._kolon_ba ile aynı kural): kesitte As / donati_orani verilmişse o, yoksa ρ = 0,01 varsayımı;
+        # D/C bu donatıyla, gerekli ρ ayrıca (ρ taraması) özette — aynı bina iki motorda aynı D/C ve durum ("donatı artır")
+        As_ver = _kolon_As(B, kt, ks, c) if tur_ba == "kolon" else None
+        rho_varsayim = tur_ba == "kolon" and As_ver is None
+        if rho_varsayim:
+            As_ver = Y._RHO_VARSAYILAN * kt["b"] * kt["h"] * 1e4
         if tur_ba == "kolon":
-            kuv = _kolon_on_ele(ts, kuv, kt, pas + Y._PAS_EK, mal["kutuphane"], donati)
+            kuv = _kolon_on_ele(ts, kuv, kt, pas + Y._PAS_EK, mal["kutuphane"], donati, As=As_ver)
         elif tur_ba == "egik":
             kuv = _on_ele(kuv, ["N", "Mx", "My", "V"], n=3, en_cok=16)
         else:
             kuv = (_on_ele([k for k in kuv if k["Mx"] >= 0], ["Mx", "V", "N"], en_cok=8)
                    + _on_ele([k for k in kuv if k["Mx"] < 0], ["Mx", "V", "N"], en_cok=8))
         r = ts.betonarme_eleman_kontrol(kt["b"], kt["h"], pas + Y._PAS_EK, mal["kutuphane"], donati, kuv, tur=tur_ba,
-                                        tbdy=bool(B.deprem), anl=anl)
+                                        As_toplam=As_ver, tbdy=bool(B.deprem), anl=anl)
         bilgi.update({"kontrol": "betonarme", "tur": "kolon" if tur_ba == "kolon" else "kiris", "kuvvetler": kuv,
                       "malzeme": {"beton": mal["kutuphane"], "donati": donati}, "b": kt["b"], "h": kt["h"], "tur_ba": tur_ba,
                       "pas": pas})
@@ -3032,6 +3038,25 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
         ozet = {"kontrol": {"kiris": "kiriş (TS 500 eğilme + kesme)", "kolon": "kolon (N–M)", "egik": "eğik eleman (TS 500 Denk. 7.2)"}[tur_ba],
                 "As_toplam_cm2": r.get("As_toplam_cm2"), "As_kaynak": r.get("As_kaynak"), "b_mm": r["b_mm"], "h_mm": r["h_mm"],
                 "esik_kN": r["esik_kN"]}
+        rho_ger = None
+        if tur_ba == "kolon":
+            Ac_cm2 = kt["b"] * kt["h"] * 1e4
+            rho = As_ver / Ac_cm2
+            nm = max((x["dc"] for x in r["kontroller"] if "etkileşim" in x["ad"] or "İki eksenli" in x["ad"]), default=0.0)
+            if nm <= 1.0 + 1e-9 and rho <= Y._RHO_VARSAYILAN + 1e-12:
+                rho_ger = rho
+            else:                                   # gerekli ρ: 0,01 … 0,04 taraması (yapi._kolon_ba _RHO_TARAMA gibi)
+                try:
+                    r2 = ts.betonarme_eleman_kontrol(kt["b"], kt["h"], pas + Y._PAS_EK, mal["kutuphane"], donati, kuv, tur=tur_ba,
+                                                     tbdy=bool(B.deprem))
+                    nm2 = max((x["dc"] for x in r2["kontroller"] if "etkileşim" in x["ad"] or "İki eksenli" in x["ad"]), default=0.0)
+                    rho_ger = r2["As_toplam_cm2"] / Ac_cm2 if (r2.get("As_toplam_cm2") and nm2 <= 1.0 + 1e-9) else None
+                except MatrisHatasi:
+                    rho_ger = None
+            ozet.update({"As_kaynak": ("varsayım ρ = 0,01 (TS 500 md. 7.4.1 en az; kesitte As ya da donati_orani verilebilir)"
+                                       if rho_varsayim else "kesitte verilen"),
+                         "rho": rho, "rho_varsayim": rho_varsayim, "rho_gerekli": rho_ger,
+                         "As_gerekli_cm2": rho_ger * Ac_cm2 if rho_ger is not None else None})
         if r.get("egilme_alt"):
             ozet["As_alt_cm2"] = r["egilme_alt"].get("As_gerekli_cm2")
         if r.get("egilme_ust"):
@@ -3039,7 +3064,13 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
         uy += list(r["uyarilar"])
         T.sonuclar[c["no"]] = {"r": r, "bilgi": bilgi}
         durum = r["durum"] if r["durum"] in ("yeterli", "donatı artır", "kesit büyüt") else "yeterli"
-        if any(not x["saglandi"] and x["_etiket"] in ("boyut", "eksenel (0,9 fcd Ac)", "TBDY Ndm ≤ 0,40 fck Ac") for x in kont):
+        boyut_eksenel = any(not x["saglandi"] and x["_etiket"] in ("boyut", "eksenel (0,9 fcd Ac)", "TBDY Ndm ≤ 0,40 fck Ac")
+                            for x in kont)
+        if tur_ba == "kolon":                       # yapi._kolon_ba ile aynı durum kuralı
+            dc_k = max(x["dc"] for x in kont)
+            durum = ("kesit büyüt" if boyut_eksenel or (dc_k > 1.0 + 1e-9 and rho_ger is None)
+                     else ("donatı artır" if dc_k > 1.0 + 1e-9 else "yeterli"))
+        elif boyut_eksenel:
             durum = "kesit büyüt"
     else:
         raise MatrisHatasi(f"Kesit {c['kesit']!r}: malzeme {mal['tur']} ile eleman tahkiki yok (çelik ya da beton olmalı).")
@@ -3051,6 +3082,25 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
     k["kontroller"] = k["kontroller"][:6]
     k.update({"cubuk": c["no"], "grup": c.get("grup"), "L": _r(L), "varsayimlar": varsayim, "kaynak": c.get("kaynak")})
     return k, uy, {}
+
+
+def _kolon_As(B, kt, ks, c):
+    """Kolon boyuna donatısı kesitte verilmişse (yapi._kolon_ba ile aynı alanlar): ``As`` (toplam, cm²) ya da ``donati_orani``
+    (ρ = As/Ac) → As (cm²); verilmemişse None (tasarim ρ = 0,01 … 0,04 tarar, gerekli ρ ile). Kesit önerisi kartında
+    (``kt_yerine``) alanlar kartın kendisindedir; öteki kartlarda bina girdisindeki kesit kaydından okunur."""
+    ad = ks["temel"] if ks.get("tip") == "vute" else c["kesit"]
+    ham = kt if any(kt.get(a) is not None for a in ("As", "donati_orani")) else ((B.ham.get("kesitler") or {}).get(ad) or {})
+    if not isinstance(ham, dict):
+        return None
+    Ac_cm2 = kt["b"] * kt["h"] * 1e4
+    if ham.get("As") is not None:
+        return Y._sayi(ham["As"], f"Kesit {ad!r}: As (toplam boyuna donatı, cm²)", pozitif=True, sifir_olur=False)
+    if ham.get("donati_orani") is not None:
+        rho = Y._sayi(ham["donati_orani"], f"Kesit {ad!r}: donati_orani (ρ = As/Ac)", pozitif=True, sifir_olur=False)
+        if rho >= 0.2:
+            raise MatrisHatasi(f"Kesit {ad!r}: donati_orani = {rho} çok büyük; oran girilir (%1 → 0.01).")
+        return rho * Ac_cm2
+    return None
 
 
 # betonarme dayanım satırları (beyaz liste; satır adının son ": " ekinden sonraki kısmında aranır). Geri kalan her satır — donatı
@@ -3339,9 +3389,27 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
         gerekce = list(o.get("gerekce", []))
         durum = o.get("durum")
         dc_oneri = degisim = None
+
+        def kart(on_):
+            """Önerilen b × h kartı; kolonda önerinin gerekli boyuna donatı oranıyla (tasarım tablosu, kesit tanımı gibi:
+            aks–kat motoru verilmeyen ρ'yu 0,01 alır)."""
+            k_ = dict(kt, b=on_["b"], h=on_["h"])
+            if tur == "kolon":
+                k_.update({"donati_orani": on_.get("rho") or Y._RHO_VARSAYILAN, "As": None})
+            return k_
+
+        As0 = _kolon_As(B, kt, ks, c) if tur == "kolon" else None
+        rho0 = As0 / (kt["b"] * kt["h"] * 1e4) if As0 else Y._RHO_VARSAYILAN
+
+        def dc_ayni(on_):
+            """Kesit aynı: kaydın D/C'si; kolonda öneri daha çok boyuna donatı istiyorsa o donatıyla (b × h değişmez)."""
+            if tur == "kolon" and (on_.get("rho") or Y._RHO_VARSAYILAN) > rho0 + 1e-9:
+                return kayit_dc(kart(on_))
+            return dc_kayit
+
         if on.get("b"):
             ayni = abs(on["b"] - kt["b"]) < 1e-9 and abs(on["h"] - kt["h"]) < 1e-9
-            dc_oneri = dc_kayit if ayni else kayit_dc(dict(kt, b=on["b"], h=on["h"]))
+            dc_oneri = dc_ayni(on) if ayni else kayit_dc(kart(on))
             ilk = (on["b"], on["h"], dc_oneri)
             for _ in range(_ONER_DOGRULAMA):
                 # kaydın bütün kurallarıyla (koşul satırları, kesme, TBDY) yetmiyor: bir adım büyük kesit (kiriş h, kolon en küçük boyut)
@@ -3360,7 +3428,7 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
                     break
                 on = on2
                 ayni = abs(on["b"] - kt["b"]) < 1e-9 and abs(on["h"] - kt["h"]) < 1e-9
-                dc_oneri = dc_kayit if ayni else kayit_dc(dict(kt, b=on["b"], h=on["h"]))
+                dc_oneri = dc_ayni(on) if ayni else kayit_dc(kart(on))
             if (on["b"], on["h"]) != ilk[:2]:
                 if dc_oneri is not None and dc_oneri <= 1.0 + 1e-9:
                     gerekce.append(f"{_f(ilk[0] * 1000, 0)} × {_f(ilk[1] * 1000, 0)} mm kaydın bütün kurallarıyla yetersiz (D/C = "
@@ -3379,6 +3447,9 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
                     "b_once": kt["b"], "h_once": kt["h"], "dc_oneri": _r5(min(dc_oneri, 99.0)) if dc_oneri is not None else None,
                     "degisim": degisim, "gerekce": gerekce, "durum": durum,
                     "donati": kt.get("donati"), "pas": kt.get("pas")})
+        if tur == "kolon" and on.get("b"):
+            # gerekli boyuna donatı oranı (ρ > 0,01 ise uygula tanımına yazılır: aks–kat motoru verilmeyen ρ'yu 0,01 alır)
+            out["donati_orani"] = round(float(on.get("rho") or Y._RHO_VARSAYILAN), 6)
         return out
     out.update({"gerekce": ["Bu çubuk için öneri yok."]})
     return out
@@ -3415,9 +3486,14 @@ def _oneri_kesit(kes, kesit, en):
         kes.setdefault(ad, {"tip": "profil", "profil": en["oneri"], "malzeme": en["malzeme"]})
         return ad, kes[ad], yeni, ek
     ad = f"B{_f(en['b'] * 100, 0)}x{_f(en['h'] * 100, 0)}"
+    rho = en.get("donati_orani")
+    rho = rho if rho is not None and rho > Y._RHO_VARSAYILAN + 1e-9 else None      # kolon: gerekli ρ > 0,01 kesitte yazılır
+    if rho is not None:
+        ad += f"-ρ%{rho * 100:.2f}"
     tanim = {"tip": "dikdortgen", "b": en["b"], "h": en["h"], "malzeme": en["malzeme"],
-             **({"donati": en["donati"]} if en.get("donati") else {}), **({"pas": en["pas"]} if en.get("pas") else {})}
-    if ad in kes and any(kes[ad].get(a) != tanim.get(a) for a in ("tip", "b", "h", "malzeme")):
+             **({"donati": en["donati"]} if en.get("donati") else {}), **({"pas": en["pas"]} if en.get("pas") else {}),
+             **({"donati_orani": rho} if rho is not None else {})}
+    if ad in kes and any(kes[ad].get(a) != tanim.get(a) for a in ("tip", "b", "h", "malzeme", "donati_orani", "As")):
         ad = f"{ad}-{en['malzeme']}"
     yeni = ad not in kes
     kes.setdefault(ad, tanim)
@@ -3969,7 +4045,9 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     if ic is not None and not ic.get("serbest"):
         gorunen = ic if gorunen is None else gorunen
         if bina is None:
-            bina = ic.get("bina")
+            bina = ic.get("bina")            # köprü önbelleği; doğrudan yapi.bina_coz paketinde normalize girdi (alan.B.ham)
+            if bina is None:
+                bina = getattr((ic.get("alan") or {}).get("B"), "ham", None)
         ic = None
     if ic is None:
         if bina is None:

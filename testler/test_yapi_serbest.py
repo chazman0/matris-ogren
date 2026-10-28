@@ -571,6 +571,33 @@ def test_betonarme_dc_kosul_satirlari():
     assert any("en küçük boyutu ≥ 300" in x["ad"] and x["kosul"] for x in kont)
 
 
+def test_betonarme_kolon_donati_kurali_aks_kat_ile_ayni():
+    """Kolon D/C'si iki motorda aynı donatıyla: kesitte donati_orani / As verilmişse o, yoksa ρ = 0,01 (gerekli ρ özette); eskiden
+    genel motor ρ'yu 0,04'e kadar tarayıp yetersiz kolonu 'yeterli' gösterirdi (aks–kat: 'donatı artır')."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["kesitler"]["S30x30"] = {"tip": "dikdortgen", "b": 0.3, "h": 0.3, "malzeme": "C30", "donati": "B420C", "pas": 0.03}
+    for k in b["kolonlar"]:
+        k["kesit"] = "S30x30"
+    for rho in (None, 0.03):
+        x = copy.deepcopy(b)
+        if rho:
+            x["kesitler"]["S30x30"]["donati_orani"] = rho
+        v1 = coz(copy.deepcopy(x)).veri
+        x["surum"] = 3
+        v3 = coz(x).veri
+        t1 = {(k["tur"], k["no"]): k for k in v1["tasarim"]["elemanlar"]}
+        kol = [(k, t1[(k["kaynak"]["aks_kat"], k["kaynak"]["no"])]) for k in v3["tasarim"]["elemanlar"] if k["tur"] == "kolon"]
+        assert [k["durum"] for k, _ in kol] == [k1["durum"] for _, k1 in kol]
+        assert [k["dc"] > 1.0 for k, _ in kol] == [k1["dc"] > 1.0 for _, k1 in kol]
+        if rho is None:
+            assert sum(k["durum"] == "donatı artır" for k, _ in kol) >= 20                # ρ = 0,01 yetmiyor
+            assert all(k["ozet"]["rho_varsayim"] and k["ozet"]["rho"] == pytest.approx(0.01) for k, _ in kol)
+            assert all(k["ozet"]["rho_gerekli"] >= 0.01 for k, _ in kol if k["ozet"]["rho_gerekli"] is not None)
+        else:
+            assert all(k["dc"] == pytest.approx(k1["dc"], rel=0.03) for k, k1 in kol)
+            assert all(not k["ozet"]["rho_varsayim"] and k["ozet"]["rho"] == pytest.approx(rho) for k, _ in kol)
+
+
 def _ba_girdisi(T, c):
     """_ba_kontroller girdileri (test): _cubuk_tasarla'nın betonarme dalını yeniden kurmadan T.sonuclar'dan."""
     import tasarim
