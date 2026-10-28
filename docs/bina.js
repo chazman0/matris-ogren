@@ -593,7 +593,10 @@
     if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("Bina bir JSON nesnesi olmalı ({\"tur\": \"bina\", \"akslar\": …}).");
     if (m.tur && m.tur !== "bina") throw new Error("Bu JSON bir bina modeli değil (tur = “" + m.tur + "”). Sonlu eleman modelleri için Sonlu eleman sayfasını kullanın.");
     const b = kopya(m);
-    b.tur = "bina"; b.surum = Math.max(1, surumSayi(m.surum));     // surum 3 listeleri (çubuk/panel/aks sistemi) korunur (K2: tam kısım, 2.9 → 2)
+    // surum 3 listeleri (çubuk/panel/aks sistemi) korunur (K2: tam kısım, 2.9 → 2). Çok uzun rakam dizisi sonsuz verir (≥ 3: genel):
+    // JSON'a null yazılıp aks–kat'a dönmesin diye 3
+    const sv = surumSayi(m.surum);
+    b.tur = "bina"; b.surum = isFinite(sv) ? Math.max(1, sv) : sv > 0 ? 3 : 1;
     b.akslar = b.akslar || { x: [], y: [] };
     ["x", "y"].forEach(function (e) {
       // §19.1 ek alanları (tur, gorunur, balon) korunur
@@ -1589,11 +1592,13 @@
         if (k && k.dokun) {      // kayıtlı kip (ölçüm; bina_cizim.js çizim araçları)
           // aks–kat kiriş / döşeme / kolon vuruş hedefleri yalnız etkin katta: başka kattaki elemana dokunulduysa, elemana uygulanması
           // güvenli kipler (yük ata: yük penceresi açar) o elemanı alır; kat adı iletide söylenir
-          const d = !(h && h.kind === "nesne") && KAT_DISI_KIPLER[D.arac] ? digerKatElemani(e) : null;
+          const d = !(h && h.kind === "nesne") && KAT_DISI_KIPLER[D.arac] && !dugumYakalanir(p) ? digerKatElemani(e) : null;
           if (d && KAT_DISI_KIPLER[D.arac].indexOf(d.tur) >= 0) {
             A.toast(digerKatAdi(d) + " — etkin kat " + katAd(D.kat) + "; " + KIP_ADI_KAT[D.arac] + " bu elemana uygulanıyor.");
             k.dokun(p, e, { kind: "nesne", nesne: d.tur, no: d.no, kat: d.kat }); return;
           }
+          // kipin uygulamadığı türler (yük ata: aks–kat kolonu) kipe verilir: genel "bir elemana dokunun" yerine nedenini söyler
+          if (d && (KAT_DISI_ILET[D.arac] || []).indexOf(d.tur) >= 0) { k.dokun(p, e, { kind: "nesne", nesne: d.tur, no: d.no, kat: d.kat }); return; }
           k.dokun(p, e, h); return;
         }
         aracUygula(h, p, e);
@@ -1637,6 +1642,7 @@
   // Başka kattaki elemanı kendi kipinde alabilen kipler (elemana uygulanması güvenli: yalnız pencere açar) ve kabul ettikleri türler
   const KAT_DISI_KIPLER = { "yuk-ata": ["kiris", "doseme"] };
   const KIP_ADI_KAT = { "yuk-ata": "Yük ata" };
+  const KAT_DISI_ILET = { "yuk-ata": ["kolon"] };
   // aks–kat kolon / kiriş / döşeme vuruş hedefleri (C.vurus) yalnız etkin kattadır; dokunulan noktada DOM'da başka kata ait bir
   // eleman (duvar → kirişi) varsa {tur, no, kat}
   function digerKatElemani(e) {
@@ -1650,6 +1656,15 @@
     const n = nesneBul(tur, no);
     if (!n || n.kat == null || +n.kat === D.kat) return null;
     return { tur: tur, no: no, kat: +n.kat };
+  }
+  // Yük ata önce düğüm / aks kesişimi yakalar (bina_cizim.js yuk-ata dokun; düğüm yükü penceresi): nokta bir düğüme yakınsa başka
+  // kattaki elemana yönlendirilmez ("bu elemana uygulanıyor" iletisi ardından düğüm penceresi açılmasın). Düzlem süzgeci yok: 3B'de
+  // kipin yakalamasıyla aynı, düzlem görünümlerinde onun üst kümesi (yönlendirme yalnız kesin elemana dokunuşta)
+  function dugumYakalanir(p) {
+    const O = modul("MatrisOlcum"), sb = SAHNE_BAGLAM;
+    if (!O || typeof O.yakala !== "function" || !sb || !p) return false;
+    try { const y = O.yakala(p, olcumGeo(), { kip: "cizim", cevir: sb.P3, tol: 16 * pxOlcek(), turler: ["dugum", "aks"] }); return !!(y && y.ref); }
+    catch (x) { return false; }
   }
   function digerKatAdi(d) {
     return ({ kolon: "Kolon ", kiris: "Kiriş ", doseme: "Döşeme " }[d.tur] || "") + d.no + " “" + katAd(d.kat) + "” katında (kat " + d.kat + ")";
@@ -1888,9 +1903,16 @@
       // eski çatı artık ara kat: parapet yüksekliği (duvar_h) yeni çatının kopyalarında kalır, eski çatıda kat yüksekliğinde duvar
       parapet = parapetKaldir(ust);
     }
+    // boş kat: üst kat boşken eski çatı fiilen çatıdır, parapetleri (duvar_h) kalır; "Alt katı kopyala" onları yeni çatıya taşır.
+    // Yeni kat elle kurulursa bu kirişlerde duvar parapet yüksekliğinde kalır: söylenir
+    const kalan = kopyala ? 0 : B.kirisler.filter(function (k) { return k.kat === ust && k.duvar_h != null; }).length;
     D.kat = yeni;
     degisti();
     if (parapet) A.toast(parapetNotu(parapet));
+    else if (kalan) {
+      A.toast("“" + katAd(ust) + "” katındaki " + kalan + " kirişte çatı parapeti (duvar_h) duruyor. “Alt katı kopyala” onu yeni çatıya taşır; yeni katı elle " +
+        "kurarsanız bu kirişlerin duvar yüksekliğini Tablolar › Duvar yükleri'nde boşaltın (boş = kat yüksekliği).");
+    }
   }
   // Çatı kirişlerindeki duvar_h (şablonda 1,0 m parapet) o kat ara kat olunca anlamını yitirir: kaldırılır, duvar kat yüksekliğinde
   // (kat yüksekliği − kiriş) hesaplanır. Kaldırılan kiriş sayısı.
@@ -1907,6 +1929,10 @@
     const ust = ustKat();
     if (no !== ust && !window.confirm(katAd(no) + " ve üstündeki katlar bir alt kota kayar; bu kattaki elemanlar silinir. Devam?")) return;
     const h = katH(no);
+    const geri = no === ust && no > 1 ? parapetGeriTasi(no, no - 1) : 0;
+    // silinen çatının adı ("Çatı") alttaki katın kendiliğinden adı ("2. kat") yerine geçer (+Kat'ın yeniden adlandırmasının tersi)
+    const catiAdi = no === ust ? (B.katlar.filter(function (k) { return k.no === no; })[0] || {}).ad : null;
+    if (catiAdi === "Çatı") B.katlar.forEach(function (k) { if (k.no === no - 1 && k.ad === (no - 1) + ". kat") k.ad = "Çatı"; });
     zKatSil(no, h);
     B.kolonlar = B.kolonlar.filter(function (c) { return c.kat !== no; }).map(function (c) { if (c.kat > no) c.kat--; return c; });
     B.kirisler = B.kirisler.filter(function (k) { return k.kat !== no; }).map(function (k) { if (k.kat > no) k.kat--; return k; });
@@ -1914,6 +1940,18 @@
     B.katlar = B.katlar.filter(function (k) { return k.no !== no; }).map(function (k) { if (k.no > no) { k.no--; k.kot = +(k.kot - h).toFixed(3); } return k; });
     D.kat = Math.min(D.kat, ustKat());
     degisti();
+    if (geri) A.toast(geri + " kirişe silinen çatının parapet yüksekliği (duvar_h) geri verildi; “" + katAd(ustKat()) + "” yeniden çatı.");
+  }
+  // En üst kat (çatı) silinince alttaki kat çatı olur: silinen çatıdaki parapetli (duvar_h) kirişlerle aynı akstaki, duvarlı ve duvar_h'si
+  // olmayan kirişlere aynı parapet yüksekliği verilir (+Kat → Üsttekini kopyala'nın tersi). Değişen kiriş sayısı.
+  function parapetGeriTasi(cati, alt) {
+    let n = 0;
+    B.kirisler.forEach(function (k) {
+      if (k.kat !== cati || k.duvar_h == null || k.duvar_h === "") return;
+      const a = kirisBul(k.bas, k.son, alt);
+      if (a && a.duvar && (a.duvar_h == null || a.duvar_h === "")) { a.duvar_h = k.duvar_h; n++; }
+    });
+    return n;
   }
   function katKopyalaAlttan() {
     const alt = D.kat - 1;

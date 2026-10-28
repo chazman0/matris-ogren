@@ -265,8 +265,9 @@ def test_s3var_c1_dogruluk_tablosu(sayfa):
         return [MatrisBina.bina().surum, MatrisBina.s3Var()]; });
       MatrisBina.binaAyarla(taban, { geriAl: false });
       return out;
-    }""", [2.9, "3.0", "3.5", "3a", "1e1", 1, True])
-    assert surumlar == [[2, False], [3, True], [3, True], [1, False], [1, False], [1, False], [1, False]]
+    }""", [2.9, "3.0", "3.5", "3a", "1e1", 1, True, "9" * 400, "-" + "9" * 400])
+    # çok uzun rakam dizisi: JS'de ±Infinity (motor _surum_sayi da öyle) → +: genel (surum 3; JSON'a null yazılmaz), −: aks–kat
+    assert surumlar == [[2, False], [3, True], [3, True], [1, False], [1, False], [1, False], [1, False], [3, True], [1, False]]
     _hatasiz(hatalar, "C1")
 
 
@@ -300,6 +301,7 @@ KUTU_KESISIM_JS = """() => {
   }
   return out;
 }"""
+KUTU_ACIK_JS = "Array.from(document.querySelectorAll('.arac-kutu')).filter(k => k.offsetParent && !k.classList.contains('arac-katli')).map(k => k.dataset.kutu)"
 # görünür bir kutunun düğmesi başka bir kutunun altında mı (düğme ortasında elementFromPoint)
 KUTU_ORTULU_JS = """() => {
   const out = [];
@@ -343,6 +345,17 @@ def test_arac_kutulari_birbirine_binmez(tarayici, sunucu, en, boy):
                 assert pg.evaluate(KUTU_KESISIM_JS) == [], f"{kid} yeniden katlanınca"
         if en >= 1366:
             assert acilan == katli, f"{en}×{boy}: açılamayan kutu: {sorted(set(katli) - set(acilan))}"
+        # pencere daralıp genişleyince (yan panel, geliştirici araçları …) yer kalmadığı için kendiliğinden katlanan kutular (ör. Sonuç)
+        # yer açılınca yeniden açılır: açık kutular baştakiyle aynı, kutular yine birbirine binmez
+        acik0 = sorted(pg.evaluate(KUTU_ACIK_JS))
+        for dw, dh in ((250, 150), (0, 200)):
+            pg.set_viewport_size({"width": en - dw, "height": boy - dh})
+            pg.wait_for_timeout(400)
+            pg.set_viewport_size({"width": en, "height": boy})
+            pg.wait_for_timeout(400)
+            assert sorted(pg.evaluate(KUTU_ACIK_JS)) == acik0, f"{en}×{boy} → −{dw}×{dh} → geri"
+            assert pg.evaluate(KUTU_KESISIM_JS) == [], f"{en}×{boy} → −{dw}×{dh} → geri"
+            assert pg.evaluate(KUTU_ORTULU_JS) == [], f"{en}×{boy} → −{dw}×{dh} → geri"
         _hatasiz(hatalar, f"araç kutuları {en}×{boy}")
     finally:
         ctx.close()
@@ -400,11 +413,23 @@ def test_kat_kopyasi_parapeti_ara_kata_tasimaz(sayfa, kopru):
     G = pg.evaluate("MatrisBina.veri().yukler.toplam.G")
     assert G == pytest.approx(_kopru_coz(kopru, b)["yukler"]["toplam"]["G"], rel=1e-9)
     assert G == pytest.approx(1379.7, abs=0.05)
-    # Boş kat + "Alt katı kopyala" (kat 3 etkin): kat 2 fiilen çatıydı, parapeti kat 3'e geçer
+    # en üst kat silinince (+Kat'ın tersi) alttaki kat yeniden "Çatı" olur ve parapetleri geri gelir: şablonla aynı model ve ΣG
+    pg.evaluate("document.querySelector(\"[data-kat-islem='sil']\").click()")
+    pg.wait_for_timeout(200)
+    b = pg.evaluate("MatrisBina.bina()")
+    assert [k["ad"] for k in b["katlar"]] == [k["ad"] for k in ham["katlar"]]
+    assert _parapetler(b, 2) == parapet
+    assert "geri verildi" in pg.evaluate("document.getElementById('toast-metin').textContent")
+    assert _coz(pg) is True, _hata_metni(pg)
+    assert pg.evaluate("MatrisBina.veri().yukler.toplam.G") == pytest.approx(_kopru_coz(kopru, ham)["yukler"]["toplam"]["G"], rel=1e-9)
+    # Boş kat + "Alt katı kopyala" (kat 3 etkin): kat 2 fiilen çatıydı, parapeti kat 3'e geçer. Boş kat eklenince eski çatıdaki
+    # parapetler (üst kat boşken doğru) kalır ve kullanıcıya söylenir
     _sablon(pg, "betonarme-2kat-3x2")
     pg.evaluate("document.querySelector(\"[data-kat-islem='bos']\").click()")
     pg.wait_for_timeout(150)
     assert pg.evaluate("MatrisBina.gorunum().kat") == 3
+    assert _parapetler(pg.evaluate("MatrisBina.bina()"), 2) == parapet
+    assert "çatı parapeti (duvar_h) duruyor" in pg.evaluate("document.getElementById('toast-metin').textContent")
     pg.evaluate("document.getElementById('bn-kat-kopyala').click()")
     pg.wait_for_timeout(150)
     b = pg.evaluate("MatrisBina.bina()")
@@ -487,6 +512,12 @@ def test_baska_kattaki_kirise_yuk_ata_ve_kat_iletisi(sayfa):
     no = pg.evaluate("MatrisBina.bina().kirisler.filter(k => k.kat === 2 && k.bas.join('') === 'A1' && k.son.join('') === 'B1')[0].no")
     assert baslik == f"Yük: Kiriş {no}", baslik
     assert "Çatı" in pg.evaluate("document.getElementById('toast-metin').textContent")
+    # başka kattaki düğüme (çatı A1) dokunuş: kip önce düğüm yakalar → düğüm yükü penceresi; "kirişe uygulanıyor" iletisi verilmez
+    pg.evaluate("MatrisBina.kaplamaKapat(); document.getElementById('toast-metin').textContent = ''")
+    _tikla(pg, (0, 0, 6))
+    baslik = pg.evaluate("(document.querySelector('.bn-kaplama h2') || {}).textContent || ''")
+    assert baslik.startswith("Yük: Düğüm A-1"), baslik
+    assert "uygulanıyor" not in pg.evaluate("document.getElementById('toast-metin').textContent")
     pg.evaluate("MatrisBina.kaplamaKapat(); MatrisBina.kipAyarla('sec'); MatrisBina.seciliAyarla([])")
     # Seç etkin kata uygulanır: başka kattaki kirişe dokununca hangi katın etkinleştirileceği söylenir
     _tikla(pg, (2.5, 0, 6))

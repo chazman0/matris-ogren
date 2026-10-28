@@ -399,3 +399,17 @@ test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanın�
   assert.equal(D.kutuBul(D.dogrula({ kutular: [{ id: "x", komutlar: ["sec"] }] }), "x").katli, false);
   assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { katli: false }), id).katli, false);
 });
+
+test("kendiliğinden katlanan kutu (otoKatli): doğrula yalnız katlı kutuda korur; kullanıcı katlayınca / açınca işaret düşer", function () {
+  const y0 = D.varsayilan();
+  const id = y0.kutular[0].id;
+  const y1 = D.kutuGuncelle(y0, id, { katli: true });
+  D.kutuBul(y1, id).otoKatli = true;                               // _konumla yer kalmayınca koyar
+  assert.equal(D.kutuBul(D.dogrula(JSON.parse(JSON.stringify(y1))), id).otoKatli, true);
+  const acik = JSON.parse(JSON.stringify(y1));
+  D.kutuBul(acik, id).katli = false;
+  assert.equal("otoKatli" in D.kutuBul(D.dogrula(acik), id), false);   // açık kutuda anlamsız: atılır
+  assert.equal("otoKatli" in D.kutuBul(D.dogrula(y0), id), false);     // başka kutulara alan eklenmez
+  assert.equal("otoKatli" in D.kutuBul(D.kutuGuncelle(y1, id, { katli: true }), id), false);   // kullanıcının kararı
+  assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { kucuk: false }), id).otoKatli, true);       // başka alan işareti bozmaz
+});

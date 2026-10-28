@@ -803,7 +803,8 @@
     const qVar = sk.some(function (s) { return s.durum === "Q" && +s.kN > 1e-9; });
     const goster = sutun.filter(function (d) { return d !== "Q" || qVar; });
     const out = [];
-    out.push({ baslik: "Akış şeması (" + goster.filter(function (d) { return durumlar[d]; }).join(" + ") + ", kN)", svg: akisSvg(gelen, id, giden) });
+    const baslikD = goster.filter(function (d) { return durumlar[d]; });
+    out.push({ baslik: "Akış şeması (" + (baslikD.length ? baslikD : goster).join(" + ") + ", kN)", svg: akisSvg(gelen, id, giden) });
     const deger = function (r_) { return goster.map(function (d) { return f(r_.d[d] || 0, 2); }); };
     const sat = gelen.map(function (r_) { return ["← gelen", sankeyAdi(r_.ad)].concat(deger(r_)); })
       .concat(giden.map(function (r_) { return ["→ giden", sankeyAdi(r_.ad)].concat(deger(r_)); }));

@@ -418,6 +418,15 @@
       if (c && typeof c === "object" && isFinite(+c.x) && isFinite(+c.y)) {
         kk.konum = { x: Math.max(0, Math.round(+c.x)), y: Math.max(0, Math.round(+c.y)), yx: c.yx === "sag" ? "sag" : "sol", yy: c.yy === "alt" ? "alt" : "ust" };
       }
+      // yer olmadığı için kendiliğinden katlanan kutu (kullanıcı katlamadı): yer açılınca yeniden açılır (_konumla); otoKonum açıkken
+      // bulunduğu çapa (yeniden açılınca önce oraya döner)
+      if (k.otoKatli === true && kk.katli) {
+        kk.otoKatli = true;
+        const o = k.otoKonum;
+        if (o && typeof o === "object" && isFinite(+o.x) && isFinite(+o.y)) {
+          kk.otoKonum = { x: Math.max(0, Math.round(+o.x)), y: Math.max(0, Math.round(+o.y)), yx: o.yx === "sag" ? "sag" : "sol", yy: o.yy === "alt" ? "alt" : "ust" };
+        }
+      }
       out.kutular.push(kk);
     });
     return out;
@@ -486,6 +495,8 @@
       if (a === "yon") v = v === "dikey" ? "dikey" : "yatay";
       if (a === "saydamlik") v = Math.max(0.3, Math.min(1, +v || 1));
       if (a === "kucuk" || a === "kilitli" || a === "gizli" || a === "katli") v = !!v;
+      if (a === "katli") { delete k.otoKatli; delete k.otoKonum; }     // kullanıcının kararı: kendiliğinden yeniden açılmaz
+      if (a === "konum") delete k.otoKonum;                           // kullanıcı taşıdı: yeniden açılınca yeni yerinde
       k[a] = v;
     });
     return y;
@@ -546,6 +557,15 @@
     let x = k.yx === "sag" ? W - k.x - w : k.x, y = k.yy === "alt" ? H - k.y - h : k.y;
     x = Math.max(0, Math.min(x, W - w)); y = Math.max(0, Math.min(y, H - h));
     return { x: Math.round(Math.max(0, x)), y: Math.round(Math.max(0, y)) };
+  }
+  /** Kutunun katla düğmesi (▸ / ▾) kutunun katli durumuna göre. */
+  function katlaDugmesi(d, kt) {
+    const kb = d && d.querySelector(".arac-kutu-katla");
+    if (!kb) return;
+    kb.textContent = kt.katli ? "▸" : "▾";
+    kb.setAttribute("aria-expanded", String(!kt.katli));
+    kb.setAttribute("aria-label", kt.ad + (kt.katli ? " kutusunu aç" : " kutusunu katla"));
+    kb.title = kt.katli ? "Aç" : "Katla (yalnız başlık)";
   }
   function cakisir(a, b, ara_) {
     const g = ara_ == null ? ARALIK : ara_;
@@ -1100,7 +1120,8 @@
    * Kutuları ölç, konumu olmayanları otomatik yerleştir, çapalardan mutlak konuma çevir. Çapadan gelen konum daha önce yerleşmiş bir
    * kutuya biniyorsa (kapsayıcı boyu değişti, kutu açıldı ve çapası yüzünden büyüyünce komşusunun üstüne taştı) o kutu da otomatik
    * yerleştirilir (yer yoksa başlığına katlanır) ve çapası yeniden yazılır. Son açılan kutu en sona alınır: çakışırsa yer değiştiren
-   * komşusu değil kendisidir.
+   * komşusu değil kendisidir. Yer olmadığı için kendiliğinden katlanan kutu (otoKatli; kullanıcı katlamadı) yer açılınca — çapasında
+   * açık boyuyla hiçbir kutuya binmiyorsa — yeniden açılır: pencerenin geçici daralması Sonuç gibi kutuları kalıcı kapatmaz.
    */
   Y._konumla = function () {
     const W = this.kap.clientWidth, H = this.kap.clientHeight;
@@ -1117,6 +1138,53 @@
     let degisti = false;
     const acilan = this._sonAcilan;
     this._sonAcilan = null;
+    // kendiliğinden katlanmış kutular (otoKatli): açık boyuyla önce çapasında, olmazsa tercih ettiği kenardan başlayarak (otomatik
+    // yerleşimin serbest araması) öteki kutuların (çapalarındaki şimdiki boyları) ve yönetici düğmesinin hiçbirine binmeyen yer varsa
+    // açılır. Yerleşim sırasında kendisinden sonra gelen katlı kutular engel sayılmaz: onlar aşağıdaki geçişte başka yere taşınır
+    // (ör. pencere daralıp genişleyince Sonuç, yanına yerleşmiş katlı Ölçme başlığı yüzünden kapalı kalmasın)
+    const oto = this.y.kutular.filter(function (kt) { return kt.otoKatli && kt.katli && kt.konum && els.get(kt.id); });
+    if (oto.length) {
+      const dik = new Map(), sira_ = new Map();
+      this.y.kutular.forEach(function (kt, i) { sira_.set(kt.id, i); });
+      this.y.kutular.forEach(function (kt) {
+        const d = els.get(kt.id);
+        if (!d || !kt.konum || !d.offsetWidth) return;
+        const m = mutlak(kt.konum, d.offsetWidth, d.offsetHeight, W, H);
+        dik.set(kt.id, { x: m.x, y: m.y, w: d.offsetWidth, h: d.offsetHeight });
+      });
+      oto.forEach(function (kt) {
+        const d = els.get(kt.id), kw = d.offsetWidth, kh = d.offsetHeight;
+        d.classList.remove("arac-katli");
+        const w = d.offsetWidth, h = d.offsetHeight;
+        const digerleri = [];
+        dik.forEach(function (q, id) {
+          if (id === kt.id) return;
+          const o = kutuBul(self.y, id);
+          if (o && o.katli && sira_.get(id) > sira_.get(kt.id)) return;      // sonraki katlı kutu: yer değiştirebilir
+          digerleri.push(q);
+        });
+        let r = null;
+        if (w > 0 && h > 0 && w <= W - 2 * BOSLUK && h <= H - 2 * BOSLUK) {
+          // açıkken bulunduğu çapa (otoKonum), sonra katlı başlığın çapası
+          [kt.otoKonum, kt.konum].forEach(function (cp) {
+            if (r || !cp) return;
+            const m = mutlak(cp, w, h, W, H), c = { x: m.x, y: m.y, w: w, h: h };
+            if (!digerleri.some(function (q) { return cakisir(c, q, 0); })) { r = c; kt.konum = cp; }
+          });
+          if (!r) {
+            const q = otomatikYerlestir([{ id: kt.id, w: w, h: h, kenar: kt.kenar || (kt.konum.yx === "sag" ? "sag" : "sol"), kw: kw, kh: kh, serbest: true }], W, H,
+              digerleri.concat(sabit)).get(kt.id);
+            if (q && !q.katla) { r = { x: q.x, y: q.y, w: w, h: h }; kt.konum = capa(q.x, q.y, w, h, W, H); }
+          }
+        }
+        if (!r) { d.classList.add("arac-katli"); return; }
+        kt.katli = false; delete kt.otoKatli; delete kt.otoKonum;
+        dik.set(kt.id, r);
+        katlaDugmesi(d, kt);
+        self._gezintiHazirla(d);
+        degisti = true;
+      });
+    }
     const sira = this.y.kutular.slice();
     if (acilan) { const i = sira.findIndex(function (k) { return k.id === acilan; }); if (i >= 0) sira.push(sira.splice(i, 1)[0]); }
     sira.forEach(function (kt) {
@@ -1133,7 +1201,7 @@
         let kw = w, kh = h;
         if (!kt.katli) { d.classList.add("arac-katli"); kw = d.offsetWidth; kh = d.offsetHeight; d.classList.remove("arac-katli"); }
         // kullanıcının az önce açtığı kutu açık boyuyla bütün alanda boş yer arar (sahnenin üstüne gelebilir; açma isteği karşılanır)
-        bekleyen.push({ id: kt.id, w: w, h: h, kenar: kt.kenar || (kt.konum.yx === "sag" ? "sag" : "sol"), kw: kw, kh: kh, serbest: kt.id === acilan });
+        bekleyen.push({ id: kt.id, w: w, h: h, kenar: kt.kenar || (kt.konum.yx === "sag" ? "sag" : "sol"), kw: kw, kh: kh, serbest: kt.id === acilan, yerlesik: true });
       } else {
         // katlanmış (yalnız başlık) boy: kenar şeridinde yer yoksa kutu sahnenin ortasına değil, başlığıyla yerleşir
         let kw = w, kh = h;
@@ -1142,21 +1210,30 @@
       }
     });
     if (bekleyen.length) {
-      const yer = otomatikYerlestir(bekleyen, W, H, sabit);
+      const yer = otomatikYerlestir(bekleyen, W, H, sabit), sigmayan = [];
       bekleyen.forEach(function (b) {
         const q = yer.get(b.id), d = els.get(b.id), kt = kutuBul(self.y, b.id);
         if (q.katla && !kt.katli) {
           kt.katli = true;
           d.classList.add("arac-katli");
-          const kb = d.querySelector(".arac-kutu-katla");
-          if (kb) { kb.textContent = "▸"; kb.setAttribute("aria-expanded", "false"); kb.setAttribute("aria-label", kt.ad + " kutusunu aç"); kb.title = "Aç"; }
+          katlaDugmesi(d, kt);
           self._gezintiHazirla(d);
-          if (b.id === acilan) self.bildir("“" + kt.ad + "” kutusu açılınca öteki kutulara biniyordu ve boş yer yok; katlı bırakıldı. Başka bir kutuyu katlayın ya da taşıyın.");
+          if (b.id === acilan) {
+            self.bildir("“" + kt.ad + "” kutusu açılınca öteki kutulara biniyordu ve boş yer yok; katlı bırakıldı. Başka bir kutuyu katlayın ya da taşıyın" +
+              (kt.yon === "dikey" ? "; ya da ⋯ menüsünden kutuyu yatay yapın." : "."));
+          } else {
+            // kullanıcı katlamadı, yer kalmadı: yer açılınca kendiliğinden yeniden açılır (önce açıkken bulunduğu çapada)
+            kt.otoKatli = true;
+            if (b.yerlesik && kt.konum && !kt.otoKonum) kt.otoKonum = Object.assign({}, kt.konum);
+            if (b.yerlesik) sigmayan.push(kt.ad);
+          }
         }
         d.style.left = q.x + "px"; d.style.top = q.y + "px";
         kt.konum = capa(q.x, q.y, q.katla ? b.kw : b.w, q.katla ? b.kh : b.h, W, H);
         degisti = true;
       });
+      if (sigmayan.length) self.bildir(sigmayan.map(function (a) { return "“" + a + "”"; }).join(", ") + (sigmayan.length > 1 ? " kutuları" : " kutusu") +
+        " sığmadığı için katlandı; yer açılınca yeniden açılır.");
     }
     if (yb) { yb.style.left = BOSLUK + "px"; yb.style.bottom = BOSLUK + "px"; }
     if (degisti) this._kaydet();
