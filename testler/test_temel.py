@@ -384,7 +384,8 @@ def test_sablonlar_cozulur(sablonlar):
         assert all(t["durum"] == "yeterli" for t in T["tasarim"])
         assert v["deprem"] and any("E" in (k.get("q_o_kombinasyon") or "") for k in [T])        # TBDY 16.8: deprem birleşimi belirleyici
         assert len(json.dumps(v, ensure_ascii=False)) < 2_000_000
-    assert [x["ad"] for x in yapi.bina_sablonlar()][-2:] == ["betonarme-3kat-surekli-temel", "betonarme-4kat-radye"]
+    aks_kat = [x["ad"] for x in yapi.bina_sablonlar() if int(yapi.BINA_SABLONLARI[x["ad"]].get("surum", 1)) < 3]
+    assert aks_kat[-2:] == ["betonarme-3kat-surekli-temel", "betonarme-4kat-radye"]
 
 
 def test_kopru_bina_coz_ve_kombinasyon():

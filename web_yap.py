@@ -50,7 +50,7 @@ def yapi_kopyala() -> str:
     tablolar.py: tablo editörü ve metraj, köprü "bina_tablolar";
     alan.py: ısı haritası alanları, köprü "bina_alan")."""
     bilgi = []
-    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py", "alan.py"):
+    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py", "alan.py", "yapi_serbest.py"):
         kaynak = KOK / ad
         if not kaynak.exists():
             bilgi.append(f"{ad}: yok (atlandı)")

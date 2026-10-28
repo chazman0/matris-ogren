@@ -35,7 +35,7 @@ def yanit(kopru):
 
 def test_islemler_tanimli(kopru):
     assert {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem",
-            "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan"} <= kopru.BINA_ISLEMLER
+            "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner"} <= kopru.BINA_ISLEMLER
     assert kopru._yapi_modulu() is not None
 
 

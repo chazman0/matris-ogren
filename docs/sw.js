@@ -3,7 +3,7 @@
    CDN önbelleği (Pyodide, sympy/numpy tekerlekleri, KaTeX, marked) ayrı tutulur; sürümler değişmedikçe kalır. */
 "use strict";
 
-const SURUM = "f9dd26b7a2";
+const SURUM = "0bae431d8c";
 const PYODIDE_SURUM = "314.0.7";
 const KATEX_SURUM = "0.19.0";
 const MARKED_SURUM = "18.1.0";
@@ -14,7 +14,7 @@ const CDN = "https://cdn.jsdelivr.net/";
 
 const KABUK = [
   "./", "./index.html", "./style.css", "./app.js", "./motor.worker.js", "./web_kopru.py", "./matris_ogren.py",
-  "./sonlu_eleman.py", "./yapi.py", "./yapi_veri.py", "./tasarim.py", "./rapor.py", "./temel.py", "./tablolar.py", "./alan.py", "./etkilesim.js", "./etkilesim_matris.js", "./etkilesim_se.js", "./etkilesim_yapi.js", "./se.js",
+  "./sonlu_eleman.py", "./yapi.py", "./yapi_veri.py", "./tasarim.py", "./rapor.py", "./temel.py", "./tablolar.py", "./alan.py", "./yapi_serbest.py", "./etkilesim.js", "./etkilesim_matris.js", "./etkilesim_se.js", "./etkilesim_yapi.js", "./se.js",
   "./model_ops.js", "./aks_sistemi.js", "./olcum.js", "./arac_kutusu.js", "./eleman_bilgi.js", "./cizim3b.js", "./ifc_disari.js", "./tablo_editoru.js", "./isi_haritasi.js", "./bina.js", "./bina_cizim.js", "./masaustu_kopru.js", "./galeri.html",
   "./dersler.json", "./surum.json", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png",

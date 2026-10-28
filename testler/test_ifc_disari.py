@@ -62,7 +62,7 @@ def _uret(bina=None, veri=None, secenek=None, ornek=None):
 
 def _sablonlar():
     import yapi
-    return [s["ad"] for s in yapi.bina_sablonlar()]
+    return [s["ad"] for s in yapi.bina_sablonlar() if int(yapi.BINA_SABLONLARI[s["ad"]].get("surum", 1)) < 3]   # aks–kat şablonları
 
 
 @lru_cache(maxsize=None)
@@ -81,6 +81,41 @@ def _ornek_ifc(ad):
 
 
 ORNEK_ADLARI = ["temel", "serbest", "radye", "surekli", "aks", "genel"]
+
+
+def _temel_beklenen(bina, veri):
+    """Temel tipine göre beklenen fiziksel temel elemanları (§3 tekil, §13 mütemadi / radye; temel.py kurallarıyla).
+
+    Dönüş: {tip, pad, strip, beam, baseslab, ag (veri.temel ağı var mı)}. Mütemadide hat sayısı: veri.temel.hatlar ya da
+    seçili aks çizgilerinden zemin kat kolonu olanlar; kirişli radyede her aks çizgisinde bir temel kirişi."""
+    t = bina["temeller"]
+    tip = t.get("tip", "tekil")
+    vt = (veri or {}).get("temel") or {}
+    ag = tip in ("surekli", "radye") and bool(vt.get("dugumler"))
+    kat1 = {tuple(c["aks"]) for c in bina["kolonlar"] if c.get("kat", 1) == 1}
+    b = {"tip": tip, "pad": 0, "strip": 0, "beam": 0, "baseslab": 0, "ag": ag, "dc": 0}
+    if ag:      # D/C taşıyan fiziksel temeller: tasarım kaydı olan hatlar; radye plağında en büyük D/C
+        tas = [x for x in vt.get("tasarim", []) if x.get("dc") is not None]
+        hat = {str(x.get("hat")) for x in tas if x.get("tur") == "temel-kirisi"}
+        b["dc"] = sum(1 for h in vt["hatlar"] if str(h["ad"]) in hat and (tip == "surekli" or h.get("kirisli")))
+        b["dc"] += 1 if tip == "radye" and tas else 0
+    if tip == "tekil":
+        b["pad"] = len(kat1)
+    elif tip == "surekli":
+        s = t["surekli"]
+        if ag:
+            b["strip"] = len(vt["hatlar"])
+        else:
+            liste = None if s.get("akslar", "tum") == "tum" else [str(a) for a in s["akslar"]]
+            for yon, akslar, i in (("x", bina["akslar"]["y"], 1), ("y", bina["akslar"]["x"], 0)):
+                if yon in s.get("yon", "xy"):
+                    b["strip"] += sum(1 for a in akslar if (liste is None or a["ad"] in liste) and any(k[i] == a["ad"] for k in kat1))
+    else:
+        b["baseslab"] = 1
+        kir = (vt.get("model") or {}).get("kiris") if ag else t["radye"].get("kiris")
+        if kir:
+            b["beam"] = sum(1 for h in vt["hatlar"] if h.get("kirisli")) if ag else len(bina["akslar"]["x"]) + len(bina["akslar"]["y"])
+    return b
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +174,13 @@ def test_sablon_step_ve_sayilar(ad, veri_ile):
     assert tip["IFCBUILDINGSTOREY"] == len(bina["katlar"])
     assert tip["IFCCOLUMN"] == len(bina["kolonlar"])
     assert tip["IFCBEAM"] == len(bina["kirisler"])
-    assert tip["IFCSLAB"] == len(bina["dosemeler"])
-    assert tip["IFCFOOTING"] == nx * ny                       # tekil temel: her zemin kat kolonunun altında
+    tb = _temel_beklenen(bina, veri)
+    assert tip["IFCSLAB"] == len(bina["dosemeler"]) + tb["baseslab"]
+    assert tip["IFCFOOTING"] == tb["pad"] + tb["strip"] + tb["beam"]
+    assert len(re.findall(r"IFCFOOTING\([^\n]*\.PAD_FOOTING\.\);", r["metin"])) == tb["pad"]
+    assert len(re.findall(r"IFCFOOTING\([^\n]*\.STRIP_FOOTING\.\);", r["metin"])) == tb["strip"]
+    assert len(re.findall(r"IFCFOOTING\([^\n]*\.FOOTING_BEAM\.\);", r["metin"])) == tb["beam"]
+    assert len(re.findall(r"IFCSLAB\([^\n]*\.BASESLAB\.\);", r["metin"])) == tb["baseslab"]
     assert tip["IFCGRID"] == len(bina["katlar"])              # her Z (kat) seviyesinde aks ızgarası
     assert tip["IFCGRIDAXIS"] == len(bina["katlar"]) * (nx + ny)
     assert tip["IFCSTRUCTURALANALYSISMODEL"] == 1
@@ -161,7 +201,14 @@ def test_sablon_step_ve_sayilar(ad, veri_ile):
         assert tip["IFCRELASSIGNSTOGROUPBYFACTOR"] == sum(len(k["katsayilar"]) for k in uyg)
         assert tip["IFCSTRUCTURALLINEARACTION"] + tip["IFCSTRUCTURALCURVEACTION"] > 0
         dc = [e for e in veri.get("tasarim", {}).get("elemanlar", []) if e.get("dc") is not None]
-        assert len(re.findall(r"IFCPROPERTYSINGLEVALUE\('DC',\$,IFCRATIOMEASURE\(", r["metin"])) == len(dc)
+        # bina elemanları + temel hattı / radye D/C'si (veri.temel.tasarim)
+        assert len(re.findall(r"IFCPROPERTYSINGLEVALUE\('DC',\$,IFCRATIOMEASURE\(", r["metin"])) == len(dc) + tb["dc"]
+        if tb["ag"]:
+            # temel ağı: temel kirişi / radye şeridi analitik üyeleri ve her temel düğümünde Winkler yayı
+            vt = veri["temel"]
+            assert tip["IFCSTRUCTURALCURVEMEMBER"] >= len(vt["elemanlar"])
+            assert len(re.findall(r"IFCBOUNDARYNODECONDITION\('Zemin yay", r["metin"])) >= 1
+            assert "IFCMODULUSOFSUBGRADEREACTIONMEASURE(" in r["metin"]
     profil = "IFCISHAPEPROFILEDEF" if bina["sistem"] == "celik" else "IFCRECTANGLEPROFILEDEF"
     assert tip[profil] >= 1
 
@@ -206,7 +253,8 @@ def _ac(metin, tmp_path, ad="model"):
 # EXPRESS kuralları (WHERE/global kurallar) denetimi dosya başına ~2,5 s sabit maliyetli (kural modülü her çağrıda derlenir);
 # şema denetimi (tür, sayı, zorunlu alan, ters ilişki) her dosyada, kural denetimi bütün varlık türlerini kapsayan temsilci
 # dosyalarda yapılır.
-KURALLI_SABLON = {("betonarme-3kat-3x3", True), ("celik-1kat-depo", True)}
+KURALLI_SABLON = {("betonarme-3kat-3x3", True), ("celik-1kat-depo", True), ("betonarme-3kat-surekli-temel", True),
+                  ("betonarme-4kat-radye", True)}
 KURALLI_ORNEK = {"serbest", "radye", "aks"}
 
 
@@ -269,7 +317,10 @@ def test_sablon_ifcopenshell(ad, veri_ile, tmp_path):
     assert [k.Name for k in katlar] == [k["ad"] for k in bina["katlar"]]
     assert len(f.by_type("IfcColumn")) == len(bina["kolonlar"])
     assert len(f.by_type("IfcBeam")) == len(bina["kirisler"])
-    assert len(f.by_type("IfcSlab")) == len(bina["dosemeler"])
+    tb = _temel_beklenen(bina, veri)
+    assert len(f.by_type("IfcSlab")) == len(bina["dosemeler"]) + tb["baseslab"]
+    assert Counter(e.PredefinedType for e in f.by_type("IfcFooting")) == Counter(
+        {k: v for k, v in (("PAD_FOOTING", tb["pad"]), ("STRIP_FOOTING", tb["strip"]), ("FOOTING_BEAM", tb["beam"])) if v})
     # her fiziksel eleman bir kata bağlı, katı geometrisi ve malzemesi var
     for e in f.by_type("IfcBuildingElement"):
         assert _kat(e) is not None, e
@@ -297,7 +348,34 @@ def test_sablon_ifcopenshell(ad, veri_ile, tmp_path):
     uyeler = [o for rel in model[0].IsGroupedBy for o in rel.RelatedObjects]
     assert sum(1 for o in uyeler if o.is_a("IfcStructuralCurveMember")) == len(f.by_type("IfcStructuralCurveMember"))
     mesnetli = [n for n in f.by_type("IfcStructuralPointConnection") if n.AppliedCondition]
-    assert len(mesnetli) == len(bina["akslar"]["x"]) * len(bina["akslar"]["y"])
+    if tb["ag"]:
+        # temel.py ağı: her temel düğümünde Winkler yayı k_z = k0·A (A: etki alanı); kolon tabanı sabit mesnet değil
+        vt = veri["temel"]
+        md = vt["model"]
+        assert len(mesnetli) == len(vt["dugumler"])
+        alan = {d["no"]: d["A"] for d in vt["dugumler"]}
+        ag_ad = {d["adres"]: d["no"] for d in veri["ag"]["dugumler"]}
+        for n in mesnetli:
+            k = n.AppliedCondition
+            kz = k.TranslationalStiffnessZ
+            assert kz.is_a("IfcLinearStiffnessMeasure")
+            assert kz.wrappedValue == pytest.approx(md["k0"] * alan[ag_ad[n.Name]], rel=1e-9)
+            if md.get("yatay", "tutulu") == "tutulu":
+                assert k.TranslationalStiffnessX.wrappedValue is True and k.RotationalStiffnessZ.wrappedValue is True
+        # temel kirişi / radye şeridi analitik üyeleri: veri.temel.elemanlar kadar, temel kotunda, profil ve malzemesiyle
+        temel_uye = [u for u in f.by_type("IfcStructuralCurveMember") if re.match(r"(TK|RŞ)-", u.Name)]
+        assert len(temel_uye) == len(vt["elemanlar"])
+        for u in temel_uye[:20]:
+            assert _profil(u) is not None
+        # fiziksel temel ↔ analitik üyeler
+        fiz = {rel.RelatingProduct for rel in f.by_type("IfcRelAssignsToProduct")}
+        assert all(e in fiz for e in f.by_type("IfcFooting")) and (tb["tip"] != "radye" or
+                                                                   any(s_.PredefinedType == "BASESLAB" for s_ in fiz if s_.is_a("IfcSlab")))
+        ps = _pset(f.by_type("IfcFooting")[0] if tb["tip"] == "surekli" else
+                   next(s_ for s_ in f.by_type("IfcSlab") if s_.PredefinedType == "BASESLAB"), "Pset_MatrisOgren")
+        assert ps["k0"] == pytest.approx(md["k0"]) and ps["DC_zemin"] == pytest.approx(vt["DC_zemin"])
+    else:
+        assert len(mesnetli) == len(bina["akslar"]["x"]) * len(bina["akslar"]["y"])
     if veri is not None:
         dc = {(e["tur"], e["no"]): e["dc"] for e in veri.get("tasarim", {}).get("elemanlar", []) if e.get("dc") is not None}
         bulunan = 0
@@ -344,15 +422,38 @@ def test_sablon_geometri(ad, tmp_path):
             assert (mn[1], mx[1]) == pytest.approx(tuple(ys), abs=TOL)
     dosemeler = {d["no"]: d for d in bina["dosemeler"]}
     for e in f.by_type("IfcSlab"):
+        if e.PredefinedType == "BASESLAB":
+            continue
         d = dosemeler[int(e.Tag[1:])]
         mn, mx = _kutu(e)
         assert (mn[2], mx[2]) == pytest.approx((kot[d["kat"]] - d["h"], kot[d["kat"]]), abs=TOL)
         assert (mn[0], mx[0]) == pytest.approx(tuple(sorted(ax[q[0]] for q in d["kose"])), abs=TOL)
     tem = bina["temeller"]
+    tb = _temel_beklenen(bina, None)
+    xs, ys = sorted(ax.values()), sorted(ay.values())
     for e in f.by_type("IfcFooting"):
         mn, mx = _kutu(e)
-        assert mx[2] == pytest.approx(kot[0], abs=TOL)
-        assert mx[2] - mn[2] == pytest.approx(tem["varsayilan"]["h"], abs=TOL)
+        assert mx[2] == pytest.approx(kot[0], abs=TOL)                 # üstü temel kotunda
+        if e.PredefinedType == "PAD_FOOTING":
+            assert mx[2] - mn[2] == pytest.approx(tem["varsayilan"]["h"], abs=TOL)
+        elif e.PredefinedType == "STRIP_FOOTING":
+            s_ = tem["surekli"]
+            assert mx[2] - mn[2] == pytest.approx(s_["h_govde"], abs=TOL)          # toplam yükseklik (tabla dahil)
+            en = min(mx[0] - mn[0], mx[1] - mn[1])
+            boy = max(mx[0] - mn[0], mx[1] - mn[1])
+            assert en == pytest.approx(s_["B"], abs=TOL)                            # tabla genişliği
+            tas = s_.get("tasma", 0.5)
+            assert boy in (pytest.approx(xs[-1] - xs[0] + 2 * tas, abs=TOL), pytest.approx(ys[-1] - ys[0] + 2 * tas, abs=TOL))
+        else:
+            assert mx[2] - mn[2] == pytest.approx(tem["radye"]["kiris"]["h"], abs=TOL)
+    if tb["tip"] == "radye":
+        r_ = tem["radye"]
+        taban = [e for e in f.by_type("IfcSlab") if e.PredefinedType == "BASESLAB"]
+        assert len(taban) == 1
+        mn, mx = _kutu(taban[0])
+        assert (mn[2], mx[2]) == pytest.approx((kot[0] - r_["h"], kot[0]), abs=TOL)
+        tas = r_.get("tasma", 1.0)
+        assert (mn[0], mx[0], mn[1], mx[1]) == pytest.approx((xs[0] - tas, xs[-1] + tas, ys[0] - tas, ys[-1] + tas), abs=TOL)
 
 
 @pytest.mark.parametrize("ad", ORNEK_ADLARI)

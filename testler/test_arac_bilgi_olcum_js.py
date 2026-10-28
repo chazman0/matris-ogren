@@ -81,7 +81,7 @@ process.stdin.on("end", () => {
 
 def _sablonlar():
     import yapi
-    return [s["ad"] for s in yapi.bina_sablonlar()]
+    return [s["ad"] for s in yapi.bina_sablonlar() if int(yapi.BINA_SABLONLARI[s["ad"]].get("surum", 1)) < 3]   # aks–kat şablonları
 
 
 @pytest.mark.parametrize("ad", _sablonlar())
