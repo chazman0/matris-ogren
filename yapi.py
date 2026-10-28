@@ -3406,8 +3406,8 @@ def _adim_6(B, durumlar, Y, ruzgar, anl):
                   "(ek burulma momenti). EZ: düşey deprem, G durumunun (2/3)·S_DS katı (Denk. 4.10).")
 
 
-def _adim_7(B, deprem, anl):
-    se._basla(anl, 7, "TBDY 2018 eşdeğer deprem yükü",
+def _adim_7(B, deprem, anl, no=7):
+    se._basla(anl, no, "TBDY 2018 eşdeğer deprem yükü",
               "Deprem, binayı kütlesiyle orantılı yatay kuvvetlerle iter. Yönetmelik bunu bir tasarım spektrumundan (zemin ve "
               "harita katsayıları), taşıyıcı sistem davranış katsayısı R ile azaltarak ve kat kütlelerine yükseklikle orantılı "
               "dağıtarak hesaplar. Sonra dışmerkezlik, burulma düzensizliği, göreli kat ötelemesi ve ikinci mertebe denetlenir.")
@@ -3418,11 +3418,11 @@ def _adim_7(B, deprem, anl):
     d = deprem
     X, Yy = d["X"], d["Y"]
     # 1. spektrum
-    anl.metin(f"**7.1 Girdiler.** S_S = {_f(d['SS'], 3)}, S_1 = {_f(d['S1'], 3)} (DD-2, %10/50 yıl, AFAD TDTH), zemin **{d['zemin_sinifi']}** "
+    anl.metin(f"**{no}.1 Girdiler.** S_S = {_f(d['SS'], 3)}, S_1 = {_f(d['S1'], 3)} (DD-2, %10/50 yıl, AFAD TDTH), zemin **{d['zemin_sinifi']}** "
               f"(Tablo 16.1), BKS = {d['BKS']} → I = {_f(d['I'], 2)} (Tablo 3.1), taşıyıcı sistem **{d['tasiyici_kod']}** "
               f"({d['tasiyici_tanim']}) → R = {_f(d['R'])}, D = {_f(d['D'])} (Tablo 4.1), n = {_f(d['n'], 2)} (Tablo 4.3), "
               f"C_t = {_f(d['Ct'], 3)} (Denk. 4.27).")
-    anl.metin("**7.2 Yerel zemin katsayıları** (Tablo 2.1 / 2.2):\n\n"
+    anl.metin(f"**{no}.2" " Yerel zemin katsayıları** (Tablo 2.1 / 2.2):\n\n"
               f"- {_ara_deger_metni(yv.TBDY_FS, d['zemin_sinifi'], d['SS'], 'F_S', 'S_S')}\n"
               f"- {_ara_deger_metni(yv.TBDY_F1, d['zemin_sinifi'], d['S1'], 'F_1', 'S_1')}")
     anl.mat(r"S_{DS} = S_S F_S,\quad S_{D1} = S_1 F_1,\quad T_A = 0{,}2\frac{S_{D1}}{S_{DS}},\quad T_B = \frac{S_{D1}}{S_{DS}},\quad T_L = 6\ \text{s}")
@@ -3441,7 +3441,7 @@ def _adim_7(B, deprem, anl):
               + _tablo(["Nokta", "T (s)", "S_ae (g)", "R_a", "S_aR (g)"], sat))
     # 2. sınıflar ve uygulanabilirlik
     u = d.get("uygulanabilirlik") or {}
-    anl.metin(f"**7.3 Sınıflar.** S_DS = {_f(d['SDS'], 3)} → DTS = **{d['DTS']}** (Tablo 3.2); H_N = {_f(d['HN'])} m → BYS = **{d['BYS']}** (Tablo 3.3). "
+    anl.metin(f"**{no}.3 Sınıflar.** S_DS = {_f(d['SDS'], 3)} → DTS = **{d['DTS']}** (Tablo 3.2); H_N = {_f(d['HN'])} m → BYS = **{d['BYS']}** (Tablo 3.3). "
               f"Tablo 4.4: {u.get('kosul_duzenli', 'düzenli bina')} için BYS ≥ {u.get('esik_duzenli', '–')}, diğer binalar için "
               f"BYS ≥ {u.get('esik_diger', '–')}; bu binada η_bi,max = {_f(max(X['eta_max'], Yy['eta_max']), 3)} → "
               + ("1. satır (η_bi ≤ 2,0)" if u.get("satir", "duzenli") == "duzenli" else "'diğer tüm binalar' satırı (η_bi > 2,0)")
@@ -3449,13 +3449,13 @@ def _adim_7(B, deprem, anl):
               + ("**uygulanabilir**." if d["uygulanabilir"] else "**uygulanamaz** (mod birleştirme gerekir; sonuçlar yalnız öğretim içindir).")
               + " B2 (yumuşak kat) düzensizliği bu modülde denetlenmez.")
     # 3. kütleler
-    anl.metin("**7.4 Kat ağırlıkları ve kütleleri** (Denk. 4.16: w_i = w_G + n·w_Q" + (" + 0,3·S (çatı)" if B.kar else "")
+    anl.metin(f"**{no}.4" " Kat ağırlıkları ve kütleleri** (Denk. 4.16: w_i = w_G + n·w_Q" + (" + 0,3·S (çatı)" if B.kar else "")
               + "; kolon öz ağırlığı üst ve alt kata yarı yarıya; H_i temel üstünden):\n\n"
               + _tablo(["Kat", "H_i (m)", "w_i (kN)", "m_i = w_i/g (t)", "m_i·H_i", "Kütle merkezi (X, Y)"],
                        [[k["kat"], _f(k["H"]), _f(k["w_i"]), _f(k["m_i"], 3), _f(k["m_i"] * k["H"], 2), f"({_f(k['X'])}, {_f(k['Y'])})"] for k in d["katlar"]]
                        + [["Σ", "", _f(d["W_t"]), _f(d["m_t"], 3), _f(sum(k["m_i"] * k["H"] for k in d["katlar"]), 2), ""]]))
     # 4. periyot
-    anl.metin("**7.5 Hakim periyot — iki yol.** (a) Ampirik (Denk. 4.27) ve (b) Rayleigh (Denk. 4.26): kat kütle merkezlerine "
+    anl.metin(f"**{no}.5" " Hakim periyot — iki yol.** (a) Ampirik (Denk. 4.27) ve (b) Rayleigh (Denk. 4.26): kat kütle merkezlerine "
               "kurgusal F_fi ∝ m_i·H_i kuvvetleri (Σ = 1 kN) uygulanıp kat yer değiştirmeleri d_fi bu ağdan çözülür.")
     anl.mat(rf"T_{{pA}} = C_t H_N^{{3/4}} = {_f(d['Ct'], 3)}\cdot{_f(d['HN'])}^{{0{{,}}75}} = {_f(d['TpA'], 4)}\ \text{{s}},\qquad "
             r"T_p = 2\pi\sqrt{\frac{\sum m_i d_{fi}^2}{\sum F_{fi} d_{fi}}}\ \le 1{,}4\,T_{pA}")
@@ -3481,16 +3481,16 @@ def _adim_7(B, deprem, anl):
     for yon, v in (("X", X), ("Y", Yy)):
         sat.append([yon, _f(v["Tp"], 4), _f(v["Sae_Tp"], 4), _f(v["Ra"], 3), _f(v["SaR"], 4), _f(v["VtE_hesap"]), _f(v["VtE_min"]),
                     _f(v["VtE"]) + (" (alt sınır)" if v["alt_sinir_etkin"] else ""), _f(v["dFN"]), _f(v["Mo"], 1)])
-    anl.metin("**7.6 Taban kesme kuvveti** (g = 9,81 m/s²):\n\n"
+    anl.metin(f"**{no}.6" " Taban kesme kuvveti** (g = 9,81 m/s²):\n\n"
               + _tablo(["Yön", "T_p (s)", "S_ae(T_p)", "R_a", "S_aR", "m_t·S_aR·g", "0,04·m_t·I·S_DS·g", "V_tE (kN)", "ΔF_NE (kN)", "M_o (kN·m)"], sat))
     toplam_mh = sum(k["m_i"] * k["H"] for k in d["katlar"])
-    anl.metin("**7.7 Kat kuvvetleri F_iE ve kat kesmeleri V_i** (tepe kata ΔF_NE eklenmiş; V_i = Σ_{j≥i} F_j):\n\n"
+    anl.metin(f"**{no}.7" " Kat kuvvetleri F_iE ve kat kesmeleri V_i** (tepe kata ΔF_NE eklenmiş; V_i = Σ_{j≥i} F_j):\n\n"
               + _tablo(["Kat", "H_i (m)", "m_i·H_i/Σ", "F_x (kN)", "V_x (kN)", "F_y (kN)", "V_y (kN)"],
                        [[k["kat"], _f(k["H"]), _f(k["m_i"] * k["H"] / toplam_mh, 4), _f(k["F_x"]), _f(k["V_x"]), _f(k["F_y"]), _f(k["V_y"])] for k in d["katlar"]]
                        + [["Σ", "", "1", _f(sum(k["F_x"] for k in d["katlar"])), "", _f(sum(k["F_y"] for k in d["katlar"])), ""]])
               + f"\n\nSağlama: Σ F_iE + ΔF_NE = {_f(sum(k['F_x'] for k in d['katlar']))} kN = V_tE,X = {_f(X['VtE'])} kN ✓")
     # 6. dışmerkezlik, diyafram
-    anl.metin(f"**7.8 Ek dışmerkezlik ve rijit diyafram** (md. 4.5.10.2, Denk. 4.17): kat kuvveti kütle merkezinden deprem doğrultusuna dik "
+    anl.metin(f"**{no}.8 Ek dışmerkezlik ve rijit diyafram** (md. 4.5.10.2, Denk. 4.17): kat kuvveti kütle merkezinden deprem doğrultusuna dik "
               f"kat boyutunun ±%{_f(100 * d['e_oran'], 1)}'i (A1 düzensizliği olan katta × D_bi) kadar kaydırılır; kütle merkezinde ek "
               "burulma momenti M_ib = F_iE·e_i. "
               "İşaret: EX+ kuvveti +Y'ye kaydırır → M_Z = −F·e; EY+ kuvveti +X'e kaydırır → M_Z = +F·e (Z yukarı, sağ el).\n\n"
@@ -3528,10 +3528,10 @@ def _adim_7(B, deprem, anl):
         sat.append([k["kat"], _f(k["h"]), f"{k['delta_x'] * 1000:.2f}", f"{k['delta_etkin_x'] * 1000:.1f}", _f(k["oran_x"], 5), _f(k["eta_bx"], 3), _f(k["theta_x"], 4),
                     f"{k['delta_y'] * 1000:.2f}", f"{k['delta_etkin_y'] * 1000:.1f}", _f(k["oran_y"], 5), _f(k["eta_by"], 3), _f(k["theta_y"], 4),
                     _f(k["sinir"], 4), "✓" if k["uygun"] else "✗"])
-    anl.metin("**7.9 Göreli kat ötelemesi, burulma ve ikinci mertebe** (Δ: azaltılmış yüklerle en büyük kolon hattı ötelemesi; δ = (R/I)·Δ; "
+    anl.metin(f"**{no}.9" " Göreli kat ötelemesi, burulma ve ikinci mertebe** (Δ: azaltılmış yüklerle en büyük kolon hattı ötelemesi; δ = (R/I)·Δ; "
               "drift için md. 4.9.1.1 gereği 1,4·T_pA sınırı ve V_tE alt sınırı kaldırılmıştır):\n\n"
               + _tablo(["Kat", "h (m)", "Δ_x (mm)", "δ_x (mm)", "λδ_x/h", "η_bx", "θ_x", "Δ_y (mm)", "δ_y (mm)", "λδ_y/h", "η_by", "θ_y", "Sınır", "Uygun"], sat))
-    anl.metin(f"**7.10 Düşey deprem** (Denk. 4.10): E_d(Z) ≈ (2/3)·S_DS·G = {_f(d['EZ_katsayi'], 4)}·G — EZ durumu G'nin bu katıdır "
+    anl.metin(f"**{no}.10 Düşey deprem** (Denk. 4.10): E_d(Z) ≈ (2/3)·S_DS·G = {_f(d['EZ_katsayi'], 4)}·G — EZ durumu G'nin bu katıdır "
               "(4.11'de +0,3, 4.12'de −0,3 katsayıyla girer).")
     for u_ in d["uyarilar"]:
         anl.uyari(u_)
@@ -4285,8 +4285,14 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
     return sec
 
 
+_GENEL_LISTELER = ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler")
+
+
 def _serbest_mi(bina):
-    """Genel (surum 3) model mi: surum ≥ 3 ya da cubuklar/paneller listesi var."""
+    """Genel (surum 3) model mi — tek yönlendirme kuralı (arayüzdeki ``s3Var`` ile aynı; ``yapi_serbest.serbest_mi`` bunu çağırır):
+    ``surum`` ≥ 3, ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da
+    bir ek yükün ``dugum`` değeri REF sözlüğü (``{"aks": [..], "z": ..}``) ya da türü ``cubuk`` / ``panel``. Aks–kat düğüm yükü
+    ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
     if isinstance(bina, str):
         try:
             bina = json.loads(bina)
@@ -4298,7 +4304,16 @@ def _serbest_mi(bina):
         surum = int(bina.get("surum") or 1)
     except (TypeError, ValueError):
         surum = 1
-    return surum >= 3 or bool(bina.get("cubuklar")) or bool(bina.get("paneller"))
+    if surum >= 3:
+        return True
+    if any(isinstance(bina.get(a), list) and len(bina.get(a)) > 0 for a in _GENEL_LISTELER):
+        return True
+    for y in bina.get("ek_yukler") or []:
+        if not isinstance(y, dict):
+            continue
+        if isinstance(y.get("dugum"), dict) or str(y.get("tur") or "").strip().lower() in ("cubuk", "panel"):
+            return True
+    return False
 
 
 def _serbest_modulu():
@@ -4315,6 +4330,20 @@ def _cozum_kimligi(B):
     return "bina-" + hashlib.sha1(metin.encode("utf-8")).hexdigest()[:16]
 
 
+def cozum_kimligi(bina):
+    """Bu binanın ``bina_coz`` çözüm kimliği (çözmeden): genel modelde (``_serbest_mi``) ``yapi_serbest`` okuyucusunun normalize
+    girdisinden, aks–kat modelinde ``_bina_oku``dan — ``bina_coz(bina).veri["cozum_kimligi"]`` ile aynı. Okunamayan modelde
+    ``MatrisHatasi``. Köprü (``bina_tablolar``) önbellekteki çözümün bu binaya ait olup olmadığını bununla denetler."""
+    if isinstance(bina, str):
+        try:
+            bina = json.loads(bina)
+        except ValueError as e:
+            raise MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
+    if _serbest_mi(bina):
+        return _cozum_kimligi(_serbest_modulu()._oku(copy.deepcopy(bina)))
+    return _cozum_kimligi(_bina_oku(copy.deepcopy(bina)))
+
+
 def bina_coz(bina, *, goster=None, anlat=True):
     """Bina modelini (sözlük ya da JSON metni) çözer: yükler (TS 498) → döşeme dağıtımı (TS 500 45°) → cerceve3b ağı →
     G, Q, S, W, E (TBDY 2018 eşdeğer deprem yükü) çözümü (coz_coklu, tek K) → kombinasyon kümesi (TS 500 + TBDY 4.4.4 ya da
@@ -4325,8 +4354,9 @@ def bina_coz(bina, *, goster=None, anlat=True):
     Python 14; ``anlat=False`` ise yalnız başlık), ``.python_kodu`` / ``.python_ciktisi`` bağımsız numpy betiği,
     ``.ic`` tembel kombinasyon üretimi için paket (``kombinasyon_kisa``).
 
-    Genel model (``surum`` ≥ 3 ya da ``cubuklar`` / ``paneller`` listesi): ``yapi_serbest.bina_coz`` (aks sistemi tabanlı düğüm–
-    çubuk–panel modeli, tasarım belgesi §12/§19)."""
+    Genel model (``_serbest_mi``: ``surum`` ≥ 3, ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler``
+    listesi dolu, ya da REF düğüm yükü / çubuk / panel ek yükü): ``yapi_serbest.bina_coz`` (aks sistemi tabanlı düğüm–çubuk–panel
+    modeli, tasarım belgesi §12/§19)."""
     if _serbest_mi(bina):
         return _serbest_modulu().bina_coz(bina, goster=goster, anlat=anlat)
     B = _bina_oku(bina)

@@ -1,9 +1,11 @@
 """docs/web_kopru.py bina işlemleri: bina_coz, bina_kutuphane, bina_sablonlar, bina_sablon, bina_yuk_yolu, bina_deprem,
-bina_kombinasyon, bina_eleman_tasarim, bina_rapor."""
+bina_kombinasyon, bina_eleman_tasarim, bina_rapor, bina_tablolar (genel model kimliği), bina_kesit_oner (C4), bina_eleman_bilgi (C5)."""
 from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -293,3 +295,190 @@ def test_bina_rapor_rapor_modulu_yok(kopru, monkeypatch):
     monkeypatch.setattr(kopru, "_rapor_modulu", lambda: None)
     y = iste(kopru, "bina_rapor", {"bina": yapi.bina_sablon("betonarme-tek-aciklik")})
     assert y["hata_turu"] == "girdi" and "rapor.py" in y["hata"]
+
+
+# ---------------------------------------------------------------------------
+# genel model (surum 3) köprü işlemleri: kesit önerisi (C4), tablolar kimliği, eleman bilgi paketi (C5), tahkik eşlemesi (C7),
+# rapor (kısaltılmamış tasarım satırları)
+# ---------------------------------------------------------------------------
+_C4_ALANLARI = {"cubuk", "tur", "kesit", "oneri", "sistem", "malzeme", "b", "h", "kaynak", "dc_once", "dc_oneri", "dc_sonra", "degisim",
+                "uygula"}
+
+
+def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
+    """surum 1 çözümünün kimliğiyle kesit önerisi: genel motorla bir kez yeniden çözülüp önbelleğe alınır; D/C önce, tasarım
+    tablosunda görünen aks–kat D/C'si (eskiden 'bina ya da çözüm kimliği gerekir' hatası; ρ satırından D/C 1,00)."""
+    kopru._BINA_ONBELLEK.clear()
+    kopru._GENEL_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("betonarme-2kat-3x2")})["veri"]
+    kimlik = v["cozum_kimligi"]
+    tablo = {(k["tur"], k["no"]): k["dc"] for k in v["tasarim"]["elemanlar"]}
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": kimlik, "hedef": [{"tur": "kolon", "no": 1}, {"tur": "kiris", "no": 1}]})
+    assert y["hata"] is None and y["cozum_kimligi"] == kimlik and isinstance(y["uyarilar"], list)
+    o = y["oneriler"][0]
+    assert _C4_ALANLARI <= set(o) and o["kaynak"] == {"aks_kat": "kolon", "no": 1} and o["sistem"] == "betonarme"
+    assert o["dc_once"] == pytest.approx(tablo[("kolon", 1)]) and o["dc_once"] == pytest.approx(0.233, abs=0.001)
+    assert o["dc_oneri"] is not None and o["degisim"] in ("büyüt", "küçült", "aynı")
+    if o["degisim"] != "aynı":
+        u = o["uygula"]
+        assert set(u) >= {"ad", "tanim", "yeni"} and u["tanim"]["tip"] == "dikdortgen"
+        assert u["tanim"]["b"] == o["b"] and u["tanim"]["h"] == o["h"]
+    assert y["oneriler"][1]["dc_once"] == pytest.approx(tablo[("kiris", 1)])
+    assert kimlik in kopru._GENEL_ONBELLEK                      # ikinci tıklama yeniden çözmez
+    g = kopru._GENEL_ONBELLEK[kimlik]
+    y2 = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": kimlik, "hedef": [{"tur": "kolon", "no": 1}]})
+    assert y2["oneriler"][0] == y["oneriler"][0] and kopru._GENEL_ONBELLEK[kimlik] is g
+    # mütemadi temel: tekil temel mesnetleriyle, uyarıyla
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("betonarme-3kat-surekli-temel")})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 5}]})
+    assert y["hata"] is None and any("tekil temel mesnetleriyle" in u for u in y["uyarilar"])
+    assert y["oneriler"][0]["dc_once"] == pytest.approx(next(k["dc"] for k in v["tasarim"]["elemanlar"]
+                                                             if k["tur"] == "kolon" and k["no"] == 5))
+
+
+def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
+    """surum 1 kolon önerisi gerekli boyuna donatı oranını uygula tanımına yazar (aks–kat motoru verilmeyen ρ'yu 0,01 alır):
+    öneri uygulanıp aks–kat motoruyla çözülünce kolonun tablo D/C'si ≤ 1. Eskiden betonarme-3kat-3x3'te 30x30 önerisi
+    uygulanınca D/C 2,17 'donatı artır' görünürdü (öneri ρ = 0,04'e kadar taranmış D/C ile 0,98 derdi)."""
+    kopru._BINA_ONBELLEK.clear()
+    kopru._GENEL_ONBELLEK.clear()
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 1}]})
+    o = y["oneriler"][0]
+    u = o["uygula"]
+    assert y["hata"] is None and o["degisim"] == "küçült" and o["dc_oneri"] <= 1.0
+    assert o["donati_orani"] > 0.01 and u["tanim"]["donati_orani"] == pytest.approx(o["donati_orani"]) and "ρ" in u["ad"]
+    b["kesitler"][u["ad"]] = u["tanim"]
+    next(k for k in b["kolonlar"] if k["no"] == 1)["kesit"] = u["ad"]
+    z = iste(kopru, "bina_coz", {"bina": b})
+    assert z["hata"] is None
+    k1 = next(k for k in z["veri"]["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
+    assert k1["kesit"] == u["ad"] and k1["dc"] <= 1.0 and k1["durum"] == "yeterli"
+
+
+def test_kesit_oner_genel_model_c4(kopru):
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-cbf-3kat")})["veri"]
+    tablo = {k["cubuk"]: k["dc"] for k in v["tasarim"]["elemanlar"]}
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "cubuk", "no": 32}, {"tur": "cubuk", "no": 1}]})
+    assert y["hata"] is None and y["uyarilar"] == []
+    o32, o1 = y["oneriler"]
+    for o in (o32, o1):
+        assert _C4_ALANLARI <= set(o) and o["sistem"] == "celik" and o["kaynak"] is None and o["malzeme"]
+        assert o["dc_once"] == pytest.approx(tablo[o["cubuk"]])            # tasarım tablosundaki D/C (narinlik satırı hariç)
+    assert o32["degisim"] == "aynı" and o32["uygula"] is None and o32["dc_oneri"] == pytest.approx(o32["dc_once"])
+    assert o1["degisim"] in ("büyüt", "küçült") and o1["dc_oneri"] <= 1.0
+    u = o1["uygula"]
+    assert u["yeni"] and u["tanim"] == {"tip": "profil", "profil": o1["oneri"], "malzeme": o1["malzeme"]}
+    b = yapi.bina_sablon("celik-cbf-3kat")                     # uygula: tanım eklenip ad atanınca model çözülür
+    b["kesitler"][u["ad"]] = u["tanim"]
+    b["cubuklar"][0]["kesit"] = u["ad"]
+    z = iste(kopru, "bina_coz", {"bina": b})
+    assert z["hata"] is None and next(k for k in z["veri"]["tasarim"]["elemanlar"] if k["cubuk"] == 1)["kesit"] == u["ad"]
+
+
+def test_kesit_oner_vute_uygula(kopru):
+    """Vute çubuğunda öneri yeni bir vute kartı (temel profili değişen) ve temel profil kartını (ek_kesitler) verir."""
+    b = yapi.bina_sablon("celik-sanayi-4hol")
+    b["kesitler"]["MERTEK"]["profil"] = "IPE 200"                # yetersiz: büyüt
+    y = iste(kopru, "bina_kesit_oner", {"bina": b, "hedef": [{"tur": "cubuk", "no": 8}]})
+    assert y["hata"] is None
+    o = y["oneriler"][0]
+    assert o["kesit"] == "VUTE" and o["degisim"] == "büyüt"
+    u = o["uygula"]
+    assert u["tanim"]["tip"] == "vute" and u["ad"].startswith("VUTE-") and u["tanim"]["temel"] in u.get("ek_kesitler", b["kesitler"])
+    b["kesitler"].update(u.get("ek_kesitler") or {})
+    b["kesitler"][u["ad"]] = u["tanim"]
+    b["cubuklar"][7]["kesit"] = u["ad"]
+    import yapi_serbest
+    B = yapi_serbest._oku(b)                                     # yeni kesitlerle model okunur
+    assert B.cubuk_no[8]["kesit"] == u["ad"] and B.kesitler[u["ad"]]["tip"] == "vute"
+
+
+def test_bina_tablolar_genel_model_kimlik(kopru):
+    kopru._BINA_ONBELLEK.clear()
+    b = yapi.bina_sablon("celik-cbf-3kat")
+    k = iste(kopru, "bina_coz", {"bina": b})["veri"]["cozum_kimligi"]
+    y = iste(kopru, "bina_tablolar", {"cozum_kimligi": k, "bina": b})
+    assert y["hata"] is None and y["cozumlu"] is True and y["cozum_kimligi"] == k
+    b["kesitler"]["KOLON"]["profil"] = "HEB 260"                # düzenlenmiş bina: eski çözüm kullanılmaz
+    y = iste(kopru, "bina_tablolar", {"cozum_kimligi": k, "bina": b})
+    assert y["hata"] is None and y["cozumlu"] is False
+
+
+def _bolum_bicimi(b):
+    assert set(b) <= {"baslik", "tablo", "satirlar", "not", "notlar", "acilir"}, b
+    if "tablo" in b:
+        t = b["tablo"]
+        assert t["satirlar"] and all(len(r) == len(t["basliklar"]) and all(isinstance(x, str) for x in r) for r in t["satirlar"])
+    for r in b.get("satirlar") or []:
+        assert len(r) == 3 and all(isinstance(x, str) for x in r)
+
+
+def test_bina_eleman_bilgi(kopru):
+    assert "bina_eleman_bilgi" in kopru.BINA_ISLEMLER
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-cbf-3kat")})["veri"]
+    k = v["cozum_kimligi"]
+    y = iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "cubuk", "no": 1, "durum": "G"})
+    assert y["hata"] is None and y["cozum_kimligi"] == k
+    p = y["paket"]
+    assert set(p["sekmeler"]) == {"ic", "yer"} and p["uyarilar"] == [] and p["fe"] == next(c["fe"] for c in v["ag"]["cubuklar"] if c["no"] == 1)
+    for b in p["sekmeler"]["ic"] + p["sekmeler"]["yer"]:
+        _bolum_bicimi(b)
+    ist = p["sekmeler"]["ic"][0]
+    assert ist["tablo"]["basliklar"][0] == "x (m)" and len(ist["tablo"]["satirlar"]) >= 21
+    assert any("Uç yer değiştirmeleri" in (b.get("baslik") or "") for b in p["sekmeler"]["yer"])
+    z = iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "cubuk", "no": 1, "durum": "Zarf"})
+    assert z["hata"] is None and z["paket"]["durum"] == "zarf+" and "not" in z["paket"]["sekmeler"]["yer"][0]
+    # aks–kat çözümü: kolon (aks–kat no'su)
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("betonarme-2kat-3x2")})["veri"]
+    y = iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": v["cozum_kimligi"], "tur": "kolon", "no": 1, "durum": "1.4G+1.6Q"})
+    assert y["hata"] is None and y["paket"]["sekmeler"]["ic"] and y["paket"]["sekmeler"]["yer"]
+    for girdi, desen in (({"cozum_kimligi": k, "tur": "panel", "no": 1}, "tur"), ({"cozum_kimligi": k, "tur": "cubuk"}, "no"),
+                         ({"cozum_kimligi": "bina-yok", "tur": "cubuk", "no": 1}, "bellekte yok"),
+                         ({"cozum_kimligi": v["cozum_kimligi"], "tur": "cubuk", "no": 999}, "yok")):
+        h = iste(kopru, "bina_eleman_bilgi", girdi)
+        assert h["hata_turu"] == "girdi" and desen in h["hata"], h
+
+
+def test_genel_model_rapor_tam_tasarim(kopru, monkeypatch):
+    """Büyük genel modelde yanıttaki tasarım satırları 3'e kısaltılır; rapor kısaltılmamış satırları (ic["tas_tam"]) kullanır."""
+    import rapor
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-sanayi-4hol")})["veri"]
+    assert v["ozet"].get("tasarim_kisaltildi") and max(len(k["kontroller"]) for k in v["tasarim"]["elemanlar"]) <= 3
+    gelen = {}
+    asil = rapor.statik_rapor
+
+    def yakala(bina, veri, secenek=None):
+        gelen["veri"] = veri
+        return asil(bina, veri, secenek=secenek)
+    monkeypatch.setattr(rapor, "statik_rapor", yakala)
+    y = iste(kopru, "bina_rapor", {"cozum_kimligi": v["cozum_kimligi"], "secenek": {"eleman_detay": "yok"}})
+    assert y["hata"] is None
+    assert max(len(k["kontroller"]) for k in gelen["veri"]["tasarim"]["elemanlar"]) > 3
+    assert max(len(k["kontroller"]) for k in kopru._BINA_ONBELLEK[v["cozum_kimligi"]]["veri"]["tasarim"]["elemanlar"]) <= 3
+
+
+_GENEL_BETIK = ('const M=require(process.argv[1]);let v="";process.stdin.on("data",d=>v+=d);'
+                'process.stdin.on("end",()=>{process.stdout.write(JSON.stringify(M.genellestir(JSON.parse(v)).model))});')
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node kurulu değil")
+def test_eleman_tasarim_genellestirilmis_model_eslesmesi(kopru):
+    """C7: genelleştirilmiş modelde her tasarım kaydı hem (cubuk, rec.cubuk) hem (rec.tur, rec.no) ile kendi çubuğuna gider
+    (eskiden kiriş 13 → çubuk 25)."""
+    r = subprocess.run([shutil.which("node"), "-e", _GENEL_BETIK, str(PROJE / "docs" / "model_ops.js")],
+                       input=json.dumps(yapi.bina_sablon("betonarme-2kat-3x2")), capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    g = json.loads(r.stdout)
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": g})["veri"]
+    assert v["model"] == "genel"
+    k = v["cozum_kimligi"]
+    for rec in v["tasarim"]["elemanlar"]:
+        for tur, no in (("cubuk", rec["cubuk"]), (rec["tur"], rec["no"])):
+            z = iste(kopru, "bina_eleman_tasarim", {"cozum_kimligi": k, "tur": tur, "no": no})
+            assert z["hata"] is None and z["sonuc"]["cubuk"] == rec["cubuk"] and z["sonuc"]["dc"] == rec["dc"], (tur, no, z.get("hata"))
