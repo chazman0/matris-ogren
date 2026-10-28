@@ -15,7 +15,7 @@ const GEREKEN = {
   degistirme: ["bol", "kesisimde-bol", "duzlemle-bol", "birlestir", "dugum-birlestir", "kesit-degistir", "aci"],
   olcme: ["olc-uzaklik", "olc-aci", "olc-alan", "olc-boy", "olc-kot", "olc-koordinat", "olc-temizle"],
   gorunum: ["gor-3b", "gor-plan", "gor-on", "gor-yan", "kat-suzgeci", "yalit", "hepsini-goster", "tel-kafes", "etiketler", "izgara", "sigdir", "tam-ekran"],
-  analiz: ["coz", "denetle", "yuk-durumlari", "kombinasyonlar", "analiz-ayar"],
+  analiz: ["coz", "denetle", "yuk-durumlari", "kombinasyonlar", "analiz-ayar", "kutuphane"],
   sonuc: ["deforme", "diyagram", "yuk-akisi", "isi-haritasi", "tasarim-dc", "tablolar", "rapor"],
 };
 
@@ -294,4 +294,81 @@ test("komut kaydı: katalogla birleşir, bağlı değilse etkin değil, çalış
 test("DOM'suz ortamda kur() açık hata verir; vekil işlevler kurulumdan önce uyarır", function () {
   assert.throws(function () { A.kur(null); }, /tarayıcıda/);
   assert.throws(function () { A.yerlesim(); }, /kur/);
+});
+
+test("kullanılamayan komutun nedeni (C8): komut kaydı saklar, nedenMetni çözer, çalıştır 'reddedildi' olayıyla bildirir", function () {
+  A.katalogKaydet();
+  assert.equal(A.nedenMetni(null), null);
+  A.komutKaydet({ id: "tablolar", calistir: undefined });
+  assert.equal(A.nedenMetni(A.komut("tablolar")), "Bu sayfada henüz bağlı değil.");
+  let durum = false;
+  const k = A.komutKaydet({ id: "tablolar", calistir: function () { durum = "calisti"; }, etkin: function () { return false; },
+    neden: function () { return "Önce modeli çözün (Çöz ▶)."; } });
+  assert.equal(typeof k.neden, "function");
+  assert.equal(A.nedenMetni(k), "Önce modeli çözün (Çöz ▶).");
+  const olaylar = [];
+  const birak = A.dinle(function (ad, v) { if (ad === "reddedildi") olaylar.push(v); });
+  assert.equal(A.calistir("tablolar"), false);
+  assert.equal(durum, false);
+  assert.deepEqual(olaylar, [{ id: "tablolar", neden: "Önce modeli çözün (Çöz ▶).", ad: "Tablolar" }]);
+  // metin neden, boş neden ve hata atan neden işlevi
+  A.komutKaydet({ id: "tablolar", neden: "Silinecek ölçü yok." });
+  assert.equal(A.nedenMetni(A.komut("tablolar")), "Silinecek ölçü yok.");
+  A.komutKaydet({ id: "tablolar", neden: "" });
+  assert.equal(A.nedenMetni(A.komut("tablolar")), null);
+  A.komutKaydet({ id: "tablolar", neden: function () { throw new Error("x"); } });
+  assert.equal(A.nedenMetni(A.komut("tablolar")), null);
+  // etkin komut olay yaymaz, çalışır
+  A.komutKaydet({ id: "tablolar", etkin: true });
+  assert.equal(A.calistir("tablolar"), true); assert.equal(durum, "calisti"); assert.equal(olaylar.length, 1);
+  birak();
+});
+
+test("kenar payları: kenara yaslı kutular (ve bitişik ikinci sıra) payı belirler, ortada yüzen kutu sayılmaz", function () {
+  const W = 1000, H = 600;
+  assert.deepEqual(D.kenarPaylari([], W, H), { sol: 0, ust: 0, sag: 0, alt: 0 });
+  const kutular = [
+    { x: 8, y: 8, w: 300, h: 40 },        // sol üst köşe: sol ve üst kenara değer → payı küçük olan (üst, 48)
+    { x: 100, y: 52, w: 200, h: 40 },     // üst kutunun altında bitişik → üst, 92
+    { x: 8, y: 100, w: 46, h: 400 },      // sol, 54
+    { x: 946, y: 100, w: 46, h: 300 },    // sağ, 54
+    { x: 300, y: 552, w: 400, h: 40 },    // alt, 48
+    { x: 400, y: 250, w: 100, h: 100 },   // ortada yüzen
+    { x: 0, y: 0, w: 0, h: 0 }, null,     // gizli / boş
+  ];
+  assert.deepEqual(D.kenarPaylari(kutular, W, H), { sol: 54, ust: 92, sag: 54, alt: 48 });
+  assert.equal(typeof A.kenarPaylari, "function");
+  assert.deepEqual(A.kenarPaylari(), { sol: 0, ust: 0, sag: 0, alt: 0 });   // yönetici kurulmadan
+});
+
+test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katlanmış başlığıyla yerleşir", function () {
+  const W = 800, H = 400;
+  const uc = ["a", "b", "c"].map(function (id) { return { id: id, w: 700, h: 42, kenar: "ust", kw: 120, kh: 30 }; });
+  const r = D.otomatikYerlestir(uc, W, H, []);
+  assert.deepEqual(r.get("a"), { x: 8, y: 8 });
+  assert.equal(r.get("b").katla, undefined);
+  assert.ok(r.get("b").y <= 8 + 2 * 42 + 6, "b şeritte");
+  assert.equal(r.get("c").katla, true);
+  const dik = [{ x: r.get("a").x, y: r.get("a").y, w: 700, h: 42 }, { x: r.get("b").x, y: r.get("b").y, w: 700, h: 42 }, { x: r.get("c").x, y: r.get("c").y, w: 120, h: 30 }];
+  dik.forEach(function (a, i) {
+    assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= W && a.y + a.h <= H);
+    dik.slice(i + 1).forEach(function (b) { assert.ok(!D.cakisir(a, b, 0)); });
+  });
+  // kw/kh verilmezse eski davranış: sahnenin içine doğru ilerler, katlanmaz
+  const eski = D.otomatikYerlestir(uc.map(function (u) { return { id: u.id, w: u.w, h: u.h, kenar: u.kenar }; }), W, H, []);
+  assert.equal(eski.get("c").katla, undefined);
+  assert.ok(eski.get("c").y > r.get("b").y);
+});
+
+test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanını korur", function () {
+  const y0 = D.varsayilan();
+  const id = y0.kutular[0].id;
+  assert.equal(y0.kutular[0].katli, false);
+  const y1 = D.kutuGuncelle(y0, id, { katli: 1 });
+  assert.equal(D.kutuBul(y1, id).katli, true);
+  assert.equal(D.kutuBul(y0, id).katli, false);                    // girdi değişmez
+  const y2 = D.dogrula(JSON.parse(JSON.stringify(y1)));
+  assert.equal(D.kutuBul(y2, id).katli, true);
+  assert.equal(D.kutuBul(D.dogrula({ kutular: [{ id: "x", komutlar: ["sec"] }] }), "x").katli, false);
+  assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { katli: false }), id).katli, false);
 });

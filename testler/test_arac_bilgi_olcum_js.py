@@ -4,7 +4,7 @@ docs/eleman_bilgi.js (MatrisBilgi).
 
 - ``node --check`` ve ``node --test testler/js/<modül>.test.js`` (node'un yerleşik test koşucusu; bağımlılık yok).
 - Eleman bilgisi, motorun gerçek çözümüyle (``yapi.bina_coz``) karşılaştırılır: JSON dosyaları burada üretilir ve
-  ``MATRIS_BILGI_FIXTURE`` ile node testine verilir (uzunluk, kesit alanı, iç kuvvet ekstremumları, zarf, D/C, metraj,
+  ``MATRIS_BILGI_FIXTURE`` (aks–kat) ile ``MATRIS_BILGI_GENEL`` (genel, surum 3) üzerinden node testine verilir (uzunluk, kesit alanı, iç kuvvet ekstremumları, zarf, D/C, metraj,
   yük yolu, döşeme payı korunumu, temel ve mesnet tepkileri).
 - Diller arası yapısal eşitlik: ölçüm geometrisindeki (``MatrisOlcum.geometri``) kolon/kiriş uç koordinatları motorun
   aks–kat ağıyla (``yapi._ag_olustur``) birebir aynı olmalı.
@@ -54,9 +54,23 @@ def cozumler(tmp_path_factory):
     return yollar
 
 
+@pytest.fixture(scope="module")
+def genel_cozum(tmp_path_factory):
+    """Genel (surum 3) model çözümü: çapraz çerçeve şablonu + B2 tabanında açık mafsal mesnet (eski motor bu mesneti
+    veri.akis.temeller'e B'siz kayıt olarak yazar; eleman bilgisi onu tekil temel saymamalı)."""
+    import yapi
+    bina = yapi.bina_sablon("celik-cbf-3kat")
+    bina["mesnetler"] = [{"dugum": {"aks": ["B", "2"], "z": "±0.00"}, "ux": True, "uy": True, "uz": True}]
+    veri = yapi.bina_coz(bina, anlat=False).veri
+    assert veri.get("model") == "genel"
+    yol = tmp_path_factory.mktemp("bilgi_genel") / "celik-cbf-3kat.json"
+    yol.write_text(json.dumps({"bina": bina, "veri": veri}, ensure_ascii=False), encoding="utf-8")
+    return str(yol)
+
+
 @pytest.mark.parametrize("modul", MODULLER)
-def test_node_birim_testleri(modul, cozumler):
-    env = {"MATRIS_BILGI_FIXTURE": os.pathsep.join(cozumler)} if modul == "eleman_bilgi" else None
+def test_node_birim_testleri(modul, cozumler, genel_cozum):
+    env = {"MATRIS_BILGI_FIXTURE": os.pathsep.join(cozumler), "MATRIS_BILGI_GENEL": genel_cozum} if modul == "eleman_bilgi" else None
     r = _node("--test", str(JS / f"{modul}.test.js"), zaman=300, env=env)
     assert r.returncode == 0, r.stdout[-6000:] + r.stderr[-3000:]
     assert "# fail 0" in r.stdout
