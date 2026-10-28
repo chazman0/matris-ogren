@@ -530,10 +530,28 @@
     for (const s of this.m.mesnetler) { try { if (this.refNo(s.dugum, false) === n) return s; } catch (e) { /* */ } }
     return null;
   };
-  /** Aks–kat temel kuralı: kat 0'daki aks–kat düğümü temellere oturur (temeller.mesnet; varsayılan ankastre). */
+  /** En alt kat seviyesinin kotu (motorla aynı: en küçük numaralı katın kotu; kat yoksa en alt GLOBAL Z aksı). */
+  P_.temelKotu = function () {
+    if (this._z0 !== undefined) return this._z0;
+    let z0 = null;
+    const g = this.izgara();
+    if (g && g.katlar.size) { const k = Math.min.apply(null, [...g.katlar.keys()]); z0 = g.katlar.get(k); }
+    else if (aksSistemiVar(this.m)) {
+      try { const z = aksGerekli().sistemler(this.m)[0].l.z; if (z.length) z0 = Math.min.apply(null, z.map(function (a) { return +a.konum; })); } catch (e) { z0 = null; }
+    }
+    this._z0 = z0;
+    return z0;
+  };
+  /**
+   * Temel kuralı (sözleşme C3; motor yapi_serbest._mesnetleri_oku ile aynı): EN ALT kat seviyesindeki her aks kesişimi düğümü
+   * (GLOBAL aks–kat ızgarası ya da herhangi bir aks sisteminin kesişimi) temeller.mesnet ile mesnetlidir. Bölme / kesişim ve
+   * koordinatlı (serbest) düğümler hiçbir zaman.
+   */
   P_.izgaraTaban = function (n) {
     const d = this.harita().get(n);
-    return !!(d && d.izgara && d.kat === 0);
+    if (!d || !d.izgara || (d.kayit && d.kayit.tur)) return false;
+    const z0 = this.temelKotu();
+    return z0 != null && Math.abs(d.Z - z0) <= 1e-6;
   };
   P_.mesnetli = function (n, donme) {
     const s = this.mesnetKaydi(n);
@@ -618,7 +636,6 @@
     const sirali = function (l) { return (l || []).slice().sort(function (a, b) { return ((+a.kat || 1) - (+b.kat || 1)) || (+a.no - +b.no); }); };
     const ekstra = function (x, bilinen) { const o = {}; for (const k of Object.keys(x)) if (bilinen.indexOf(k) < 0) o[k] = kopya(x[k]); return o; };
     const ustKat = Math.max.apply(null, [...g.katlar.keys()]);
-    const kullanilan = new Set();
     let nk = 0, np = 0, nd = 0;
     for (const c of sirali(m.kolonlar)) {
       const kat = c.kat == null ? 1 : +c.kat;
@@ -626,14 +643,13 @@
       if (a == null || b == null) throw new ModelHatasi("Kolon " + c.no + ": aks ya da kat geçersiz; genelleştirilemez.");
       const oz = Object.assign({ tur: "kolon", kesit: c.kesit, aci: String(c.yon || "x").toLowerCase() === "y" ? 90 : 0, kat: kat },
         ekstra(c, ["no", "aks", "kat", "kesit", "yon"]), { kaynak: { aks_kat: "kolon", no: +c.no } });
-      this.ekCubuk(oz, a, b); kullanilan.add(a); kullanilan.add(b); nk++;
+      this.ekCubuk(oz, a, b); nk++;
     }
     const kirisCubuk = new Map();
     for (const k of sirali(m.kirisler)) {
       const parcalar = this.kirisParcalari(k);
       if (!parcalar.length) throw new ModelHatasi("Kiriş " + k.no + ": uçları aynı aks çizgisinde değil ya da tanımsız; genelleştirilemez.");
       const nolar = parcalar.map(function (p, i) {
-        kullanilan.add(p[0]); kullanilan.add(p[1]);
         return self.ekCubuk(Object.assign({ tur: "kiris", kesit: k.kesit, aci: 0, kat: k.kat == null ? 1 : +k.kat },
           ekstra(k, ["no", "kat", "bas", "son", "kesit"]), { kaynak: { aks_kat: "kiris", no: +k.no, parca: i + 1 } }), p[0], p[1]);
       });
@@ -647,7 +663,6 @@
       const kat = d.kat == null ? 1 : +d.kat;
       if (!k || k.x1 - k.x0 < 1 || k.y1 - k.y0 < 1 || !g.katlar.has(kat)) throw new ModelHatasi("Döşeme " + d.no + ": köşeler geçersiz; genelleştirilemez.");
       const koseler = [[k.x0, k.y0], [k.x1, k.y0], [k.x1, k.y1], [k.x0, k.y1]].map(function (q) { return 1000 * kat + 20 * q[0] + q[1] + 1; });
-      koseler.forEach(function (n) { kullanilan.add(n); });
       const dx = g.xs[k.x1].k - g.xs[k.x0].k, dy = g.ys[k.y1].k - g.ys[k.y0].k;
       const tek = dx >= dy - 1e-9 ? "tek-13" : "tek-24";
       const mod = String(d.dagitim || "otomatik").toLowerCase();
@@ -691,13 +706,8 @@
       } else yeniYuk.push(y);
     }
     m.ek_yukler = yeniYuk;
-    // aks–kat düğüm kayıtları (no = 1000·kat + 20·ix + iy + 1)
-    const var_ = new Set(m.dugumler.map(function (d) { return +d.no; }));
-    const yeniDg = [...kullanilan].filter(function (n) { return !var_.has(n); }).sort(function (a, b) { return a - b; }).map(function (n) {
-      const d = self.harita().get(n);
-      return { no: n, X: d.X, Y: d.Y, Z: d.Z, aks: d.aks.slice(), kat: d.kat };
-    });
-    m.dugumler = yeniDg.concat(m.dugumler);
+    // aks–kat düğümleri için kayıt YAZILMAZ: bütün başvurular aks REF'idir ({aks, z} ya da {aks, kat}; numara 1000·kat + 20·ix + iy + 1
+    // akslardan çözülür). Eskiden yazılan {no, X, Y, Z, aks, kat} kayıtları aks taşınınca izlemiyor, "aks ekleyin" uyarısı üretiyordu.
     m.kolonlar = []; m.kirisler = []; m.dosemeler = [];
     m.surum = 3;
     this._h = null;
@@ -990,8 +1000,21 @@
   P_.dugumuTasiIc = function (n, P) {
     const d = this.harita().get(n);
     if (!d) throw new ModelHatasi("Düğüm " + n + " modelde yok.");
+    if (uzaklik([d.X, d.Y, d.Z], P) <= this.tol) return n;
+    // hedefte mevcut düğüm (aks kesişimi dahil): başvurular ona yazılır (aks kesişiminde {aks, z} REF'i)
+    const o = this.bul(P, this.tol, new Set([n]));
+    if (o != null) {
+      const tabanMesnet = this.izgaraTaban(n) && !this.mesnetKaydi(n) && !this.mesnetli(o);
+      this.refDegistir(new Map([[n, o]]));
+      const i = this.m.dugumler.findIndex(function (x) { return x && +x.no === n; });
+      if (i >= 0) this.m.dugumler.splice(i, 1);
+      this._h = null;
+      if (tabanMesnet && this.baglantilar().get(o)) this.m.mesnetler.push(this.temelMesnetKaydi(o));
+      this.uyar("Düğüm " + n + " hedefteki düğüm " + o + " ile birleşti.");
+      return o;
+    }
     if (d.izgara) {
-      const tabanMesnet = d.kat === 0 && !this.mesnetKaydi(n);
+      const tabanMesnet = this.izgaraTaban(n) && !this.mesnetKaydi(n);
       const yeni = this.yeniDugumNo();
       const r = { no: yeni, X: r6(P[0]), Y: r6(P[1]), Z: r6(P[2]) };
       if (d.kayit && d.kayit.ad) r.ad = d.kayit.ad;
@@ -1139,21 +1162,139 @@
     }
     return { cubuklar: [...cesle.values()], paneller: yeniP.map(function (x) { return x[1]; }), dugumler: [...new Set(esle.values())] };
   };
-  P_.tasiIc = function (s, f, R) {
-    const self = this, dg = new Set(s.dugumler);
-    for (const no of s.cubuklar) this.uclar(this.cubuk(no)).forEach(function (n) { dg.add(n); });
-    for (const no of s.paneller) this.panel(no).kose.forEach(function (r) { dg.add(self.refNo(r, false)); });
-    if ([...dg].some(function (n) { const d = self.harita().get(n); return d && d.izgara; }) && this.aksKatVar()) this.genellestirIc();
-    const hedef = new Map([...dg].map(function (n) { return [n, f(self.kon(n))]; }));
-    const tam = this.m.cubuklar.filter(function (c) { const u = self.uclar(c); return dg.has(u[0]) && dg.has(u[1]); });
-    const eski = new Map(tam.map(function (c) { return [c, self.cubukEksen(c)]; }));
-    const esle = new Map();
-    for (const [n, P] of hedef) esle.set(n, this.dugumuTasiIc(n, P));
-    if (R) for (const c of tam) { const u = this.uclar(c), e = eski.get(c); if (e) c.aci = this.yeniAci(e, this.kon(u[0]), this.kon(u[1]), R); }
-    for (const n of new Set(esle.values())) {
-      const o = this.bul(this.kon(n), this.tol, new Set([n]));
-      if (o != null) this.uyar("Düğüm " + n + " düğüm " + o + " ile çakışıyor; dugumleriBirlestir ile birleştirin.");
+  /** Yeni serbest düğüm kaydı (konumda başka düğüm olsa da: taşınırken yerini boşaltacak düğümün konumu için). */
+  P_.dugumZorla = function (P) {
+    const no = this.yeniDugumNo();
+    const r = { no: no, X: r6(P[0]), Y: r6(P[1]), Z: r6(P[2]) };
+    this.m.dugumler.push(r);
+    this.harita().set(no, { no: no, X: r.X, Y: r.Y, Z: r.Z, izgara: false, aks: null, kat: null, kayit: r });
+    return no;
+  };
+  /** Bölme / kesişim kayıtlarının dayandığı düğümler (bu düğümler yerinde kalmalı: bağımlı düğüm onlarla tanımlı). */
+  P_.dayanakDugumler = function () {
+    const self = this, out = new Set();
+    const ekle = function (r) { try { const n = self.refNo(r, false); if (n != null) out.add(n); } catch (e) { /* yoksay */ } };
+    for (const d of this.m.dugumler) {
+      if (d && d.tur === "bolme") { ekle(d.cubuk_i); ekle(d.cubuk_j); }
+      else if (d && d.tur === "kesisim") { (d.a || []).forEach(ekle); (d.b || []).forEach(ekle); }
     }
+    return out;
+  };
+  /**
+   * Taşı / döndür / ayna (kopyasız) — "koparak taşıma": seçilen çubuk ve panellerin uçları f ile hedefe yazılır; seçilmeyen
+   * elemanlarla (aks–kat elemanları, bölme düğümlerinin dayanakları dahil) paylaşılan düğümler YERİNDE kalır. Hedef mevcut bir
+   * düğüme (aks kesişimi dahil) düşüyorsa o düğüm kullanılır, değilse yeni düğüm kaydı açılır. Yalnız seçime ait düğümler silinir;
+   * açık mesnetleri ve düğüm yükleri hedefe taşınır (mesnetli düğümün hedefine kopya işlemlerindeki gibi mesnet yazılır).
+   * Çubuk ve panel numaraları, yükleri, kren yolları korunur. Açıkça seçilen düğümler (s.dugumler) yerinde taşınır.
+   * Ret (dönüş {red: [metin]}, model değiştirilmemiş sayılır): sıfır boylu çubuk, hedefte mevcut çubukla aynı iki düğüm ya da
+   * eş doğrusal üst üste binme, bozuk / mevcut panelle aynı köşeli panel.
+   * Dönüş: Map(eski düğüm → yeni düğüm).
+   */
+  P_.tasiIc = function (s, f, R) {
+    const self = this, tol = this.tol, esle = new Map();
+    // açıkça seçilen düğümler: düğümün kendisi taşınır (bağlı her şey izler)
+    const acik = [...new Set(s.dugumler)].map(function (n) { return [n, f(self.kon(n))]; });
+    for (const a of acik) esle.set(a[0], this.dugumuTasiIc(a[0], a[1]));
+    const secC = new Set(s.cubuklar.map(Number)), secP = new Set(s.paneller.map(Number));
+    const cs = [...secC].map(function (no) { return self.cubuk(no); });
+    const ps = [...secP].map(function (no) { return self.panel(no); });
+    const dg = new Set();
+    for (const c of cs) this.uclar(c).forEach(function (n) { dg.add(n); });
+    for (const p of ps) p.kose.forEach(function (r) { dg.add(self.refNo(r, false)); });
+    for (const v of esle.values()) dg.delete(v);
+    if (!dg.size) return esle;
+    // paylaşılan düğümler: seçilmeyen çubuk / panel uçları, aks–kat elemanları, bölme / kesişim dayanakları
+    const paylasilan = this.dayanakDugumler();
+    for (const c of this.m.cubuklar) if (!secC.has(+c.no)) { try { this.uclar(c).forEach(function (n) { paylasilan.add(n); }); } catch (e) { /* yoksay */ } }
+    for (const p of this.m.paneller) if (!secP.has(+p.no)) { for (const r of p.kose || []) { try { paylasilan.add(this.refNo(r, false)); } catch (e) { /* yoksay */ } } }
+    for (const n of this.aksKatDugumleri().keys()) paylasilan.add(n);
+    const P0 = new Map(), T = new Map();
+    for (const n of dg) { P0.set(n, this.kon(n)); T.set(n, f(this.kon(n))); }
+    const kendi = new Set([...dg].filter(function (n) { return !paylasilan.has(n); }));
+    // yerini boşaltan düğümler (seçime ait serbest kayıtlar): hedef aramasında yok sayılır
+    const bosalan = new Set([...kendi].filter(function (n) { const d = self.harita().get(n); return d && !d.izgara && uzaklik(T.get(n), P0.get(n)) > tol; }));
+    const mesnetliOnce = new Map([...dg].map(function (n) { return [n, self.mesnetli(n)]; }));
+    const eksen = new Map(cs.map(function (c) { return [c, self.cubukEksen(c)]; }));
+    const hedef = new Map();
+    for (const n of dg) {
+      if (uzaklik(T.get(n), P0.get(n)) <= tol) { hedef.set(n, n); continue; }
+      const o = this.bul(T.get(n), tol, bosalan);
+      hedef.set(n, o != null ? o : this.dugumZorla(T.get(n)));
+    }
+    // ret denetimleri
+    const red = [];
+    const ciftAnahtar = function (a, b) { return a < b ? a + "-" + b : b + "-" + a; };
+    const digerleri = [];
+    const ciftler = new Map();
+    for (const c of this.m.cubuklar) {
+      if (secC.has(+c.no)) continue;
+      let u; try { u = this.uclar(c); } catch (e) { continue; }
+      ciftler.set(ciftAnahtar(u[0], u[1]), +c.no);
+      digerleri.push({ no: +c.no, A: this.kon(u[0]), B: this.kon(u[1]) });
+    }
+    const yeniUc = new Map();
+    for (const c of cs) {
+      const u = this.uclar(c), a = hedef.get(u[0]), b = hedef.get(u[1]);
+      yeniUc.set(c, [a, b]);
+      if (a === b) { red.push("Çubuk " + c.no + " taşınınca iki ucu aynı düğüme (" + a + ") düşüyor; sıfır boylu çubuk olurdu."); continue; }
+      const k = ciftAnahtar(a, b);
+      if (ciftler.has(k)) { red.push("Çubuk " + c.no + " hedefte çubuk " + ciftler.get(k) + " ile çakışıyor (aynı iki düğüm)."); continue; }
+      ciftler.set(k, +c.no);
+      const A = T.get(u[0]), B = T.get(u[1]), L = uzaklik(A, B);
+      for (const o of digerleri) {
+        const ra = dogruyaUzaklik(o.A, A, B), rb = dogruyaUzaklik(o.B, A, B);
+        if (ra.d > tol || rb.d > tol) continue;
+        const lo = Math.max(0, Math.min(ra.t, rb.t)), hi = Math.min(1, Math.max(ra.t, rb.t));
+        if ((hi - lo) * L > tol) { red.push("Çubuk " + c.no + " hedefte çubuk " + o.no + " ile eş doğrusal üst üste biniyor."); break; }
+      }
+    }
+    const panelAnahtar = function (l) { return l.slice().sort(function (a, b) { return a - b; }).join(","); };
+    const panelSet = new Set(this.m.paneller.filter(function (p) { return !secP.has(+p.no); }).map(function (p) {
+      try { return panelAnahtar(p.kose.map(function (r) { return self.refNo(r, false); })); } catch (e) { return ""; }
+    }));
+    const yeniKose = new Map();
+    for (const p of ps) {
+      let k = p.kose.map(function (r) { return hedef.get(self.refNo(r, false)); });
+      if (R && yansimaMi(R)) k = k.reverse();
+      yeniKose.set(p, k);
+      if (new Set(k).size !== k.length) { red.push("Panel " + p.no + " taşınınca köşeleri çakışıyor."); continue; }
+      const g = panelGeometri(p.kose.map(function (r) { return T.get(self.refNo(r, false)); }), 0.005);
+      if (!g.ok) { red.push("Panel " + p.no + " taşınınca bozuluyor: " + g.sebep + "."); continue; }
+      if (panelSet.has(panelAnahtar(k))) red.push("Panel " + p.no + " hedefte aynı köşeli bir panelle çakışıyor.");
+    }
+    if (red.length) return { red: red };
+    // uygula: çubuk ve panel uçları
+    for (const c of cs) {
+      const u = yeniUc.get(c);
+      c.i = this.refYaz(u[0]); c.j = this.refYaz(u[1]);
+      if (R) { const e = eksen.get(c); if (e) c.aci = this.yeniAci(e, this.kon(u[0]), this.kon(u[1]), R); }
+    }
+    for (const p of ps) p.kose = yeniKose.get(p).map(function (n) { return self.refYaz(n); });
+    // mesnetler ve düğüm yükleri
+    for (const n of dg) {
+      const t = hedef.get(n);
+      esle.set(n, t);
+      if (t === n) continue;
+      if (mesnetliOnce.get(n) && !this.mesnetli(t)) {
+        const kay = this.mesnetKaydi(n);
+        const r = mesnetDonustur(kay ? kay : this.temelMesnetKaydi(n), R);
+        if (r) { delete r.kaynak; r.dugum = this.refYaz(t); this.m.mesnetler.push(r); }
+        else this.uyar("Düğüm " + n + " mesnedi dönüşüm altında eksenlere gelmediği için taşınmadı.");
+      }
+      if (!kendi.has(n)) continue;
+      this.m.mesnetler = this.m.mesnetler.filter(function (sk) { try { return self.refNo(sk.dugum, false) !== n; } catch (e) { return true; } });
+      const yeniY = [];
+      for (const y of this.m.ek_yukler) {
+        if (this.yukDugumu(y) !== n) { yeniY.push(y); continue; }
+        const r = yukDonustur(y, R);
+        if (!r) { this.uyar("Düğüm " + n + " yükü dönüşüm altında eksen doğrultusuna gelmediği için kaldırıldı."); continue; }
+        delete r.aks; delete r.kat; r.dugum = this.refYaz(t);
+        yeniY.push(r);
+      }
+      this.m.ek_yukler = yeniY;
+    }
+    this._h = null;
+    this.yetimSil([...kendi].filter(function (n) { return hedef.get(n) !== n; }));
     return esle;
   };
 
@@ -1226,12 +1367,12 @@
     const kayit = this.m.uretecler.find(function (u) { return +u.no === no; });
     if (!kayit) throw new ModelHatasi("Üreteç " + no + " modelde yok.");
     const ait = function (x) { return x && x.kaynak && +x.kaynak.uretec === no; };
+    this.m.kren = this.m.kren.filter(function (k) { return !ait(k); });       // önce üretecin kren kayıtları (yol uyarısı olmasın)
     for (const c of this.m.cubuklar.filter(ait)) this.cubukSilIc(+c.no);
     const silP = new Set(this.m.paneller.filter(ait).map(function (p) { return +p.no; }));
     this.m.paneller = this.m.paneller.filter(function (p) { return !silP.has(+p.no); });
     this.m.ek_yukler = this.m.ek_yukler.filter(function (y) { return !(y && y.tur === "panel" && silP.has(+y.panel)); });
     this.m.mesnetler = this.m.mesnetler.filter(function (s) { return !ait(s); });
-    this.m.kren = this.m.kren.filter(function (k) { return !ait(k); });
     for (const d of kayit.tur_degisen || []) { const c = this.cubukBul(d.cubuk); if (c) c.tur = d.tur; }
     // aynı özgün çubuğun art arda bölünmesiyle oluşan gruplar ortak üyeden birleştirilir ([3,4] + [4,5] → [3,4,5])
     const birlesikGruplar = [];
@@ -1311,7 +1452,15 @@
       } else { ekle(A, C); ekle(B, D); }
     } else if (tip === "tek-/") ekle(A, C);
     else if (tip === "tek-\\") ekle(B, D);
-    else if (tip === "V") { const M = kenar(A, B, 0.5); ekle(M, D); ekle(M, C); }
+    else if (tip === "V") {
+      const M = kenar(A, B, 0.5); ekle(M, D); ekle(M, C);
+      // temel seviyesindeki tepe bölme noktasıdır: temel kuralı (C3) bölme düğümüne mesnet vermez → açık mafsal mesnet
+      const z0 = this.temelKotu(), d = this.harita().get(M);
+      if (z0 != null && d && !d.izgara && Math.abs(d.Z - z0) <= this.tol && !this.mesnetli(M)) {
+        this.m.mesnetler.push({ dugum: this.refYaz(M), ux: true, uy: true, uz: true, rx: false, ry: false, rz: false, kaynak: { uretec: kayit.no } });
+        this.uyar("V çaprazın tepesi (düğüm " + M + ") temel seviyesinde bir bölme noktası; temel mesnedi yalnız aks kesişimlerine verildiği için buraya mafsal mesnet eklendi.");
+      }
+    }
     else if (tip === "ters-V") { const M = kenar(D, C, 0.5); ekle(A, M); ekle(B, M); }
     else if (tip === "K") {
       if (sec.kolon === "sol") { const M = kenar(A, D, 0.5); ekle(B, M); ekle(C, M); }
@@ -1941,8 +2090,8 @@
     is.yetimSil(ad);
     return is.bitir();
   }
-  const OZELLIK_ADLARI = ["kesit", "tur", "aci", "yalniz_cekme", "grup", "Lb", "K", "kat"];
-  /** Kesit/tür/açı/yalnız-çekme/grup/Lb/K/kat fırçası; null değer alanı kaldırır. */
+  const OZELLIK_ADLARI = ["kesit", "tur", "aci", "yalniz_cekme", "grup", "Lb", "K", "kat", "duvar", "duvar_h"];
+  /** Kesit/tür/açı/yalnız-çekme/grup/Lb/K/kat/duvar (duvarlar sözlüğündeki ad)/duvar_h (m; boş = kat yüksekliği) fırçası; null değer alanı kaldırır. */
   function ozellikAta(model, nolar, ozellik) {
     const is = new Is(model);
     for (const no of Array.isArray(nolar) ? nolar : [nolar]) {
@@ -2056,11 +2205,15 @@
     for (let k = 1; k <= n; k++) kopyalar.push(is.kopyalaIc(s, function (P) { return topla(P, olcek(d, k)); }, null, sec));
     return is.bitir({ kopyalar: kopyalar });
   }
+  /** Kopyasız taşıma sonucu: ret varsa model değişmeden (reddet), yoksa rapor. */
+  function tasiSonuc(model, is, esle) {
+    if (esle && esle.red) return reddet(model, is.uy.concat(esle.red));
+    return is.bitir({ dugum_esleme: [...esle] });
+  }
   function tasi(model, secim, dX, dY, dZ, sec) {
     const is = new Is(model, sec);
     const s = is.secimCoz(secim), d = nokta3([dX, dY, dZ], "Öteleme");
-    const esle = is.tasiIc(s, function (P) { return topla(P, d); }, null);
-    return is.bitir({ dugum_esleme: [...esle] });
+    return tasiSonuc(model, is, is.tasiIc(s, function (P) { return topla(P, d); }, null));
   }
   function ayna(model, secim, duzlem, sec) {
     sec = Object.assign({ kopya: true }, sec || {});
@@ -2069,7 +2222,7 @@
     const R = function (v) { return cikar(v, olcek(d.n, 2 * ic(v, d.n))); };
     const f = function (P) { return cikar(P, olcek(d.n, 2 * ic(cikar(P, d.p0), d.n))); };
     if (sec.kopya) return is.bitir({ kopya: is.kopyalaIc(s, f, R, sec) });
-    return is.bitir({ dugum_esleme: [...is.tasiIc(s, f, R)] });
+    return tasiSonuc(model, is, is.tasiIc(s, f, R));
   }
   /** eksen: {nokta: [..], yon: [..]} ya da "X"|"Y"|"Z" (orijinden geçen); aci derece, sağ el kuralı. */
   function dondur(model, secim, eksen, aci, sec) {
@@ -2088,7 +2241,7 @@
       return is.bitir({ kopyalar: kopyalar });
     }
     const t = yap(1);
-    return is.bitir({ dugum_esleme: [...is.tasiIc(s, t.f, t.R)] });
+    return tasiSonuc(model, is, is.tasiIc(s, t.f, t.R));
   }
 
   // ---- panel
