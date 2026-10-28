@@ -1118,7 +1118,8 @@
       else if (e.key === "End") { l[l.length - 1].focus(); e.preventDefault(); }
       else if (e.key === "Escape" || e.key === "Tab") { menuKapat(); e.preventDefault(); }
     });
-    document.body.appendChild(m);
+    // tam ekranda (Fullscreen API) yalnız tam ekran öğesinin alt ağacı görünür: menü oraya
+    (sec.kapsayici || document.fullscreenElement || document.webkitFullscreenElement || document.body).appendChild(m);
     const konum = olay && olay.clientX != null ? { x: olay.clientX, y: olay.clientY } : (olay && olay.x != null ? { x: olay.x, y: olay.y } : { x: 40, y: 40 });
     const vw = window.innerWidth, vh = window.innerHeight, r_ = m.getBoundingClientRect();
     m.style.left = Math.round(Math.max(4, Math.min(konum.x, vw - r_.width - 4))) + "px";

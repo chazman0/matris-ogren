@@ -602,6 +602,7 @@
     const ana = KATALOG_HARITA.get(t.id) || {};
     const eski = kayit.get(t.id) || {};
     const k = Object.assign({}, ana, eski);
+    k.id = t.id;      // kataloğun dışındaki sayfa komutları (ör. "ifc", "duvar") için de
     ["ad", "ikon", "kisayol", "ipucu", "tur", "etkin", "secili", "calistir", "secenekler", "secenek", "secenekSec"].forEach(function (a) {
       if (t[a] !== undefined) k[a] = t[a];
     });
@@ -675,6 +676,8 @@
     return a === "INPUT" || a === "TEXTAREA" || a === "SELECT" || t.isContentEditable;
   }
   function hareketAz() { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } }
+  /** Menü, iletişim kutusu ve sürükleme hayaleti: tam ekrandaki öğenin içine (Fullscreen API'de yalnız o öğenin alt ağacı görünür), yoksa gövdeye. */
+  function ustKatman() { return document.fullscreenElement || document.webkitFullscreenElement || document.body; }
 
   /** Dokunmatik uzun basmadan sonra parmak kalkınca tarayıcının ürettiği tek tıklamayı (450 ms içinde) yutar. */
   function belgeTikYut() {
@@ -761,7 +764,7 @@
       else if (e.key === "ArrowRight" && document.activeElement && document.activeElement.getAttribute("aria-haspopup")) { document.activeElement.click(); e.preventDefault(); }
       else if (e.key === "Tab") { menuKapat(); }
     });
-    document.body.appendChild(m);
+    ustKatman().appendChild(m);
     const kayit_ = { el: m, donus: sec.donus || null, kapaninca: sec.kapaninca || null,
       disari: function (e) { if (!m.contains(e.target)) menuKapat(false); } };
     acikMenu = kayit_;
@@ -795,7 +798,7 @@
       }
     });
     function disari(e) { if (!d.contains(e.target)) kapat(); }
-    document.body.appendChild(d);
+    ustKatman().appendChild(d);
     const vw = window.innerWidth, vh = window.innerHeight, r_ = d.getBoundingClientRect();
     let x = konum ? konum.x : (vw - r_.width) / 2, y = konum ? konum.y : (vh - r_.height) / 3;
     d.style.left = Math.round(Math.max(4, Math.min(x, vw - r_.width - 4))) + "px";
@@ -1318,7 +1321,7 @@
     const id = b.getAttribute("data-komut"), k = komut(id);
     const hayalet = el("div", "arac-hayalet");
     hayalet.innerHTML = ikonSvg(k ? k.ikon : "diger") + '<span>' + kacis(k ? k.ad : id) + "</span>";
-    document.body.appendChild(hayalet);
+    ustKatman().appendChild(hayalet);
     const imi = el("div", "arac-yer-imi");
     const yeni = el("div", "arac-yeni-kutu-onizleme");
     yeni.textContent = "Yeni kutu";

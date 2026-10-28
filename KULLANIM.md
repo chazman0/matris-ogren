@@ -445,6 +445,30 @@ k = yapi.eleman_tasarim(r.ic, "kolon", 1)                           # anlatıml�
 k.veri["egri_x"][:3], k.veri["noktalar"][0]                         # [{N, M}], {ad, kombinasyon, uc, N, Mx, My, dc}
 ```
 
+### 3.10 Bina sayfası (web ve masaüstü): araç kutuları, sağ tık, rapor, IFC, tablolar, ısı haritası
+
+- **Yüzen araç kutuları** sahnenin üstündedir (tam ekranda da): Çizim, Düzenleme, Aks, Ölçme, Görünüm, Analiz, Sonuç, Değiştirme.
+  Kutuyu tutamağından sürükleyin; düğmeyi bir kutudan ötekine sürükleyip bırakın (boş alana bırakmak yeni kutu açar); köşedeki
+  menüden “Özelleştir”, hazır yerleşimler ve “Varsayılana dön”. Telefonda kutular sahnenin altında kaydırılabilir şerittir.
+  Kısayollar tek yerden çalışır: S seç, K kolon, R kiriş, D döşeme, W duvar, Del sil, Ctrl+Z / Ctrl+Y, Ctrl+Enter çöz,
+  1–4 görünüm (3B, plan, ön, yan), F tam ekran, Shift+F sığdır, U uzaklık ölç, PgUp/PgDn kat. Soluk düğmelerin ipucunda nedeni yazar
+  (aks tabanlı çizim ve değiştirme komutları sonraki sürümde bağlanacak).
+- **Ölçme:** Uzaklık, açı, alan, eleman boyu, kot farkı, koordinat; imleç düğüme / aks kesişimine / çubuğa yakalanır. Esc yarım ölçümü,
+  “Ölçüleri temizle” hepsini siler.
+- **Sağ tık (dokunmatikte uzun basma):** elemanın özeti ve komutları: Bilgi (geometri, kesit, yükler, iç kuvvetler, tasarım, metraj,
+  yük yolu sekmeli pencere; iğnelenip karşılaştırılabilir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Gizle, Yalıt, Sil.
+  Klavyede sahneyi seçip Shift+F10.
+- **📄 Statik Rapor:** çözüm yoksa önce çözer; önizleme, “Yazdır / PDF”, “HTML indir”. Proje künyesi (ad, yer, ada/parsel, hazırlayan…)
+  bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer.
+- **▦ Tablolar:** model, yük, deprem, analiz, tasarım, temel ve metraj tabloları; sarı hücreler düzenlenebilir, “Uygula” modeli değiştirir
+  (Ctrl+Z ile geri alınır; sonuçlar yeniden çözülene kadar eski sayılır), CSV dışa aktarım.
+- **🌡 Isı haritası:** yük durumu, kombinasyon ya da zarf için yer değiştirme, iç kuvvet, gerilme ve kullanım oranı renkleri; elemana dokunun:
+  seçilir, “İncele” ile kesit gerilmeleri. “Tasarım ayrıntısı” Tasarım sekmesine geçer.
+- **⬇ IFC:** IFC4 yapı modeli (katlar, aks ızgaraları, elemanlar, kesit ve malzemeler; isteğe bağlı yapısal analiz modeli, yükler ve D/C).
+  BIM görüntüleyicilerinde açılır.
+- **Proje dosyası:** “💾 Kaydet” `.matris` dosyası indirir (bina + görünüm + araç kutusu yerleşimi); “📂 Aç” `.matris` ya da eski bina
+  `.json` dosyasını açar (açma da geri alınabilir). Masaüstü sürümünde Dosya menüsü ve Ctrl+S / Ctrl+O aynı işi yerel dosyayla yapar.
+
 ---
 
 ## 4. Derste kullanım önerileri

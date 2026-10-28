@@ -1843,3 +1843,85 @@ body.bn-tam-ekran .ust, body.bn-tam-ekran .alt-nav { display: none; }
 .olcum .olcum-rozet .olcum-etiket { fill: #fff; stroke: none; font-size: 9.5px; }
 .olcum-yakala { fill: none; stroke: var(--olcum-yakala); stroke-width: 2; pointer-events: none; }
 .olcum-yakala .olcum-yakala-ad { fill: var(--olcum-yakala); stroke: var(--arka); stroke-width: 3px; paint-order: stroke; font-size: 11px; font-weight: 700; }
+
+/* Bina kablolaması (Dilim 4f): yüzen araç kutusu katmanı, kaplama pencereleri (rapor, tablolar, ısı haritası, IFC), çıktı düğmeleri,
+   tel kafes / etiket gösterimi, model denetimi. Yalnız mevcut değişkenler; koyu tema değişkenlerden gelir. */
+.bn-arac-katman { position: absolute; left: 0; right: 0; top: 48px; height: calc(var(--bn-sahne-h, 420px) - 48px); pointer-events: none; z-index: 3; }
+.bn-arac-katman[hidden] { display: none; }
+@media (max-width: 699px) { .bn-arac-katman { top: 0; height: var(--bn-sahne-h, 420px); } }
+.bn-tam .bn-arac-katman { top: 52px; bottom: 58px; left: 76px; right: calc(min(var(--bn-panel-w), 46vw) + 16px); height: auto; }
+.bn-tam.bn-arac-kapali .bn-arac-katman { left: 8px; }
+.bn-tam.bn-panel-kapali .bn-arac-katman { right: 8px; }
+@media (max-width: 699px) { .bn-tam .bn-arac-katman { left: 0; right: 0; top: 56px; bottom: 0; } }
+.bn-cikti .dugme.kucuk { white-space: nowrap; }
+@media (max-width: 699px) { .bn-ust .bn-cikti { grid-column: 1 / -1; } }
+.bn-tam .bn-cikti { flex: none; }
+.bn-cikti-satir { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+/* tel kafes ve etiketler */
+.b3-tel { fill: none; stroke: var(--b3-beton-koyu); stroke-width: 3; stroke-linecap: round; }
+.b3-tel.b3-celik { stroke: var(--b3-celik-koyu); }
+.b3-tel.b3-dc { stroke: var(--dcr, var(--soluk)); stroke-width: 3.6; }
+.b3-doseme.b3-tel-doseme { fill: none; stroke-dasharray: 5 4; }
+.bn-svg .b3-etiket-el { font-size: 10.5px; font-weight: 600; fill: var(--metin); paint-order: stroke; stroke: var(--arka); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+/* kaplama pencereleri */
+body.bn-kaplama-acik { overflow: hidden; }
+body.bn-kaplama-acik .toast { z-index: 80; }
+.bn-kaplama { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 2vh 2vw; background: rgba(15, 23, 42, .46); }
+.bn-kaplama-pencere {
+  display: flex; flex-direction: column; width: min(1100px, 100%); max-height: 100%; min-height: 0; background: var(--kart); color: var(--metin);
+  border: 1px solid var(--cizgi); border-radius: 14px; box-shadow: 0 18px 48px rgba(15, 23, 42, .3); overflow: hidden;
+}
+.bn-kaplama-genis .bn-kaplama-pencere { width: min(1680px, 100%); height: 100%; }
+.bn-kaplama-kucuk .bn-kaplama-pencere { width: min(560px, 100%); }
+.bn-kaplama-ust { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--cizgi); }
+.bn-kaplama-ust h2 { margin: 0; font-size: 17px; flex: 1 1 auto; min-width: 0; }
+.bn-kaplama-araclar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bn-kaplama-araclar:empty { display: none; }
+.bn-kaplama-kapat { flex: none; min-width: 40px; }
+.bn-kaplama-govde { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 10px 16px 16px; }
+.bn-kaplama-govde:focus { outline: none; }
+.bn-kaplama-govde > .bn-hata, .bn-kaplama-govde > div > .hata-kutu { margin: 8px 0; }
+@media (max-width: 699px) {
+  .bn-kaplama { padding: 0; }
+  .bn-kaplama-pencere, .bn-kaplama-genis .bn-kaplama-pencere, .bn-kaplama-kucuk .bn-kaplama-pencere { width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; }
+  .bn-kaplama-ust { padding: 6px 8px 6px 12px; }
+  .bn-kaplama-govde { padding: 8px 10px 12px; }
+}
+@media (prefers-reduced-motion: no-preference) { .bn-kaplama-pencere { animation: bn-kaplama-gir .16s ease-out; } }
+@keyframes bn-kaplama-gir { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.bn-bekle { display: flex; align-items: center; gap: 8px; margin: 18px 4px; }
+/* rapor */
+.bn-kaplama[data-kaplama="rapor"] .bn-kaplama-govde { display: flex; flex-direction: column; }
+.bn-rapor { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
+.bn-rapor-form { border: 1px solid var(--cizgi); border-radius: 10px; padding: 4px 12px; background: var(--arka); }
+.bn-rapor-form > summary { cursor: pointer; font-weight: 600; min-height: 34px; display: flex; align-items: center; }
+.bn-rapor-alanlar { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; padding-bottom: 8px; }
+.bn-rapor-alanlar > .not, .bn-rapor-alanlar > .dugmeler, .bn-rapor-alanlar > .bn-alan-genis { grid-column: 1 / -1; }
+.bn-rapor-alanlar > .dugmeler { margin-top: 4px; }
+.bn-rapor-onizleme { flex: 1 1 auto; width: 100%; min-height: 55vh; border: 1px solid var(--cizgi); border-radius: 10px; background: #fff; }
+.bn-rapor-onizleme[hidden] { display: none; }
+.bn-rapor-durum p { margin: 4px 0; }
+/* IFC, süzgeç, denetim */
+.bn-ifc { display: flex; flex-direction: column; gap: 2px; }
+.bn-ifc .bn-onay { font-weight: 500; }
+.bn-suzgec-liste { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.bn-suzgec-liste .bn-onay { font-weight: 500; }
+.bn-denetim { margin: 6px 0 10px; padding-left: 20px; }
+.bn-denetim li { margin: 4px 0; overflow-wrap: anywhere; }
+.bn-denetim li.hata { color: var(--sema-sil); }
+.bn-denetim-tamam { color: var(--ana); font-weight: 700; }
+.bn-bag { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.bn-bag:hover, .bn-bag:focus-visible { color: var(--ana); }
+/* ısı haritası ve tablo editörü kaplamada: sahne kalan yüksekliği kullanır */
+.bn-kaplama[data-kaplama="isi"] .isi-sahne { height: min(68vh, 760px); }
+@media (max-width: 699px) { .bn-kaplama[data-kaplama="isi"] .isi-sahne { height: min(60vh, 520px); } }
+.bn-kaplama-araclar .dugme, .bn-rapor-alanlar .dugmeler .dugme, .bn-ifc .dugmeler .dugme, .bn-kaplama-kucuk .dugmeler .dugme { flex: none; width: auto; }
+.bn-cikti-satir .dugme { flex: none; }
+.bn-kaplama .isi-kapat { display: none; }     /* kaplamanın kendi ✕ düğmesi var */
+@media (max-width: 699px) {
+  .bn-kaplama-ust h2 { order: 1; }
+  .bn-kaplama-kapat { order: 2; }
+  .bn-kaplama-araclar { order: 3; flex-basis: 100%; }
+}
+.bn-svg:focus { outline: none; }
+.bn-svg:focus-visible { outline: 2px solid var(--ana); outline-offset: -2px; }

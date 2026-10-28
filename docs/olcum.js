@@ -189,7 +189,9 @@
     if (!k) return null;
     let P = null;
     try { P = nokta(Array.isArray(k) ? k : (k.P || k.konum || [k.X, k.Y, k.Z])); } catch (e) { return null; }
-    return { P: P, etiket: String(k.etiket || k.adres || k.ad || ("(" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + "; " + bicim(P[2], 2) + ")")),
+    // MatrisAks kaydı {ref, P, sistem, adlar: [u, v, z]}: etiket aks adresinden ("A-1 / +3.00"; ek sistemde "S1: …")
+    const adres = Array.isArray(k.adlar) && k.adlar.length === 3 ? (k.sistem && k.sistem !== "GLOBAL" ? k.sistem + ": " : "") + k.adlar[0] + "-" + k.adlar[1] + " / " + k.adlar[2] : null;
+    return { P: P, etiket: String(k.etiket || k.adres || adres || k.ad || ("(" + bicim(P[0], 2) + "; " + bicim(P[1], 2) + "; " + bicim(P[2], 2) + ")")),
       ref: k.ref || null, sistem: k.sistem || "GLOBAL" };
   }
   /**
@@ -201,7 +203,8 @@
     if (A) {
       const f = A.kesisimler || A.kesisimNoktalari || A.tumKesisimler;
       if (typeof f === "function") {
-        try { const l = f.call(A, bina); if (Array.isArray(l)) return l.map(kesisimNormal).filter(Boolean); } catch (e) { /* kendi türetmemize düş */ }
+        // MatrisAks.kesisimler(bina, görünüm): görünüm verilmezse yalnız en alt Z aksının planı döner; ölçüm bütün X × Y × Z'yi ister ({tur: "3b"})
+        try { const l = f.call(A, bina, { tur: "3b" }); if (Array.isArray(l)) return l.map(kesisimNormal).filter(Boolean); } catch (e) { /* kendi türetmemize düş */ }
       }
     }
     const v = aksVerisi(bina), out = [], gizli = sec && sec.gizli;
