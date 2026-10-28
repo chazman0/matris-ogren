@@ -19,6 +19,11 @@ spektrum grafiği. Dış kaynak yoktur (çevrimdışı PWA); formüller düz HTM
 
 Bütün alanlar ``.get`` ile okunur: veri şeması büyüdükçe (``veri.temel`` §13, ``surum: 3`` çubuk/panel/kren §12) rapor kırılmaz;
 veri olmayan bölüm atlanmaz, "Bu modelde uygulanmadı" notuyla kalır. Sayı biçimi ``yapi._f`` ile aynıdır (ondalık nokta).
+
+Genel model çözümü (``veri.model == "genel"``, yapi_serbest): §3 çubuk/panel sayıları türe göre; §5 basit çelik kesitler (boru, kutu,
+korniyer, U) ve vute ayrı, betonarme tablosunda yalnız beton dikdörtgen kesitler; §6.2 panel yükleri ve kenar payları, §6.3 çubuk
+yük dökümü, §6.5 panel rüzgârı (c_p, q(z), yön başına toplam kuvvet); §10 panel rüzgârında beklenen tepki −ΣF ve taban kesmesi;
+§12.3 çubuk türlerine göre ayrıntı (K = [güçlü, zayıf]); §13 açık mesnetler ayrı, N_temel yoksa γ·B·L·h.
 """
 from __future__ import annotations
 
@@ -56,6 +61,13 @@ BOLUM_BASLIKLARI = {
 _EK_BASLIKLARI = {"metraj": "Metraj özeti", "A": "Ek A — Düğüm koordinatları", "B": "Ek B — Çubuk bağlantı tablosu",
                   "C": "Ek C — Seçilen tablolar"}
 UYGULANMADI = "Bu modelde uygulanmadı."
+# genel model (surum 3) çubuk ve panel türlerinin okunuşu (sıra: rapor tablolarındaki sıra)
+_CUBUK_TURU = {"kolon": "kolon", "kiris": "kiriş", "capraz": "çapraz", "makas-ust": "makas üst başlığı", "makas-alt": "makas alt başlığı",
+               "makas-dikme": "makas dikmesi", "makas-diyagonal": "makas diyagonali", "asik": "aşık", "kren": "kren kirişi",
+               "bag": "bağ kirişi", "diger": "diğer"}
+_PANEL_TURU = {"doseme": "döşeme", "cati": "çatı", "cephe": "cephe"}
+_SEKIL = {"ucgen": "üçgen", "trapez": "trapez", "duzgun": "düzgün", "dogrusal": "doğrusal", "yok": "—"}
+_DAGITIM = {"iki": "iki doğrultulu", "tek-13": "tek doğr. (1–3)", "tek-24": "tek doğr. (2–4)", "yok": "yok (köşelere)"}
 
 
 # ============================================================================
@@ -170,6 +182,12 @@ def _dc_hucre(dc, saglandi=None) -> str:
 
 def _isaret(ok) -> str:
     return '<span class="ok">✔</span>' if ok else '<span class="no">✘</span>'
+
+
+def _temel_aks(t) -> str:
+    """Temel kaydının aks adı ('B2'; genel modelde ek aks sistemindeyse 'KANAT:K1a')."""
+    on = f"{t['sistem']}:" if t.get("sistem") not in (None, "GLOBAL") else ""
+    return on + "".join(map(str, _liste(t.get("aks"))))
 
 
 def _tablo(basliklar, satirlar, *, sinif="", baslik=None, sayisal=None, alt=None) -> str:
@@ -482,6 +500,7 @@ class _Rapor:
         self.secili = None if not isinstance(bol, (list, tuple, set)) else {str(b).strip() for b in bol}
         detay = str(self.sec.get("eleman_detay") or "kritik").strip().lower()
         self.detay = detay if detay in ("hepsi", "kritik", "yok") else "kritik"
+        self.genel = self.v.get("model") == "genel"     # genel model (surum 3, yapi_serbest): çubuk/panel alanları
         self.el = {e.get("no"): e for e in _liste(_g(self.v, "ag", "elemanlar")) if isinstance(e, dict)}
         self.dug = {d.get("no"): d for d in _liste(_g(self.v, "ag", "dugumler")) if isinstance(d, dict)}
         self.tablolar, self.tablo_notu = self._tablolari_topla()
@@ -512,6 +531,11 @@ class _Rapor:
             return dict(sifir, FZ=float(top[ad])), f"{_b(top[ad], 'kN', 2)} (düşey, aşağı)"
         m = re.fullmatch(r"W([+-])([XY])", ad)
         rz = _sozluk(self.v.get("ruzgar"))
+        F = _liste(_sozluk(rz.get("toplam")).get(ad)) if rz.get("yontem") == "panel" else []
+        if m and len(F) >= 3 and all(_sayi_mi(x) for x in F[:3]):      # panel rüzgârı: Σ R = −Σ F (üç bileşen; çatı emmesi düşey)
+            Fx, Fy, Fz = (float(x) for x in F[:3])
+            return ({"FX": -Fx, "FY": -Fy, "FZ": -Fz},
+                    f"Σ<i>F</i> = ({_f(Fx, 2)}; {_f(Fy, 2)}; {_f(Fz, 2)}) kN (panel basınçları)")
         if m and _sayi_mi(rz.get("toplam_" + m.group(2).lower())):
             T = float(rz["toplam_" + m.group(2).lower()])
             yon = 1.0 if m.group(1) == "+" else -1.0
@@ -689,6 +713,10 @@ class _Rapor:
         for d in _liste(_g(v, "yukler", "dosemeler")):
             if isinstance(d, dict) and d.get("q_kaynak"):
                 maddeler.add(str(d["q_kaynak"]))
+        for d in _liste(_g(v, "yukler", "paneller")):        # genel model: panel yük kaynakları (kullanıcı değerleri hariç)
+            for a in ("q_kaynak", "g_kaynak"):
+                if isinstance(d, dict) and d.get(a) and str(d[a]) not in ("kullanıcı değeri", "verilmedi (0)"):
+                    maddeler.add(str(d[a]))
         for anahtar in ("kar", "ruzgar"):
             for a in ("kaynak", "Sk_kaynak", "mu_kaynak", "C_kaynak", "q_kaynak"):
                 if _g(v, anahtar, a):
@@ -727,6 +755,8 @@ class _Rapor:
         HN = _g(v, "deprem", "HN", vars=(max(kotlar) - min(kotlar)) if kotlar else None)
         dos = _liste(_g(v, "yukler", "dosemeler"))
         alan = sum(float(d.get("alan") or 0) for d in dos if isinstance(d, dict))
+        if self.genel:      # genel model: döşeme alanı 'doseme' türü panellerden
+            alan = sum(float(p.get("alan") or 0) for p in _liste(_g(v, "yukler", "paneller")) if isinstance(p, dict) and p.get("tur") == "doseme")
 
         def aralik(akslar):
             k = [float(a.get("konum", 0) or 0) for a in akslar]
@@ -745,10 +775,12 @@ class _Rapor:
             ("Plan boyutları " + _v("B", "X") + " × " + _v("B", "Y"), f"{_b(BX, 'm')} × {_b(BY, 'm')}" if BX is not None and BY is not None else "–"),
             ("X aksları ve aralıkları", _e(", ".join(str(a.get("ad")) for a in ax)) + " — " + _e(" + ".join(_f(x) for x in aralik(ax))) + " m"),
             ("Y aksları ve aralıkları", _e(", ".join(str(a.get("ad")) for a in ay)) + " — " + _e(" + ".join(_f(x) for x in aralik(ay))) + " m"),
-            ("Toplam döşeme alanı", _b(alan, "m²")),
+            ("Toplam döşeme alanı" + (" (döşeme panelleri)" if self.genel else ""), _b(alan, "m²")),
+        ] + (self._genel_sayilar() if self.genel else [
             ("Kolon / kiriş / döşeme sayısı", f"{len(_liste(B.get('kolonlar')))} / {len(_liste(B.get('kirisler')))} / {len(_liste(B.get('dosemeler')))}"),
             ("Serbest çubuk / panel / kren sayısı (surum 3)", f"{len(cub)} / {len(pan)} / {len(_liste(self.ham.get('kren')))}"
              if (cub or pan or self.ham.get("kren")) else "yok"),
+        ]) + [
             ("Sonlu eleman ağı: düğüm / çubuk eleman", f"{_f(oz.get('dugum', len(_liste(ag.get('dugumler')))), 0)} / {_f(oz.get('eleman', len(_liste(ag.get('elemanlar')))), 0)}"),
             ("Serbestlik derecesi sayısı", _f(oz.get("sd_sayisi", ag.get("sd_sayisi")), 0)),
             ("Mesnet sayısı", _f(len(_liste(ag.get("mesnetler"))), 0)),
@@ -765,6 +797,27 @@ class _Rapor:
         h += _h3("Kat tablosu") + _tablo(["Kat", "Ad", "Kot", "Kat yüksekliği <i>h</i>", "G (kat)", "Q (kat)"], rows, sayisal=(2, 3, 4, 5))
         h += self._aks_sistemi()
         return h
+
+    def _genel_sayilar(self):
+        """Genel model: çubuk ve panel sayıları türe göre, kren köprüleri (§3)."""
+        cub = [c for c in _liste(_g(self.v, "ag", "cubuklar")) if isinstance(c, dict)] or \
+              [c for c in _liste(self.ham.get("cubuklar")) if isinstance(c, dict)]
+        pan = [p for p in _liste(_g(self.v, "ag", "paneller")) if isinstance(p, dict)] or \
+              [p for p in _liste(self.ham.get("paneller")) if isinstance(p, dict)]
+
+        def say(liste, adlar):
+            n = {}
+            for x in liste:
+                n[x.get("tur") or "diger"] = n.get(x.get("tur") or "diger", 0) + 1
+            sira = [t for t in adlar if t in n] + sorted(t for t in n if t not in adlar)
+            return f"{len(liste)}" + (": " + ", ".join(f"{adlar.get(t, t)} {n[t]}" for t in sira) if n else "")
+
+        sat = [("Çubuk sayısı (türe göre)", _e(say(cub, _CUBUK_TURU))), ("Panel sayısı (türe göre)", _e(say(pan, _PANEL_TURU)))]
+        kren = [k for k in _liste(self.ham.get("kren")) if isinstance(k, dict)]
+        if kren:
+            kopru = _liste(_g(self.v, "kren", "kopruler"))
+            sat.append(("Kren", _e(f"{len(kren)} kren yolu" + (f", {len(kopru)} köprü" if kopru else ""))))
+        return sat
 
     def _aks_sistemi(self):
         """Aks sistemi (§19): X/Y/Z aks tabloları (konum + aralık) ve ek (döndürülmüş / silindirik) aks sistemleri."""
@@ -885,12 +938,15 @@ class _Rapor:
         kes = _sozluk(_g(self.v, "kutuphane_ozeti", "kesitler"))
         if not kes:
             return _not(UYGULANMADI)
-        dik, prof, sinif = [], [], []
+        dik, prof, sinif, basit = [], [], [], []
         for ad, k in kes.items():
-            if k.get("tip") == "profil":
+            tip = k.get("tip")
+            m = self.malzeme(k.get("malzeme"))
+            if tip == "profil" or (tip == "vute" and k.get("profil")):      # vute: temel I profil + doğrusal artan gövde (değişken kesit)
                 p = _sozluk(getattr(yv, "PROFILLER", {}).get(k.get("profil"))) if yv else {}
-                m = self.malzeme(k.get("malzeme"))
                 prof.append((ad, k, p, m))
+            elif tip == "basit" or m.get("tur") == "celik":      # basit çelik kesit ya da çelik dikdörtgen (lama): betonarme değil
+                basit.append((ad, k, m))
             else:
                 dik.append((ad, k))
         h = ""
@@ -899,7 +955,11 @@ class _Rapor:
             for ad, k in dik:
                 b, hh = float(k.get("b") or 0), float(k.get("h") or 0)
                 ham = self.kesit_ham(ad)
-                rows.append([f"<b>{_e(ad)}</b>", _e(k.get("malzeme")), f"{_f(b * 100, 1)} × {_f(hh * 100, 1)}",
+                olcu = f"{_f(b * 100, 1)} × {_f(hh * 100, 1)}"
+                if k.get("tip") == "vute":      # betonarme vute: temel dikdörtgen kesit + derin uçta ek yükseklik
+                    olcu += (f' <span class="birim">+ vute: ek yükseklik {_f(float(k.get("ek_yukseklik") or 0) * 100, 1)} cm, '
+                             f'boy {_b(k.get("boy"), "m") if k.get("boy") is not None else "çubuk boyu"}; temel {_e(k.get("temel"))}</span>')
+                rows.append([f"<b>{_e(ad)}</b>", _e(k.get("malzeme")), olcu,
                              _f(k.get("A", b * hh) * 1e4, 1), _s(float(k.get("Iy") or b * hh ** 3 / 12) * 1e8, 5),
                              _s(float(k.get("Iz") or hh * b ** 3 / 12) * 1e8, 5), _s(float(k.get("J") or 0) * 1e8, 5),
                              _s(b * hh ** 2 / 6 * 1e6, 5), _s(float(k.get("Wpl") or b * hh ** 2 / 4) * 1e6, 5),
@@ -916,10 +976,18 @@ class _Rapor:
                     f"<i>J</i> ≈ <i>β b</i><sup>3</sup><i>h</i> (β = 1/3 − 0.21(b/h)(1 − b<sup>4</sup>/(12h<sup>4</sup>)), <i>b</i> ≤ <i>h</i>), "
                     f"{_v('W', 'el,y')} = <i>b h</i><sup>2</sup>/6, {_v('W', 'pl,y')} = <i>b h</i><sup>2</sup>/4, <i>i</i> = √(<i>I</i>/<i>A</i>) = <i>h</i>/√12. "
                     "Pas: boyuna donatı ağırlık merkezi tasarımda paspayı + 20 mm alınır (bkz. Bölüm 11).")
+            if any(k.get("tip") == "vute" for _, k in dik):
+                h += _p("Vute (değişken kesit): değerler temel kesitindir; kesit yüksekliği derin uçta ek yükseklik kadar artar ve "
+                        + _v("L", "vute") + " boyunca doğrusal azalır. Motor çubuğu parçalara böler ve her parçayı ortalama yüksekliğindeki "
+                        "dikdörtgen kesitle modeller.")
         if prof:
             rows, rows2 = [], []
             for ad, k, p, m in prof:
-                rows.append([f"<b>{_e(ad)}</b>", _e(k.get("profil")), _e(k.get("malzeme")), _f(p.get("h"), 1), _f(p.get("b"), 1),
+                pad = _e(k.get("profil"))
+                if k.get("tip") == "vute":
+                    pad += (f' <span class="birim">+ vute: ek yükseklik {_f(float(k.get("ek_yukseklik") or 0) * 1000, 0)} mm, '
+                            f'boy {_b(k.get("boy"), "m") if k.get("boy") is not None else "çubuk boyu"}; temel {_e(k.get("temel"))}</span>')
+                rows.append([f"<b>{_e(ad)}</b>", pad, _e(k.get("malzeme")), _f(p.get("h"), 1), _f(p.get("b"), 1),
                              _f(p.get("tw"), 1), _f(p.get("tf"), 1), _f(p.get("r"), 1), _f(p.get("A", (k.get("A") or 0) * 1e4), 2),
                              _f(p.get("g"), 1)])
                 rows2.append([f"<b>{_e(ad)}</b>", _s(p.get("Iy", (k.get("Iy") or 0) * 1e8), 5), _s(p.get("Wely"), 4), _s(p.get("Wply"), 4),
@@ -943,6 +1011,12 @@ class _Rapor:
             h += _p("Profil tablosunda <i>y</i> güçlü eksendir (Avrupa kuralı); motorda kirişin güçlü eksen ataleti "
                     + _v("I", "z,m") + " = " + _v("I", "y,profil") + " olarak kullanılır. Kaynak: "
                     + self.kaynak(getattr(yv, "_PROFIL_KAYNAK", "") if yv else "") + ".")
+            if any(k.get("tip") == "vute" for _, k, _, _ in prof):
+                h += _p("Vute (değişken kesit): temel I profilinin başlıkları sabit; gövde derin uçta ek yükseklik kadar uzar ve "
+                        + _v("L", "vute") + " boyunca doğrusal azalarak temel profil yüksekliğine iner (kaynaklı I yaklaşımı). "
+                        "Tablodaki değerler temel profilindir; "
+                        "motor çubuğu parçalara böler ve her parçayı ortalama yüksekliğindeki eşdeğer kesitle modeller, tahkikte moment "
+                        "M·" + _v("h", "0") + "/<i>h</i> ile ölçeklenir.")
             if sinif:
                 h += _h3("Kesit sınıfı (ÇYTHYE md. 5.4.1, Tablo 5.1A/5.1B)")
                 h += _tablo(["Kesit", "Profil", _v("F", "y"), "Başlık <i>b</i>/2" + _v("t", "f"), _v("λ", "p"), _v("λ", "r"),
@@ -951,6 +1025,8 @@ class _Rapor:
                 h += _p(f"Başlık: {_v('λ', 'p')} = 0.38√(<i>E</i>/{_v('F', 'y')}), {_v('λ', 'r')} = 1.0√(<i>E</i>/{_v('F', 'y')}); "
                         f"gövde (eğilme): {_v('λ', 'p')} = 3.76√(<i>E</i>/{_v('F', 'y')}), {_v('λ', 'r')} = 5.70√(<i>E</i>/{_v('F', 'y')}). "
                         "λ ≤ λ<sub>p</sub> kompakt, λ<sub>p</sub> < λ ≤ λ<sub>r</sub> kompakt olmayan, λ > λ<sub>r</sub> narin.")
+        if basit:
+            h += self._basit_kesitler(basit)
         rc = _sozluk(_g(self.v, "ag", "rijitlik_carpani"))
         h += _h3("Çatlamış kesit (etkin) rijitlikleri")
         if rc and (_g(self.v, "ozet", "catlamis_rijitlik") or _g(self.B, "analiz", "catlamis_rijitlik")):
@@ -963,9 +1039,48 @@ class _Rapor:
             h += _not("Çatlamış kesit rijitliği kullanılmadı (brüt kesit rijitliği).")
         return h
 
+    def _basit_kesitler(self, basit):
+        """Çelik basit kesitler (kutu, boru, korniyer, çift korniyer, U; çelik dikdörtgen): özellikler tasarim.kesit_ozellik ya da
+        çözümdeki kesit kartından (A, I, J, W_pl); W_el = I/(h/2), i = √(I/A)."""
+        rows, sinif = [], []
+        for ad, k, m in basit:
+            p = {}
+            if self.ts is not None and k.get("profil"):
+                try:
+                    p = _sozluk(self.ts.kesit_ozellik(k.get("profil")))
+                except Exception:   # noqa: BLE001 — kartla devam
+                    p = {}
+            A = p.get("A", float(k.get("A") or 0) * 1e4)
+            Iy = p.get("Iy", float(k.get("Iy") or 0) * 1e8)
+            Iz = p.get("Iz", float(k.get("Iz") or 0) * 1e8)
+            hh, bb = float(k.get("h") or 0) * 100, float(k.get("b") or 0) * 100
+            Wely = p.get("Wely", Iy / (hh / 2) if hh else None)
+            Welz = p.get("Welz", Iz / (bb / 2) if bb else None)
+            iy = p.get("iy", math.sqrt(Iy / A) if A and Iy else None)
+            iz = p.get("iz", math.sqrt(Iz / A) if A and Iz else None)
+            g = p.get("g", A * 0.785 if A else None)
+            rows.append([f"<b>{_e(ad)}</b>", _e(k.get("profil") or f"{_f(bb * 10, 0)}×{_f(hh * 10, 0)} mm"), _e(k.get("malzeme")),
+                         _f(A, 2), _f(g, 2), _s(Iy, 5), _s(Iz, 5), _s(p.get("It", float(k.get("J") or 0) * 1e8), 5), _s(Wely, 4), _s(Welz, 4),
+                         _s(p.get("Wply", float(k.get("Wpl") or 0) * 1e6), 4), _f(iy, 2), _f(iz, 2), _f(p.get("i_min", min(x for x in (iy, iz) if x) if (iy or iz) else None), 2)])
+            ks = self.kesit_sinifi(k.get("profil"), m.get("Fy") or 275) if k.get("profil") else None
+            if ks:
+                sinif.append(f"{_e(ad)}: basınçta {_e(ks.get('basinc') or '–')}, eğilmede {_e(ks.get('egilme') or '–')}")
+                self.kaynak(ks.get("kaynak"))
+        h = _h3("Çelik basit kesitler (kutu/boru/korniyer/U)")
+        h += _tablo(["Kesit", "Kesit adı", "Malzeme", "<i>A</i> [cm²]", "<i>g</i> [kg/m]", _v("I", "y") + " [cm⁴]", _v("I", "z") + " [cm⁴]",
+                     _v("I", "t") + " [cm⁴]", _v("W", "el,y") + " [cm³]", _v("W", "el,z") + " [cm³]", _v("W", "pl,y") + " [cm³]",
+                     _v("i", "y") + " [cm]", _v("i", "z") + " [cm]", _v("i", "min") + " [cm]"], rows, sinif="kucuk", sayisal=range(3, 14))
+        h += _p("Kesit özellikleri kapalı formdan (köşe yarıçaplarıyla; boru: <i>A</i> = π(<i>D</i>² − (<i>D</i> − 2<i>t</i>)²)/4, "
+                "<i>I</i> = π(<i>D</i>⁴ − (<i>D</i> − 2<i>t</i>)⁴)/64, " + _v("W", "el") + " = <i>I</i>/(<i>D</i>/2)); "
+                "<i>i</i> = √(<i>I</i>/<i>A</i>). Korniyerde " + _v("i", "min") + " asal eksen <i>v</i> yarıçapıdır. Bu kesitler "
+                "eksenel çubuk olarak (ÇYTHYE Bölüm 7–8) tahkik edilir.")
+        if sinif:
+            h += _p("Kesit sınıfı (ÇYTHYE Tablo 5.1A/5.1B): " + "; ".join(sinif) + ".")
+        return h
+
     # ================================================================ 6. Yükler
     def b6(self):
-        v, B, Y = self.v, self.B, _sozluk(self.v.get("yukler"))
+        B = self.B
         h = ""
         # 6.1 birim ağırlıklar
         rows = []
@@ -977,16 +1092,39 @@ class _Rapor:
         h += _h3("6.1 Sabit yük (G): birim hacim ağırlıklar ve öz ağırlık")
         h += _tablo(["Malzeme", "<i>γ</i>", "Kaynak"], rows, sayisal=(1,))
         kiris_oz = _g(B, "analiz", "kiris_oz") or "brut"
-        h += _p("Döşeme: <i>g</i> = " + _v("γ", "b") + "·<i>h</i> + " + _v("g", "ek") + " (kaplama, sıva vb.); kiriş öz ağırlığı: "
-                + ("<i>γ</i>·<i>b</i>·(<i>h</i> − <i>t</i>) (net: döşeme kalınlığı döşemede sayılır)" if kiris_oz == "net"
-                   else "<i>γ</i>·<i>b</i>·<i>h</i> (brüt)")
-                + "; kolon öz ağırlığı <i>γ</i>·<i>A</i>·<i>L</i> üst düğüme tekil yük; duvar: " + _v("g", "d") + " = "
-                + _v("w", "duvar") + "·(" + _v("h", "kat") + " − " + _v("h", "kiriş") + ") kN/m.")
+        if self.genel:
+            beton = any(isinstance(k, dict) and k.get("tip") in ("dikdortgen", "vute") and self.malzeme(k.get("malzeme")).get("tur") == "beton"
+                        for k in _sozluk(_g(self.v, "kutuphane_ozeti", "kesitler")).values())      # betonarme çubuk var mı
+            h += _p("Panel: <i>g</i> = " + _v("γ", "b") + "·<i>t</i> + " + _v("g", "ek") + " (kaplama, sac, tesisat; yüzey alanına); "
+                    "çubuk öz ağırlığı <i>γ</i>·<i>A</i> kN/m çubuk boyunca yayılı (vute çubuklarında parça başına ortalama kesitle"
+                    + ("; betonarme kirişte döşeme kalınlığı düşülür: <i>γ</i>·<i>b</i>·(<i>h</i> − <i>t</i>)" if kiris_oz == "net" and beton else "")
+                    + "); duvar: " + _v("g", "d") + " = " + _v("w", "duvar") + "·" + _v("h", "duvar") + " kN/m (çubuğa verilen duvar).")
+        else:
+            h += self._b6_aks_kat_metni(kiris_oz)
         duv = _sozluk(B.get("duvarlar"))
         if duv:
             h += _h4_tablo("Duvar tipleri", ["Ad", "Kütüphane", "Açıklama", "<i>w</i>"],
                            [[_e(a), _e(d.get("kutuphane")), _e(d.get("aciklama")), _b(d.get("deger"), "kN/m²")] for a, d in duv.items()
                             if isinstance(d, dict)], sayisal=(3,))
+        if self.genel:
+            h += self._b6_genel_paneller()
+            h += self._b6_genel_cubuklar()
+        else:
+            h += self._b6_aks_kat_dosemeler()
+        h += self._b6_kar_ruzgar_kren_ek()
+        return h
+
+    def _b6_aks_kat_metni(self, kiris_oz):
+        return _p("Döşeme: <i>g</i> = " + _v("γ", "b") + "·<i>h</i> + " + _v("g", "ek") + " (kaplama, sıva vb.); kiriş öz ağırlığı: "
+                + ("<i>γ</i>·<i>b</i>·(<i>h</i> − <i>t</i>) (net: döşeme kalınlığı döşemede sayılır)" if kiris_oz == "net"
+                   else "<i>γ</i>·<i>b</i>·<i>h</i> (brüt)")
+                + "; kolon öz ağırlığı <i>γ</i>·<i>A</i>·<i>L</i> üst düğüme tekil yük; duvar: " + _v("g", "d") + " = "
+                + _v("w", "duvar") + "·(" + _v("h", "kat") + " − " + _v("h", "kiriş") + ") kN/m.")
+
+    def _b6_aks_kat_dosemeler(self):
+        """6.2 döşeme yükleri, (ham) paneller ve 6.3 kiriş yük dökümü — aks–kat modeli."""
+        B, Y = self.B, _sozluk(self.v.get("yukler"))
+        h = ""
         # 6.2 döşeme yükleri
         dos = [d for d in _liste(Y.get("dosemeler")) if isinstance(d, dict)]
         h += _h3("6.2 Döşeme yükleri (G, Q) ve kirişlere aktarım (TS 500 md. 11.4.3)")
@@ -1051,6 +1189,12 @@ class _Rapor:
                       "karşılaştırma için).")
         else:
             h += _not("Aks–kat kirişi yok.")
+        return h
+
+    def _b6_kar_ruzgar_kren_ek(self):
+        """6.4 kar, 6.5 rüzgâr, 6.6 kren, 6.7 ek yükler, 6.8 kat yük toplamları."""
+        v, Y = self.v, _sozluk(self.v.get("yukler"))
+        h = ""
         # 6.4 kar
         kar = _sozluk(v.get("kar"))
         h += _h3("6.4 Kar yükü (S) — TS 498:2021 md. 11, TS EN 1991-1-3")
@@ -1071,7 +1215,9 @@ class _Rapor:
         # 6.5 rüzgâr
         rz = _sozluk(v.get("ruzgar"))
         h += _h3("6.5 Rüzgâr yükü (W) — TS 498:2021 md. 14")
-        if rz:
+        if rz and rz.get("yontem") == "panel":
+            h += self._ruzgar_paneli(rz)
+        elif rz:
             h += _p(f"<i>W</i> = <i>C</i>·<i>q</i>(<i>z</i>)·<i>A</i>; <i>C</i> = {_f(rz.get('C'), 2)} "
                     f'<span class="kaynak">({self.kaynak(rz.get("C_kaynak"))})</span>; <i>q</i>(<i>z</i>): '
                     f'<span class="kaynak">{self.kaynak(rz.get("q_kaynak"))}</span>.')
@@ -1099,8 +1245,10 @@ class _Rapor:
                     + "; kren yolu boyunca her konum ayrı alt yük durumu (K) olarak çözülür, iç kuvvetler konumların zarfıdır. "
                     "Yatay yanal (" + _v("H", "yanal") + ") ve fren (" + _v("H", "fren") + ") kuvvetleri ray seviyesinde etkir.")
             kv = self.v.get("kren")
-            if isinstance(kv, (dict, list)) and kv:
-                h += "<h4>Kren çözüm özeti</h4>" + (self._genel_kayit(kv) if isinstance(kv, dict) else self._genel_kayit({"kren": kv}))
+            if isinstance(kv, dict) and kv:
+                h += "<h4>Kren çözüm özeti</h4>" + self._kren_ozeti(kv)
+            elif isinstance(kv, list) and kv:
+                h += "<h4>Kren çözüm özeti</h4>" + self._genel_kayit({"kren": kv})
         else:
             h += _not("Bu modelde kren yükü yok.")
         # 6.7 ek yükler
@@ -1109,8 +1257,8 @@ class _Rapor:
         if ek:
             rows = []
             for e in ek:
-                hedef = {k: e[k] for k in ("kiris", "cubuk", "doseme", "aks", "kat", "dugum") if k in e}
-                deg = {k: e[k] for k in ("q", "q1", "q2", "x1", "x2", "g", "FX", "FY", "FZ", "MX", "MY", "MZ", "yon") if k in e}
+                hedef = {k: e[k] for k in ("kiris", "cubuk", "doseme", "panel", "aks", "kat", "dugum") if k in e}
+                deg = {k: e[k] for k in ("q", "q1", "q2", "x1", "x2", "g", "p", "P", "x", "FX", "FY", "FZ", "MX", "MY", "MZ", "yon") if k in e}
                 rows.append([_e(e.get("tur")), _e(json.dumps(hedef, ensure_ascii=False)), _e(e.get("durum")),
                              _e(", ".join(f"{a} = {b}" for a, b in deg.items()))])
             h += _tablo(["Tür", "Hedef", "Durum", "Değerler (kN, kN/m, kN/m², kN·m)"], rows, sayisal=())
@@ -1125,6 +1273,141 @@ class _Rapor:
                         [[_e(k.get("kat")), _b(k.get("kot"), "m"), _b(k.get("h"), "m"), _f(k.get("G"), 2), _f(k.get("Q"), 2), _f(k.get("S"), 2)]
                          for k in kat], alt=["Toplam", "", "", _f(top.get("G"), 2), _f(top.get("Q"), 2), _f(top.get("S"), 2)])
         return h
+
+    def _b6_genel_paneller(self):
+        """6.2 Panel yükleri ve çubuklara dağıtım (genel model): motorun hesapladığı g, q, s (kaynaklarıyla), dağıtım ve kenar payları."""
+        pan = [p for p in _liste(_g(self.v, "yukler", "paneller")) if isinstance(p, dict)]
+        h = _h3("6.2 Panel yükleri ve çubuklara dağıtım (TS 498, TS 500 md. 11.4.3)")
+        if not pan:
+            return h + _not("Modelde panel yok: yükler çubuklara doğrudan (öz ağırlık, duvar, ek yük) verilir.")
+        h += _p("Panel yükleri: <i>g</i> = " + _v("γ", "b") + "·<i>t</i> + " + _v("g", "ek") + " yüzey alanına; hareketli <i>q</i> ve kar "
+                "<i>s</i> = " + _v("μ", "1") + "·" + _v("C", "e") + "·" + _v("C", "t") + "·" + _v("S", "k") + " yatay izdüşüme (eğik panelde "
+                "yüzey yükü <i>q</i>·cos α). Dağıtım: iki doğrultulu panelde her nokta en yakın kenara gider (açıortay bölgeleri; dikdörtgende "
+                "45° kuralı: kısa kenara üçgen, uzun kenara trapez), tek doğrultulu panel yükünü iki karşı kenara yarı yarıya verir, "
+                "'yok' köşe düğümlerine eşit pay. Pay: kenarın aldığı yük alanı (m²); kenar yükü = pay × birim yük.")
+        rows = []
+        for p in pan:
+            rows.append([_e(p.get("no")), _e(_PANEL_TURU.get(p.get("tur"), p.get("tur") or "")), _f(p.get("alan"), 2), _f(p.get("egim"), 1),
+                         _e(_DAGITIM.get(p.get("dagitim"), p.get("dagitim") or "")), _f(p.get("g"), 3), _f(p.get("q"), 3), _f(p.get("s"), 3),
+                         _f(p.get("G_toplam"), 2), _f(p.get("Q_toplam"), 2), _f(p.get("S_toplam"), 2)])
+        top = lambda a: sum(float(p.get(a) or 0) for p in pan)   # noqa: E731
+        h += _h4_tablo(f"Panel yükleri ({len(pan)} panel)", ["Panel", "Tür", "Alan [m²]", "Eğim [°]", "Dağıtım", "<i>g</i> [kN/m²]",
+                       "<i>q</i> [kN/m²]", "<i>s</i> [kN/m²]", "ΣG [kN]", "ΣQ [kN]", "ΣS [kN]"], rows, sinif="kucuk",
+                       sayisal=(2, 3, 5, 6, 7, 8, 9, 10),
+                       alt=["Σ", "", _f(top("alan"), 2), "", "", "", "", "", _f(top("G_toplam"), 2), _f(top("Q_toplam"), 2), _f(top("S_toplam"), 2)])
+        gk = sorted({str(p.get("g_kaynak")) for p in pan if p.get("g_kaynak")})
+        qk = sorted({str(p.get("q_kaynak")) for p in pan if p.get("q_kaynak")})
+        if gk or qk:
+            h += (f'<p class="kaynak">Sabit yük (g) kaynakları: {self.kaynak(*gk) or "–"}. Hareketli yük (q) kaynakları: '
+                  f'{self.kaynak(*qk) or "–"}.</p>')
+        rows = []
+        for p in pan:
+            A = float(p.get("alan") or 0)
+            birim = {d: float(p.get(d + "_toplam") or 0) / A if A else 0.0 for d in ("G", "Q", "S")}
+            for k in _liste(p.get("kenarlar")):
+                if not isinstance(k, dict) or not float(k.get("pay") or 0) > 0:
+                    continue
+                pay = float(k["pay"])
+                rows.append([_e(p.get("no")), _e(k.get("kenar")), _e(", ".join(f"Ç{n}" for n in _liste(k.get("cubuklar")))),
+                             _e(_SEKIL.get(k.get("sekil"), k.get("sekil") or "")), _f(pay, 3), _f(pay * birim["G"], 2),
+                             _f(pay * birim["Q"], 2), _f(pay * birim["S"], 2)])
+            if p.get("dagitim") == "yok" and A:
+                rows.append([_e(p.get("no")), "–", "köşe düğümleri", "tekil (eşit)", _f(A, 3), _f(p.get("G_toplam"), 2),
+                             _f(p.get("Q_toplam"), 2), _f(p.get("S_toplam"), 2)])
+        h += _h4_tablo("Kenar payları (panel → çubuk)", ["Panel", "Kenar", "Çubuklar", "Yük şekli", "Pay [m²]", "G [kN]", "Q [kN]", "S [kN]"],
+                       rows, sinif="kucuk", sayisal=(4, 5, 6, 7),
+                       dip="Kenar boyunca yük, kenar zincirindeki çubuklara sırasıyla verilir (FE'ye gerçek üçgen/trapez/parçalı doğrusal yük gider); "
+                           "Σ kenar payları = panel toplamı.")
+        return h
+
+    _CUBUK_SINIR = 30          # büyük modelde 6.3'te gösterilen en yüklü çubuk sayısı
+
+    def _b6_genel_cubuklar(self):
+        """6.3 Çubuk yük dökümü (genel model): G/Q/S için öz ağırlık, panel, duvar, ek; büyük modelde en yüklü 30 çubuk."""
+        cub = [c for c in _liste(_g(self.v, "yukler", "cubuklar")) if isinstance(c, dict)]
+        tur = {c.get("no"): c.get("tur") for c in _liste(_g(self.v, "ag", "cubuklar")) if isinstance(c, dict)}
+        h = _h3("6.3 Çubuk yük dökümü")
+        if not cub:
+            return h + _not("Çubuk yük dökümü bu çözümde yok.")
+
+        def top(c):
+            return sum(float(_sozluk(c.get(d)).get("toplam_kN") or 0) for d in ("G", "Q", "S"))
+        secilen = cub
+        if len(cub) > 2 * self._CUBUK_SINIR:
+            secilen = sorted(cub, key=lambda c: -top(c))[:self._CUBUK_SINIR]
+            secilen.sort(key=lambda c: c.get("no") if isinstance(c.get("no"), (int, float)) else 0)
+        rows = []
+        for c in secilen:
+            G, Q, S_ = _sozluk(c.get("G")), _sozluk(c.get("Q")), _sozluk(c.get("S"))
+            rows.append([_e(c.get("no")), _e(_CUBUK_TURU.get(tur.get(c.get("no")), tur.get(c.get("no")) or "")), _f(c.get("L"), 2),
+                         _f(G.get("oz"), 2), _f(G.get("panel"), 2), _f(G.get("duvar"), 2), _f(G.get("ek"), 2), _f(G.get("toplam_kN"), 2),
+                         _f(Q.get("panel"), 2), _f(Q.get("ek"), 2), _f(Q.get("toplam_kN"), 2), _f(S_.get("panel"), 2), _f(S_.get("toplam_kN"), 2)])
+        h += _tablo(["Çubuk", "Tür", "<i>L</i> [m]", "G öz", "G panel", "G duvar", "G ek", "ΣG [kN]", "Q panel", "Q ek", "ΣQ [kN]",
+                     "S panel", "ΣS [kN]"], rows, sinif="kucuk", sayisal=range(2, 13))
+        if len(secilen) < len(cub):
+            h += _not(f"Büyük model: {len(cub)} çubuktan G + Q + S toplamı en büyük {len(secilen)} çubuk gösterildi; bütün çubuklar "
+                      "Tablolar › Yükler › 'Eleman Yük Ataması (Çubuk Başına)' tablosundadır.")
+        h += _not("Değerler kN (düşey bileşen): öz ağırlık çubuk boyunca yayılı, panel payları kenar yük şekliyle (üçgen/trapez/düzgün), "
+                  "duvar ve ek yükler verildiği gibi; FE çözümüne gerçek yayılı yük gider.")
+        return h
+
+    def _ruzgar_paneli(self, rz):
+        """6.5 rüzgâr — panel yöntemi (genel model): panel başına z, q(z), dört yön için c_p; yön başına toplam kuvvet vektörü."""
+        h = _p("Panel yöntemi: her rüzgâr panelinde basınç normal doğrultusunda <i>p</i> = " + _v("c", "p") + "·<i>q</i>(<i>z</i>) "
+               "(<i>z</i>: panelin en üst noktasının taban üstü yüksekliği; " + _v("c", "p") + " &gt; 0 basınç, &lt; 0 emme) ve panel dağıtımıyla "
+               "kenar çubuklarına aktarılır; dört yön (W+X, W−X, W+Y, W−Y) ayrı yük durumudur. "
+               f'<span class="kaynak">({self.kaynak(rz.get("kaynak"))})</span>')
+        rows = []
+        for p in _liste(rz.get("paneller")):
+            if not isinstance(p, dict):
+                continue
+            cp = _sozluk(p.get("cp"))
+            rows.append([_e(p.get("panel")), _e(_PANEL_TURU.get(p.get("tur"), p.get("tur") or "")), _f(p.get("z"), 2), _f(p.get("q"), 3)]
+                        + [_f(cp.get(y), 3) for y in ("W+X", "W-X", "W+Y", "W-Y")])
+        h += _h4_tablo(f"Panel basınç katsayıları ({len(rows)} panel)", ["Panel", "Tür", "<i>z</i> [m]", "<i>q</i>(<i>z</i>) [kN/m²]",
+                       _v("c", "p") + " W+X", _v("c", "p") + " W−X", _v("c", "p") + " W+Y", _v("c", "p") + " W−Y"], rows, sinif="kucuk",
+                       sayisal=range(2, 8))
+        rows = []
+        for y, F in _sozluk(rz.get("toplam")).items():
+            F = list(_liste(F)) + [None, None, None]
+            rows.append([f"<b>{_e(str(y).replace('-', '−'))}</b>", _f(F[0], 2), _f(F[1], 2), _f(F[2], 2)])
+        h += _h4_tablo("Yön başına toplam rüzgâr kuvveti (panel basınçlarının vektörel toplamı)",
+                       ["Durum", "Σ" + _v("F", "X") + " [kN]", "Σ" + _v("F", "Y") + " [kN]", "Σ" + _v("F", "Z") + " [kN]"], rows,
+                       dip="Σ" + _v("F", "Z") + " çatı emmesinin düşey bileşenidir (yukarı +). Mesnet tepkileri bu vektörün tersidir (Bölüm 10.1).")
+        if rz.get("not"):
+            h += _not(_e(rz.get("not")))
+        return h
+
+    def _kren_ozeti(self, kv):
+        """6.6 Kren çözüm özeti: köprüler, alt yük durumları (virgülle), kren yolu zarfı (ilk 30 eleman), kaynak."""
+        h = ""
+        rows = []
+        for k in _liste(kv.get("kopruler")):
+            if not isinstance(k, dict):
+                continue
+            t = _sozluk(k.get("tekerlek"))
+            rows.append([_e(k.get("kopru")), _e(", ".join(map(str, _liste(k.get("kren"))))), _e(k.get("konum_sayisi")),
+                         _b(t.get("P_maks"), "kN"), _b(t.get("P_min"), "kN"), _b(t.get("H_yanal"), "kN"), _b(t.get("H_fren"), "kN"),
+                         _f(k.get("dinamik"), 2), _b(k.get("yol_uzunlugu"), "m")])
+        if rows:
+            h += _tablo(["Köprü", "Kren yolları", "Konum sayısı", _v("P", "maks"), _v("P", "min"), _v("H", "yanal"), _v("H", "fren"),
+                         "Dinamik katsayı", "Yol uzunluğu"], rows, sinif="kucuk")
+        dur = [str(d) for d in _liste(kv.get("durumlar"))]
+        if dur:
+            h += _p(f"<b>Kren alt yük durumları ({len(dur)}):</b> " + _e(", ".join(dur)) + ".")
+        if kv.get("aciklama"):
+            h += _p(_e(kv["aciklama"]))
+        z = [x for x in _liste(kv.get("zarf")) if isinstance(x, dict)]
+        if z:
+            rows = [[_e(x.get("no")), f"{_f(x.get('N_min'), 2)} / {_f(x.get('N_max'), 2)}", f"{_f(x.get('V_min'), 2)} / {_f(x.get('V_max'), 2)}",
+                     f"{_f(x.get('M_min'), 2)} / {_f(x.get('M_max'), 2)}", f"{_f(x.get('My_min'), 2)} / {_f(x.get('My_max'), 2)}"]
+                    for x in z[:30]]
+            h += _h4_tablo("Kren yolu elemanları — yalnız kren durumlarının zarfı" + (f" (ilk 30 / {len(z)})" if len(z) > 30 else ""),
+                           ["Eleman", "<i>N</i> min / maks [kN]", _v("V", "y") + " min / maks [kN]", _v("M", "z") + " min / maks [kN·m]",
+                            _v("M", "y") + " min / maks [kN·m]"], rows, sinif="kucuk")
+        if kv.get("kaynak"):
+            h += f'<p class="kaynak">Kaynak: {self.kaynak(kv["kaynak"])}</p>'
+        return h or self._genel_kayit(kv)
 
     # ================================================================ 7. Deprem
     def spektrum_svg(self, d):
@@ -1348,7 +1631,8 @@ class _Rapor:
         ycek = [c for c in cub if c.get("yalniz_cekme")]
         if serbest:
             h += _tablo(["Çubuk", "Tür", "<i>i</i> ucu", "<i>j</i> ucu"],
-                        [[_e(c.get("no")), _e(c.get("tur")), _e(", ".join(_liste(_g(c, "serbest", "i")))) or "—",
+                        [[_e(c.get("no")), _e(_CUBUK_TURU.get(c.get("tur"), c.get("tur")) if self.genel else c.get("tur")),
+                          _e(", ".join(_liste(_g(c, "serbest", "i")))) or "—",
                           _e(", ".join(_liste(_g(c, "serbest", "j")))) or "—"] for c in serbest], sayisal=())
         else:
             h += _not("Bütün çubuk uçları rijit (uç serbestliği tanımlanmadı).")
@@ -1461,17 +1745,22 @@ class _Rapor:
                        ["Durum", "Σ" + _v("R", "X") + " [kN]", "Σ" + _v("R", "Y") + " [kN]", "Σ" + _v("R", "Z") + " [kN]",
                         "Beklenen (" + _v("R", "X") + "; " + _v("R", "Y") + "; " + _v("R", "Z") + ") [kN]", "Fark", "ΣR = −ΣP"], ozet,
                        sinif="kucuk", dip="Beklenen tepki uygulanan yükün tersidir: düşey durumlarda Σ" + _v("R", "Z") + " = ΣG (ΣQ, ΣS); "
-                       "rüzgârda Σ" + _v("R", "X") + " = ∓ΣF (TS 498 kat kuvvetleri), depremde Σ" + _v("R", "X") + " = −" + _v("V", "tE")
+                       + ("panel rüzgârında Σ<b>R</b> = −Σ<b>F</b> (panel basınçlarının üç bileşeni)" if _g(v, "ruzgar", "yontem") == "panel"
+                          else "rüzgârda Σ" + _v("R", "X") + " = ∓ΣF (TS 498 kat kuvvetleri)")
+                       + ", depremde Σ" + _v("R", "X") + " = −" + _v("V", "tE")
                        + " (eşdeğer deprem yükü), EZ'de Σ" + _v("R", "Z") + " = " + _v("k", "z") + "·ΣG. Fark % = en büyük bileşen farkı / "
                        "beklenen büyüklük.")
         kor = _sozluk(_g(v, "akis", "korunum"))
         if kor:
-            alan = [("dosemeler", "döşemeler"), ("duvarlar", "duvarlar"), ("kiris_oz", "kiriş öz ağırlığı"), ("kolon_oz", "kolon öz ağırlığı"),
-                    ("ek", "ek yükler"), ("toplam", "toplam yük"), ("kolon_taban", "kolon tabanları ΣN"), ("tepki", "mesnet tepkisi ΣR"),
-                    ("yay", "zemin yayları"), ("temel", "temellere giden"), ("yuk_alani", "yük alanı (el hesabı)"), ("dagitilamayan", "dağıtılamayan")]
+            alan = [("dosemeler", "döşemeler"), ("paneller", "paneller"), ("duvarlar", "duvarlar"), ("kiris_oz", "kiriş öz ağırlığı"),
+                    ("kolon_oz", "kolon öz ağırlığı"), ("cubuk_oz", "çubuk öz ağırlığı"), ("ek", "ek yükler"), ("toplam", "toplam yük"),
+                    ("kolon_taban", "tabanlar ΣN (mesnet + yay)" if self.genel else "kolon tabanları ΣN"), ("tepki", "mesnet tepkisi ΣR"),
+                    ("yay", "zemin yayları"), ("temel", "mesnet tepkileri ΣR" if self.genel else "temellere giden"),
+                    ("yuk_alani", "yük alanı (el hesabı)"), ("dagitilamayan", "dağıtılamayan")]
             durum_ad = [d for d in kor if isinstance(kor[d], dict)]
             rows = [[_e(b)] + [_f(_g(kor, d, a), 3) for d in durum_ad] for a, b in alan if any(_g(kor, d, a) is not None for d in durum_ad)]
-            h += _h4_tablo("Yük akışı korunumu (döşeme → kiriş → kolon → temel) [kN]", ["Kalem"] + [_e(d) for d in durum_ad], rows)
+            h += _h4_tablo("Yük akışı korunumu (panel → çubuk → mesnet / temel) [kN]" if self.genel else
+                           "Yük akışı korunumu (döşeme → kiriş → kolon → temel) [kN]", ["Kalem"] + [_e(d) for d in durum_ad], rows)
         # 10.2 kat kesmeleri
         h += _h3("10.2 Kat kesme kuvvetleri")
         rows = []
@@ -1486,8 +1775,11 @@ class _Rapor:
         for kat in sorted(set(dk) | set(rkum), key=lambda x: -float(x or 0)):
             rows.append([_e(kat), _f(_g(dk, kat, "V_x"), 2), _f(_g(dk, kat, "V_y"), 2),
                          _f(rkum[kat][0], 2) if kat in rkum else "–", _f(rkum[kat][1], 2) if kat in rkum else "–"])
-        h += _tablo(["Kat", "Deprem " + _v("V", "i,X") + " [kN]", "Deprem " + _v("V", "i,Y") + " [kN]", "Rüzgâr " + _v("V", "i,X") + " [kN]",
-                     "Rüzgâr " + _v("V", "i,Y") + " [kN]"], rows) if rows else _not("Yatay yük (deprem, rüzgâr) tanımlanmadı.")
+        if _g(v, "ruzgar", "yontem") == "panel":
+            h += self._panel_ruzgar_kesmesi(dk, durumlar)
+        else:
+            h += _tablo(["Kat", "Deprem " + _v("V", "i,X") + " [kN]", "Deprem " + _v("V", "i,Y") + " [kN]", "Rüzgâr " + _v("V", "i,X") + " [kN]",
+                         "Rüzgâr " + _v("V", "i,Y") + " [kN]"], rows) if rows else _not("Yatay yük (deprem, rüzgâr) tanımlanmadı.")
         # 10.3 yer değiştirmeler
         h += _h3("10.3 Yer değiştirme en büyükleri")
         rows = []
@@ -1543,6 +1835,26 @@ class _Rapor:
             h += _not(UYGULANMADI)
         return h
 
+    def _panel_ruzgar_kesmesi(self, dk, durumlar):
+        """10.2 — panel rüzgârı: deprem kat kesmeleri ve rüzgâr taban kesmesi (W durumlarının mesnet tepkilerinden)."""
+        h = ""
+        if dk:
+            rows = [[_e(kat), _f(_g(dk, kat, "V_x"), 2), _f(_g(dk, kat, "V_y"), 2)] for kat in sorted(dk, key=lambda x: -float(x or 0))]
+            h += _tablo(["Kat", "Deprem " + _v("V", "i,X") + " [kN]", "Deprem " + _v("V", "i,Y") + " [kN]"], rows)
+        rows = []
+        for ad in ("W+X", "W-X", "W+Y", "W-Y"):
+            k = durumlar.get(ad)
+            if not isinstance(k, dict):
+                continue
+            S = self.tepki_toplami(k)
+            rows.append([f"<b>{_e(ad.replace('-', '−'))}</b>", _f(S["FX"], 2), _f(S["FY"], 2), _f(S["FZ"], 2)])
+        if rows:
+            h += _h4_tablo("Rüzgâr taban kesmesi (W durumlarının mesnet tepkileri)",
+                           ["Durum", "Σ" + _v("R", "X") + " [kN]", "Σ" + _v("R", "Y") + " [kN]", "Σ" + _v("R", "Z") + " [kN]"], rows)
+        h += _not("Panel rüzgârı: kat kesmesi uygulanmaz — rüzgâr basıncı kat seviyelerine değil panellere (normal doğrultusunda) etkir; "
+                  "yalnız taban kesmesi (Σ mesnet tepkisi) verilir. Σ" + _v("R", "Z") + " çatı emmesinin tepkisidir.")
+        return h
+
     # ================================================================ 11. Betonarme
     def _tasarim_elemanlari(self, sistem):
         return [e for e in _liste(_g(self.v, "tasarim", "elemanlar")) if isinstance(e, dict) and e.get("sistem") == sistem]
@@ -1553,7 +1865,11 @@ class _Rapor:
         if self.detay == "hepsi":
             return elemanlar
         sec, gor = [], set()
-        for tur in ("kiris", "kolon"):
+        turler = ["kiris", "kolon"]
+        if self.genel:      # genel model: çapraz, aşık, kren kirişi, makas … da türüne göre
+            turler += [t for t in _CUBUK_TURU if t not in turler and any(e.get("tur") == t for e in elemanlar)]
+            turler += sorted({str(e.get("tur")) for e in elemanlar if e.get("tur") not in turler})
+        for tur in turler:
             t = sorted((e for e in elemanlar if e.get("tur") == tur), key=lambda e: -float(e.get("dc") or 0))
             for e in t[:5] + [e for e in t[5:] if float(e.get("dc") or 0) > 1.0 + 1e-9]:
                 if (tur, e.get("no")) not in gor:
@@ -1757,9 +2073,11 @@ class _Rapor:
             for e in kol:
                 o = _sozluk(e.get("ozet"))
                 n04 = float(o.get("Ndm_kN") or 0) / float(o.get("N_sinir_TBDY_kN") or 1)
+                eksik = self.genel and "N_sinir_TBDY_kN" not in o        # genel model kaydında olmayan alanlar "–"
                 rows.append([_e(e.get("adres")), _e(e.get("kesit")), _e(o.get("yon") or ""), _f(o.get("N_max_kN"), 1), _f(o.get("N_min_kN"), 1),
-                             _f(o.get("rho"), 4), _f(o.get("As_toplam_cm2"), 2), _f(o.get("rho_gerekli"), 4) if o.get("rho_gerekli") is not None else "> 0.04",
-                             _f(n04, 3), _e(_g(e, "belirleyen", "kontrol") or ""), _dc_hucre(e.get("dc"))])
+                             _f(o.get("rho"), 4), _f(o.get("As_toplam_cm2"), 2), _f(o.get("rho_gerekli"), 4) if o.get("rho_gerekli") is not None else
+                             ("–" if self.genel and "rho_gerekli" not in o else "> 0.04"),
+                             "–" if eksik else _f(n04, 3), _e(_g(e, "belirleyen", "kontrol") or ""), _dc_hucre(e.get("dc"))])
             h += _h3("11.3 Kolonlar — özet")
             h += _tablo(["Kolon", "Kesit", "Yön", _v("N", "maks") + " [kN]", _v("N", "min") + " [kN]", "ρ", _v("A", "s") + " [cm²]", "ρ gerekli",
                          _v("N", "dm") + "/(0.40" + _v("f", "ck") + _v("A", "c") + ")", "Belirleyen", "D/C"], rows, sinif="kucuk",
@@ -1789,6 +2107,15 @@ class _Rapor:
         mal = self.malzeme(e.get("malzeme"))
         if ts is None or not profil:
             return None
+        if kes.get("tip") == "basit" or str(oz.get("kontrol") or "").startswith("çubuk"):
+            return None        # basit kesit / eksenel çubuk (ÇYTHYE 7–8): I profil eğilme ayrıntısı yok, kontrol satırları gösterilir
+        Kh = oz.get("K")
+        if isinstance(Kh, (list, tuple)) and Kh:      # genel model: [K_güçlü, K_zayıf]
+            K = tuple(float(x) for x in (list(Kh) + list(Kh))[:2])
+            K_metin = f"{_f(K[0], 2)} / {_f(K[1], 2)} (güçlü / zayıf eksen)"
+        else:
+            K = float(Kh or 1)
+            K_metin = _f(oz.get("K"), 2)
         bolge = oz.get("bolge")
         if bolge == "negatif":
             Lb, Cb = oz.get("Lb_neg_m"), oz.get("Cb_neg")
@@ -1798,7 +2125,8 @@ class _Rapor:
             Lb, Cb = oz.get("Lb_m"), 1.0
         try:
             r = ts.celik_eleman_kontrol(profil, mal.get("kutuphane") or "S275", L=float(oz.get("L_m") or 1), Lb=float(Lb or 0),
-                                        K=float(oz.get("K") or 1), Cb=float(Cb or 1), yontem=oz.get("yontem") or "YDKT",
+                                        K=K, Cb=float(Cb or 1), yontem=oz.get("yontem") or "YDKT",
+                                        **({"kren": True} if self.genel and e.get("tur") == "kren" else {}),
                                         kuvvetler=[{"ad": "belirleyen", "N": float(oz.get("N_kN") or 0), "Mx": float(oz.get("Mx_kNm") or 0),
                                                     "My": float(oz.get("My_kNm") or 0), "V": float(oz.get("V_kN") or 0)}])
         except Exception:   # noqa: BLE001
@@ -1877,7 +2205,7 @@ class _Rapor:
                   f"bölgesinde {_v('L', 'b')} = {_f(oz.get('Lb_neg_m'), 2)} m, {_v('C', 'b')} = {_f(oz.get('Cb_neg'), 3)} (D/C = {_f(oz.get('dc_negatif'), 3)}); "
                   f"belirleyen bölge: {_e(bolge)}. Aşağıdaki satırlar belirleyen bölgenin kuvvetleriyle yeniden hesaplanmıştır.</p>")
         return (f"<p>{_e(profil)}, {_e(m.get('sinif'))}: {_v('F', 'y')} = {_f(Fy, 0)} MPa, <i>E</i> = {_f(E, 0)} MPa; <i>L</i> = {_b(oz.get('L_m'), 'm')}, "
-                f"<i>K</i> = {_f(oz.get('K'), 2)}; yöntem {_e(y)}; belirleyen kuvvetler: <i>N</i> = {_b(N, 'kN')} (basınç +), {_v('M', 'x')} = "
+                f"<i>K</i> = {K_metin}; yöntem {_e(y)}; belirleyen kuvvetler: <i>N</i> = {_b(N, 'kN')} (basınç +), {_v('M', 'x')} = "
                 f"{_b(oz.get('Mx_kNm'), 'kN·m')}, {_v('M', 'y')} = {_b(oz.get('My_kNm'), 'kN·m')}, <i>V</i> = {_b(oz.get('V_kN'), 'kN')}</p>"
                 + ek + self._kontrol_tablosu(satir))
 
@@ -2036,13 +2364,30 @@ class _Rapor:
             ("Yatak katsayısı " + _v("k", "0"), _b(zemin.get("k0"), "kN/m³", 0)),
             ("Zemin birim hacim ağırlığı", _b(zemin.get("gamma"), "kN/m³") if zemin.get("gamma") is not None else "–"),
         ])
-        h += self._temel_geometri(tm)
         temel = v.get("temel")
+        if self.genel and not isinstance(temel, dict) and str(tm.get("tip") or "tekil").strip().lower() not in ("tekil", ""):
+            h += _not("Mütemadi/radye temel analizi bu çözümde yapılmadı (genel model: kolon tabanları tekil mesnet).")
+        else:
+            h += self._temel_geometri(tm)
         if isinstance(temel, dict) and temel.get("tip") in ("surekli", "radye"):
             return h + self._temel_analizi(temel)
-        tem = [t for t in _liste(_g(v, "akis", "temeller")) if isinstance(t, dict)]
+        tum = [t for t in _liste(_g(v, "akis", "temeller")) if isinstance(t, dict)]
+        gamma = float(_g(getattr(yv, "TS498_BIRIM_AGIRLIK", {}) if yv else {}, "betonarme", "deger", vars=25.0))
+        h_v = _g(self.temeller, "varsayilan", "h")
+        tem = []
+        for t in tum:        # temel kaydı: B/L'li satırlar (açık mesnetler ayrı); N_temel yoksa γ·B·L·h
+            if t.get("B") is None or t.get("L") is None:
+                continue
+            if t.get("N_temel") is None:
+                hh = t.get("h") if t.get("h") is not None else h_v
+                if _sayi_mi(hh):
+                    t = dict(t, N_temel=gamma * float(t["B"]) * float(t["L"]) * float(hh), h=hh)
+            tem.append(t)
+        acik = [m for m in _liste(_g(v, "akis", "mesnetler")) if isinstance(m, dict)] or \
+               [t for t in tum if t.get("B") is None or t.get("L") is None]
+        acik_html = self._acik_mesnetler(acik) if acik else ""
         if not tem:
-            return h + _not("Temel sonuçları yok. " + UYGULANMADI)
+            return h + acik_html + _not("Temel sonuçları yok. " + UYGULANMADI)
         h += _h3("13.1 Tekil temeller — servis yükleri (G + Q) altında zemin gerilmeleri")
         h += _p(f"<i>N</i> = {_v('N', 'G')} + {_v('N', 'Q')} + {_v('N', 'temel')} ({_v('N', 'temel')} = <i>γ</i>·<i>B</i>·<i>L</i>·<i>h</i>, <i>γ</i> = 25 kN/m³); "
                 f"σ<sub>maks,min</sub> = <i>N</i>/(<i>BL</i>) ± 6{_v('M', 'X')}/(<i>BL</i><sup>2</sup>) ± 6{_v('M', 'Y')}/(<i>LB</i><sup>2</sup>); "
@@ -2050,7 +2395,7 @@ class _Rapor:
                 f"D/C = σ<sub>maks</sub>/{_v('q', 'em')}.")
         rows = []
         for t in tem:
-            rows.append([_e("".join(map(str, _liste(t.get("aks"))))), f"{_f(t.get('B'))} × {_f(t.get('L'))} × {_f(t.get('h'))}", _f(t.get("N_G"), 1),
+            rows.append([_e(_temel_aks(t)), f"{_f(t.get('B'))} × {_f(t.get('L'))} × {_f(t.get('h'))}", _f(t.get("N_G"), 1),
                          _f(t.get("N_Q"), 1), _f(t.get("N_temel"), 1), _f(t.get("N_servis"), 1), _f(t.get("MX"), 2), _f(t.get("MY"), 2),
                          _f(float(t.get("e_X") or 0) * 1000, 1), _f(float(t.get("e_Y") or 0) * 1000, 1), _f(t.get("sigma_max"), 1), _f(t.get("sigma_min"), 1),
                          _isaret(t.get("cekirdek_icinde")), _dc_hucre(t.get("DC"))])
@@ -2061,7 +2406,7 @@ class _Rapor:
         B_, L_, N_, MX, MY = (float(t.get(a) or 0) for a in ("B", "L", "N_servis", "MX", "MY"))
         if B_ > 0 and L_ > 0:
             s1, s2, s3 = N_ / (B_ * L_), 6 * abs(MX) / (B_ * L_ ** 2), 6 * abs(MY) / (L_ * B_ ** 2)
-            h += _h3("13.2 Belirleyici temel: aks " + _e("".join(map(str, _liste(t.get("aks"))))))
+            h += _h3("13.2 Belirleyici temel: aks " + _e(_temel_aks(t)))
             h += self._kontrol_tablosu([
                 ("Zemin gerilmesi", f"σ<sub>maks</sub> = <i>N</i>/(<i>BL</i>) + 6|{_v('M', 'X')}|/(<i>BL</i><sup>2</sup>) + 6|{_v('M', 'Y')}|/(<i>LB</i><sup>2</sup>) ≤ {_v('q', 'em')}",
                  [f"<i>N</i> = {_f(t.get('N_G'), 2)} + {_f(t.get('N_Q'), 2)} + {_f(t.get('N_temel'), 2)} = {_f(N_, 2)} kN",
@@ -2074,10 +2419,29 @@ class _Rapor:
                   f"{_f(float(t.get('e_X') or 0) / B_ + float(t.get('e_Y') or 0) / L_, 4)}"],
                  "taban basıncı her yerde basınç" if t.get("cekirdek_icinde") else "temel tabanında çekme (kalkma) var",
                  (float(t.get("e_X") or 0) / B_ + float(t.get("e_Y") or 0) / L_) * 6, bool(t.get("cekirdek_icinde")), None, "G+Q")])
+        h += acik_html
         h += _h3("13.3 Zımbalama ve temel donatısı")
-        h += _not("Tekil temel zımbalama (TS 500 md. 8.3) ve eğilme donatısı hesabı bu çözümde yok; mütemadi ve radye temel analizi "
-                  "(Winkler zeminli temel kirişi / ızgara) bu modelde seçilmedi. " + UYGULANMADI)
+        if self.genel:
+            h += _not("Tekil temel zımbalama (TS 500 md. 8.3) ve eğilme donatısı hesabı bu çözümde yok; genel modelde kolon tabanları tekil "
+                      "temel mesnetidir (mütemadi/radye temel analizi yapılmaz). " + UYGULANMADI)
+        else:
+            h += _not("Tekil temel zımbalama (TS 500 md. 8.3) ve eğilme donatısı hesabı bu çözümde yok; mütemadi ve radye temel analizi "
+                      "(Winkler zeminli temel kirişi / ızgara) bu modelde seçilmedi. " + UYGULANMADI)
         return h
+
+    def _acik_mesnetler(self, acik):
+        """Açık (temelsiz) mesnetlerin servis tepkileri (akis.mesnetler; eski çözümlerde B'siz akis.temeller satırları)."""
+        rows = []
+        for m in acik:
+            d = m.get("dugum")
+            adres = m.get("adres") or _g(self.dug, d, "adres", vars="") or (
+                "".join(map(str, _liste(m.get("aks")))) if m.get("aks") else "")
+            rows.append([_e(d), _e(adres), _e(m.get("tip") or ""), _f(m.get("N_G"), 2), _f(m.get("N_Q"), 2), _f(m.get("MX"), 2),
+                         _f(m.get("MY"), 2)])
+        return _h4_tablo("Açık mesnet tepkileri (temel kaydı yok)", ["Düğüm", "Adres", "Tip", _v("N", "G") + " [kN]", _v("N", "Q") + " [kN]",
+                         _v("M", "X") + " [kN·m]", _v("M", "Y") + " [kN·m]"], rows, sinif="kucuk",
+                         dip="'mesnetler' listesiyle verilen (temel boyutu olmayan) mesnetler: zemin gerilmesi hesaplanmaz; "
+                             "tepkiler bağlandıkları yapıya ya da temele ayrıca aktarılmalıdır.")
 
     # ================================================================ 14. Sonuç
     def b14(self):
@@ -2116,7 +2480,8 @@ class _Rapor:
         cumle = []
         if el:
             en = max(el, key=lambda e: float(e.get("dc") or 0))
-            cumle.append(f"Modelde {len(el)} eleman (kiriş ve kolon) kesit tahkikinden geçirilmiştir; en büyük talep/kapasite oranı "
+            cumle.append(f"Modelde {len(el)} " + ("çubuk" if self.genel else "eleman (kiriş ve kolon)")
+                         + " kesit tahkikinden geçirilmiştir; en büyük talep/kapasite oranı "
                          f"<b>{_f(en.get('dc'), 3)}</b> ({_e(en.get('adres'))}, {_e(_g(en, 'belirleyen', 'kontrol') or '')}, "
                          f"{_e(_g(en, 'belirleyen', 'kombinasyon') or '')}).")
             cumle.append("Bütün elemanlar seçilen kesit ve donatılarla yeterlidir." if not asan else
@@ -2168,6 +2533,8 @@ class _Rapor:
         for e in el:
             d = _liste(e.get("dugumler"))
             ser = e.get("serbest") or _g(cub.get(_g(e, "kaynak", "no")), "serbest") if isinstance(e.get("kaynak"), dict) else e.get("serbest")
+            if self.genel and ser is None and e.get("cubuk") in cub:          # genel model: FE parçası → çubuk uç serbestlikleri
+                ser = cub[e.get("cubuk")].get("serbest") or None
             ser_m = ("i: " + ",".join(_liste(_g(ser, "i"))) + " / j: " + ",".join(_liste(_g(ser, "j")))) if isinstance(ser, dict) else "rijit"
             rows.append([_e(e.get("no")), _e(e.get("tur", "")), _e(d[0] if d else ""), _e(d[1] if len(d) > 1 else ""), _e(e.get("adres", "")),
                          _e(e.get("kesit", "")), _e(_g(kes, e.get("kesit"), "malzeme", vars="")), _f(e.get("L"), 3),

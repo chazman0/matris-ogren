@@ -1218,6 +1218,7 @@
     { id: "birlestir", ad: "Birleştir", ikon: "birlestir", turler: ["kolon", "kiris", "cubuk"] },
     { id: "mafsal", ad: "Mafsal…", ikon: "mafsal", turler: ["kolon", "kiris", "cubuk"] },
     { id: "kesit-oner", ad: "Kesit öner ve uygula", ikon: "kesit-degistir", turler: ["kolon", "kiris", "cubuk"] },
+    { id: "uretec-duzenle", ad: "Üreteci düzenle…", ikon: "makas", turler: ["cubuk", "panel"], yalnizVarsa: true },   // yalnız üreteçten gelen elemanda
     { ayrac: true },
     { id: "isi-haritasi", ad: "Isı haritasında incele", ikon: "isi-haritasi", turler: ["kolon", "kiris", "cubuk", "doseme", "panel", "temel"] },
     { id: "yuk-akisi", ad: "Yük akışını göster", ikon: "yuk-akisi", turler: ["kolon", "kiris", "cubuk", "doseme", "temel", "panel"] },
@@ -1235,6 +1236,7 @@
       if (o_.ayrac) { if (out.length && !out[out.length - 1].ayrac) out.push({ ayrac: true }); return; }
       if (o_.turler && o_.turler.indexOf(tur) < 0) return;
       const k = komutlar[o_.id];
+      if (o_.yalnizVarsa && !k) return;          // bağlama özgü öğe (ör. üreteç): komutu yoksa hiç gösterilmez
       const fn = typeof k === "function" ? k : (k && typeof k.calistir === "function" ? k.calistir : null);
       let etkin = !!fn || o_.id === "bilgi";
       if (k && typeof k === "object" && k.etkin != null) etkin = etkin && (typeof k.etkin === "function" ? !!k.etkin() : !!k.etkin);

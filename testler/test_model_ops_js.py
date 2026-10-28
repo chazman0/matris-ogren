@@ -103,7 +103,7 @@ def test_genellestir_motor_agiyla_ayni(ad):
 
 # Koparak taşıma (ui-akskat-2, ui-s3-3): genelleştirilmiş her aks–kat şablonunda kiriş ve kolonların taşı / döndür / ayna
 # (kopyasız) sonucu ya ret (model aynı) ya da sıfır boylu / çakışan çubuk ve bozuk panel içermeyen, öteki elemanları yerinde model.
-_TASI_BETIGI = """
+_TASI_BETIGI = r"""
 const M = require(process.argv[1]);
 let veri = "";
 process.stdin.on("data", d => veri += d);

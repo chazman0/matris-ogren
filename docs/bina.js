@@ -586,11 +586,12 @@
     b.katlar = (b.katlar || []).map(function (k, i) { return { no: k.no != null ? +k.no : i, ad: String(k.ad || (i ? i + ". kat" : "Temel")), kot: +k.kot || 0 }; }).sort(function (p, q) { return p.no - q.no; });
     if (!b.katlar.length) b.katlar = [{ no: 0, ad: "Temel", kot: 0 }, { no: 1, ad: "1. kat", kot: 3 }];
     b.malzemeler = b.malzemeler || {}; b.kesitler = b.kesitler || {}; b.duvarlar = b.duvarlar || {};
-    b.kolonlar = (b.kolonlar || []).map(function (c, i) { return { no: c.no != null ? +c.no : i + 1, aks: [String(c.aks[0]), String(c.aks[1])], kat: +c.kat || 1, kesit: String(c.kesit || ""), yon: c.yon === "y" ? "y" : "x" }; });
-    b.kirisler = (b.kirisler || []).map(function (k, i) { return { no: k.no != null ? +k.no : i + 1, kat: +k.kat || 1, bas: [String(k.bas[0]), String(k.bas[1])], son: [String(k.son[0]), String(k.son[1])], kesit: String(k.kesit || ""), duvar: k.duvar || null }; });
+    // aks–kat elemanlarının ek alanları (kiriş duvar_h parapeti, grup, …) korunur; tanınan alanlar normalleştirilir
+    b.kolonlar = (b.kolonlar || []).map(function (c, i) { return Object.assign({}, c, { no: c.no != null ? +c.no : i + 1, aks: [String(c.aks[0]), String(c.aks[1])], kat: +c.kat || 1, kesit: String(c.kesit || ""), yon: c.yon === "y" ? "y" : "x" }); });
+    b.kirisler = (b.kirisler || []).map(function (k, i) { return Object.assign({}, k, { no: k.no != null ? +k.no : i + 1, kat: +k.kat || 1, bas: [String(k.bas[0]), String(k.bas[1])], son: [String(k.son[0]), String(k.son[1])], kesit: String(k.kesit || ""), duvar: k.duvar || null }); });
     b.dosemeler = (b.dosemeler || []).map(function (d, i) {
-      return { no: d.no != null ? +d.no : i + 1, kat: +d.kat || 1, kose: [[String(d.kose[0][0]), String(d.kose[0][1])], [String(d.kose[1][0]), String(d.kose[1][1])]], h: +d.h || 0.14,
-        kullanim: String(d.kullanim || "konut"), g_ek: d.g_ek != null ? +d.g_ek : 1.5, q: d.q == null ? null : +d.q, dagitim: d.dagitim || "otomatik", kaplama: d.kaplama || null };
+      return Object.assign({}, d, { no: d.no != null ? +d.no : i + 1, kat: +d.kat || 1, kose: [[String(d.kose[0][0]), String(d.kose[0][1])], [String(d.kose[1][0]), String(d.kose[1][1])]], h: +d.h || 0.14,
+        kullanim: String(d.kullanim || "konut"), g_ek: d.g_ek != null ? +d.g_ek : 1.5, q: d.q == null ? null : +d.q, dagitim: d.dagitim || "otomatik", kaplama: d.kaplama || null });
     });
     b.ek_yukler = Array.isArray(b.ek_yukler) ? b.ek_yukler : [];
     b.temeller = temelNormalize(b.temeller);
@@ -5456,7 +5457,7 @@
     k.govde.innerHTML = '<p class="not">IFC4 (ISO 10303-21) yapı modeli: katlar, aks ızgaraları, kolon/kiriş/döşeme/temel katıları, malzeme ve kesitler; isteğe bağlı yapısal analiz modeli. BIM görüntüleyicilerinde açılır.</p>' +
       '<form class="bn-ifc">' +
       '<label class="bn-onay"><input type="checkbox" data-ifc-s="analiz" checked> Yapısal analiz modeli (düğümler, çubuklar, mesnetler, yük grupları)</label>' +
-      '<label class="bn-onay"><input type="checkbox" data-ifc-s="yukler"' + (v ? " checked" : " disabled") + "> G ve Q yükleri" + (v ? "" : " (çözüm gerekir)") + "</label>" +
+      '<label class="bn-onay"><input type="checkbox" data-ifc-s="yukler"' + (v ? " checked" : " disabled") + "> " + (v && v.model === "genel" ? "G, Q ve S yükleri" : "G ve Q yükleri") + (v ? "" : " (çözüm gerekir)") + "</label>" +
       '<label class="bn-onay"><input type="checkbox" data-ifc-s="sonuclar"' + (v ? " checked" : " disabled") + "> Tasarım sonuçları (D/C özellikleri)" + (v ? "" : " (çözüm gerekir)") + "</label>" +
       '<label class="bn-alan"><span>Aks ızgarası</span><select class="girdi" data-ifc-s="izgara">' + secenekler([["kat", "Her kat seviyesinde"], ["tek", "Yalnız en altta"], ["yok", "Yok"]], "kat") + "</select></label>" +
       '<label class="bn-alan"><span>Dosya adı</span><input class="girdi" data-ifc-s="dosya_adi" value="' + kacis(ad) + '"></label>' +

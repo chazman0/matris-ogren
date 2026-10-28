@@ -477,13 +477,13 @@ test("genel (surum 3) çözüm: çubuk, panel ve temel bilgisi motor kayıtları
     yakin(m.ham.yuk.G, p.G_toplam, 1e-9, "panel " + p.no);
     assert.ok(!/undefined|NaN/.test(B.tsv(m)), "panel " + p.no + " TSV");
   });
+  // C2: akis.temeller yalnız temel kayıtlarını (B, L, h, N_temel) taşır; açık mesnetler akis.mesnetler'dedir
   const tl = v.akis.temeller || [];
-  assert.ok(tl.some(function (t) { return t.B == null; }), "fixture'da açık mesnet (B'siz kayıt) olmalı");
+  assert.ok(tl.length > 0 && tl.every(function (t) { return t.B != null && t.N_temel != null; }), "akis.temeller yalnız temel kayıtları");
+  const ms = v.akis.mesnetler || [];
+  assert.ok(Array.isArray(v.akis.mesnetler), "akis.mesnetler listesi");
+  ms.forEach(function (s) { assert.ok(s.dugum != null && "N_G" in s && "N_Q" in s, "mesnet kaydı " + JSON.stringify(s)); });
   tl.forEach(function (t) {
-    if (t.B == null) {
-      assert.throws(function () { B.bilgi({ tur: "temel", no: t.kolon_no }, d.bina, v); }, /modelde yok/);
-      return;
-    }
     const m = B.bilgi({ tur: "temel", no: t.kolon_no }, d.bina, v);
     yakin(m.ham.dc, t.DC, 1e-12); yakin(m.ham.N_servis, t.N_servis, 1e-12);
   });
