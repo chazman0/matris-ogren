@@ -539,6 +539,27 @@ test("aks sil 'taşı' (ui-s3-13): bölme düğümü (V tepesi) silinen gözdeys
   assert.ok(!(e.model.uretecler || []).length, "elemanları silinen üreteç kaydı kalmaz");
   assert.ok(!e.model.dugumler.length);
 });
+test("aks sil 'taşı': çakışan çubuklardan doğrultusu değişmeyen kalır — üstüne yatan mafsallı çapraz kolonun yerini almaz (dizi sırası ne olursa olsun)", function () {
+  const b = vCerceve();
+  // kullanıcı çaprazları kolonlardan önce çizmiş gibi: çaprazlar dizinin başında
+  b.cubuklar = b.cubuklar.filter(function (c) { return c.tur === "capraz"; }).concat(b.cubuklar.filter(function (c) { return c.tur !== "capraz"; }));
+  const t = A.aksSil(b, { yon: "x", ad: "C", secenek: "tasi" });
+  const c6 = cubukBul(t.model, 6);
+  assert.ok(c6, "B1 üst kolonu (6) kalır: " + t.uyarilar.join(" "));
+  assert.equal(c6.tur, "kolon"); assert.equal(c6.kesit, "HEA300"); assert.equal(c6.serbest, undefined);
+  assert.ok(!t.model.cubuklar.some(function (c) { return c.tur === "capraz"; }), "B1 doğrusuna yatan çaprazlar silinir");
+  assert.ok(t.uyarilar.some(function (u) { return /28 → 6/.test(u) && /29 → 6/.test(u) && /10 → 6/.test(u); }), t.uyarilar.join(" "));
+  // eş doğrusal bölmede de: uzun kolonun parçası, üstüne binen kısa çaprazın yerine kalır
+  const u = vCerceve();
+  u.cubuklar = u.cubuklar.filter(function (c) { return c.no !== 5 && c.no !== 6; });
+  u.cubuklar.unshift({ no: 5, i: G("B", "1", "±0.00"), j: G("B", "1", "+7.00"), tur: "kolon", kesit: "HEA300" });
+  u.cubuklar.unshift({ no: 40, i: G("C", "1", "+3.50"), j: G("B", "1", "+7.00"), tur: "capraz", kesit: "HEA200", serbest: { i: ["My", "Mz"], j: ["My", "Mz"] } });
+  const w = A.aksSil(u, { yon: "x", ad: "C", secenek: "tasi" });
+  assert.deepEqual(M.denetle(w.model).uyarilar.filter(function (x) { return x.kod === "cakisan-cubuk" || x.kod === "sifir-boy"; }), [], w.uyarilar.join(" "));
+  assert.ok(!w.model.cubuklar.some(function (c) { return c.tur === "capraz"; }), w.uyarilar.join(" "));
+  const kolonB1 = w.model.cubuklar.filter(function (c) { return c.tur === "kolon" && [c.i, c.j].every(function (r) { return r.aks && r.aks[0] === "B" && r.aks[1] === "1"; }); });
+  assert.deepEqual(kolonB1.map(function (c) { return [c.i.z, c.j.z]; }).sort(), [["+3.50", "+7.00"], ["±0.00", "+3.50"]], "kolon 5 B1/+3.50'te bölünür, iki parçası da kolon");
+});
 test("aks sil 'taşı': doğruları paralel kalan kesişim düğümü (X çaprazı gözü tek doğruya iner) çöker; kata bağlı Z aksında {aks, kat} REF'leri de taşınır", function () {
   const b = ornek();      // Y: 1 0, 2 5, 3 10; Z: ±0.00 (kat 0), +4.50 (kat 1), +8.00 (kat 2)
   const z0 = "±0.00", z1 = "+4.50";

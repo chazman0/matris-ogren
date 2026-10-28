@@ -1337,20 +1337,26 @@
     return bolunen;
   }
   /**
-   * Çubuklar: sıfır boylular silinir, aynı iki noktayı bağlayanlardan biri kalır (yeni parça değil özgün çubuk; sonra dizideki ilk) —
-   * silinenin yükü (ters yönlüyse konumu aynalanarak) ve kren yolu kalan çubuğa aktarılır. Dönüş: {sil: [no], esle: Map(no → kalan)}
+   * Çubuklar: sıfır boylular silinir, aynı iki noktayı bağlayanlardan biri kalır — önce doğrultusu taşımada DEĞİŞMEYEN çubuk (sira 0:
+   * ör. komşu aksa kayan kolon; doğrultusu değişip onun üstüne yatan çapraz değil), sonra yeni parça değil özgün çubuk, sonra dizideki
+   * ilk — silinenin yükü (ters yönlüyse konumu aynalanarak) ve kren yolu kalan çubuğa aktarılır. sira(c): 0 | 1 (verilmezse hep 0).
+   * Dönüş: {sil: [no], esle: Map(no → kalan)}
    */
-  function cubuklariAyikla(m, K, yeniParca) {
+  function cubuklariAyikla(m, K, yeniParca, sira) {
     const sil = [], esle = new Map(), ters = new Map(), gor = new Map();
     const v = (m.cubuklar || []).map(function (c, i) {
       const a = K.anahtar(c.i), b = K.anahtar(c.j), A = K.P(c.i), B = K.P(c.j);
       const sifir = a === b || (A && B && uzaklik(A, B) <= TOL);
-      return { c: c, i: i, a: a, b: b, L: A && B ? uzaklik(A, B) : 0, sifir: sifir, k: a < b ? a + "#" + b : b + "#" + a };
+      return { c: c, i: i, a: a, b: b, L: A && B ? uzaklik(A, B) : 0, sifir: sifir, k: a < b ? a + "#" + b : b + "#" + a, s: !sifir && sira ? sira(c) : 0 };
     });
     v.forEach(function (x) {
       if (x.sifir) return;
       const o = gor.get(x.k);
-      const once = function (p, q) { const pp = yeniParca.has(+p.c.no) ? 1 : 0, qq = yeniParca.has(+q.c.no) ? 1 : 0; return pp !== qq ? pp < qq : p.i < q.i; };
+      const once = function (p, q) {
+        if (p.s !== q.s) return p.s < q.s;
+        const pp = yeniParca.has(+p.c.no) ? 1 : 0, qq = yeniParca.has(+q.c.no) ? 1 : 0;
+        return pp !== qq ? pp < qq : p.i < q.i;
+      };
       if (!o || once(x, o)) gor.set(x.k, x);
     });
     const kalan = [];
@@ -1450,15 +1456,25 @@
    * dahil), böylece taşınan bir bölme düğümünün çökmesi de yakalanır: çöken düğümler birleşir; sıfır boylu çubuklar silinir; aynı iki noktayı
    * bağlayan çubuklar ve eş doğrusal üst üste binenler (ortak düğümlerde bölünerek) tekilleştirilir; köşeleri çakışan / alanı sıfır paneller,
    * aynı noktadaki mesnetler, aks–kat kolon / kiriş / döşeme kopyaları ayıklanır; üreteç kayıtları uydurulur. Hepsi uyarılarda raporlanır.
+   * yonOnce: Map(çubuk no → taşımadan önceki birim doğrultu); çakışanlardan doğrultusu değişmeyen kalır (çapraz kolonun yerini almaz).
    */
-  function bozuklariAyikla(m, uy) {
+  function bozuklariAyikla(m, uy, yonOnce) {
     dugumleriAyikla(m, uy);
     const K = new Konumcu(m);
     const yeniParca = new Set(), sonNo = (m.cubuklar || []).reduce(function (s, c) { return c && +c.no > s ? +c.no : s; }, 0);
+    const kokNo = new Map();          // eş doğrusal bölmenin yeni parçası → özgün çubuk
+    const sira = function (c) {
+      if (!yonOnce) return 0;
+      const d0 = yonOnce.get(kokNo.has(+c.no) ? kokNo.get(+c.no) : +c.no), A = K.P(c.i), B = K.P(c.j);
+      if (!d0 || !A || !B) return 0;
+      const L = uzaklik(A, B);
+      return L > TOL && Math.abs(ic(cikar(B, A), d0)) / L > 1 - 1e-6 ? 0 : 1;
+    };
     // çubuklar: sıfır boylu ve aynı iki noktayı bağlayan kopyalar; sonra eş doğrusal üst üste binenler ortak düğümlerde bölünüp tekilleştirilir
-    const c1 = cubuklariAyikla(m, K, yeniParca);
+    const c1 = cubuklariAyikla(m, K, yeniParca, sira);
     const bolunen = esDogrusalBol(m, K, yeniParca, sonNo);
-    const c2 = bolunen.size ? cubuklariAyikla(m, K, yeniParca) : { sil: [], esle: new Map() };
+    bolunen.forEach(function (l, o) { l.forEach(function (n) { if (n !== o) kokNo.set(n, o); }); });
+    const c2 = bolunen.size ? cubuklariAyikla(m, K, yeniParca, sira) : { sil: [], esle: new Map() };
     const esleC = new Map(c1.esle);
     c2.esle.forEach(function (v, k) { esleC.set(k, v); });
     esleC.forEach(function (v, k) { let x = v; for (let i = 0; i < 100 && esleC.has(x); i++) x = esleC.get(x); esleC.set(k, x); });
@@ -1592,9 +1608,16 @@
           const n = Object.assign({}, r, { z: a.ad }); delete n.kat; return n;
         });
       }
+      // çubukların taşımadan önceki doğrultusu: çakışan çubuklardan doğrultusu değişmeyen (kolon) kalır, üstüne yatan çapraz değil
+      const K0 = new Konumcu(bina), yonOnce = new Map();
+      (bina.cubuklar || []).forEach(function (c) {
+        if (!c) return;
+        const A = K0.P(c.i), B = K0.P(c.j), L = A && B ? uzaklik(A, B) : 0;
+        if (L > TOL) yonOnce.set(+c.no, olcek(cikar(B, A), 1 / L));
+      });
       adlariUygula(m, bina, p.sistem || GLOBAL, p.yon, new Map([[a.ad, komsu.ad]]));
       uy.push(b.ozet + " " + komsu.ad + " aksına taşındı.");
-      bozuklariAyikla(m, uy);
+      bozuklariAyikla(m, uy, yonOnce);
     } else if (b.toplam > 0) throw new AksHatasi("Silme seçeneği anlaşılamadı: " + p.secenek);
     const liste = hamListe(m, p.sistem, p.yon);
     liste.splice(liste.findIndex(function (x) { return String(x.ad) === a.ad; }), 1);
@@ -1602,7 +1625,7 @@
       m.katlar = m.katlar.filter(function (k) { return +k.no !== a.kat; });
       const hedefKat = p.secenek === "tasi" && b.toplam > 0 && komsu && komsu.kat != null ? +komsu.kat : null;
       const kaydi = katNumaralariniKaydir(m, +a.kat, hedefKat);
-      uy.push("Kat " + a.kat + " (eleman yok) kaldırıldı" + (kaydi ? "; üstteki katların numarası bir azaldı (kat numaraları 0'dan ardışık kalır)." : "."));
+      uy.push("Kat " + a.kat + (b.toplam > 0 ? "" : " (eleman yok)") + " kaldırıldı" + (kaydi ? "; üstteki katların numarası bir azaldı (kat numaraları 0'dan ardışık kalır)." : "."));
     }
     return sonuc(m, uy, Object.assign(temel, { silindi: true }));
   }
