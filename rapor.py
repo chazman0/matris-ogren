@@ -184,6 +184,12 @@ def _isaret(ok) -> str:
     return '<span class="ok">✔</span>' if ok else '<span class="no">✘</span>'
 
 
+def _temel_aks(t) -> str:
+    """Temel kaydının aks adı ('B2'; genel modelde ek aks sistemindeyse 'KANAT:K1a')."""
+    on = f"{t['sistem']}:" if t.get("sistem") not in (None, "GLOBAL") else ""
+    return on + "".join(map(str, _liste(t.get("aks"))))
+
+
 def _tablo(basliklar, satirlar, *, sinif="", baslik=None, sayisal=None, alt=None) -> str:
     """Hücreleri hazır HTML olan tablo. ``sayisal``: sağa yaslanacak sütun indeksleri (varsayılan: ilk sütun hariç hepsi)."""
     if not satirlar:
@@ -936,7 +942,7 @@ class _Rapor:
         for ad, k in kes.items():
             tip = k.get("tip")
             m = self.malzeme(k.get("malzeme"))
-            if tip in ("profil", "vute"):      # vute: temel I profil + doğrusal artan gövde (değişken kesit)
+            if tip == "profil" or (tip == "vute" and k.get("profil")):      # vute: temel I profil + doğrusal artan gövde (değişken kesit)
                 p = _sozluk(getattr(yv, "PROFILLER", {}).get(k.get("profil"))) if yv else {}
                 prof.append((ad, k, p, m))
             elif tip == "basit" or m.get("tur") == "celik":      # basit çelik kesit ya da çelik dikdörtgen (lama): betonarme değil
@@ -949,7 +955,11 @@ class _Rapor:
             for ad, k in dik:
                 b, hh = float(k.get("b") or 0), float(k.get("h") or 0)
                 ham = self.kesit_ham(ad)
-                rows.append([f"<b>{_e(ad)}</b>", _e(k.get("malzeme")), f"{_f(b * 100, 1)} × {_f(hh * 100, 1)}",
+                olcu = f"{_f(b * 100, 1)} × {_f(hh * 100, 1)}"
+                if k.get("tip") == "vute":      # betonarme vute: temel dikdörtgen kesit + derin uçta ek yükseklik
+                    olcu += (f' <span class="birim">+ vute: ek yükseklik {_f(float(k.get("ek_yukseklik") or 0) * 100, 1)} cm, '
+                             f'boy {_b(k.get("boy"), "m") if k.get("boy") is not None else "çubuk boyu"}; temel {_e(k.get("temel"))}</span>')
+                rows.append([f"<b>{_e(ad)}</b>", _e(k.get("malzeme")), olcu,
                              _f(k.get("A", b * hh) * 1e4, 1), _s(float(k.get("Iy") or b * hh ** 3 / 12) * 1e8, 5),
                              _s(float(k.get("Iz") or hh * b ** 3 / 12) * 1e8, 5), _s(float(k.get("J") or 0) * 1e8, 5),
                              _s(b * hh ** 2 / 6 * 1e6, 5), _s(float(k.get("Wpl") or b * hh ** 2 / 4) * 1e6, 5),
@@ -966,6 +976,10 @@ class _Rapor:
                     f"<i>J</i> ≈ <i>β b</i><sup>3</sup><i>h</i> (β = 1/3 − 0.21(b/h)(1 − b<sup>4</sup>/(12h<sup>4</sup>)), <i>b</i> ≤ <i>h</i>), "
                     f"{_v('W', 'el,y')} = <i>b h</i><sup>2</sup>/6, {_v('W', 'pl,y')} = <i>b h</i><sup>2</sup>/4, <i>i</i> = √(<i>I</i>/<i>A</i>) = <i>h</i>/√12. "
                     "Pas: boyuna donatı ağırlık merkezi tasarımda paspayı + 20 mm alınır (bkz. Bölüm 11).")
+            if any(k.get("tip") == "vute" for _, k in dik):
+                h += _p("Vute (değişken kesit): değerler temel kesitindir; kesit yüksekliği derin uçta ek yükseklik kadar artar ve "
+                        + _v("L", "vute") + " boyunca doğrusal azalır. Motor çubuğu parçalara böler ve her parçayı ortalama yüksekliğindeki "
+                        "dikdörtgen kesitle modeller.")
         if prof:
             rows, rows2 = [], []
             for ad, k, p, m in prof:
@@ -1079,9 +1093,11 @@ class _Rapor:
         h += _tablo(["Malzeme", "<i>γ</i>", "Kaynak"], rows, sayisal=(1,))
         kiris_oz = _g(B, "analiz", "kiris_oz") or "brut"
         if self.genel:
+            beton = any(isinstance(k, dict) and k.get("tip") in ("dikdortgen", "vute") and self.malzeme(k.get("malzeme")).get("tur") == "beton"
+                        for k in _sozluk(_g(self.v, "kutuphane_ozeti", "kesitler")).values())      # betonarme çubuk var mı
             h += _p("Panel: <i>g</i> = " + _v("γ", "b") + "·<i>t</i> + " + _v("g", "ek") + " (kaplama, sac, tesisat; yüzey alanına); "
                     "çubuk öz ağırlığı <i>γ</i>·<i>A</i> kN/m çubuk boyunca yayılı (vute çubuklarında parça başına ortalama kesitle"
-                    + ("; betonarme kirişte döşeme kalınlığı düşülür: <i>γ</i>·<i>b</i>·(<i>h</i> − <i>t</i>)" if kiris_oz == "net" else "")
+                    + ("; betonarme kirişte döşeme kalınlığı düşülür: <i>γ</i>·<i>b</i>·(<i>h</i> − <i>t</i>)" if kiris_oz == "net" and beton else "")
                     + "); duvar: " + _v("g", "d") + " = " + _v("w", "duvar") + "·" + _v("h", "duvar") + " kN/m (çubuğa verilen duvar).")
         else:
             h += self._b6_aks_kat_metni(kiris_oz)
@@ -2379,7 +2395,7 @@ class _Rapor:
                 f"D/C = σ<sub>maks</sub>/{_v('q', 'em')}.")
         rows = []
         for t in tem:
-            rows.append([_e("".join(map(str, _liste(t.get("aks"))))), f"{_f(t.get('B'))} × {_f(t.get('L'))} × {_f(t.get('h'))}", _f(t.get("N_G"), 1),
+            rows.append([_e(_temel_aks(t)), f"{_f(t.get('B'))} × {_f(t.get('L'))} × {_f(t.get('h'))}", _f(t.get("N_G"), 1),
                          _f(t.get("N_Q"), 1), _f(t.get("N_temel"), 1), _f(t.get("N_servis"), 1), _f(t.get("MX"), 2), _f(t.get("MY"), 2),
                          _f(float(t.get("e_X") or 0) * 1000, 1), _f(float(t.get("e_Y") or 0) * 1000, 1), _f(t.get("sigma_max"), 1), _f(t.get("sigma_min"), 1),
                          _isaret(t.get("cekirdek_icinde")), _dc_hucre(t.get("DC"))])
@@ -2390,7 +2406,7 @@ class _Rapor:
         B_, L_, N_, MX, MY = (float(t.get(a) or 0) for a in ("B", "L", "N_servis", "MX", "MY"))
         if B_ > 0 and L_ > 0:
             s1, s2, s3 = N_ / (B_ * L_), 6 * abs(MX) / (B_ * L_ ** 2), 6 * abs(MY) / (L_ * B_ ** 2)
-            h += _h3("13.2 Belirleyici temel: aks " + _e("".join(map(str, _liste(t.get("aks"))))))
+            h += _h3("13.2 Belirleyici temel: aks " + _e(_temel_aks(t)))
             h += self._kontrol_tablosu([
                 ("Zemin gerilmesi", f"σ<sub>maks</sub> = <i>N</i>/(<i>BL</i>) + 6|{_v('M', 'X')}|/(<i>BL</i><sup>2</sup>) + 6|{_v('M', 'Y')}|/(<i>LB</i><sup>2</sup>) ≤ {_v('q', 'em')}",
                  [f"<i>N</i> = {_f(t.get('N_G'), 2)} + {_f(t.get('N_Q'), 2)} + {_f(t.get('N_temel'), 2)} = {_f(N_, 2)} kN",

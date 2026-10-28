@@ -529,6 +529,29 @@ def test_genel_temel_bolumu(cozumler):
     assert "Radye temel boyutları" not in b13
 
 
+def test_genel_betonarme_vute_ve_ek_aks_sistemi_temeli(cozumler):
+    """Betonarme vute (profilsiz, temel dikdörtgen) çelik profil tablosuna değil betonarme tablosuna gider; ek aks sistemindeki temel
+    kaydı §13'te sistem önekiyle yazılır."""
+    b, v = cozumler["celik-cbf-3kat"]
+    v = copy.deepcopy(v)
+    v["kutuphane_ozeti"]["kesitler"]["VUTE-BA"] = {"tip": "vute", "b": 0.25, "h": 0.5, "profil": None, "A": 0.125, "Iy": 0.0026,
+                                                  "Iz": 0.00065, "J": 0.0018, "Wpl": 0.0156, "malzeme": "C30", "temel": "K25x50",
+                                                  "ek_yukseklik": 0.2, "boy": 1.0}
+    t = max(v["akis"]["temeller"], key=lambda x: x["DC"])
+    t["sistem"] = "KANAT"
+    h = rapor.statik_rapor(b, v)
+    dengeli(h)
+    b5 = bolum(h, 5)
+    i = b5.index("Dikdörtgen (betonarme) kesitler")
+    rc = b5[i:b5.index("</table>", i)]
+    assert "<b>VUTE-BA</b>" in rc and "+ vute: ek yükseklik 20 cm" in rc and "temel K25x50" in rc
+    i = b5.index("Çelik profiller — boyutlar")
+    assert "VUTE-BA" not in b5[i:b5.index("</table>", i)]
+    b13 = bolum(h, 13)
+    aks = "".join(map(str, t["aks"]))
+    assert f"13.2 Belirleyici temel: aks KANAT:{aks}" in b13 and f"| KANAT:{aks} |" in metin(b13)
+
+
 def test_genel_eski_veri_ile_aks_kat_raporu_degismez(cozumler):
     """Aks–kat (surum 1/2) çözümüyle rapor eski bölümleri korur: 'Kolon / kiriş / döşeme sayısı', döşeme ve kiriş yük dökümü."""
     b, v = cozumler["betonarme-2kat-3x2"]

@@ -502,6 +502,55 @@ def test_genel_model_beton_metraji_aks_kat_ile_ayni(genellestirilmis):
     assert tb.tablo(T, "duvar_yukleri")["satirlar"] and tb.tablo(T, "metraj_celik") is None
 
 
+def test_genel_model_betonarme_vute(genellestirilmis):
+    """Betonarme vute (temel dikdörtgen kesit): kesit tablosunda 'None' profil yok, birim ağırlık temel malzemeden; metrajda kiriş
+    betonuna üçgen vute gövdesi b·Δh·boy/2 eklenir (çelik metrajına girmez)."""
+    g, _ = genellestirilmis
+    g = copy.deepcopy(g)
+    kir = next(c for c in g["cubuklar"] if c["tur"] == "kiris")
+    temel = kir["kesit"]
+    T0 = tb.bina_tablolari(g, kati=True)
+    g["kesitler"]["VUTE-BA"] = {"tip": "vute", "temel": temel, "ek_yukseklik": 0.2, "boy": 1.0}
+    kir["kesit"] = "VUTE-BA"
+    T = tb.bina_tablolari(g, kati=True)
+    _sema_dogrula(T)
+    ks = next(r["degerler"] for r in tb.tablo(T, "kesitler")["satirlar"] if r["degerler"]["ad"] == "VUTE-BA")
+    assert ks["profil"] == f"vute 200 mm (temel {temel})" and ks["malzeme"] == g["kesitler"][temel]["malzeme"]
+    assert ks["g"] == pytest.approx(next(r["degerler"]["g"] for r in tb.tablo(T, "kesitler")["satirlar"] if r["degerler"]["ad"] == temel))
+
+    def satir(T_):
+        return next(r["degerler"] for r in tb.tablo(T_, "metraj_betonarme")["satirlar"]
+                    if r["degerler"]["tur"] == "Kiriş" and r["degerler"]["no"] == kir["no"])
+    b_ = g["kesitler"][temel]["b"]
+    assert satir(T)["beton"] == pytest.approx(satir(T0)["beton"] + 0.5 * b_ * 0.2 * 1.0)
+    assert "+ vute 20 cm" in satir(T)["olcu"] and tb.tablo(T, "metraj_celik") is None
+
+
+def test_karma_model_duvar_yolu_aks_kat_kirisine():
+    """Aks–kat kirişli + serbest çubuklu (karma) model genel okuyucuyla okunur; kirişten çevrilen çubuğun duvarı o kirişin kaydında
+    düzenlenir (cubuklar listesindeki başka bir çubuğa yazılmaz)."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["cubuklar"] = [{"no": 1, "tur": "capraz", "i": {"aks": ["A", "1"], "kat": 0}, "j": {"aks": ["B", "2"], "kat": 1}, "kesit": "S40x40"}]
+    T = tb.bina_tablolari(b, kati=True)
+    _sema_dogrula(T)
+    sat = [r for r in tb.tablo(T, "duvar_yukleri")["satirlar"] if r["degerler"]["duvar"]]
+    assert sat and all(r["yol"]["duvar"][0] == "kirisler" for r in sat)
+    r = sat[0]
+    yeni = tb.degisiklikleri_uygula(b, [{"yol": r["yol"]["h_duvar"], "deger": 1.25}])
+    kno = r["yol"]["duvar"][1]["no"]
+    assert next(k for k in yeni["kirisler"] if k["no"] == kno)["duvar_h"] == 1.25 and "duvar_h" not in yeni["cubuklar"][0]
+
+
+def test_genel_model_temel_basinclari_ek_aks_sistemi(cozumler):
+    """Ek aks sistemindeki temel kaydı (motor 'sistem' alanı) aks adında sistem önekiyle gösterilir."""
+    b, v = cozumler["celik-cbf-3kat"]
+    v = copy.deepcopy(v)
+    v["akis"]["temeller"][0]["sistem"] = "KANAT"
+    sat = tb.tablo(tb.bina_tablolari(b, v, kati=True), "temel_basinclari")["satirlar"]
+    aks = "".join(map(str, v["akis"]["temeller"][0]["aks"]))
+    assert sat[0]["degerler"]["aks"] == f"KANAT:{aks}" and sat[1]["degerler"]["aks"] == "".join(map(str, v["akis"]["temeller"][1]["aks"]))
+
+
 def test_genel_model_panel_ruzgari_tablosu(cozumler):
     """Panel yöntemli rüzgâr (sanayi): varsayılan 'C = 1,2' satırı yerine panel başına q(z) ve c_p, yön başına toplam kuvvet; kat yöntemi
     (cbf) eski satırları korur."""
@@ -514,6 +563,7 @@ def test_genel_model_panel_ruzgari_tablosu(cozumler):
         assert "C (basınç + emme)" not in kr and "Yöntem: panel basıncı p = c_p·q(z) (panel normaline)" in kr
         panel = [p for p in kr if p.startswith("Panel P")]
         assert len(panel) == len(rz["paneller"])
+        assert next(p for p in panel if p.startswith("Panel P1 ")).startswith("Panel P1 (çatı): q(z = ")      # tür Türkçe
         p1 = kr[next(p for p in panel if p.startswith("Panel P1 "))]
         assert p1["degerler"]["deger"] == rz["paneller"][0]["q"] and "c_p W+X" in p1["degerler"]["kaynak"]
         assert kr["Toplam W+X: F_X / F_Y / F_Z"]["degerler"]["deger"] == pytest.approx(rz["toplam"]["W+X"][0], rel=1e-6)

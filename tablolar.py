@@ -1266,10 +1266,12 @@ def _t_kesitler(c):
         elif ks.get("g_kg"):
             g = ks["g_kg"]
         else:
-            g = A * c_gamma(c, kayit) / 9.81 * 1000 if A and c_gamma(c, kayit) else None
+            gk = {"malzeme": ks.get("malzeme", "")} if tip == "vute" and not kayit.get("malzeme") else kayit   # vute: temel malzemesi
+            g = A * c_gamma(c, gk) / 9.81 * 1000 if A and c_gamma(c, gk) else None
         profil = ks.get("profil") or kayit.get("profil")
         if tip == "vute" and ks:
-            profil = f"{profil} + vute {_g((ks.get('ek_yukseklik') or 0.0) * 1000)} mm (temel {ks.get('temel')})"
+            ek = f"vute {_g((ks.get('ek_yukseklik') or 0.0) * 1000)} mm (temel {ks.get('temel')})"
+            profil = f"{profil} + {ek}" if profil else ek          # betonarme vute: temel dikdörtgen kesit (profil yok)
         satirlar.append(_R({
             "ad": str(ad), "tip": tip, "profil": profil, "malzeme": str(kayit.get("malzeme", "") or (ks.get("malzeme") if tip == "vute" else "")),
             "b": ks.get("b", kayit.get("b")), "h": ks.get("h", kayit.get("h")),
@@ -1769,10 +1771,13 @@ def _t_duvar_yukleri_serbest(c):
         hd, hk = _serbest_duvar_h(S, cb)
         w = dv.get("deger")
         gd = w * hd if (w is not None and hd is not None) else None
+        kay = cb.get("kaynak") if isinstance(cb.get("kaynak"), dict) else {}
+        # aks–kat listesinden çevrilen kiriş (karma model): duvar o kirişin kaydında düzenlenir (açıklık parçaları aynı kiriştir)
+        liste, hno = ("kirisler", kay.get("no")) if kay.get("aks_kat") == "kiris" else ("cubuklar", cb["no"])
         satirlar.append(_R({"kiris": cb["no"], "adres": f"Ç{cb['no']} ({cb['tur']})", "kat": cb.get("kat"), "duvar": cb["duvar"], "w": w,
                             "h_duvar": hd, "h_kaynak": hk, "g_d": gd, "L": cb["L"], "toplam": gd * cb["L"] if gd is not None else None,
                             "alan": (hd or 0.0) * cb["L"]},
-                           {"duvar": _liste_yolu(ham, "cubuklar", cb["no"], "duvar"), "h_duvar": _liste_yolu(ham, "cubuklar", cb["no"], "duvar_h")}))
+                           {"duvar": _liste_yolu(ham, liste, hno, "duvar"), "h_duvar": _liste_yolu(ham, liste, hno, "duvar_h")}))
     sut = _duvar_sutunlari(ham)
     sut[0] = _S("kiris", "Çubuk", ondalik=0)
     sut[8] = _S("L", "Çubuk boyu", "m", ondalik=2)
@@ -1873,7 +1878,8 @@ def _t_kar_ruzgar(c):
     if rzp:
         for p in rzp.get("paneller") or []:
             cp = p.get("cp") or {}
-            satirlar.append(_R({"grup": "Rüzgâr", "parametre": f"Panel P{p.get('panel')} ({p.get('tur')}): q(z = {_g(p.get('z'))} m)",
+            satirlar.append(_R({"grup": "Rüzgâr", "parametre": f"Panel P{p.get('panel')} ({_PANEL_TUR.get(p.get('tur'), p.get('tur'))}): "
+                                                            f"q(z = {_g(round(p.get('z'), 3)) if p.get('z') is not None else '–'} m)",
                                 "deger": p.get("q"), "birim": "kN/m²",
                                 "kaynak": "c_p " + " / ".join(f"{_YON_AD.get(y, y)} {_g(round(cp[y], 3)) if cp.get(y) is not None else '–'}"
                                                               for y in ("W+X", "W-X", "W+Y", "W-Y"))}))
@@ -2590,12 +2596,13 @@ def _t_temel_basinclari(c):
         if t.get("B") is None or t.get("L") is None:      # açık (temelsiz) mesnet: taban basıncı yok (genel model)
             continue
         aks = list(t.get("aks") or []) + ["", ""]
+        on = f"{t['sistem']}:" if t.get("sistem") not in (None, "GLOBAL") else ""      # genel model: ek aks sistemindeki temel
         BL = (t.get("B") or 0.0) * (t.get("L") or 0.0)
         s_ort = (t.get("N_servis") or 0.0) / BL if BL else None
         N_temel = t.get("N_temel")
         if N_temel is None and (t.get("h") if t.get("h") is not None else h_vars) is not None:
             N_temel = gamma_ba * t["B"] * t["L"] * (t.get("h") if t.get("h") is not None else h_vars)
-        satirlar.append(_R({"kolon_no": t.get("kolon_no"), "aks": f"{aks[0]}{aks[1]}", "B": t.get("B"), "L": t.get("L"),
+        satirlar.append(_R({"kolon_no": t.get("kolon_no"), "aks": f"{on}{aks[0]}{aks[1]}", "B": t.get("B"), "L": t.get("L"),
                             "N_G": t.get("N_G"), "N_Q": t.get("N_Q"), "N_temel": N_temel, "N_servis": t.get("N_servis"),
                             "MX": t.get("MX"), "MY": t.get("MY"), "sigma_max": t.get("sigma_max"), "sigma_min": t.get("sigma_min"),
                             "e_X": t.get("e_X"), "e_Y": t.get("e_Y"), "q_em": t.get("q_em"), "dc": t.get("DC"),
@@ -2795,6 +2802,12 @@ def _metraj_serbest(c):
             hn = max(h - t, 0.0)
         V = b * hn * Lnet
         kalip = (b + 2 * hn) * Lnet if tur_ad == "kiris" else 2 * (b + h) * Lnet
+        vute = ""
+        if ks["tip"] == "vute":          # betonarme vute: derin uçta ek yükseklik, boy boyunca doğrusal (üçgen gövde b·Δh·boy/2)
+            boy = ks["boy"] if ks.get("boy") and ks["boy"] < L else L
+            V += 0.5 * b * ks["ek_yukseklik"] * boy
+            kalip += ks["ek_yukseklik"] * boy          # iki yan yüz (üçgen)
+            vute = f" + vute {_g(ks['ek_yukseklik'] * 100)} cm"
         if oz.get("As_ust_cm2") is not None and oz.get("As_alt_cm2") is not None:
             et = _etriye_ayristir(oz.get("etriye"))
             donati = (oz["As_ust_cm2"] + oz["As_alt_cm2"]) * 1e-4 * L * CELIK_YOGUNLUK + \
@@ -2807,7 +2820,7 @@ def _metraj_serbest(c):
             oran = _donati_orani(c, "kiris" if tur_ad == "kiris" else "diger")
             donati, kaynak = V * oran, f"yaklaşık {_g(oran)} kg/m³"
         beton_c.append({"tur": tur_ad, "no": cb["no"], "adres": adres, "kat": kat, "sinif": sinif,
-                        "olcu": f"{_g(b * 100)}×{_g(h * 100)} cm" + (f" (t = {_g(t * 100)} cm)" if t else ""), "uzunluk": Lnet,
+                        "olcu": f"{_g(b * 100)}×{_g(h * 100)} cm" + vute + (f" (t = {_g(t * 100)} cm)" if t else ""), "uzunluk": Lnet,
                         "alan": None, "beton": V, "kalip": kalip, "donati": donati, "donati_kaynak": kaynak, "t": t})
     # duvarlar (çubuk üstü): net boy × duvar yüksekliği
     for cb in S.cubuklar:
@@ -3368,8 +3381,8 @@ def _t_metraj_varsayimlari(c):
                 ("Basit çelik kesitler (boru, kutu, korniyer, U)", "A·7850",
                  "birim ağırlık kesit hesabından (tasarim.kesit_ozellik); boya çevresi geometriden (boru πD, kutu 2(H + B), …)"),
                 ("Betonarme çubuklar", "beton dikdörtgen",
-                 "yalnız beton malzemeli dikdörtgen kesitler; kolon b·h·(L − t_döşeme), kiriş b·(h − t)·L_net (kolon yüzleri arası); "
-                 "çelik kesitler (profil, basit, vute) çelik metrajındadır"),
+                 "yalnız beton malzemeli dikdörtgen kesitler; kolon b·h·(L − t_döşeme), kiriş b·(h − t)·L_net (kolon yüzleri arası), "
+                 "betonarme vutede + b·Δh·boy/2; çelik kesitler (profil, basit, vute) çelik metrajındadır"),
                 ("Paneller", "kalınlık > 0: beton",
                  "kalınlıklı panel beton (yüzey alanı × kalınlık; kalıp: alt yüz − kenar kirişlerinin yarı genişliği), kalınlıksız "
                  "çatı/cephe panelleri kaplama alanı (sac/panel, yüzey alanı)"),
