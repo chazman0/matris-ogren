@@ -1600,9 +1600,43 @@
     liste.splice(liste.findIndex(function (x) { return String(x.ad) === a.ad; }), 1);
     if (zGlobalMi(bina, p.sistem, p.yon) && a.kat != null && Array.isArray(m.katlar)) {
       m.katlar = m.katlar.filter(function (k) { return +k.no !== a.kat; });
-      uy.push("Kat " + a.kat + " (eleman yok) kaldırıldı.");
+      const hedefKat = p.secenek === "tasi" && b.toplam > 0 && komsu && komsu.kat != null ? +komsu.kat : null;
+      const kaydi = katNumaralariniKaydir(m, +a.kat, hedefKat);
+      uy.push("Kat " + a.kat + " (eleman yok) kaldırıldı" + (kaydi ? "; üstteki katların numarası bir azaldı (kat numaraları 0'dan ardışık kalır)." : "."));
     }
     return sonuc(m, uy, Object.assign(temel, { silindi: true }));
+  }
+  /**
+   * Kata bağlı GLOBAL Z aksı silinince kat numaraları ardışık kalır (motorlar "Kat numaraları 0'dan başlayıp ardışık olmalı" diye
+   * reddeder; bina.js katSil gibi): silinen kattan büyük numaralar bir azalır — katlar[].no, GLOBAL akslar.z[].kat, {aks, kat} REF'leri
+   * ve cubuklar / paneller / kolonlar / kirisler / dosemeler / ek_yukler[].kat. Silinen katı açıkça taşıyan eleman (`kat` alanı)
+   * hedefKat'a (taşı: komşu kat Z aksı) geçer; hedef yoksa alan kaldırılır (motor katı geometriden bulur). Kotlar değişmez.
+   * Dönüş: numarası değişen kat sayısı.
+   */
+  function katNumaralariniKaydir(m, silinen, hedefKat) {
+    const yeni = function (k) {
+      if (k == null || k === "" || !isFinite(+k)) return k;
+      k = +k;
+      if (k === silinen) return hedefKat == null ? null : (hedefKat > silinen ? hedefKat - 1 : hedefKat);
+      return k > silinen ? k - 1 : k;
+    };
+    let n = 0;
+    (m.katlar || []).forEach(function (k) { if (k && k.no != null && +k.no > silinen) { k.no = +k.no - 1; n++; } });
+    ((m.akslar && m.akslar.z) || []).forEach(function (a) { if (a && a.kat != null && a.kat !== "") a.kat = yeni(a.kat); });
+    // {aks, kat} REF'leri (Z aksı adı yazılmamış); silinen kata başvuran (taşı'da önceden {aks, z}'ye çevrildi) kalırsa hedefe
+    refleriGez(m, function (r) {
+      if (!aksRefMi(r) || r.z != null || r.kat == null) return r;
+      const k = yeni(r.kat);
+      return k == null || k === +r.kat ? r : Object.assign({}, r, { kat: k });
+    });
+    ["cubuklar", "paneller", "kolonlar", "kirisler", "dosemeler", "ek_yukler"].forEach(function (l) {
+      (m[l] || []).forEach(function (e) {
+        if (!e || typeof e !== "object" || e.kat == null || e.kat === "") return;
+        const k = yeni(e.kat);
+        if (k == null) delete e.kat; else e.kat = k;
+      });
+    });
+    return n;
   }
 
   // ---------------------------------------------------------------- ek aks sistemleri

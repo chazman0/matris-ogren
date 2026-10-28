@@ -563,7 +563,49 @@ test("aks sil 'taşı': doğruları paralel kalan kesişim düğümü (X çapraz
   assert.equal(u.silindi, true);
   assert.deepEqual(M.denetle(u.model).uyarilar.filter(function (x) { return x.kod === "eksik-dugum" || x.kod === "sifir-boy"; }), [], u.uyarilar.join(" "));
   assert.ok(u.model.cubuklar.every(function (c) { return [c.i, c.j].every(function (r) { return r.kat !== 1; }); }), "silinen katın REF'i kalmaz");
-  assert.ok(!u.model.katlar.some(function (x) { return x.no === 1; }));
+  // kat 1 kaldırıldı; üstteki kat (+8.00) 1 numarasını alır (motor kat numaralarını 0'dan ardışık ister) — eski beklenti "kat 1 yok"tu
+  assert.deepEqual(u.model.katlar.map(function (x) { return [x.no, x.kot]; }), [[0, 0], [1, 8]]);
+  yakin(A.refKoordinat(u.model, cubukBul(u.model, 1).j), [0, 0, 8]);
+});
+/** Çubuk no ile. */
+function cubukBul(m, no) { return m.cubuklar.find(function (c) { return c.no === no; }); }
+test("aks sil: kata bağlı Z aksı silinince kat numaraları 0'dan ardışık kalır (katlar, Z aksları, {aks, kat} REF'leri, eleman kat alanları)", function () {
+  // ornek(): Z ±0.00 (kat 0), +4.50 (kat 1), +8.00 (kat 2), Saçak 9, Mahya 10.5 — her katta A1 kolonu, +8.00'de A1–B1 kirişi ve panel
+  const k = ornek(), z = ["±0.00", "+4.50", "+8.00"];
+  k.cubuklar = [
+    { no: 1, i: G("A", "1", z[0]), j: G("A", "1", z[1]), tur: "kolon", kat: 1 },
+    { no: 2, i: { aks: ["A", "1"], kat: 1 }, j: { aks: ["A", "1"], kat: 2 }, tur: "kolon", kat: 2 },
+    { no: 3, i: G("A", "1", z[2]), j: G("B", "1", z[2]), tur: "kiris", kat: 2 },
+    { no: 4, i: G("A", "1", z[1]), j: G("B", "1", z[1]), tur: "kiris", kat: 1 },
+    { no: 5, i: G("A", "1", "Saçak"), j: G("B", "1", "Saçak"), tur: "kiris" }];
+  k.paneller = [{ no: 1, kose: [G("A", "1", z[2]), G("B", "1", z[2]), G("B", "2", z[2]), G("A", "2", z[2])], tur: "doseme", kat: 2 }];
+  k.ek_yukler = [{ tur: "dugum", aks: ["A", "1"], kat: 2, durum: "G", FZ: -5 }];
+  k.kolonlar = [{ no: 1, aks: ["C", "3"], kat: 0 }];
+  const zKat = function (m) { return m.akslar.z.filter(function (a) { return a.kat != null; }).map(function (a) { return [a.ad, a.kat]; }); };
+  // 1) taşı (+4.50 → komşu +8.00): kat 1 kalkar, kat 2 → 1; silinen katı taşıyan elemanlar (kat: 1) hedef kata (+8.00 → yeni 1)
+  const t = A.aksSil(k, { yon: "z", ad: z[1], secenek: "tasi" });
+  assert.equal(t.silindi, true);
+  assert.deepEqual(t.model.katlar.map(function (x) { return x.no; }), [0, 1]);
+  assert.deepEqual(zKat(t.model), [["±0.00", 0], ["+8.00", 1]]);
+  assert.equal(cubukBul(t.model, 3).kat, 1, "+8.00 kirişi: kat 2 → 1");
+  assert.equal(cubukBul(t.model, 1).kat, 1, "kolon 1 (±0.00 → +8.00'e uzadı): silinen kat 1 → hedef kat (yeni 1)");
+  assert.equal(t.model.paneller[0].kat, 1);
+  assert.equal(t.model.ek_yukler[0].kat, 1, "aks–kat düğüm yükü de kayar");
+  assert.equal(t.model.kolonlar[0].kat, 0, "alttaki kat numarası değişmez");
+  t.model.cubuklar.forEach(function (c) { [c.i, c.j].forEach(function (r) { assert.ok(r.kat == null || r.kat <= 1, JSON.stringify(r)); }); });
+  yakin(A.refKoordinat(t.model, { aks: ["A", "1"], kat: 1 }), [0, 0, 8], 1e-9, "kat 1 artık +8.00");
+  assert.ok(t.uyarilar.some(function (u) { return /numarası bir azaldı/.test(u); }), t.uyarilar.join(" "));
+  // 2) elemanlarla: silinen kata ait açık kat alanı kalırsa kaldırılır (motor katı geometriden bulur)
+  const e = A.aksSil(k, { yon: "z", ad: z[1], secenek: "elemanlarla" });
+  assert.deepEqual(e.model.katlar.map(function (x) { return x.no; }), [0, 1]);
+  assert.deepEqual(zKat(e.model), [["±0.00", 0], ["+8.00", 1]]);
+  assert.deepEqual(e.model.cubuklar.map(function (c) { return [c.no, c.kat]; }), [[3, 1], [5, undefined]]);
+  // 3) en üst kat: numara kayması yok
+  const u = A.aksSil(k, { yon: "z", ad: z[2], secenek: "tasi" });
+  assert.deepEqual(u.model.katlar.map(function (x) { return x.no; }), [0, 1]);
+  assert.ok(!u.uyarilar.some(function (x) { return /numarası bir azaldı/.test(x); }), u.uyarilar.join(" "));
+  // girdi değişmez
+  assert.equal(k.cubuklar[2].kat, 2);
 });
 test("aks sil 'taşı': ters yönlü kopyanın yükü aynalanarak aktarılır; üreteç REF'leri (makas bas/son) de taşınır", function () {
   const b = ornek();      // X: A 0, B 6, C 12, D 19.5

@@ -648,6 +648,15 @@ test("kesit önerisi K1: donatı değişimi uygulanır (uygula.ad ile karşıla�
   assert.deepEqual(oz.asan, [{ etiket: "capraz 12", dc: 1.07 }, { etiket: "kolon 7", dc: 1.05 }]);
   assert.deepEqual(BC.hepsiOzeti({ dc_sonra: 0.99, oneriler: [{ cubuk: 1, dc_sonra: 0.99 }] }), { dc: 0.99, asan: [], asiyor: false });
   assert.equal(BC.hepsiOzeti({}).asiyor, false);
+  // yinele yanıtının yeni uyarıları (motor: öteleme sınırı, yakınsamadı) — ilk yanıtta olanlar tekrar edilmez; aşanları arayüz listeler
+  const ilk = { uyarilar: ["D/C önce, aks–kat motorunun tasarım tablosundan (görünen çözüm); öneri ve D/C sonra genel model motoruyla."] };
+  const ikinci = { uyarilar: ilk.uyarilar.concat(["Kesit önerileri 3 turda yakınsamadı: kolon 7 (1,05) — son çözümde D/C > 1.", "Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: X yönü kat 1, 2."]) };
+  const eu = BC.hepsiEkUyarilari(ikinci, ilk);
+  assert.equal(eu.tum.length, 2);
+  assert.deepEqual(eu.diger, [ikinci.uyarilar[2]]);
+  assert.deepEqual(BC.hepsiEkUyarilari({}, null), { tum: [], diger: [] });
+  // D/C metni 1'e çok yakınken "1,00 > 1" gibi çelişkili görünmez
+  assert.equal(BC.dcFmt(0.9963), "0,996"); assert.equal(BC.dcFmt(1.004), "1,004"); assert.equal(BC.dcFmt(1), "1,00"); assert.equal(BC.dcFmt(1.36), "1,36");
   // çözüm verisinde elemanın D/C'si: genel model (cubuk), aks–kat (tur, no) ve genelleştirilmiş kaynağı
   const v = { tasarim: { elemanlar: [{ cubuk: 41, tur: "capraz", dc: 1.32 }, { tur: "kolon", no: 2, dc: 0.4 }, { cubuk: 9, tur: "kiris", kaynak: { aks_kat: "kiris", no: 3 }, dc: 0.7 }, { cubuk: 10, tur: "kiris", kaynak: { aks_kat: "kiris", no: 3 }, dc: 0.8 }] } };
   assert.equal(BC.elemanDc(v, { tur: "cubuk", no: 41 }), 1.32);

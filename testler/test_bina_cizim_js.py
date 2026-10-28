@@ -204,6 +204,9 @@ def test_kesit_onerisi_tanimsiz_kesit_atamaz():
     assert "yinele: 3" in govde and "yinele: 1" not in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
     assert govde.count("MB.coz()") >= 2, "Hepsini ve tek Uygula sonrası model yeniden çözülür"
     assert "hepsiOzeti(y2)" in govde and "öneriler yetmedi" in govde
+    # motorun yinele uyarıları (öteleme sınırı, yakınsamadı nedeni) kaybolmaz; başarılı yeniden çözümde eski ⚠ ipucu kalmaz
+    assert "hepsiEkUyarilari(y2, y)" in govde and "hepsiUygula(y2, y)" in govde
+    assert 'S.sonUyari = oz.asiyor ? etiket : ""' in govde
     saf = KAYNAK[KAYNAK.index("function oneriUygula("):]
     saf = saf[:saf.index("\n  }\n")]
     assert 'if (!m.kesitler[k.ad]) throw' in saf
@@ -300,8 +303,10 @@ def test_genel_kapi_degisiklik_yoksa_cevirmez():
     assert "model genel modele çevrilmedi" in secimli and "cevrildi: cevrildi" in secimli
     uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
     uyg = uyg[:uyg.index("\n    }\n")]
-    assert "if (cevrildi && !oz && JSON.stringify(m) === JSON.stringify(m0))" in uyg
-    assert uyg.index("cevrildi && !oz") < uyg.index("MB.binaAyarla(m,"), "çevrilmiş ama değişmemiş model uygulanmaz"
+    # ölçüt modelin kendisi: rapor degisen'i doldursa da (özellik zaten aynı) model aynıysa çevrilmez
+    assert "if (cevrildi && JSON.stringify(m) === JSON.stringify(m0))" in uyg
+    assert uyg.index("if (cevrildi && JSON.stringify(m)") < uyg.index("MB.binaAyarla(m,"), "çevrilmiş ama değişmemiş model uygulanmaz"
+    assert "!ozet(r0)" not in secimli
     # Düzlemle böl penceresi yalnız seçimi kesen düzlemleri sunar; yoksa açılmaz
     dz = KAYNAK[KAYNAK.index("function duzlemleBolPenceresi("):]
     dz = dz[:dz.index("\n    }\n")]

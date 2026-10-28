@@ -643,6 +643,17 @@
       .sort(function (a, b) { return b.dc_sonra - a.dc_sonra; }).map(function (o) { return { etiket: oneriEtiketi(o), dc: +o.dc_sonra }; });
     return { dc: dc, asan: asan, asiyor: dc != null && dc > 1 + 1e-9 };
   }
+  /**
+   * "Hepsini uygula" (yinele) yanıtının ilk yanıtta olmayan uyarıları (K1: motor yinele turlarında ekler — "… turda yakınsamadı …",
+   * göreli kat ötelemesi sınırı, …): {tum, diger}; diger "yakınsamadı" uyarısı dışındakiler (aşan çubukları arayüz kendisi listeler).
+   */
+  function hepsiEkUyarilari(y2, y) {
+    const once = (y && y.uyarilar) || [];
+    const tum = ((y2 && y2.uyarilar) || []).filter(function (u) { return u && once.indexOf(u) < 0; }).map(String);
+    return { tum: tum, diger: tum.filter(function (u) { return !/turda yakınsamadı/.test(u); }) };
+  }
+  /** D/C metni: 1'e 0,005'ten yakınsa (yuvarlama "1,00" gösterip 1'in hangi yanında olduğunu gizlerdi) üç ondalık. */
+  function dcFmt(v) { return typeof v === "number" && isFinite(v) && Math.abs(v - 1) < 0.005 && Math.abs(v - 1) > 1e-9 ? fmt(v, 3) : fmt(v); }
   /** Çözüm verisinde bir elemanın D/C'si: hedef {tur: "cubuk" | "kolon" | "kiris", no}; yoksa null. */
   function elemanDc(veri, hedef) {
     const l = veri && veri.tasarim && Array.isArray(veri.tasarim.elemanlar) ? veri.tasarim.elemanlar : [];
@@ -1050,7 +1061,7 @@
     genellestirHazirla: genellestirHazirla, aksKatAdresi: aksKatAdresi, aksRefZ: aksRefZ, cubukAksKatAdi: cubukAksKatAdi, cubukAdlari: cubukAdlari,
     aksKatOzellikYaz: aksKatOzellikYaz, ENGEL_KODLARI: ENGEL_KODLARI, yeniEngeller: yeniEngeller, tasiyanKenarMi: tasiyanKenarMi, aksSilEngelleri: aksSilEngelleri,
     // kesit önerisi (C4)
-    oneriEtiketi: oneriEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri, hepsiOzeti: hepsiOzeti, elemanDc: elemanDc,
+    oneriEtiketi: oneriEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri, hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, dcFmt: dcFmt, elemanDc: elemanDc,
     oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
     // üreteç düzenleme
     uretecKaydi: uretecKaydi, uretecFormu: uretecFormu,
@@ -1236,8 +1247,9 @@
         toast(S.sonUyari); MB.ipucuYenile(); return null;
       }
       const oz = ozet(r);
-      // kapı modeli çevirdi ama işlem hiçbir şeyi değiştirmediyse (ör. düzlem çubukları uçlarından geçiyor) çevrilmiş model uygulanmaz
-      if (cevrildi && !oz && JSON.stringify(m) === JSON.stringify(m0)) {
+      // kapı modeli çevirdi ama işlem hiçbir şeyi değiştirmediyse (ör. düzlem çubukları uçlarından geçiyor; özellik zaten aynı — rapor
+      // degisen'i doldursa da) çevrilmiş model uygulanmaz
+      if (cevrildi && JSON.stringify(m) === JSON.stringify(m0)) {
         S.sonUyari = "Değişiklik yok: işlem seçili elemanları değiştirmedi; model genel modele çevrilmedi."; toast(S.sonUyari); MB.ipucuYenile(); return null;
       }
       S.sonUyari = uy.join(" ");
@@ -1267,7 +1279,8 @@
         try { m0 = genellestirHazirla(m).model; const a0 = secimAyir(genelSecim(m0, secim)); r0 = a0.cubuklar.length || (sc.panel && a0.paneller.length) ? fn(m0, a0) : null; }
         catch (e) { hata(e); return null; }
         if (r0 && r0.reddedildi) { S.sonUyari = (r0.uyarilar || []).map(function (u) { return cubukAdlari(m0, u); }).join(" ") || "İşlem uygulanmadı."; toast(S.sonUyari); MB.ipucuYenile(); return null; }
-        if (r0 && r0.model && !ozet(r0) && JSON.stringify(r0.model) === JSON.stringify(m0)) {
+        // model aynen kaldıysa (rapor degisen'i doldursa da: ör. Lb zaten otomatik) değişiklik yok — çevirmenin anlamı yok
+        if (r0 && r0.model && JSON.stringify(r0.model) === JSON.stringify(m0)) {
           S.sonUyari = "Değişiklik yok: işlem seçili elemanları değiştirmiyor" + ((r0.uyarilar || []).length ? " (" + r0.uyarilar.join(" ") + ")" : "") + "; model genel modele çevrilmedi.";
           toast(S.sonUyari); MB.ipucuYenile(); return null;
         }
@@ -1726,8 +1739,8 @@
             S.sonUyari = "Aks " + h.ad + " silinmedi (motor bu modeli çözmez): " + engel.slice(0, 3).map(function (u) { return cubukAdlari(q.model, u.mesaj); }).join(" ") +
               (engel.length > 3 ? " … (+" + (engel.length - 3) + ")" : "") +
               (s === "tasi" ? " — “Elemanlarla birlikte sil” seçeneğini kullanın ya da çakışan elemanları önce düzenleyin."
-                : engel.some(function (u) { return u.kod === "panel-kenari"; }) ? " — taşıyan kenarının çubukları silinen paneller kalıyordu: önce o panelleri silin ya da “en yakın aksa taşı”yı kullanın."
-                  : " — “en yakın aksa taşı”yı kullanın ya da elemanları önce düzenleyin.");
+                : engel.some(function (u) { return u.kod === "panel-kenari"; }) ? " — taşıyan kenarının çubukları silinen paneller kalıyordu: önce o panelleri silin" + (r.komsu ? " ya da “en yakın aksa taşı”yı kullanın." : ".")
+                  : (r.komsu ? " — “en yakın aksa taşı”yı kullanın ya da elemanları önce düzenleyin." : " — elemanları önce düzenleyin."));
             toast(S.sonUyari); MB.ipucuYenile(); return;
           }
           MB.binaAyarla(q.model, { etiket: "Aks " + h.ad + " silindi: " + (q.uyarilar || []).join(" ") });
@@ -2527,26 +2540,32 @@
           return (y.aciklama ? '<p class="not bc-oneri-aciklama">' + kacis(y.aciklama) + "</p>" : "") +
             ((y.uyarilar || []).length ? '<ul class="bc-oneri-uyari">' + y.uyarilar.map(function (u) { return '<li class="not">' + kacis(u) + "</li>"; }).join("") + "</ul>" : "");
         };
-        // Hepsini uygula sonrası: binaAyarla + yeniden çöz (görünen sonuç taze olsun); D/C > 1 kaldıysa ⚠ ve aşan çubuklar
-        const hepsiUygula = function (y2) {
-          const oz = hepsiOzeti(y2);
+        // Hepsini uygula sonrası: binaAyarla + yeniden çöz (görünen sonuç taze olsun); D/C > 1 kaldıysa ⚠ ve aşan çubuklar; motorun
+        // yinele turlarında eklediği uyarılar (göreli kat ötelemesi sınırı, hiç tur uygulanamadı…) da söylenir (hepsiEkUyarilari)
+        const hepsiUygula = function (y2, y) {
+          const oz = hepsiOzeti(y2), ek = hepsiEkUyarilari(y2, y);
           const deg = (y2.turlar || []).reduce(function (t, x) { return t + ((x.degisen || []).length); }, 0);
-          const asanMetin = oz.asan.slice(0, 6).map(function (a) { return a.etiket + " (" + fmt(a.dc) + ")"; }).join(", ") + (oz.asan.length > 6 ? " … (+" + (oz.asan.length - 6) + ")" : "");
-          const etiket = "Kesit önerileri uygulandı" + (deg ? " (" + deg + " kesit grubu değişti" + (oz.dc != null ? "; D/C maks " + fmt(oz.dc) : "") + ")" : "") +
-            (oz.asiyor ? " — ⚠ D/C maks " + fmt(oz.dc) + " > 1, öneriler yetmedi" + (asanMetin ? ": " + asanMetin : "") + "." : ".");
+          const asanMetin = oz.asan.slice(0, 6).map(function (a) { return a.etiket + " (" + dcFmt(a.dc) + ")"; }).join(", ") + (oz.asan.length > 6 ? " … (+" + (oz.asan.length - 6) + ")" : "");
+          const etiket = "Kesit önerileri uygulandı" + (deg ? " (" + deg + " kesit grubu değişti" + (oz.dc != null ? "; D/C maks " + dcFmt(oz.dc) : "") + ")" : "") +
+            (oz.asiyor ? " — ⚠ D/C maks " + dcFmt(oz.dc) + " > 1, öneriler yetmedi" + (asanMetin ? ": " + asanMetin : "") + "." : ".");
           MB.kaplamaKapat();
-          if (MB.binaAyarla(y2.bina, { etiket: etiket }) === false) { toast("Kesit önerileri modeli değiştirmedi."); return; }
-          if (oz.asiyor) S.sonUyari = etiket;
+          if (MB.binaAyarla(y2.bina, { etiket: etiket }) === false) {
+            S.sonUyari = "Kesit önerileri modeli değiştirmedi." + (ek.tum.length ? " ⚠ " + ek.tum.join(" ") : "");
+            toast(S.sonUyari); MB.ipucuYenile(); return;
+          }
+          S.sonUyari = oz.asiyor ? etiket : "";
           Promise.resolve(MB.coz()).then(function (ok) {
             if (!ok) return;
             const v = MB.veri(), dcM = v && v.tasarim ? v.tasarim.en_buyuk_dc : null;
+            const ekMetin = ek.diger.length ? " ⚠ " + ek.diger.join(" ") : "";
             if (dcM != null && +dcM > 1 + 1e-9) {
               const asan = ((v.tasarim.elemanlar) || []).filter(function (e) { return e && +e.dc > 1 + 1e-9; }).sort(function (a, b) { return b.dc - a.dc; });
-              S.sonUyari = "⚠ Yeniden çözüm: D/C maks " + fmt(+dcM) + " > 1 — " + asan.length + " eleman aşıyor (" +
-                asan.slice(0, 6).map(function (e) { return (e.ad || ((e.tur || "çubuk") + " " + (e.cubuk != null ? e.cubuk : e.no))) + " " + fmt(+e.dc); }).join(", ") + (asan.length > 6 ? " …" : "") +
-                "). Bu elemanların kesitini elle büyütün ya da Kesit öner'i yeniden çalıştırın.";
-              toast(S.sonUyari); MB.ipucuYenile();
-            } else if (dcM != null) toast("Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + fmt(+dcM) + ".");
+              S.sonUyari = "⚠ Yeniden çözüm: D/C maks " + dcFmt(+dcM) + " > 1 — " + asan.length + " eleman aşıyor (" +
+                asan.slice(0, 6).map(function (e) { return (e.ad || ((e.tur || "çubuk") + " " + (e.cubuk != null ? e.cubuk : e.no))) + " " + dcFmt(+e.dc); }).join(", ") + (asan.length > 6 ? " …" : "") +
+                "). Bu elemanların kesitini elle büyütün ya da Kesit öner'i yeniden çalıştırın." + ekMetin;
+            } else if (dcM != null) S.sonUyari = ek.diger.length ? "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "." + ekMetin : "";
+            else return;
+            toast(S.sonUyari || "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "."); MB.ipucuYenile();
           }, hata);
         };
         istek().then(function (y) {
@@ -2584,7 +2603,7 @@
                   MB.binaAyarla(m, { etiket: "Kesit önerileri uygulandı (" + n + " çubuk; D/C mevcut iç kuvvetlerle tahmin — yeniden çözün)." + (hatalar.length ? " ⚠ " + hatalar.join(" ") : "") });
                   return;
                 }
-                hepsiUygula(y2);
+                hepsiUygula(y2, y);
               }, function (x) { MB.kaplamaKapat(); hata(x); });
               return;
             }
@@ -2603,9 +2622,9 @@
               const dcY = elemanDc(MB.veri(), r.hedef);
               if (dcY == null) return;
               if (dcY > 1 + 1e-9) {
-                S.sonUyari = "⚠ Yeniden çözümde " + oneriEtiketi(o) + " D/C = " + fmt(dcY) + " > 1 (tahmin " + fmt(o.dc_oneri) + "): kesit değişince iç kuvvetler yeniden dağıldı; bir üst kesit deneyin ya da Kesit öner'i yeniden çalıştırın.";
+                S.sonUyari = "⚠ Yeniden çözümde " + oneriEtiketi(o) + " D/C = " + dcFmt(dcY) + " > 1 (tahmin " + dcFmt(o.dc_oneri) + "): kesit değişince iç kuvvetler yeniden dağıldı; bir üst kesit deneyin ya da Kesit öner'i yeniden çalıştırın.";
                 toast(S.sonUyari); MB.ipucuYenile();
-              } else toast("Kesit " + r.ad + " uygulandı; yeniden çözümde " + oneriEtiketi(o) + " D/C = " + fmt(dcY) + " (tahmin " + fmt(o.dc_oneri) + ").");
+              } else toast("Kesit " + r.ad + " uygulandı; yeniden çözümde " + oneriEtiketi(o) + " D/C = " + dcFmt(dcY) + " (tahmin " + dcFmt(o.dc_oneri) + ").");
             }, hata);
           });
         }, function (e) { if (k.govde.isConnected) k.govde.innerHTML = '<p class="bc-hata">' + kacis((e && e.message) || String(e)) + "</p>"; });
