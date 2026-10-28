@@ -311,6 +311,32 @@ test("Arac (DOM'suz denetleyici): hareket → yakalama, dokun → sonuç, tuşla
   assert.match(a.tsv(), /^No\tTür\tSonuç$/);
 });
 
+test("Arac escSonuclariKorur (bina sayfası): Esc yalnız yarım ölçümü siler, tamamlanan ölçüler kalır; temizle() hepsini siler", function () {
+  const g = O.geometri(aksKat(), { aks: null });
+  const T = { x: function (v) { return 100 + 50 * v; }, y: function (v) { return 500 - 50 * v; } };
+  const cv = O.cevirici(T, { fi: 0, psi: 0 });
+  const katman = { innerHTML: "" };
+  const a = new O.Arac({ geo: function () { return g; }, cevir: cv, katman: katman, kip: "uzaklik", escSonuclariKorur: true });
+  const p0 = cv([0, 0, 0]), p1 = cv([9, 0, 6]);
+  a.dokun([p0[0], p0[1]]);
+  a.dokun([p1[0], p1[1]]);
+  assert.equal(a.olcer.sonuclar.length, 1);
+  assert.equal(a.olcer.bekleyen.length, 0);
+  assert.equal(a.tus("Escape"), false);          // yarım ölçüm yok: işlenmez (sayfa Esc'i kipten çıkar)
+  assert.equal(a.olcer.sonuclar.length, 1);      // tamamlanan ölçü kalır
+  assert.match(katman.innerHTML, /10,817 m/);
+  assert.equal(a.tus("Escape"), false);          // ikinci Esc de sonuçları silmez
+  assert.equal(a.olcer.sonuclar.length, 1);
+  a.dokun([p0[0], p0[1]]);                       // yarım ölçüm
+  assert.equal(a.olcer.bekleyen.length, 1);
+  assert.equal(a.tus("Escape"), true);           // yalnız yarım ölçüm silinir
+  assert.equal(a.olcer.bekleyen.length, 0);
+  assert.equal(a.olcer.sonuclar.length, 1);
+  a.temizle();                                   // "Ölçüleri temizle"
+  assert.equal(a.olcer.sonuclar.length, 0);
+  assert.doesNotMatch(katman.innerHTML, /10,817 m/);
+});
+
 test("TSV: başlık ve satırlar", function () {
   const t = O.tsv([O.uzaklik([0, 0, 0], [1, 0, 0]), O.kotFarki([0, 0, 0], [0, 0, 2])]);
   const s = t.split("\n");

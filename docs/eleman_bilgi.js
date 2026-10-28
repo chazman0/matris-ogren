@@ -51,16 +51,21 @@
     if (/^-0(\.0*)?$/.test(t)) t = t.slice(1);
     return t.replace(".", ",").replace("-", "−");
   }
-  /** Büyüklüğe göre ondalık (3 anlamlı basamak civarı). */
+  /** Büyüklüğe göre ondalık (3 anlamlı basamak civarı). |v| < 1e-9 sayısal gürültüdür (ör. 3·10⁻¹⁷ kN·m): "0". */
   function fa(v) {
     if (v == null || typeof v !== "number" || !isFinite(v)) return "—";
     const a = Math.abs(v);
-    if (a === 0) return "0";
+    if (a < 1e-9) return "0";
     if (a >= 1000) return f(v, 0);
     if (a >= 100) return f(v, 1);
     if (a >= 10) return f(v, 2);
     if (a >= 0.01) return f(v, 3);
     return v.toExponential(2).replace(".", ",").replace("-", "−").replace("e", "·10^").replace("+", "");
+  }
+  /** Kontrol talebi kapasitenin 10⁻⁹'undan küçükse sayısal gürültü: 0 (zayıf eksen eğilmesi 3·10⁻¹⁷ / 38 kN·m gibi). */
+  function talepSifir(t, kap) {
+    if (typeof t !== "number" || !isFinite(t)) return t;
+    return Math.abs(t) < 1e-9 * Math.max(1, isFinite(kap) ? Math.abs(kap) : 0) ? 0 : t;
   }
   function kacis(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
@@ -693,7 +698,7 @@
       satir("Yöntem", t.sistem === "celik" ? ((c.veri.tasarim.yontem || {}).celik || "çelik") : ((c.veri.tasarim.yontem || {}).betonarme || "betonarme"))], dc: +t.dc }];
     if (Array.isArray(t.kontroller) && t.kontroller.length) {
       out.push({ baslik: "Kontroller (" + t.kontroller.length + ")", kontroller: t.kontroller.map(function (k) {
-        return { ad: k.ad, talep: fa(+k.talep), kapasite: fa(+k.kapasite), birim: k.birim || "", dc: +k.dc, saglandi: k.saglandi !== false,
+        return { ad: k.ad, talep: fa(talepSifir(+k.talep, +k.kapasite)), kapasite: fa(+k.kapasite), birim: k.birim || "", dc: +k.dc, saglandi: k.saglandi !== false,
           kombinasyon: k.kombinasyon || "", kaynak: k.kaynak || "" };
       }) });
     }
@@ -772,22 +777,41 @@
   function yukYoluBolumleri(c, id, ham) {
     if (!c.veri || !c.veri.akis) return [onceCozun("Yük yolu")];
     if (!id) return [{ not: "Bu eleman türü için yük akışı şeması yok (eleman yükü doğrudan sonlu eleman çözümünden okunur)." }];
-    const sk = c.veri.akis.sankey || [];
+    const sk = c.veri.akis.sankey || [], genel = c.veri.model === "genel";
+    // kenarlar durumlarına göre genel okunur (motor hangi durumlar için bant verdiyse: G, Q, S, …); sütunlar bu elemanın kenarlarında
+    // geçen durumlar, G ve Q her zaman (aks–kat şemasının alışılmış iki sütunu)
+    const SIRA = ["G", "Q", "S", "W", "E"];
     const grup = function (liste, anah) {
       const m = new Map();
-      liste.forEach(function (s) { const a = s[anah]; if (!m.has(a)) m.set(a, { ad: a, G: 0, Q: 0, S: 0, diger: 0 }); const r_ = m.get(a); if (r_[s.durum] != null) r_[s.durum] += +s.kN; else r_.diger += +s.kN; });
+      liste.forEach(function (s) { const a = s[anah]; if (!m.has(a)) m.set(a, { ad: a, G: 0, Q: 0, S: 0, diger: 0, d: {} }); const r_ = m.get(a); const d = String(s.durum || "?");
+        r_.d[d] = (r_.d[d] || 0) + (+s.kN || 0); if (r_[d] != null && d !== "d" && d !== "ad") r_[d] += +s.kN || 0; else r_.diger += +s.kN || 0; });
       return Array.from(m.values());
     };
     const gelen = grup(sk.filter(function (s) { return s.hedef === id; }), "kaynak"), giden = grup(sk.filter(function (s) { return s.kaynak === id; }), "hedef");
-    if (!gelen.length && !giden.length) return [{ not: "Yük akışı şemasında bu eleman yok." }];
-    const top = function (l, a) { return l.reduce(function (s, r_) { return s + r_[a]; }, 0); };
+    if (!gelen.length && !giden.length) {
+      return [{ not: genel ? "Genel model akış şeması panel → çubuk paylarını gösterir; bu çubuğa panelden yük gelmiyor (kolon, çapraz ya da panelsiz çubuk). " +
+        "Uç kuvvetleri İç kuvvetler sekmesinde, çubuk yükleri Yükler sekmesinde." : "Yük akışı şemasında bu eleman yok." }];
+    }
+    const durumlar = {};
+    gelen.concat(giden).forEach(function (r_) { Object.keys(r_.d).forEach(function (d) { if (r_.d[d] > 1e-9) durumlar[d] = true; }); });
+    const sutun = ["G", "Q"].concat(Object.keys(durumlar).filter(function (d) { return d !== "G" && d !== "Q"; })
+      .sort(function (a, b) { const i = SIRA.indexOf(a), j = SIRA.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || a.localeCompare(b); }));
+    const top = function (l, a) { return l.reduce(function (s, r_) { return s + (r_.d[a] || 0); }, 0); };
     ham.yol = { gelenG: top(gelen, "G"), gelenQ: top(gelen, "Q"), gidenG: top(giden, "G"), gidenQ: top(giden, "Q") };
+    sutun.slice(2).forEach(function (d) { ham.yol["gelen" + d] = top(gelen, d); ham.yol["giden" + d] = top(giden, d); });
+    // modelin akış şemasında Q bandı hiç yoksa (eski motor: genel modelde yalnız G) Q sütunu sıfır değil "veri yok"
+    const qVar = sk.some(function (s) { return s.durum === "Q" && +s.kN > 1e-9; });
+    const goster = sutun.filter(function (d) { return d !== "Q" || qVar; });
     const out = [];
-    out.push({ baslik: "Akış şeması (G + Q, kN)", svg: akisSvg(gelen, id, giden) });
-    const sat = gelen.map(function (r_) { return ["← gelen", sankeyAdi(r_.ad), f(r_.G, 2), f(r_.Q, 2)]; })
-      .concat(giden.map(function (r_) { return ["→ giden", sankeyAdi(r_.ad), f(r_.G, 2), f(r_.Q, 2)]; }));
-    sat.push(["Σ gelen", "", f(ham.yol.gelenG, 2), f(ham.yol.gelenQ, 2)], ["Σ giden", "", f(ham.yol.gidenG, 2), f(ham.yol.gidenQ, 2)]);
-    out.push({ baslik: "Aktarılan yükler (kN)", tablo: { basliklar: ["Yön", "Eleman", "G", "Q"], satirlar: sat } });
+    out.push({ baslik: "Akış şeması (" + goster.filter(function (d) { return durumlar[d]; }).join(" + ") + ", kN)", svg: akisSvg(gelen, id, giden) });
+    const deger = function (r_) { return goster.map(function (d) { return f(r_.d[d] || 0, 2); }); };
+    const sat = gelen.map(function (r_) { return ["← gelen", sankeyAdi(r_.ad)].concat(deger(r_)); })
+      .concat(giden.map(function (r_) { return ["→ giden", sankeyAdi(r_.ad)].concat(deger(r_)); }));
+    sat.push(["Σ gelen", ""].concat(goster.map(function (d) { return f(top(gelen, d), 2); })));
+    if (giden.length || !genel) sat.push(["Σ giden", ""].concat(goster.map(function (d) { return f(top(giden, d), 2); })));
+    out.push({ baslik: "Aktarılan yükler (kN)", tablo: { basliklar: ["Yön", "Eleman"].concat(goster), satirlar: sat } });
+    if (!qVar && genel) out.push({ not: "Bu çözümün akış şemasında yalnız G bantları var; Q ve S payları Yükler sekmesinde." });
+    if (!giden.length && genel) out.push({ not: "Genel model akış şeması çubuktan sonraki aktarımı (çubuk → çubuk / mesnet) göstermez; uç kuvvetleri İç kuvvetler sekmesinde." });
     const fark = ham.yol.gidenG - ham.yol.gelenG;
     if (gelen.length && giden.length && Math.abs(fark) > 0.01) out.push({ not: "Giden − gelen (G) = " + f(fark, 2) + " kN: elemanın kendi yükü (öz ağırlık, duvar, ek yük) ve sürekliliğin yeniden dağıttığı pay." });
     return out;
@@ -1051,7 +1075,7 @@
     return m;
   }
   function temelKontrolu(k) {
-    return { ad: k.ad + (k.kosul ? " (koşul)" : ""), talep: fa(+k.talep), kapasite: fa(+k.kapasite), birim: k.birim || "", dc: +k.dc, saglandi: k.saglandi !== false, kombinasyon: k.kombinasyon || "", kaynak: k.kaynak || "" };
+    return { ad: k.ad + (k.kosul ? " (koşul)" : ""), talep: fa(talepSifir(+k.talep, +k.kapasite)), kapasite: fa(+k.kapasite), birim: k.birim || "", dc: +k.dc, saglandi: k.saglandi !== false, kombinasyon: k.kombinasyon || "", kaynak: k.kaynak || "" };
   }
 
   /** Köprü paketi: {sekmeler: {sekmeId: [bölüm]}, sekme_adlari?, uyarilar?} — sekmelere "Motor ayrıntısı" olarak eklenir. */

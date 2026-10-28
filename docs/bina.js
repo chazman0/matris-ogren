@@ -140,7 +140,9 @@
         const o = kesitOz(x.kesit), L = kirisUzunluk(x); if (!o || !isFinite(L)) return;
         const m = malzemeKart(o.malzeme), gam = m.gamma || (o.celik ? GAMMA_S : GAMMA_B);
         G += gam * o.A * L;
-        if (x.duvar && k.no < ustKat()) G += duvarW(x.duvar) * Math.max(0, katH(k.no + 1) - o.h) * L;
+        // duvar: verilmişse duvar_h (çatıda parapet), yoksa ara katta kat yüksekliği − kiriş
+        if (x.duvar && x.duvar_h != null && x.duvar_h !== "") G += duvarW(x.duvar) * Math.max(0, +x.duvar_h || 0) * L;
+        else if (x.duvar && k.no < ustKat()) G += duvarW(x.duvar) * Math.max(0, katH(k.no + 1) - o.h) * L;
       });
       B.kolonlar.filter(function (c) { return c.kat === k.no; }).forEach(function (c) {
         const o = kesitOz(c.kesit); if (!o) return;
@@ -264,10 +266,19 @@
     if (!M || typeof M.basitProfil !== "function" || !ad) return null;
     try { const p = M.basitProfil(ad); return p && p.A > 0 ? p : null; } catch (e) { return null; }
   }
-  // Bir kesit kaydından (B.kesitler[ad]) sayısal özellikler: m, m², m⁴ (Iy zayıf, Iz güçlü eksen)
-  function kesitOz(ad) {
+  // Bir kesit kaydından (B.kesitler[ad]) sayısal özellikler: m, m², m⁴ (Iy zayıf, Iz güçlü eksen). Vute (tip "vute": temel kesit +
+  // ek_yukseklik / boy uç büyütmesi) temel kesitin özelliklerini taşır (malzeme, çelik/beton); profil alanı okunur bir etiket olur
+  // (ör. "IPE 400 + vute 0,4 m / 2 m"). derin: vute → vute zincirine karşı özyineleme sınırı (kesitBoyut gibi).
+  function kesitOz(ad, derin) {
     const k = B.kesitler[ad];
     if (!k) return null;
+    if (k.tip === "vute") {
+      if ((derin || 0) > 3) return null;
+      const t = kesitOz(k.temel, (derin || 0) + 1);
+      if (!t) return null;
+      return Object.assign({}, t, { tip: "vute", ad: ad, temel: k.temel, temelTip: t.tip,
+        profil: kesitEtiketi(t) + " + vute " + fmt(+k.ek_yukseklik || 0) + " m / " + fmt(+k.boy || 0) + " m" });
+    }
     if (k.tip === "profil" && !profilBul(k.profil)) {
       const bp = basitProfil(k.profil);
       if (bp) return { tip: "profil", ad: ad, profil: k.profil, b: +bp.b, h: +bp.h, A: +bp.A, Iy: +bp.Iz, Iz: +bp.Iy, J: +bp.J || 0, g: +bp.A * GAMMA_S, malzeme: k.malzeme, celik: true };
@@ -278,6 +289,11 @@
     }
     const b = +k.b || 0.3, h = +k.h || 0.5;
     return { tip: "dikdortgen", ad: ad, b: b, h: h, A: b * h, Iy: h * b * b * b / 12, Iz: b * h * h * h / 12, J: Jdik(b, h), Wpl: b * h * h / 4, malzeme: k.malzeme, celik: false };
+  }
+  // kesitOz sonucunun kısa etiketi: profil adı (vute: "temel + vute …"), dikdörtgende b×h cm
+  function kesitEtiketi(o) {
+    if (!o) return "";
+    return o.tip === "profil" || o.tip === "vute" ? String(o.profil || o.ad || "") : Math.round(o.b * 100) + "×" + Math.round(o.h * 100) + " cm";
   }
   function malzemeKart(ad) {
     const m = (B.malzemeler || {})[ad], ka = m && m.kutuphane ? m.kutuphane : ad;
@@ -577,7 +593,7 @@
     if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("Bina bir JSON nesnesi olmalı ({\"tur\": \"bina\", \"akslar\": …}).");
     if (m.tur && m.tur !== "bina") throw new Error("Bu JSON bir bina modeli değil (tur = “" + m.tur + "”). Sonlu eleman modelleri için Sonlu eleman sayfasını kullanın.");
     const b = kopya(m);
-    b.tur = "bina"; b.surum = Math.max(1, Math.round(+m.surum) || 1);     // surum 3 listeleri (çubuk/panel/aks sistemi) korunur
+    b.tur = "bina"; b.surum = Math.max(1, surumSayi(m.surum));     // surum 3 listeleri (çubuk/panel/aks sistemi) korunur (K2: tam kısım, 2.9 → 2)
     b.akslar = b.akslar || { x: [], y: [] };
     ["x", "y"].forEach(function (e) {
       // §19.1 ek alanları (tur, gorunur, balon) korunur
@@ -635,17 +651,28 @@
     } catch (e) { /* bozuk aks verisi: olduğu gibi */ }
     return b;
   }
-  // Genel model (surum 3) mı — motorun yönlendirme kuralıyla birebir (sözleşme C1; yapi._serbest_mi):
-  // surum ≥ 3, ya da boş olmayan cubuklar / paneller / dugumler / mesnetler / uretecler listesi, ya da "dugum" alanı nesne (REF) olan
-  // ya da türü cubuk / panel olan bir ek yük. Aks–kat düğüm yükü {tur: "dugum", aks: [x, y], kat} genel model saymaz.
+  // Sözleşme K2 — surum alanının sayısı (motor yapi._surum_sayi ve bina_cizim.js surumSayi ile aynı): bool → 1; sonlu sayı → tam kısmı
+  // (2.9 → 2); /^\s*[+-]?\d+(\.\d+)?\s*$/ dizesi → tam kısmı ("3.0" → 3, " 3.5 " → 3); öteki her şey → 1 ("3a", "0x3", "1e1", null).
+  function surumSayi(s) {
+    if (typeof s === "boolean") return 1;
+    if (typeof s === "number") return isFinite(s) ? Math.trunc(s) : 1;
+    if (typeof s === "string" && /^\s*[+-]?\d+(\.\d+)?\s*$/.test(s)) return Math.trunc(parseFloat(s));
+    return 1;
+  }
+  // Genel model (surum 3) mı — motorun yönlendirme kuralıyla birebir (sözleşme C1 / K2; yapi._serbest_mi):
+  // surumSayi(surum) ≥ 3, ya da boş olmayan cubuklar / paneller / dugumler / mesnetler / uretecler listesi, ya da "dugum" alanı nesne
+  // (REF) olan ya da türü (kırpılmış, küçük harfe çevrilmiş) cubuk / panel olan bir ek yük. Aks–kat düğüm yükü {tur: "dugum", aks: [x, y],
+  // kat} genel model saymaz.
   const S3_LISTELER = ["cubuklar", "paneller", "dugumler", "mesnetler", "uretecler"];
   function s3Var(b) {
     b = b || B;
-    if (!b || typeof b !== "object") return false;
-    if (+b.surum >= 3) return true;
+    if (!b || typeof b !== "object" || Array.isArray(b)) return false;
+    if (surumSayi(b.surum) >= 3) return true;
     if (S3_LISTELER.some(function (k) { return Array.isArray(b[k]) && b[k].length > 0; })) return true;
     return (Array.isArray(b.ek_yukler) ? b.ek_yukler : []).some(function (y) {
-      return !!y && typeof y === "object" && ((!!y.dugum && typeof y.dugum === "object" && !Array.isArray(y.dugum)) || y.tur === "cubuk" || y.tur === "panel");
+      if (!y || typeof y !== "object" || Array.isArray(y)) return false;
+      const t = String(y.tur == null ? "" : y.tur).trim().toLowerCase();
+      return (!!y.dugum && typeof y.dugum === "object" && !Array.isArray(y.dugum)) || t === "cubuk" || t === "panel";
     });
   }
   // Z aksları (konum sıralı; MatrisAks yoksa katlardan)
@@ -1231,7 +1258,8 @@
       else C.prizma(sahne, T, b, [X1, Y1, Z - hh / 2], [X2, Y2, Z - hh / 2], e1, [0, 0, hh / 2], sinif, ' data-tur="kiris" data-no="' + k.no + '"', 1);
       if (D.etiketler && !hafif) { const m = P((X1 + X2) / 2, (Y1 + Y2) / 2, Z); sahne.ekle(1e9, metinSvg(m[0], m[1] - 8, "K" + k.no + " " + k.kesit, "b3-etiket-el", "middle"), 2); }
       if (k.duvar && !hafif && !D.telKafes) {
-        const ust = katKot(k.kat + 1) != null ? katKot(k.kat + 1) - hh : Z + 1.0;
+        // duvar_h verilmişse (çatı parapeti) o yükseklikte; yoksa motor kuralı: üst kata kadar (kat yüksekliği − kiriş)
+        const ust = k.duvar_h != null && k.duvar_h !== "" && +k.duvar_h > 0 ? Z + +k.duvar_h : katKot(k.kat + 1) != null ? katKot(k.kat + 1) - hh : Z + 1.0;
         const kose = [[X1, Y1, Z], [X2, Y2, Z], [X2, Y2, ust], [X1, Y1, ust]];
         C.dortgen(sahne, T, b, kose, "b3-duvar" + (k.kat !== kat || dcG ? " b3-hayalet" : ""), ' data-tur="duvar" data-no="' + k.no + '"', 1);
       }
@@ -1558,7 +1586,16 @@
       hareketBitti: function () { if (D.hafif) { D.hafif = false; sahneYenile(); } },
       dokun: function (p, e) {
         const k = aktifKip(), h = C.vurus(hedefler, p[0], p[1]);
-        if (k && k.dokun) { k.dokun(p, e, h); return; }      // kayıtlı kip (ölçüm; bina_cizim.js çizim araçları)
+        if (k && k.dokun) {      // kayıtlı kip (ölçüm; bina_cizim.js çizim araçları)
+          // aks–kat kiriş / döşeme / kolon vuruş hedefleri yalnız etkin katta: başka kattaki elemana dokunulduysa, elemana uygulanması
+          // güvenli kipler (yük ata: yük penceresi açar) o elemanı alır; kat adı iletide söylenir
+          const d = !(h && h.kind === "nesne") && KAT_DISI_KIPLER[D.arac] ? digerKatElemani(e) : null;
+          if (d && KAT_DISI_KIPLER[D.arac].indexOf(d.tur) >= 0) {
+            A.toast(digerKatAdi(d) + " — etkin kat " + katAd(D.kat) + "; " + KIP_ADI_KAT[D.arac] + " bu elemana uygulanıyor.");
+            k.dokun(p, e, { kind: "nesne", nesne: d.tur, no: d.no, kat: d.kat }); return;
+          }
+          k.dokun(p, e, h); return;
+        }
         aracUygula(h, p, e);
       },
       // uzun basma tek kaynak (Cizim3B): bağlam menüsü; MatrisBilgi yoksa seç + özellik paneli
@@ -1597,9 +1634,39 @@
     });
     svg.addEventListener("pointerleave", function (e) { const k = aktifKip(); if (k && k.hareket && e.pointerType !== "touch") k.hareket(null, e); });
   }
+  // Başka kattaki elemanı kendi kipinde alabilen kipler (elemana uygulanması güvenli: yalnız pencere açar) ve kabul ettikleri türler
+  const KAT_DISI_KIPLER = { "yuk-ata": ["kiris", "doseme"] };
+  const KIP_ADI_KAT = { "yuk-ata": "Yük ata" };
+  // aks–kat kolon / kiriş / döşeme vuruş hedefleri (C.vurus) yalnız etkin kattadır; dokunulan noktada DOM'da başka kata ait bir
+  // eleman (duvar → kirişi) varsa {tur, no, kat}
+  function digerKatElemani(e) {
+    if (!e || e.clientX == null || !ref.svg || typeof document.elementFromPoint !== "function") return null;
+    let el = null;
+    try { el = document.elementFromPoint(e.clientX, e.clientY); } catch (x) { el = null; }
+    const t = el && el.closest ? el.closest("[data-tur][data-no]") : null;
+    if (!t || !ref.svg.contains(t)) return null;
+    const tur = t.getAttribute("data-tur") === "duvar" ? "kiris" : t.getAttribute("data-tur"), no = +t.getAttribute("data-no");
+    if (["kolon", "kiris", "doseme"].indexOf(tur) < 0 || !isFinite(no)) return null;
+    const n = nesneBul(tur, no);
+    if (!n || n.kat == null || +n.kat === D.kat) return null;
+    return { tur: tur, no: no, kat: +n.kat };
+  }
+  function digerKatAdi(d) {
+    return ({ kolon: "Kolon ", kiris: "Kiriş ", doseme: "Döşeme " }[d.tur] || "") + d.no + " “" + katAd(d.kat) + "” katında (kat " + d.kat + ")";
+  }
+  // etkin kattaki elemanlara uygulanan bir araçla başka kattaki elemana dokunulduğunda: o katı etkinleştirme iletisi
+  function digerKatIletisi(d, arac) {
+    A.toast(digerKatAdi(d) + "; " + arac + " yalnız etkin kattaki (" + katAd(D.kat) + ") elemanlara uygulanır. O katı etkinleştirin: üstteki kat düğmesi ya da PgUp / PgDn.");
+  }
+  // sayfa araçları: başka kattaki hangi elemanlar için ileti verilir (Seç'te geniş döşeme hayaletleri boşluğa dokunuşu bozmasın diye yok)
+  const KAT_ARACLARI = { sec: { ad: "Seç", turler: ["kolon", "kiris"] }, sil: { ad: "Sil", turler: ["kolon", "kiris", "doseme"] }, duvar: { ad: "Duvar", turler: ["kiris"] } };
   function aracUygula(h, p, e) {
     void p;
     if (!h) {
+      // başka kattaki elemana dokunuldu: sessizce hiçbir şey yapmamak yerine o katı etkinleştirmeyi söyle (seçimi bırakan
+      // dokunuşlarda ileti gösterilmez; fırça da etkin kata uygulanır)
+      const ka = KAT_ARACLARI[D.arac], d = ka && !D.kirisBas && !D.secim.length && !D.akisHedef ? digerKatElemani(e) : null;
+      if (d && ka.turler.indexOf(d.tur) >= 0) { digerKatIletisi(d, D.firca && D.arac === "sec" ? "Kesit fırçası" : ka.ad); return; }
       if (D.kirisBas) { D.kirisBas = null; sahneCiz(); return; }
       if (D.secim.length) { D.secim = []; yenile(); }
       if (D.akisHedef) { D.akisHedef = null; sahneCiz(); }
@@ -1813,13 +1880,27 @@
     B.katlar.forEach(function (k) { if (k.no === ust && k.ad === "Çatı") k.ad = ust + ". kat"; });
     B.katlar.push({ no: yeni, ad: "Çatı", kot: +(katKot(ust) + h).toFixed(3) });
     zKatEkle(yeni, +(katKot(ust) + h).toFixed(3));
+    let parapet = 0;
     if (kopyala) {
       B.kolonlar.filter(function (c) { return c.kat === ust; }).forEach(function (c) { B.kolonlar.push(Object.assign(kopya(c), { no: yeniNo(B.kolonlar), kat: yeni })); });
       B.kirisler.filter(function (k) { return k.kat === ust; }).forEach(function (k) { B.kirisler.push(Object.assign(kopya(k), { no: yeniNo(B.kirisler), kat: yeni })); });
       B.dosemeler.filter(function (d) { return d.kat === ust; }).forEach(function (d) { B.dosemeler.push(Object.assign(kopya(d), { no: yeniNo(B.dosemeler), kat: yeni })); });
+      // eski çatı artık ara kat: parapet yüksekliği (duvar_h) yeni çatının kopyalarında kalır, eski çatıda kat yüksekliğinde duvar
+      parapet = parapetKaldir(ust);
     }
     D.kat = yeni;
     degisti();
+    if (parapet) A.toast(parapetNotu(parapet));
+  }
+  // Çatı kirişlerindeki duvar_h (şablonda 1,0 m parapet) o kat ara kat olunca anlamını yitirir: kaldırılır, duvar kat yüksekliğinde
+  // (kat yüksekliği − kiriş) hesaplanır. Kaldırılan kiriş sayısı.
+  function parapetKaldir(kat) {
+    let n = 0;
+    B.kirisler.forEach(function (k) { if (k.kat === kat && k.duvar_h != null) { delete k.duvar_h; n++; } });
+    return n;
+  }
+  function parapetNotu(n) {
+    return n + " eski çatı kirişinin parapet yüksekliği (duvar_h) kaldırıldı; bu kirişlerde duvar artık kat yüksekliğinde.";
   }
   function katSil(no) {
     if (no < 1 || B.katlar.length <= 2) { A.toast("En az bir kat kalmalı."); return; }
@@ -1837,11 +1918,15 @@
   function katKopyalaAlttan() {
     const alt = D.kat - 1;
     if (alt < 1) { A.toast("Altta kopyalanacak kat yok."); return; }
+    // boş en üst kata kopyalanıyorsa alttaki kat o ana dek fiilen çatıydı: parapetleri (duvar_h) yeni çatıya taşınır
+    const altCatiydi = D.kat === ustKat() && !["kolonlar", "kirisler", "dosemeler"].some(function (l) { return B[l].some(function (x) { return x.kat === D.kat; }); });
     ["kolonlar", "kirisler", "dosemeler"].forEach(function (l) {
       B[l] = B[l].filter(function (x) { return x.kat !== D.kat; });
       B[l].filter(function (x) { return x.kat === alt; }).forEach(function (x) { B[l].push(Object.assign(kopya(x), { no: yeniNo(B[l]), kat: D.kat })); });
     });
+    const parapet = altCatiydi ? parapetKaldir(alt) : 0;
     degisti();
+    if (parapet) A.toast(parapetNotu(parapet));
   }
 
   // ---------- İskelet ----------
@@ -2114,7 +2199,7 @@
     return '<svg class="se-svg bn-spek-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Tasarım spektrumu S_ae ve S_aR"><title>S_DS = ' + kacis(f2(d.SDS)) + ", S_D1 = " + kacis(f2(d.SD1)) + "</title>" + s + "</svg>";
   }
   function kesitSecenekleri(tur, secili) {
-    const l = Object.keys(B.kesitler).map(function (k) { const o = kesitOz(k); return [k, k + (o ? (o.tip === "profil" ? " (" + o.profil + ")" : " (" + Math.round(o.b * 100) + "×" + Math.round(o.h * 100) + " cm)") : "")]; });
+    const l = Object.keys(B.kesitler).map(function (k) { const o = kesitOz(k); return [k, k + (o ? " (" + kesitEtiketi(o) + ")" : "")]; });
     return secenekler(l.concat([["__yeni", "Yeni kesit…"]]), secili);
   }
   function alanH(etiket, icerik) { return '<label class="bn-alan"><span>' + kacis(etiket) + "</span>" + icerik + "</label>"; }
@@ -2183,7 +2268,7 @@
       h += '<h3 class="bn-pbaslik">' + kacis(turAd) + " C" + n.no + (L != null ? " · L = " + f2(L) + " m" : "") + (egim != null && Math.abs(egim) > 0.05 && Math.abs(Math.abs(egim) - 90) > 0.05 ? " · eğim " + f1(egim) + "°" : "") + "</h3>" + cok;
       h += '<p class="not">i: ' + kacis(refMetin(n.i)) + " → j: " + kacis(refMetin(n.j)) + "</p>";
       h += '<div class="bn-iki">' + alanH("Tür", '<select class="girdi" data-oz3="tur">' + secenekler(CUBUK_TURLERI, n.tur || "diger") + "</select>") +
-        alanH("Kesit", '<select class="girdi" data-oz3="kesit">' + secenekler([["", "— (kesit yok)"]].concat(Object.keys(B.kesitler).map(function (k) { return [k, k + (B.kesitler[k].profil ? " (" + B.kesitler[k].profil + ")" : "")]; })).concat([["__yeni", "Yeni kesit…"]]), n.kesit || "") + "</select>") + "</div>";
+        alanH("Kesit", '<select class="girdi" data-oz3="kesit">' + secenekler([["", "— (kesit yok)"]].concat(Object.keys(B.kesitler).map(function (k) { const o = kesitOz(k), t = B.kesitler[k] || {}; return [k, k + (t.profil || t.tip === "vute" ? " (" + (o ? kesitEtiketi(o) : t.profil || t.tip) + ")" : "")]; })).concat([["__yeni", "Yeni kesit…"]]), n.kesit || "") + "</select>") + "</div>";
       h += '<div class="bn-iki">' + alanH("Yerel eksen açısı (°)", '<input class="girdi" inputmode="decimal" data-oz3="aci" value="' + kacis(n.aci != null ? n.aci : 0) + '">') +
         alanH("Grup", '<input class="girdi" data-oz3="grup" value="' + kacis(n.grup || "") + '">') + "</div>";
       const K = Array.isArray(n.K) ? n.K : [null, null];
@@ -2276,7 +2361,7 @@
     const o = kesitOz(ad);
     if (!o) return "";
     const m = malzemeKart(o.malzeme);
-    let h = '<div class="bn-kart"><b>' + kacis(ad) + "</b> · " + (o.tip === "profil" ? kacis(o.profil) : Math.round(o.b * 100) + "×" + Math.round(o.h * 100) + " cm") + " · " + kacis(o.malzeme) +
+    let h = '<div class="bn-kart"><b>' + kacis(ad) + "</b> · " + kacis(kesitEtiketi(o)) + (o.malzeme ? " · " + kacis(o.malzeme) : "") +
       (m.fck != null ? " (f_ck = " + m.fck + " MPa, E_c = " + fmt(m.Ec) + " MPa)" : m.Fy != null ? " (F_y = " + m.Fy + " MPa, E = " + fmt(m.E) + " MPa)" : "") + "<br>" +
       "A = " + fmt(o.A) + " m² · I_y = " + fmt(o.Iy) + " m⁴ · I_z = " + fmt(o.Iz) + " m⁴ · J ≈ " + fmt(o.J) + " m⁴</div>";
     return h;
@@ -2396,8 +2481,9 @@
     Object.keys(B.kesitler).forEach(function (ad) {
       const o = kesitOz(ad);
       if (!o) return;
-      h += '<div class="bn-kart' + (D.firca === ad ? " bn-kart-firca" : "") + '"><b>' + kacis(ad) + "</b> " + (o.tip === "profil" ? kacis(o.profil) : Math.round(o.b * 100) + "×" + Math.round(o.h * 100) + " cm") + " · " + kacis(o.malzeme) +
-        "<br><small>A = " + fmt(o.A) + " m², I_y = " + fmt(o.Iy) + ", I_z = " + fmt(o.Iz) + ", J ≈ " + fmt(o.J) + " m⁴" + (o.tip === "profil" ? "" : " — I = b·h³/12, J ≈ β·b³·h") + "</small>" +
+      h += '<div class="bn-kart' + (D.firca === ad ? " bn-kart-firca" : "") + '"><b>' + kacis(ad) + "</b> " + kacis(kesitEtiketi(o)) + (o.malzeme ? " · " + kacis(o.malzeme) : "") +
+        "<br><small>A = " + fmt(o.A) + " m², I_y = " + fmt(o.Iy) + ", I_z = " + fmt(o.Iz) + ", J ≈ " + fmt(o.J) + " m⁴" +
+        (o.tip === "vute" ? " — temel kesitin (" + kacis(o.temel) + ") özellikleri; uçlarda doğrusal büyütme" : o.tip === "profil" ? "" : " — I = b·h³/12, J ≈ β·b³·h") + "</small>" +
         '<div class="dugmeler"><button type="button" class="dugme kucuk" data-firca="' + kacis(ad) + '">' + (D.firca === ad ? "Fırçayı bırak" : "Fırça") + '</button><button type="button" class="dugme kucuk" data-kesit-sil="' + kacis(ad) + '">Sil</button></div></div>';
     });
     h += "</div>";
@@ -2731,9 +2817,9 @@
   // Sankey kenarlarından (K→S) kiriş ucunun kolona verdiği kuvvet
   function ucKuvveti(kirisNo, kolonNo) {
     const v = V(), l = (v.akis && v.akis.sankey) || [];
-    let g = 0, q = 0;
-    l.forEach(function (e) { if (e.kaynak === "K" + kirisNo && e.hedef.indexOf("S" + kolonNo + "/") === 0) { if (e.durum === "G") g += e.kN; else if (e.durum === "Q") q += e.kN; } });
-    return akisDeger(g, q);
+    const t = {};
+    l.forEach(function (e) { if (e.kaynak === "K" + kirisNo && e.hedef.indexOf("S" + kolonNo + "/") === 0) t[e.durum] = (t[e.durum] || 0) + (+e.kN || 0); });
+    return akisDeger(t.G, t.Q, t.S, t.W);
   }
   // ---------- Yük akışı zinciri ----------
   function akisZinciri(hedef) {
@@ -3076,8 +3162,13 @@
       baslik = "Çubuk Ç" + y.no + " — yük dökümü (L = " + f2(y.L) + " m)";
       tex = "G = G_{öz} + G_{panel} + G_{duvar} + G_{ek} = " + [G.oz, G.panel, G.duvar, G.ek].map(function (x) { return f1(+x || 0).replace(",", "{,}"); }).join(" + ") + " = " + f1(G.toplam_kN).replace(",", "{,}") + "\\ \\text{kN}" +
         ",\\quad Q = " + f1(+Q.toplam_kN || 0).replace(",", "{,}") + "\\ \\text{kN}" + (S.toplam_kN ? ",\\quad S = " + f1(S.toplam_kN).replace(",", "{,}") + "\\ \\text{kN}" : "");
-      const pay = ((v.akis && v.akis.sankey) || []).filter(function (e) { return e.hedef === "Ç" + y.no && e.durum === "G"; });
-      not = (pay.length ? "Panel payları (G): " + pay.map(function (e) { return e.kaynak + " " + f1(e.kN) + " kN"; }).join(", ") + ". " : "") + "q_G = G/L = " + f2((+G.toplam_kN || 0) / (y.L || 1)) + " kN/m.";
+      // panel payları durum durum (motor hangi durumlar için P → Ç bandı verdiyse)
+      const pay = ((v.akis && v.akis.sankey) || []).filter(function (e) { return e.hedef === "Ç" + y.no && +e.kN > 1e-9; }), payD = {};
+      pay.forEach(function (e) { (payD[e.durum] = payD[e.durum] || []).push(e); });
+      const payMetni = Object.keys(payD).sort(function (a, b) { return "GQSW".indexOf(a.charAt(0)) - "GQSW".indexOf(b.charAt(0)); }).map(function (d) {
+        return "Panel payları (" + d + "): " + payD[d].map(function (e) { return e.kaynak + " " + f1(e.kN) + " kN"; }).join(", ") + ". ";
+      }).join("");
+      not = payMetni + "q_G = G/L = " + f2((+G.toplam_kN || 0) / (y.L || 1)) + " kN/m.";
       adim = "yukler";
     } else if (tur === "s3kolon") {
       const ak = ((v.akis && v.akis.kolonlar) || []).filter(function (x) { return x.no === +p[1]; })[0];
@@ -3092,7 +3183,7 @@
         tex = "\\sigma_{max} = \\frac{N}{BL} + \\frac{6M_X}{BL^2} + \\frac{6M_Y}{LB^2} = " + f1(t.sigma_max).replace(",", "{,}") + "\\ \\text{kN/m}^2,\\quad D/C = \\frac{\\sigma_{max}}{q_{em}} = " + f2(t.DC).replace(",", "{,}");
         not = "N = " + f1(t.N_servis) + " kN (temel öz ağırlığı dahil), B × L = " + f2(t.B) + " × " + f2(t.L) + " m, q_em = " + f1(t.q_em) + " kN/m².";
       } else if (m) {
-        baslik = "Mesnet " + (m.adres || dugumAdresV(v, dn)) + " — tepki (" + (m.tip || "mesnet") + ")";
+        baslik = "Mesnet " + (m.adres || dugumAdresV(v, dn)) + " — tepki (" + (m.tip ? mesnetTipEtiketi(v, m) : "mesnet") + ")";
         tex = "R_Z = N_G + N_Q = " + f1(m.N_G).replace(",", "{,}") + " + " + f1(m.N_Q).replace(",", "{,}") + " = " + f1((+m.N_G || 0) + (+m.N_Q || 0)).replace(",", "{,}") + "\\ \\text{kN}";
         not = "Açık mesnet temel değildir: taban basıncı tahkiki yapılmaz.";
       } else return;
@@ -3133,16 +3224,26 @@
     if (!kap || !V()) return;
     kap.innerHTML = sankeyHtml(Math.max(560, (kap.clientWidth || 600) - 12));
   }
+  // Seçili akış durumunun (G, Q, S, W ya da "G+Q" gibi birleşim) kenar durumları
+  function akisDurumKumesi(d) { return String(d || "G").split("+").map(function (x) { return x.trim(); }).filter(Boolean); }
   function sankeyHtml(W) {
-    const v = V(), ed = {};
+    const v = V(), ed = {}, kume = akisDurumKumesi(D.akisDurum), varDurum = {};
+    // kenarlar durumlarına göre (genel okuma: motor hangi durumlar için bant verdiyse); birleşimde ("G+Q") her durumun bantları toplanır
     (v.akis.sankey || []).forEach(function (e) {
-      if (D.akisDurum !== "G+Q" && e.durum !== D.akisDurum) return;
+      if (+e.kN > 1e-6) varDurum[e.durum] = true;
+      if (kume.indexOf(e.durum) < 0) return;
       const k = e.kaynak + ">" + e.hedef;
       ed[k] = ed[k] || { kaynak: e.kaynak, hedef: e.hedef, kN: 0 };
-      ed[k].kN += e.kN;
+      ed[k].kN += +e.kN || 0;
     });
     const kenarlar = Object.keys(ed).map(function (k) { return ed[k]; }).filter(function (e) { return e.kN > 1e-6; });
-    if (!kenarlar.length) return '<p class="not">Bu durum için akış verisi yok.</p>';
+    const eksik = kume.filter(function (d) { return !varDurum[d]; });
+    const genelNot = v.model === "genel" && Object.keys(varDurum).length ?
+      "Genel modelde motor bu yük durumu (" + eksik.join(", ") + ") için akış bandı üretmedi; panel ve çubuk payları Tablolar › Panel yükleri ve Çubuk yükleri tablolarında." : "";
+    if (!kenarlar.length) return '<p class="not bn-akis-yok">' + kacis(genelNot || "Bu durum için akış verisi yok.") + "</p>";
+    // birleşimde bir durumun bandı yoksa şema yalnız ötekileri gösterir: bunu söyle
+    const kismiNot = eksik.length ? '<p class="not bn-akis-kismi">' + kacis("Şema yalnız " + kume.filter(function (d) { return varDurum[d]; }).join(" + ") + " bantlarını gösteriyor; " +
+      eksik.join(", ") + " için akış verisi yok" + (genelNot ? " (Tablolar › Panel yükleri)" : "") + ".") + "</p>" : "";
     const ust = ustKatV(v);
     // aks–kat şeması D → K → S/N (kat kat) → T → Z; genel model (P panel → Ç çubuk, motor başka önek de verebilir) sütunları grafikteki
     // düzeye göre (kaynaksız düğüm 0; her kenar hedefi en az kaynağının bir sağı), P her zaman 0, Ç en az 1
@@ -3242,7 +3343,7 @@
       svg += '<g class="bn-sankey-dugum' + (secim === id ? " aktif" : "") + '" data-sankey="' + kacis(id) + '" tabindex="0" role="button" aria-label="' + kacis(id + " " + f1(n.akis) + " kN") + '"><rect x="' + r1(n.x) + '" y="' + r1(n.y) + '" width="' + gw + '" height="' + r1(n.h) + '" rx="2"><title>' + kacis(ad + " " + f1(n.akis) + " kN") + "</title></rect>" +
         (etiketGoster ? metinSvg(n.s === 0 ? n.x - 4 : n.x + gw + 4, n.y + n.h / 2 + 3.5, ad + " " + f1(n.akis), "bn-sankey-t", n.s === 0 ? "end" : "start") : "") + "</g>";
     });
-    return '<svg class="se-svg bn-sankey-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Yük akışı şeması (' + kacis(D.akisDurum) + ')">' + svg + "</svg>";
+    return kismiNot + '<svg class="se-svg bn-sankey-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Yük akışı şeması (' + kacis(D.akisDurum) + ')">' + svg + "</svg>";
   }
   function ustKatV(v) { return v.bina.katlar.reduce(function (m, k) { return Math.max(m, k.no); }, 0); }
   // ---------- Korunum ve tablolar ----------
@@ -3836,7 +3937,7 @@
       if (kr.kaynak && !kr.Sk_kaynak) h += '<p class="not">' + kacis(kr.kaynak) + "</p>";
       if (kr.dogrulandi === false) h += '<p class="bn-uyari-kutu">Kar değerleri doğrulanacak (dogrulandi: false).</p>';
     }
-    h += "<h4>Ağ</h4>" + tabloH(["Eleman", "Tür", "Kaynak", "Kat", "L (m)", "Kesit", "Düğümler"], (v.ag.elemanlar || []).map(function (e) { return ["e" + e.no, e.tur, elemanAdi(e), String(e.kat), f2(e.L), e.kesit, e.dugumler.join(" → ")]; }));
+    h += "<h4>Ağ</h4>" + tabloH(["Eleman", "Tür", "Kaynak", "Kat", "L (m)", "Kesit", "Düğümler"], (v.ag.elemanlar || []).map(function (e) { return ["e" + e.no, e.tur, elemanAdi(e), e.kat == null ? "—" : String(e.kat), f2(e.L), e.kesit, e.dugumler.join(" → ")]; }));
     return h;
   }
   // genel model (surum 3) yük tabloları: çubuk yük dökümü (veri.yukler.cubuklar) ve panel yükleri / kenar payları (veri.yukler.paneller)
@@ -3952,11 +4053,11 @@
       '<div class="bn-yontem-ic"><p>' + Object.keys(yon).map(function (k) { return "<b>" + kacis(k === "celik" ? "Çelik" : k === "betonarme" ? "Betonarme" : k) + ":</b> " + kacis(yon[k]); }).join(" · ") + "</p>" +
       ((t.varsayimlar || []).length ? "<ul>" + t.varsayimlar.map(function (x) { return "<li>" + kacis(x) + "</li>"; }).join("") + "</ul>" : "") +
       '<p class="not">Öğretim / ön boyutlandırma amaçlıdır; kapasite tasarımı, ikinci mertebe ve süneklik koşullarının tamamı kapsam dışıdır.</p></div></details>';
-    if ((t.uyarilar || []).length) h += '<div class="bn-uyari-kutu">' + t.uyarilar.map(function (u) { return "<div>⚠ " + kacis(u) + "</div>"; }).join("") + "</div>";
+    if ((t.uyarilar || []).length) h += '<div class="bn-uyari-kutu">' + t.uyarilar.map(function (u) { return "<div>⚠ " + kacis(adresTurkce(u)) + "</div>"; }).join("") + "</div>";
     h += "<h4>D/C dağılımı (" + (t.elemanlar || []).length + " eleman; en büyük " + f2(t.en_buyuk_dc) + (t.kombinasyon_sayisi ? "; " + t.kombinasyon_sayisi + " dayanım/deprem kombinasyonu" : "") + ")</h4>" + dcCubugu(t);
     const kritik = (t.kritik_elemanlar || []).slice(0, 10);
     if (kritik.length) h += '<div class="bn-kritik"><span class="not">Kritik:</span>' + kritik.map(function (k) {
-      return '<button type="button" class="bn-cip bn-kritik-cip" data-dc-sec="' + kacis(k.tur + ":" + k.no) + '" title="' + kacis((k.kontrol || "") + (k.kombinasyon ? " · " + k.kombinasyon : "")) + '">' + kacis(k.adres || (k.tur + " " + k.no)) + " " + dcCip(k.dc) + "</button>";
+      return '<button type="button" class="bn-cip bn-kritik-cip" data-dc-sec="' + kacis(k.tur + ":" + k.no) + '" title="' + kacis((k.kontrol || "") + (k.kombinasyon ? " · " + k.kombinasyon : "")) + '">' + kacis(kritikAdi(k)) + " " + dcCip(k.dc) + "</button>";
     }).join("") + "</div>";
     h += '<div class="bn-satir"><label class="bn-onay"><input type="checkbox" id="bn-dc-gorunum"' + (D.dcGorunum ? " checked" : "") + "> 3B’de D/C renkleri</label>" +
       '<select class="girdi bn-secici" id="bn-dc-filtre" aria-label="Tasarım tablosu süzgeci">' + secenekler([["", "Bütün elemanlar"], ["kiris", "Yalnız kirişler"], ["kolon", "Yalnız kolonlar"]].concat(digerTurler(t)).concat([["asim", "Yalnız D/C > 1"]]).concat(yokSayisi(t) ? [["yok", "Yalnız hesaplanamayanlar"]] : []), D.tasarimFiltre) + "</select></div>";
@@ -3970,6 +4071,19 @@
     (t.elemanlar || []).forEach(function (e) { if (e.tur && e.tur !== "kolon" && e.tur !== "kiris") g[e.tur] = 1; });
     return Object.keys(g).map(function (k) { return [k, "Yalnız " + cubukTurAdi(k).toLocaleLowerCase("tr")]; });
   }
+  // tasarım kaydının adı: genel çözümde çubuk adı Türkçe türüyle ("Ç41 (çapraz)"; motor adresi ASCII "Ç41 (capraz)"), aks–kat'ta motor adresi
+  function tasarimAdi(e) {
+    if (e.cubuk != null) return elemanAdi(e);
+    return e.adres || (e.tur === "kolon" ? kolonAdres(e.no) : kirisAdres(e.no));
+  }
+  // motor metnindeki ASCII çubuk adresleri ("Ç41 (capraz)") Türkçe tür adıyla ("Ç41 (çapraz)")
+  function adresTurkce(metin) {
+    return String(metin == null ? "" : metin).replace(/Ç(\d+) \(([a-z-]+)\)/g, function (m, no, t) {
+      const x = CUBUK_TURLERI.filter(function (c) { return c[0] === t; })[0];
+      return x ? "Ç" + no + " (" + x[1].toLocaleLowerCase("tr") + ")" : m;
+    });
+  }
+  function kritikAdi(k) { const e = tasarimKaydi(k.tur, k.no); return e ? tasarimAdi(e) : (k.adres || (k.tur + " " + k.no)); }
   function tasarimTablosu(t) {
     const f = D.tasarimFiltre;
     const l = (t.elemanlar || []).filter(function (e) { return !f || (f === "asim" ? e.dc > 1 : f === "yok" ? e.dc == null : e.tur === f); }).slice()
@@ -3981,7 +4095,7 @@
         const k = belirleyenKontrol(e) || {}, b = e.belirleyen || {};
         const aktif = sec && sec.tur === e.tur && sec.no === e.no;
         return '<tr class="bn-dc-satir bn-dc-satir-' + dcSinif(e.dc) + (aktif ? " aktif" : "") + '" data-dc-tur="' + e.tur + '" data-dc-no="' + e.no + '" tabindex="0" aria-selected="' + !!aktif + '">' +
-          '<th scope="row">' + kacis(e.adres || (e.tur === "kolon" ? kolonAdres(e.no) : kirisAdres(e.no))) + '<span class="bn-dc-mobil"> ' + dcCip(e.dc) + "</span></th><td class=\"bn-dc-kisa\">" + kacis(turAd(e)) + "</td><td class=\"bn-dc-kisa\">" + kacis(e.kesit || "") + "</td><td>" + kacis(b.kontrol || k.ad || (e.dc == null ? "hesaplanamadı" : "")) + "</td>" +
+          '<th scope="row">' + kacis(tasarimAdi(e)) + '<span class="bn-dc-mobil"> ' + dcCip(e.dc) + "</span></th><td class=\"bn-dc-kisa\">" + kacis(turAd(e)) + "</td><td class=\"bn-dc-kisa\">" + kacis(e.kesit || "") + "</td><td>" + kacis(b.kontrol || k.ad || (e.dc == null ? "hesaplanamadı" : "")) + "</td>" +
           '<td class="bn-komb-ad">' + kacis(b.kombinasyon || k.kombinasyon || "—") + '</td><td class="sayi">' + kacis(tkDeger(k.talep, k.birim)) + '</td><td class="sayi">' + kacis(tkDeger(k.kapasite, k.birim)) + "</td>" +
           '<td class="sayi">' + dcCip(e.dc) + "</td><td>" + kacis(e.durum || "") + "</td></tr>";
       }).join("") + "</tbody></table></div>";
@@ -4017,12 +4131,12 @@
       return r;
     });
     const anahtar = e.tur + ":" + e.no, ayr = TASARIM_AYR[anahtar];
-    return '<div class="bn-kart bn-dc-kart bn-dc-kenar-' + dcSinif(e.dc) + '"><div class="bn-dc-baslik"><b>' + kacis(e.adres || "") + "</b> · " + kacis(turAd(e)) + " · " + kacis(e.kesit || "") + (e.malzeme ? " · " + kacis(e.malzeme) : "") +
-      " · kat " + kacis(e.kat) + " " + dcCip(e.dc) + ' <span class="se-rozet">' + kacis(e.durum || "") + "</span>" +
+    return '<div class="bn-kart bn-dc-kart bn-dc-kenar-' + dcSinif(e.dc) + '"><div class="bn-dc-baslik"><b>' + kacis(tasarimAdi(e) || "") + "</b> · " + kacis(turAd(e)) + " · " + kacis(e.kesit || "") + (e.malzeme ? " · " + kacis(e.malzeme) : "") +
+      (e.kat != null ? " · kat " + kacis(e.kat) : "") + " " + dcCip(e.dc) + ' <span class="se-rozet">' + kacis(e.durum || "") + "</span>" +
       '<button type="button" class="bn-firca-kapat bn-dc-kapat" id="bn-tasarim-kapat" aria-label="Ayrıntıyı kapat">✕</button></div>' +
       '<p class="not">Belirleyen: <b>' + kacis(b.kontrol || "—") + "</b>" + (b.kombinasyon ? " · " + kacis(b.kombinasyon) : "") + (e.fe_elemanlar && e.fe_elemanlar.length ? " · FE eleman " + e.fe_elemanlar.map(function (n) { return "e" + n; }).join(", ") : "") + "</p>" +
       (e.hata ? '<div class="hata-kutu" role="alert"><strong>Tahkik edilemedi</strong><div class="se-hata-metin">' + kacis(e.hata) + "</div></div>" : "") +
-      ((e.uyarilar || []).length ? '<div class="bn-uyari-kutu">' + e.uyarilar.map(function (u) { return "<div>⚠ " + kacis(u) + "</div>"; }).join("") + "</div>" : "") +
+      ((e.uyarilar || []).length ? '<div class="bn-uyari-kutu">' + e.uyarilar.map(function (u) { return "<div>⚠ " + kacis(adresTurkce(u)) + "</div>"; }).join("") + "</div>" : "") +
       (ozSatir ? '<div class="bn-param-grid bn-dc-ozet">' + ozSatir + "</div>" : "") +
       (kont.length ? '<details class="bn-ayrinti"' + (kont.length <= 8 ? " open" : "") + "><summary>Kontroller (" + kont.length + ")</summary>" + tabloH(["Kontrol", "Talep", "Kapasite", "D/C", "", "Kombinasyon", "Kaynak"], kont, "bn-mini") + "</details>" : "") +
       '<div class="dugmeler"><button type="button" class="dugme kucuk" id="bn-tasarim-hesap"' + (ayr && ayr.then ? " disabled" : "") + ">" + (ayr && ayr.then ? "Hesaplanıyor…" : ayr ? "Ayrıntılı hesabı yenile" : "Ayrıntılı hesap") + "</button></div>" +
@@ -4200,11 +4314,28 @@
       return [temelEtiketi(t), f2(t.B) + "×" + f2(t.L), f1(t.N_servis), f1(t.MX), f1(t.MY), f1(t.sigma_max), f1(t.sigma_min), f2(t.e_X) + " / " + f2(t.e_Y) + (t.cekirdek_icinde ? "" : " (!)"), '<b class="' + (t.DC > 1 ? "bn-kotu" : "bn-iyi") + '">' + f2(t.DC) + "</b>"];
     }));
   }
+  // Açık mesnet tipi okunur: motorun "ozel" tipi serbestliklerinden (veri.ag.mesnetler ux…rz) Mesnet aracı adıyla ya da tutulu /
+  // serbest doğrultularla ("özel (tutulu: uz; serbest: ux, uy, rx, ry, rz)")
+  const MESNET_TIP_AD = { ankastre: "ankastre", mafsal: "sabit mafsal", elastik: "elastik", yay: "yay" };
+  const MESNET_KAYICI = [["kayıcı (X serbest)", [0, 1, 1, 0, 0, 0]], ["kayıcı (Y serbest)", [1, 0, 1, 0, 0, 0]], ["kayıcı (X, Y serbest)", [0, 0, 1, 0, 0, 0]]];
+  function mesnetTipEtiketi(v, m) {
+    if (!m) return "—";
+    const tip = m.tip || "";
+    if (tip !== "ozel") return MESNET_TIP_AD[tip] || tip || "—";
+    const a = ((v && v.ag && v.ag.mesnetler) || []).filter(function (x) { return x.dugum === m.dugum; })[0] || m;
+    const SD = ["ux", "uy", "uz", "rx", "ry", "rz"];
+    if (!SD.some(function (k) { return typeof a[k] === "boolean"; })) return "özel";
+    const b = SD.map(function (k) { return a[k] ? 1 : 0; });
+    const hazir = MESNET_KAYICI.filter(function (h) { return h[1].join("") === b.join(""); })[0];
+    if (hazir) return hazir[0];
+    const tut = SD.filter(function (k, i) { return b[i]; }), ser = SD.filter(function (k, i) { return !b[i]; });
+    return "özel (tutulu: " + (tut.join(", ") || "—") + "; serbest: " + (ser.join(", ") || "—") + ")";
+  }
   function mesnetTepkiTablosu(v) {
     const l = acikMesnetler(v);
     if (!l.length) return "";
     return "<h4>Mesnet tepkileri (açık mesnetler; servis, kN · kN·m)</h4>" + tabloH(["Mesnet", "Tip", "N_G", "N_Q", "N_G + N_Q", "M_X", "M_Y"], l.map(function (m) {
-      return [m.adres || dugumAdresV(v, m.dugum), m.tip || "—", f1(m.N_G), f1(m.N_Q), f1((+m.N_G || 0) + (+m.N_Q || 0)), f1(m.MX), f1(m.MY)];
+      return [m.adres || dugumAdresV(v, m.dugum), mesnetTipEtiketi(v, m), f1(m.N_G), f1(m.N_Q), f1((+m.N_G || 0) + (+m.N_Q || 0)), f1(m.MX), f1(m.MY)];
     })) + '<p class="not">Açık mesnetler (Mesnet aracı) temel değildir: boyut ve taban basıncı tahkiki yapılmaz, yalnız tepkiler verilir.</p>';
   }
   function temelPrm(ad, deger, ek) { return '<div class="bn-param"><span>' + ad + "</span><b>" + deger + "</b>" + (ek ? '<span class="bn-kaynak">' + ek + "</span>" : "") + "</div>"; }
@@ -5123,6 +5254,8 @@
     }
     return geoOnbellek.geo;
   }
+  const OLCUM_IPUCU = "Ölçüm: düğüme, aks kesişimine ya da çubuğa dokunun (yakalama işareti görünür). Esc yarım ölçümü siler, yarım ölçüm yoksa " +
+    "ölçümden çıkar (sonuçlar kalır); “Ölçüleri temizle” hepsini siler.";
   function olcumKur() {
     const O = modul("MatrisOlcum");
     if (!O || !O.Arac || olcum) return;
@@ -5130,6 +5263,7 @@
       geo: function () { return olcumGeo(); },
       cevir: function () { return SAHNE_BAGLAM ? SAHNE_BAGLAM.P3 : null; },
       kip: "uzaklik", tol: 14,
+      escSonuclariKorur: true,      // Esc yalnız yarım ölçümü siler; yoksa sayfa Esc'i kipten çıkar (bitir), sonuçlar "Ölçüleri temizle"ye dek kalır
       ipucu: function (m) { olcumMetin = m || ""; ipucuYaz(); },
       degisti: function () { aracYenile(); },
     });
@@ -5141,8 +5275,9 @@
         bitir: function () { olcum.yakalanan = null; olcum.olcer.bekleyen = []; olcum.ciz(); olcumMetin = ""; aracYenile(); },
         dokun: function (p) { olcum.sec.tol = 14 * pxOlcek(); olcum.dokun(p); },
         hareket: function (p) { olcum.sec.tol = 14 * pxOlcek(); olcum.hareket(p); },
+        // Esc: yarım ölçüm varsa onu siler; yoksa işlenmez (escSonuclariKorur) → sayfa Esc'i kipten çıkar, tamamlanan ölçüler kalır
         tus: function (e) { return (e.key === "Escape" || e.key === "Enter" || e.key === "Backspace") && olcum.tus(e.key); },
-        ipucu: function () { return olcumMetin || "Ölçüm: düğüme, aks kesişimine ya da çubuğa dokunun (yakalama işareti görünür). Esc yarım ölçümü, “Ölçüleri temizle” hepsini siler."; },
+        ipucu: function () { return olcumMetin || OLCUM_IPUCU; },
       });
     });
   }
@@ -5154,7 +5289,7 @@
   function kopyala() {
     const l = kopyalanabilir();
     if (!l.length) return;
-    PANO = { kolonlar: [], kirisler: [], dosemeler: [], s3: { cubuklar: [], paneller: [] } };
+    PANO = { kolonlar: [], kirisler: [], dosemeler: [], s3: { cubuklar: [], paneller: [] }, catiKat: ustKat() };
     l.forEach(function (s) {
       const n = nesneBul(s.tur, s.no), liste = { kolon: "kolonlar", kiris: "kirisler", doseme: "dosemeler" }[s.tur];
       if (liste) PANO[liste].push(kopya(n));
@@ -5170,8 +5305,8 @@
     if (PANO.s3 && PANO.s3.cubuklar.length + PANO.s3.paneller.length && KIPLER.yapistir) {     // genel model: kesişimden kesişime öteleme kipi
       aracSec("yapistir"); yenile(); return;
     }
-    const hedefKatlar = katlarHedef(), yeniSecim = [];
-    let n = 0, atlanan = 0;
+    const hedefKatlar = katlarHedef(), yeniSecim = [], cati = ustKat();
+    let n = 0, atlanan = 0, parapet = 0;
     const aksVar = function (aks) { return aksX(aks[0]) != null && aksY(aks[1]) != null; };
     hedefKatlar.forEach(function (kat) {
       PANO.kolonlar.forEach(function (c) {
@@ -5180,7 +5315,10 @@
       });
       PANO.kirisler.forEach(function (k) {
         if (!aksVar(k.bas) || !aksVar(k.son) || kirisBul(k.bas, k.son, kat)) { atlanan++; return; }
-        const y = Object.assign(kopya(k), { no: yeniNo(B.kirisler), kat: kat }); B.kirisler.push(y); yeniSecim.push({ tur: "kiris", no: y.no }); n++;
+        const y = Object.assign(kopya(k), { no: yeniNo(B.kirisler), kat: kat });
+        // çatı kirişinin parapeti (duvar_h) ara kata taşınmaz: orada duvar kat yüksekliğindedir
+        if (y.duvar_h != null && k.kat === PANO.catiKat && kat !== cati) { delete y.duvar_h; parapet++; }
+        B.kirisler.push(y); yeniSecim.push({ tur: "kiris", no: y.no }); n++;
       });
       PANO.dosemeler.forEach(function (d) {
         if (!aksVar(d.kose[0]) || !aksVar(d.kose[1]) || dosemeBul(d.kose[0], kat)) { atlanan++; return; }
@@ -5190,7 +5328,8 @@
     if (!n) { A.toast("Yapıştırılacak yer yok: hedef katta aynı akslarda zaten eleman var" + (atlanan ? " (" + atlanan + " atlandı)." : ".")); return; }
     const tur0 = yeniSecim[0].tur;
     D.secim = yeniSecim.filter(function (s) { return s.tur === tur0; });
-    A.toast(n + " eleman yapıştırıldı" + (atlanan ? " (" + atlanan + " dolu yer atlandı)" : "") + ".");
+    A.toast(n + " eleman yapıştırıldı" + (atlanan ? " (" + atlanan + " dolu yer atlandı)" : "") + "." +
+      (parapet ? " " + parapet + " çatı kirişinin parapet yüksekliği (duvar_h) ara katta kullanılmadı; duvar kat yüksekliğinde." : ""));
     degisti();
   }
   function firca() {
@@ -5873,13 +6012,14 @@
     const cizim = grup("cizim", URETEC), i = cizim.indexOf("hizli-panel");
     cizim.splice(i >= 0 ? i + 1 : cizim.length, 0, "duvar");
     // sıra önemli: otomatik yerleşim uzun kutuları önce koyar (sol sütun, üst ve alt şerit, sağ sütunlar). Seyrek kullanılan kutular
-    // (Üreteç, Değiştirme, Ölçme) katlanmış (yalnız başlık) başlar; dar sahnede (< 1300 px) Aks komutları Düzenleme satırına katılır.
-    const dar = (ref.aracKatman && ref.aracKatman.clientWidth || window.innerWidth) < 1300;
-    const duzen = dar ? grup("duzenleme").concat(grup("aks")) : grup("duzenleme");
+    // (Üreteç, Değiştirme, Ölçme) katlanmış (yalnız başlık) başlar. Sahne genişliği (araç katmanı) < 1300 px ise Aks komutları
+    // Düzenleme satırına katılır (iki sütun arasına tek satır sığıyorsa, ≈ 1100 px); daha darsa (1366 / 1280 px ekran) birleşik satır
+    // sığmaz ve açılamazdı: Aks ayrı ve katlı başlar.
+    const W = ref.aracKatman && ref.aracKatman.clientWidth || window.innerWidth, dar = W < 1300, birlesik = dar && W >= 1100;
     return { surum: M.SURUM, ad: "bina", kutular: [
       kutu("k-cizim", "Çizim", cizim, { kenar: "sol", yon: "dikey" }),
-      kutu("k-duzenleme", dar ? "Düzenleme ve aks" : "Düzenleme", duzen),
-    ].concat(dar ? [] : [kutu("k-aks", "Aks", grup("aks"))]).concat([
+      kutu("k-duzenleme", birlesik ? "Düzenleme ve aks" : "Düzenleme", birlesik ? grup("duzenleme").concat(grup("aks")) : grup("duzenleme")),
+    ].concat(birlesik ? [] : [kutu("k-aks", "Aks", grup("aks"), dar ? { katli: true } : {})]).concat([
       kutu("k-gorunum", "Görünüm", grup("gorunum"), { kenar: "alt" }),
       kutu("k-analiz", "Analiz", grup("analiz"), { kenar: "alt" }),
       kutu("k-sonuc", "Sonuç", grup("sonuc").concat(["ifc"]), { kenar: "sag", yon: "dikey" }),
@@ -5897,11 +6037,13 @@
     try { kayitli = !!localStorage.getItem(ARAC_ANAHTAR); } catch (e) { kayitli = false; }
     // yerleşim değişince (kutu taşındı, katlandı, gizlendi) sahne kutuların bıraktığı alana yeniden sığar
     const sec = { anahtar: ARAC_ANAHTAR, kisayollar: true, olay: function (ad) { if (ad === "calistir") aracYenile(); else if ((ad === "yerlesim" || ad === "boyut") && B && kamera) sahneYenile(); } };
+    // araç kutuları eski sol araç çubuğunun (Seç, Kolon, Kiriş, Döşeme, Duvar, Sil, Kütüphane) bütün komutlarını taşır: çubuk gizlenir.
+    // Sınıf varsayılan yerleşimden ve kurulumdan ÖNCE eklenir: genişlik ve ilk yerleşim kapsayıcının son boyuyla yapılır (sonradan
+    // genişleyen katman alta çapalı kutuları üstteki kutuların üstüne itmesin)
+    kok.classList.add("bn-arac-yonetimli");
     if (!kayitli) { sec.yerlesim = binaVarsayilanYerlesim(M); depoYaz("bina.arac.ek", { duvar: 1, ifc: 1 }); }
     try { aracYon = M.kur(ref.aracKatman, sec); }
-    catch (e) { aracYon = null; return; }
-    // araç kutuları eski sol araç çubuğunun (Seç, Kolon, Kiriş, Döşeme, Duvar, Sil, Kütüphane) bütün komutlarını taşır: çubuk gizlenir
-    kok.classList.add("bn-arac-yonetimli");
+    catch (e) { aracYon = null; kok.classList.remove("bn-arac-yonetimli"); return; }
     yerlesimUygula();
     // devre dışı komut çalıştırılmak istenince nedeni bildirimle (araç kutusu düğmesi kendi balonunda gösterir)
     if (M.dinle) M.dinle(function (ad, v) {

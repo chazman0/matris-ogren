@@ -369,6 +369,24 @@ test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katla
   assert.ok(eski.get("c").y > r.get("b").y);
 });
 
+test("otomatik yerleşim (serbest): az önce açılan kutu şeritte yer yoksa açık boyuyla sahnede boş yer arar; hiç yoksa katlanır", function () {
+  const W = 800, H = 400;
+  const sabit = [{ x: 8, y: 8, w: 700, h: 42 }, { x: 8, y: 56, w: 700, h: 42 }];   // üst şerit dolu
+  const it = { id: "x", w: 600, h: 42, kenar: "ust", kw: 120, kh: 30 };
+  // şerit sınırlı arama: üst şeritte (iki kutu kalınlığı) 600 px yer yok → katlanır
+  assert.equal(D.otomatikYerlestir([it], W, H, sabit).get("x").katla, true);
+  // serbest: açık boyuyla sahnenin içinde (şeridin altında) yer bulunur, katlanmaz, sabitlerle çakışmaz
+  const q = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, sabit).get("x");
+  assert.equal(q.katla, undefined);
+  assert.ok(q.y > 56 + 42, "şeridin altında: " + q.y);
+  sabit.forEach(function (s) { assert.ok(!D.cakisir({ x: q.x, y: q.y, w: 600, h: 42 }, s, 0)); });
+  // hiç yer yoksa serbest kutu da katlanmış başlığıyla yerleşir
+  const dolu = [{ x: 0, y: 0, w: W, h: 330 }, { x: 0, y: 336, w: 300, h: 64 }];   // yalnız sağ altta başlık kadar yer
+  const r = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, dolu).get("x");
+  assert.equal(r.katla, true);
+  assert.ok(!D.cakisir({ x: r.x, y: r.y, w: 120, h: 30 }, dolu[0], 0));
+});
+
 test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanını korur", function () {
   const y0 = D.varsayilan();
   const id = y0.kutular[0].id;

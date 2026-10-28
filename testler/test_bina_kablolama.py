@@ -107,8 +107,10 @@ def test_tek_geri_al_yigini():
 # ---- surum 3 sonuç ekranı, masaüstü komutları ve CSP sözleşmeleri
 
 def _s3var_kaynagi() -> str:
-    bas = BINA.index("const S3_LISTELER = [")
+    # surumSayi (K2 surum kuralı) + S3_LISTELER + s3Var
+    bas = BINA.index("function surumSayi(s) {")
     son = BINA.index("\n  }\n", BINA.index("function s3Var(b) {")) + 4
+    assert bas < BINA.index("const S3_LISTELER = [") < son
     return BINA[bas:son]
 
 
@@ -123,6 +125,17 @@ C1_TABLOSU = [
     ("cubuk yuku", {"ek_yukler": [{"tur": "cubuk", "cubuk": 1, "durum": "G", "q": -1}]}, True),
     ("surum 3", {"surum": 3}, True),
     ("bos listeler", {"cubuklar": [], "mesnetler": []}, False),
+    # K2 ek satırları: tür büyük/küçük harf ve boşluk duyarsız; surum tam kısmı (sayı ya da tamsayı/ondalık dizesi), başka dize → 1
+    ("tur Cubuk", {"ek_yukler": [{"tur": "Cubuk", "cubuk": 1, "durum": "G", "q": -1}]}, True),
+    ("tur ' panel'", {"ek_yukler": [{"tur": " panel", "panel": 1, "durum": "G", "q": -1}]}, True),
+    ("tur PANEL", {"ek_yukler": [{"tur": "PANEL", "panel": 1, "durum": "G", "q": -1}]}, True),
+    ("surum '3.0'", {"surum": "3.0"}, True),
+    ("surum '3.5'", {"surum": "3.5"}, True),
+    ("surum '3a'", {"surum": "3a"}, False),
+    ("surum '0x3'", {"surum": "0x3"}, False),
+    ("surum '1e1'", {"surum": "1e1"}, False),
+    ("surum 2.9", {"surum": 2.9}, False),
+    ("surum True", {"surum": True}, False),
 ]
 
 
@@ -130,6 +143,10 @@ def test_s3var_c1_anahtarlari():
     kaynak = _s3var_kaynagi()
     for anahtar in ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler", "surum", "ek_yukler", "dugum", "cubuk", "panel"):
         assert f'"{anahtar}"' in kaynak or f".{anahtar}" in kaynak, anahtar
+    # K2: surum tam kısmı (Math.round değil), tür kırpılıp küçük harfe çevrilir; binaYukle aynı surumSayi kuralını kullanır
+    assert "Math.trunc" in kaynak and ".trim().toLowerCase()" in kaynak
+    yukle = BINA[BINA.index("function binaYukle(m) {"):BINA.index("function binaYukle(m) {") + 1200]
+    assert "surumSayi(m.surum)" in yukle and "Math.round(+m.surum)" not in yukle
     # iç API modeli de alır (tarayıcı testi ve sağ tık menüsü için)
     assert re.search(r"s3Var: function \(b\) \{ return s3Var\(b\); \}", _api_govdesi())
 

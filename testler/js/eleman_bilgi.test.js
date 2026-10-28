@@ -374,6 +374,63 @@ test("karma model, genel çözüm: aks–kat kiriş ve kolonun yükleri ve yük 
   assert.ok(ak.indexOf("Çubuğa gelen") < 0);
 });
 
+function genelYol(sankey) {
+  const d = mini();
+  const v = d.veri;
+  v.model = "genel";
+  const t = v.tasarim.elemanlar[0];
+  t.no = 12; t.cubuk = 12; t.kaynak = { aks_kat: "kiris", no: 1 };
+  v.yukler.kirisler = [];
+  v.yukler.cubuklar = [{ no: 12, L: 5, G: { oz: 15.6, panel: 30, duvar: 0, ek: 10, toplam_kN: 55.6 }, Q: { panel: 12, toplam_kN: 12 }, S: { panel: 3, toplam_kN: 3 } }];
+  v.akis.sankey = sankey;
+  v.akis.kolonlar = [{ no: 7, kat: 1, adres: "B1/+3.00", N_G: 40, N_Q: 9, N_kum_G: 40, N_kum_Q: 9, kaynak: { aks_kat: "kolon", no: 2 } }];
+  return d;
+}
+
+test("yük yolu (genel): kenarlar durumlarına göre okunur; Q/S bantları varsa sütun olur, yoksa 'veri yok' notu; giden yoksa Σ giden yazılmaz", function () {
+  // eski motor: genel modelde yalnız G bantları
+  let d = genelYol([{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }, { kaynak: "P2", hedef: "Ç12", durum: "G", kN: 10.5 }]);
+  let m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
+  let yol = sekme(m, "yol");
+  assert.equal(yol.bolumler[0].baslik, "Akış şeması (G, kN)");
+  let tb = yol.bolumler.find(function (b) { return b.tablo; }).tablo;
+  assert.deepEqual(tb.basliklar, ["Yön", "Eleman", "G"]);
+  assert.ok(!tb.satirlar.some(function (r) { return r[0] === "Σ giden"; }), "giden kenarı yok: Σ giden 0 yazılmaz");
+  assert.match(metin(m, "yol"), /Σ gelen\t\t40,50/);
+  assert.match(metin(m, "yol"), /yalnız G bantları var; Q ve S payları Yükler sekmesinde/);
+  assert.match(metin(m, "yol"), /çubuk → çubuk \/ mesnet/);
+  // yeni motor: Q ve S bantları da var (G + Q + S)
+  d = genelYol([{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }, { kaynak: "P1", hedef: "Ç12", durum: "Q", kN: 12 }, { kaynak: "P1", hedef: "Ç12", durum: "S", kN: 3 },
+    { kaynak: "P2", hedef: "Ç12", durum: "G", kN: 10 }, { kaynak: "P2", hedef: "Ç12", durum: "Q", kN: 4 }]);
+  m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
+  yol = sekme(m, "yol");
+  assert.equal(yol.bolumler[0].baslik, "Akış şeması (G + Q + S, kN)");
+  tb = yol.bolumler.find(function (b) { return b.tablo; }).tablo;
+  assert.deepEqual(tb.basliklar, ["Yön", "Eleman", "G", "Q", "S"]);
+  assert.match(metin(m, "yol"), /← gelen\tPanel 1\t30,00\t12,00\t3,00/);
+  assert.match(metin(m, "yol"), /Σ gelen\t\t40,00\t16,00\t3,00/);
+  assert.deepEqual(m.ham.yol, { gelenG: 40, gelenQ: 16, gidenG: 0, gidenQ: 0, gelenS: 3, gidenS: 0 });
+  assert.ok(metin(m, "yol").indexOf("yalnız G bantları") < 0);
+  // kolon: panelden yük gelmez → genel modelde açıklayıcı not
+  const k = B.bilgi({ tur: "kolon", no: 2 }, d.bina, d.veri);
+  const ky = sekme(k, "yol");
+  assert.ok(ky, "kolonun yük yolu sekmesi");
+  assert.match(metin(k, "yol"), /panel → çubuk paylarını gösterir; bu çubuğa panelden yük gelmiyor/);
+});
+
+test("tasarım kontrolleri: kapasiteye göre sayısal gürültü olan talep (3·10⁻¹⁷) 0 yazılır", function () {
+  const d = mini();
+  d.veri.tasarim.elemanlar[0].kontroller.push({ ad: "Zayıf eksen eğilmesi", talep: 3e-17, kapasite: 38.04, birim: "kN·m", dc: 0, saglandi: true });
+  d.veri.tasarim.elemanlar[0].ozet.My_kNm = -2.5e-17;
+  const m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
+  const t = metin(m, "tasarim");
+  assert.match(t, /Zayıf eksen eğilmesi\t0\t38,04\tkN·m/);
+  assert.ok(t.indexOf("10^") < 0, t);
+  // gerçek küçük değerler (ör. 0,004) bilimsel gösterimde kalır
+  d.veri.tasarim.elemanlar[0].kontroller.push({ ad: "Küçük", talep: 0.004, kapasite: 1, birim: "", dc: 0.004, saglandi: true });
+  assert.match(metin(B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri), "tasarim"), /Küçük\t4,00·10\^[−-]3\t1,000/);
+});
+
 test("tasarım özeti: dizi değerleri ' / ' ile birleşir, iç içe nesneler satıra yazılmaz", function () {
   const d = mini();
   d.veri.tasarim.elemanlar[0].ozet = { K: [0.65, 1], yalniz_cekme: true, Tc_kN: 412.5, ayrinti: { a: 1 } };
