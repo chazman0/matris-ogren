@@ -223,6 +223,27 @@ def test_web_sayfasi_kopruyu_yukler():
     assert 'const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";' in w
 
 
+def test_kullanim_kopru_islemlerini_kapsar():
+    """KULLANIM.md 3.9.5 tablosu köprünün (docs/web_kopru.py BINA_ISLEMLER) bütün bina işlemlerini anlatır; README ve Yardım
+    sayfası Bina sayfasını ve kısayolları anlatır (uygulama ile web/masaüstü belgeleri aynı yüzeyi kapsar)."""
+    kopru = (DOCS / "web_kopru.py").read_text(encoding="utf-8")
+    m = re.search(r"^BINA_ISLEMLER = \{(.*?)\}", kopru, re.M | re.S)
+    assert m, "BINA_ISLEMLER bulunamadı"
+    islemler = set(re.findall(r'"(bina_[a-z_]+)"', m.group(1)))
+    assert len(islemler) >= 12
+    kullanim = (PROJE / "KULLANIM.md").read_text(encoding="utf-8")
+    bolum = kullanim[kullanim.index("### 3.9.5"):kullanim.index("### 3.10")]
+    eksik = sorted(i for i in islemler if f"`{i}`" not in bolum)
+    assert not eksik, f"KULLANIM.md 3.9.5'te anlatılmayan köprü işlemleri: {eksik}"
+    assert "`bina_eleman_bilgi`" in bolum and "### 3.12 Klavye kısayolları" in kullanim
+    ana = (PROJE / "README.md").read_text(encoding="utf-8")
+    assert "## Bina sayfası (yapı analizi)" in ana and "TASARIM.md" in ana and "node --test testler/js/*.test.js" in ana
+    html = (DOCS / "index.html").read_text(encoding="utf-8")
+    for kimlik in ('id="yardim-bina"', 'id="yardim-kisayollar"', 'id="yardim-masaustu"', "github.com/chazman0/matris-ogren/releases"):
+        assert kimlik in html, kimlik
+    assert "kisayolTablosu" in (DOCS / "app.js").read_text(encoding="utf-8")
+
+
 @nodeli
 def test_surum_damgasi_uretilmis_dosyalari_saymaz(tmp_path, monkeypatch):
     """web_yap.py sürüm damgası git'e girmeyen üretilmiş dosyaları (docs/__pycache__/*.pyc, işletim sistemi artıkları) saymaz;

@@ -106,7 +106,7 @@
             <li><b>Aks–kat şablonları ve aks tabanlı çizim:</b> kolon, kiriş, döşeme, duvar, çapraz, makas, beşik çerçeve, aşık, kren yolu ve panel çizilir; her düğüm bir aks kesişimine ya da bir çubuğun bölme / kesişim noktasına yakalanır, aks taşınınca bağlı elemanlar da taşınır. Yüzen araç kutuları: Aks, Çizim, Üreteç ve yük, Düzenleme, Değiştirme (ayrıca Ölçme, Görünüm, Analiz, Sonuç). Üst şeritteki Düzlem seçici ya da PgUp / PgDn ile plan ve cephe düzlemleri arasında geçilir.</li>
             <li><b>Genel (surum 3) model:</b> düğüm–çubuk–panel modeli; hazır şablonlar <i>Çelik sanayi yapısı (4 hol)</i> (vuteli mertek, aşık, çatı ve cephe çaprazları, kren yolu) ve <i>3 katlı çelik merkezi çaprazlı çerçeve</i> (ters V ve X çaprazlar); çubuklara mafsal ve yalnız çekme verilebilir.</li>
             <li><b>Yükler:</b> G, Q, S (kar), W (rüzgâr), E (TBDY 2018 eşdeğer deprem) ve kren durumları; TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf; döşeme → kiriş → kolon → temel → zemin yük akışı, şekil değiştirmiş biçim ve iç kuvvet diyagramları.</li>
-            <li><b>Tasarım:</b> TS 500 ve ÇYTHYE 2018 kontrolleri, eleman başına D/C; kesit önerisi (sağ tık ya da Değiştirme kutusunda “Kesit öner ve uygula”).</li>
+            <li><b>Tasarım:</b> TS 500 ve ÇYTHYE 2018 kontrolleri, eleman başına D/C; kesit önerisi (elemana sağ tık › Kesit öner; seçili eleman ya da seçim yoksa bütün model için “Kesit öner ve uygula” komutu, “Hepsini uygula” ile yeniden çözüm).</li>
             <li><b>Temeller:</b> tekil; mütemadi ve radye (Winkler zemini, taban basıncı ve oturma haritası) yalnız aks–kat modelinde.</li>
             <li><b>Çıktılar:</b> 📄 Statik rapor (yazdır / PDF, HTML), ▦ Tablolar ve metraj (düzenleme, yapıştırma, CSV), 🌡 Isı haritası, ⬇ IFC, 💾 <code>.matris</code> proje dosyası. Elemana sağ tık (dokunmatikte uzun basma) bilgi ve komutları açar; <kbd>?</kbd> bütün kısayolları gösterir, <kbd>F</kbd> tam ekran, <kbd>Esc</kbd> çıkış.</li>
           </ul>
@@ -161,7 +161,8 @@
           Her düğüm bir aks kesişimi ya da bir çubuğun bölme / kesişim noktasıdır; aks taşınınca bağlı düğüm ve elemanlar da taşınır.</li>
         <li><b>Çizim:</b> Çizim kutusu (çubuk çiz, hızlı kolon / kiriş / çapraz / panel, eğik çubuk, duvar), Üreteç ve yük kutusu (makas, beşik
           çerçeve, aşık, kren yolu, mesnet, yük ata), Düzenleme ve Değiştirme kutuları (taşı, döndür, ayna, doğrusal dizi, kopyala / yapıştır,
-          böl, birleştir, düğümleri birleştir, mafsal, yalnız çekme, kesit değiştir, kesit öner ve uygula). Üst şeritteki <b>Düzlem</b> seçici ya da
+          böl, birleştir, düğümleri birleştir, mafsal, yalnız çekme, kesit değiştir). Kutuya başka komut (ör. “Kesit öner ve uygula”)
+          köşe menüsündeki Özelleştir ile eklenir. Üst şeritteki <b>Düzlem</b> seçici ya da
           PgUp / PgDn plan (Z aksı) ve cephe (X / Y aksı) düzlemleri arasında geçer.</li>
         <li><b>Araç kutuları:</b> tutamağından sürüklenir; düğme bir kutudan ötekine sürüklenip bırakılır (boş alana bırakmak yeni kutu açar);
           köşedeki menüde Özelleştir, hazır yerleşimler ve Varsayılana dön. Soluk düğmenin ipucu nedenini söyler. Telefonda kutular sahnenin
