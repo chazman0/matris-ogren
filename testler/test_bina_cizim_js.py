@@ -200,11 +200,18 @@ def test_kesit_onerisi_tanimsiz_kesit_atamaz():
     govde = KAYNAK[i:KAYNAK.index("\n    }\n", i)]
     assert "oneriUygula(" in govde and "ozellikAta" not in govde
     assert "oneriUygulanir" in govde, "Uygula yalnız değişiklik varken (degisim ≠ 'aynı')"
-    assert "yinele: 1" in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
+    # K1: Hepsini uygula en çok 3 tur yineler (yinele: 1 tek turda kalıp D/C > 1 bırakıyordu), uygular, yeniden çözer; aşanlar söylenir
+    assert "yinele: 3" in govde and "yinele: 1" not in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
+    assert govde.count("MB.coz()") >= 2, "Hepsini ve tek Uygula sonrası model yeniden çözülür"
+    assert "hepsiOzeti(y2)" in govde and "öneriler yetmedi" in govde
     saf = KAYNAK[KAYNAK.index("function oneriUygula("):]
     saf = saf[:saf.index("\n  }\n")]
     assert 'if (!m.kesitler[k.ad]) throw' in saf
-    assert "oneriEtiketi(o)" in govde and "dc_sonra" in govde and "uyarilar" in govde
+    assert "oneriEtiketi(o)" in govde and "oneriSatiri(o" in govde and "uyarilar" in govde
+    # motorun açıklaması (öneri mevcut iç kuvvetlerle tahmin) iki kipte de gösterilir; satır etiketi tahmini
+    assert "y.aciklama" in govde and "notlar(y)" in govde
+    satir = KAYNAK[KAYNAK.index("function oneriSatiri("):]
+    assert "tahmini (mevcut iç kuvvetlerle)" in satir[:satir.index("\n  }\n")]
 
 
 def test_genel_model_kapisi_kablolamasi():
@@ -281,3 +288,30 @@ def test_tasiyan_kenar_motorla_ayni(ad, kopru):
     assert y.get("hata") and "kenarında" in y["hata"], "motor taşıyan kenarı boş paneli reddeder"
     assert o["yeni2"] and not any(o["yeni2"])
     _coz(kopru, o["model2"])
+
+
+def test_genel_kapi_degisiklik_yoksa_cevirmez():
+    # NEW-5: işlem genelleştirilmiş modelde hiçbir şeyi değiştirmiyorsa (ya da reddediliyorsa) model çevrilmez ve "bölündü" denmez
+    secimli = KAYNAK[KAYNAK.index("function secimli("):]
+    secimli = secimli[:secimli.index("\n    }\n")]
+    kuru = secimli.index("genellestirHazirla(m).model")
+    assert kuru < secimli.index("genelModeleGec(m, etiket)"), "kuru çalıştırma onaydan önce"
+    assert "r0.reddedildi" in secimli and "JSON.stringify(r0.model) === JSON.stringify(m0)" in secimli
+    assert "model genel modele çevrilmedi" in secimli and "cevrildi: cevrildi" in secimli
+    uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
+    uyg = uyg[:uyg.index("\n    }\n")]
+    assert "if (cevrildi && !oz && JSON.stringify(m) === JSON.stringify(m0))" in uyg
+    assert uyg.index("cevrildi && !oz") < uyg.index("MB.binaAyarla(m,"), "çevrilmiş ama değişmemiş model uygulanmaz"
+    # Düzlemle böl penceresi yalnız seçimi kesen düzlemleri sunar; yoksa açılmaz
+    dz = KAYNAK[KAYNAK.index("function duzlemleBolPenceresi("):]
+    dz = dz[:dz.index("\n    }\n")]
+    assert "kesenDuzlemler(mk, ay.cubuklar)" in dz and "Seçili çubukları kesen aks düzlemi yok" in dz
+
+
+def test_aks_sil_kapisi():
+    # ui-s3-13: "Bağlı elemanları en yakın aksa taşı" sonrası motorun reddettiği yeni bozukluk kaldıysa aks silinmez (uygula kapısı)
+    akis = KAYNAK[KAYNAK.index("function aksSilAkisi("):]
+    akis = akis[:akis.index("\n    }\n")]
+    assert "aksSilEngelleri(m0, q.model)" in akis
+    assert akis.index("aksSilEngelleri(m0, q.model)") < akis.index("MB.binaAyarla(q.model")
+    assert "Elemanlarla birlikte sil" in akis
