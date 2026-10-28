@@ -164,7 +164,12 @@ def test_masaustu_sayfa_komutlari():
     islev = BINA[BINA.index("function masaustuKomut(d)"):BINA.index("function raporHazirOlunca(fn)")]
     for k in ("yazdir", "csv", "kisayollar"):
         assert f'case "{k}"' in islev, k
-    assert "tumunuCsv(" in BINA and 'ayirici: ";"' in BINA
+    # CSV üreticisi tablo_editoru.js'in gerçek API'sinden (MatrisTablo._ic.tumunuCsv; "ac" dışında doğrudan dışa açık değil)
+    csv = BINA[BINA.index("function tablolarCsvKaydet()"):BINA.index("function kisayolPenceresi()")]
+    assert "M._ic.tumunuCsv" in csv and 'ayirici: ";"' in csv and "ondalikVirgul: true" in csv
+    tablo = (PROJE / "docs" / "tablo_editoru.js").read_text(encoding="utf-8")
+    assert re.search(r"const _ic = \{[^}]*\btumunuCsv: tumunuCsv\b", tablo, re.S)
+    assert "return { ac: ac, _ic: _ic" in tablo
     assert "function kisayolPenceresi()" in BINA
 
 

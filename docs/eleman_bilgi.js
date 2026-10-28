@@ -91,7 +91,6 @@
     return c;
   }
   function bul(liste, no) { return (liste || []).find(function (x) { return x && String(x.no) === String(no); }) || null; }
-  /** Bina elemanının FE parçaları (ag.elemanlar; parça sırasıyla). */
   /** Bina elemanının FE parçaları (ag.elemanlar; parça sırasıyla). Genel model (surum 3) çözümünde her FE elemanı "cubuk" alanında
    *  çubuk numarasını taşır (türü kolon/kiriş/çapraz… olsa da); genelleştirilmiş ya da karma modelde aks–kat kolon/kiriş, kaynak
    *  {aks_kat, no} ile bulunur. */
@@ -507,6 +506,17 @@
     return l.find(function (e) { return e.kaynak && e.kaynak.aks_kat === tur && String(e.kaynak.no) === s; }) ||
       l.find(function (e) { return e.tur === tur && String(e.no) === s; }) || null;
   }
+  /** Genel çözümde (veri.model "genel") aks–kat kolon/kiriş — karma model: aks–kat elemanları genel motorda çözüldü — çözümdeki çubuk
+   *  numarası: tasarım kaydının ya da akış kolon kaydının kaynağı ({aks_kat, no}) üzerinden; bulunamazsa null. */
+  function genelCubukNo(c, tur, no) {
+    const v = c.veri;
+    if (!v || v.model !== "genel" || (tur !== "kolon" && tur !== "kiris")) return null;
+    const s = String(no), es = function (x) { return !!x && !!x.kaynak && x.kaynak.aks_kat === tur && String(x.kaynak.no) === s; };
+    const t = ((v.tasarim && v.tasarim.elemanlar) || []).find(function (e) { return es(e) && e.cubuk != null; });
+    if (t) return t.cubuk;
+    const k = tur === "kolon" ? ((v.akis && v.akis.kolonlar) || []).find(es) : null;
+    return k ? k.no : null;
+  }
   /** Kolonun tekil temeli. veri.akis.temeller'de B'siz kayıtlar (eski genel model çözümünde açık mesnetler) temel değildir: atlanır. */
   function temelKaydi(c, kolonNo) {
     const tl = (c.nb.temeller && c.nb.temeller.liste) || [];
@@ -518,9 +528,11 @@
   function cubukYukleri(c, tur, no, k, ham) {
     const out = [];
     const v = c.veri;
-    // genel model (surum 3): veri.yukler.cubuklar (G/Q/S: öz, panel, duvar, ek, toplam kN); panel payları veri.akis.sankey'den (P → Ç)
-    if (tur === "cubuk" && v && v.yukler && Array.isArray(v.yukler.cubuklar)) {
-      const y = v.yukler.cubuklar.find(function (x) { return String(x.no) === String(no); });
+    // genel model (surum 3): veri.yukler.cubuklar (G/Q/S: öz, panel, duvar, ek, toplam kN); panel payları veri.akis.sankey'den (P → Ç).
+    // Karma modelde (aks–kat kolon/kiriş, genel çözüm) kaydın çubuk numarasıyla okunur.
+    const cno = tur === "cubuk" ? no : genelCubukNo(c, tur, no);
+    if (cno != null && v && v.yukler && Array.isArray(v.yukler.cubuklar)) {
+      const y = v.yukler.cubuklar.find(function (x) { return String(x.no) === String(cno); });
       if (y) {
         const G = y.G || {}, Q = y.Q || {}, S = y.S || {};
         const sat = [["Öz ağırlık", G.oz, Q.oz, S.oz], ["Panelden", G.panel, Q.panel, S.panel], ["Duvar", G.duvar, Q.duvar, S.duvar], ["Ek yük", G.ek, Q.ek, S.ek],
@@ -534,7 +546,7 @@
       }
       const pay = new Map();
       ((v.akis && v.akis.sankey) || []).forEach(function (e) {
-        if (e.hedef !== "Ç" + no) return;
+        if (e.hedef !== "Ç" + cno) return;
         if (!pay.has(e.kaynak)) pay.set(e.kaynak, { G: 0, Q: 0, S: 0 });
         const r_ = pay.get(e.kaynak); if (r_[e.durum] != null) r_[e.durum] += +e.kN || 0;
       });
@@ -545,8 +557,15 @@
           notlar: qVar ? [] : ["Hareketli (Q) ve kar (S) yükleri panelden aynı kenar paylarıyla dağıtılır."] });
         ham.panelPay = Array.from(pay.values()).reduce(function (t, r_) { return t + r_.G; }, 0);
       }
+      // kolon türü çubuk: kattan ve birikimli eksenel kuvvet (veri.akis.kolonlar; no = çubuk no)
+      const ak = ((v.akis && v.akis.kolonlar) || []).find(function (x) { return String(x.no) === String(cno); });
+      if (ak) {
+        out.push({ baslik: "Kolon yükleri", satirlar: [satir("Bu kattan N (G / Q)", f(ak.N_G, 2) + " / " + f(ak.N_Q, 2), "kN"),
+          satir("Birikimli N (G / Q)", f(ak.N_kum_G, 2) + " / " + f(ak.N_kum_Q, 2), "kN")] });
+        ham.N_kum = { G: ak.N_kum_G, Q: ak.N_kum_Q };
+      }
     }
-    if (tur === "kiris" && v && v.yukler) {
+    if (tur === "kiris" && cno == null && v && v.yukler) {
       const y = (v.yukler.kirisler || []).find(function (x) { return String(x.no) === String(no); });
       if (y) {
         const G = y.G || {}, Q = y.Q || {}, S = y.S || {};
@@ -575,7 +594,7 @@
       });
       if (paylar.length) out.push({ baslik: "Döşemeden aktarılan paylar", tablo: { basliklar: ["Döşeme", "Kenar", "Şekil", "Tepe g (kN/m)", "Tepe q (kN/m)", "G (kN)", "Q (kN)"], satirlar: paylar } });
     }
-    if (tur === "kolon" && v) {
+    if (tur === "kolon" && cno == null && v) {
       const yk = v.yukler ? (v.yukler.kolonlar || []).find(function (x) { return String(x.no) === String(no); }) : null;
       const ak = v.akis ? (v.akis.kolonlar || []).find(function (x) { return String(x.no) === String(no); }) : null;
       const s = [];
@@ -731,6 +750,8 @@
   /** Yük akışı şemasındaki düğüm kimliği (veri.akis.sankey): D{no}, K{no}, S{no}/k{kat}, T-{aks}; genel model P{panel}, Ç{çubuk}. */
   function sankeyKimligi(c, tur, no, k) {
     if (tur === "cubuk") return "Ç" + no;
+    const cno = genelCubukNo(c, tur, no);          // karma model: genel çözümde aks–kat kolon/kiriş çubuk olarak akar
+    if (cno != null) return "Ç" + cno;
     if (tur === "panel") return "P" + no;
     if (tur === "kiris") return "K" + no;
     if (tur === "doseme") return "D" + no;

@@ -348,6 +348,32 @@ test("karma model: aks–kat kiriş, tasarım kaydına ve FE parçalarına kayna
   assert.match(metin(m, "tasarim"), /Talep\/kapasite D\/C\t0,520/);
 });
 
+test("karma model, genel çözüm: aks–kat kiriş ve kolonun yükleri ve yük yolu çözümdeki çubuk numarasıyla okunur", function () {
+  const d = mini();
+  const v = d.veri;
+  v.model = "genel";
+  const t = v.tasarim.elemanlar[0];
+  t.no = 12; t.cubuk = 12; t.kaynak = { aks_kat: "kiris", no: 1 };
+  v.yukler.kirisler = [];
+  v.yukler.cubuklar = [{ no: 12, L: 5, G: { oz: 15.6, panel: 30, duvar: 0, ek: 10, toplam_kN: 55.6 }, Q: { panel: 12, toplam_kN: 12 } }];
+  v.akis.sankey = [{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }];
+  // akış kolon kaydı: no = çubuk numarası (7), kaynak aks–kat kolon 2 (tasarım kaydı yok)
+  v.akis.kolonlar = [{ no: 7, kat: 1, adres: "B1/+3.00", N_G: 40, N_Q: 9, N_kum_G: 40, N_kum_Q: 9, kaynak: { aks_kat: "kolon", no: 2 } }];
+  const m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, v);
+  yakin(m.ham.yuk.G, 55.6, 1e-12);
+  yakin(m.ham.panelPay, 30, 1e-12);
+  assert.match(metin(m, "yukler"), /Panelden\t30,00\t12,00/);
+  assert.match(metin(m, "yol"), /Panel 1/);
+  const k = B.bilgi({ tur: "kolon", no: 2 }, d.bina, v);
+  yakin(k.ham.N_kum.G, 40, 1e-12);
+  assert.match(metin(k, "yukler"), /Birikimli N \(G \/ Q\)\t40,00 \/ 9,00/);
+  // aks–kat çözümünde (model genel değil) eski yol: yukler.kirisler
+  delete v.model;
+  const ak = metin(B.bilgi({ tur: "kiris", no: 1 }, d.bina, v), "yukler");
+  assert.match(ak, /Döşemeden aktarılan paylar/);
+  assert.ok(ak.indexOf("Çubuğa gelen") < 0);
+});
+
 test("tasarım özeti: dizi değerleri ' / ' ile birleşir, iç içe nesneler satıra yazılmaz", function () {
   const d = mini();
   d.veri.tasarim.elemanlar[0].ozet = { K: [0.65, 1], yalniz_cekme: true, Tc_kN: 412.5, ayrinti: { a: 1 } };

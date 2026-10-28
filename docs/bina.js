@@ -1156,9 +1156,9 @@
     const ap = aracPaylari();
     const kenar = function (arac, aks, taban) { return arac > 0 ? arac + Math.max(14, aks || 0) : Math.max(taban, aks || 0); };
     let pl = kenar(ap.sol, kp.sol, 40), pr = kenar(ap.sag, kp.sag, 40), pu = kenar(ap.ust, kp.ust, 44), pa = kenar(ap.alt, kp.alt, 40);
-    // paylar çizim alanının en çok %55'ini alır (dar ekranda model küçülür ama görünür kalır)
-    if (pl + pr > 0.55 * W) { const f = 0.55 * W / (pl + pr); pl *= f; pr *= f; }
-    if (pu + pa > 0.55 * H) { const f = 0.55 * H / (pu + pa); pu *= f; pa *= f; }
+    // paylar çizim alanının en çok %70'ini alır (dar ekranda model küçülür ama görünür ve kutuların dışında kalır)
+    if (pl + pr > 0.7 * W) { const f = 0.7 * W / (pl + pr); pl *= f; pr *= f; }
+    if (pu + pa > 0.7 * H) { const f = 0.7 * H / (pu + pa); pu *= f; pa *= f; }
     const pm = Math.min(pl, pr), T0 = C.donusum(pts, W - pl - pr + 2 * pm, H, { pl: pm, pu: pu, pa: pa }), ox = pl - pm;
     const T = ox ? { s: T0.s, W: W, H: H, x: function (v) { return T0.x(v) + ox; }, y: T0.y } : T0;
     const P = function (X, Y, Z) { const q = C.izdusum(X, Y, Z, b); return [T.x(q[0]), T.y(q[1])]; };
@@ -5644,6 +5644,8 @@
             },
           },
         });
+        // yayılı temelden (mütemadi / radye) açılınca zemin katmanı taban basıncıyla başlar (sağ tık "Isı haritasında incele")
+        if (s && s.tur === "temel" && s.alt && alan.radye && ISI && typeof ISI.ayarla === "function") { try { ISI.ayarla({ radye: "p" }); } catch (e) { /* yoksay */ } }
         olayYay("isi", { durum: durum, eleman: (alan.elemanlar || []).length });
       });
     }).catch(function (e) { if (KAPLAMA === k) hataNotu(k.govde, (e && e.message) || String(e), "Isı haritası açılamadı"); });
@@ -5927,7 +5929,7 @@
     const tur = hedef.tur, no = hedef.no, cubukMu = tur === "kolon" || tur === "kiris" || tur === "cubuk", yayili = tur === "temel" && !!hedef.alt;
     let k = {
       ozellikler: function () { if (!yayili) D.secim = [{ tur: tur, no: no }]; D.panelSekme = tur === "temel" ? "bina" : "nesne"; yenile(); panelAc(); },
-      "isi-haritasi": { calistir: function () { isiAc({ tur: tur, no: no }); }, etkin: !!modul("MatrisIsi") && tur !== "dugum" && (tur !== "temel" || !!hedef.alt),
+      "isi-haritasi": { calistir: function () { isiAc(yayili ? { tur: tur, no: no, alt: hedef.alt } : { tur: tur, no: no }); }, etkin: !!modul("MatrisIsi") && tur !== "dugum" && (tur !== "temel" || !!hedef.alt),
         neden: !modul("MatrisIsi") ? "Isı haritası modülü yüklenmedi" : tur === "temel" ? "Tekil temelin taban basıncı Temel sekmesinde" : null },
       "yuk-akisi": { calistir: function () {
         if (!SON || sonEski) { A.toast("Yük akışı için önce modeli çözün."); return; }
@@ -6112,12 +6114,13 @@
   }
   // Bütün tabloları (bina_tablolar; Tablolar penceresiyle aynı istek) tek CSV dosyasına kaydeder
   function tablolarCsvKaydet() {
-    const M = modul("MatrisTablo");
-    if (!M || !M.tumunuCsv) { A.toast("Tablo modülü yüklenmedi."); return Promise.resolve(null); }
+    // tablo_editoru.js CSV üreticisini iç yardımcılarında (MatrisTablo._ic) verir; doğrudan dışa açılırsa o kullanılır
+    const M = modul("MatrisTablo"), csv = M && (typeof M.tumunuCsv === "function" ? M.tumunuCsv : M._ic && typeof M._ic.tumunuCsv === "function" ? M._ic.tumunuCsv : null);
+    if (!csv) { A.toast("Tablo modülü yüklenmedi."); return Promise.resolve(null); }
     A.toast("Tablolar hazırlanıyor…");
     return tabloIste().then(function (y) {
       if (!y) return null;
-      const metin = M.tumunuCsv(y.tablolar, { ayirici: ";", ondalikVirgul: true });
+      const metin = csv(y.tablolar, { ayirici: ";", ondalikVirgul: true });
       return dosyaKaydet(dosyaAdiTemiz(B.baslik) + "_tablolar.csv", metin, "csv").then(function (r) { if (r) A.toast(y.tablolar.length + " tablo CSV olarak kaydedildi."); return r; });
     }).catch(function (e) { A.toast("Tablolar alınamadı: " + ((e && e.message) || e)); return null; });
   }

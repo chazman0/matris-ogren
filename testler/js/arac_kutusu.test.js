@@ -341,6 +341,15 @@ test("kenar payları: kenara yaslı kutular (ve bitişik ikinci sıra) payı bel
   assert.deepEqual(A.kenarPaylari(), { sol: 0, ust: 0, sag: 0, alt: 0 });   // yönetici kurulmadan
 });
 
+test("kenar payları: boydan boya dikey sütun yan kenarın payıdır (yüksekliği alt/üst pay sayılmaz)", function () {
+  const W = 900, H = 340;
+  // sol kenarda yönetici düğmesi; Çizim kutusu onun yanına itilmiş (x = 48), bütün yüksekliği kaplar
+  const l = [{ x: 8, y: 300, w: 32, h: 32 }, { x: 48, y: 8, w: 70, h: 326 }, { x: 124, y: 290, w: 500, h: 42 }];
+  assert.deepEqual(D.kenarPaylari(l, W, H), { sol: 118, ust: 0, sag: 0, alt: 50 });
+  // boydan boya yatay şerit: üst kenara yakınsa üst pay
+  assert.deepEqual(D.kenarPaylari([{ x: 8, y: 60, w: 884, h: 40 }], W, H), { sol: 0, ust: 100, sag: 0, alt: 0 });
+});
+
 test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katlanmış başlığıyla yerleşir", function () {
   const W = 800, H = 400;
   const uc = ["a", "b", "c"].map(function (id) { return { id: id, w: 700, h: 42, kenar: "ust", kw: 120, kh: 30 }; });

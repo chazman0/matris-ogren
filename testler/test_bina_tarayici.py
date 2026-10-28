@@ -204,3 +204,21 @@ def test_s3var_c1_dogruluk_tablosu(sayfa):
     assert dict(sonuc) == {ad: b for ad, _e, b in C1_TABLOSU}
     assert pg.evaluate("MatrisBina.s3Var()") is False      # yüklü taban model
     _hatasiz(hatalar, "C1")
+
+
+def test_masaustu_csv_disa_aktarim(sayfa):
+    """Masaüstü "Dışa aktar › CSV" (masaustu-komut csv): bütün tablolar tek CSV dosyasına (";" ayraç, ondalık virgül) kaydedilir."""
+    pg, hatalar = sayfa
+    _sablon(pg, "betonarme-2kat-3x2")
+    with pg.expect_download(timeout=120_000) as indirme:
+        islendi = pg.evaluate("""(() => {
+          const e = new CustomEvent("masaustu-komut", { detail: { komut: "csv" }, cancelable: true });
+          window.dispatchEvent(e);
+          return e.defaultPrevented;
+        })()""")
+    assert islendi is True
+    d = indirme.value
+    assert d.suggested_filename.endswith("_tablolar.csv"), d.suggested_filename
+    metin = Path(d.path()).read_text(encoding="utf-8-sig")
+    assert metin.count("Tablo: ") > 5 and ";" in metin, metin[:300]
+    _hatasiz(hatalar, "csv")

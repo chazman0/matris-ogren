@@ -622,6 +622,10 @@
       if (k.y <= e) d.push("ust");
       if (W - (k.x + k.w) <= e) d.push("sag");
       if (H - (k.y + k.h) <= e) d.push("alt");
+      // boydan boya dikey sütun (üst ve alt kenara değer, yan kenara değmez; ör. sol kenarda yönetici düğmesinin yanına itilmiş Çizim
+      // kutusu) yakın olduğu yan kenarın payıdır; boydan boya yatay şerit için tersi (yoksa bütün yüksekliği / genişliği pay sayılırdı)
+      if (d.indexOf("ust") >= 0 && d.indexOf("alt") >= 0 && d.indexOf("sol") < 0 && d.indexOf("sag") < 0) d.push(q.p.sol <= q.p.sag ? "sol" : "sag");
+      if (d.indexOf("sol") >= 0 && d.indexOf("sag") >= 0 && d.indexOf("ust") < 0 && d.indexOf("alt") < 0) d.push(q.p.ust <= q.p.alt ? "ust" : "alt");
       if (d.length) ata(q, d);
     });
     // kenara yaslı kutuya bitişik (ikinci sıra / sütun) kutular aynı kenara
