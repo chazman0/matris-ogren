@@ -28,7 +28,7 @@ sözleşmesi için: [`masaustu/README.md`](masaustu/README.md).
 
 ## İşlemler
 
-Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm; Sonlu eleman sayfasında 2B ve 3B yapıların tam çözümü. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
+Toplama, çıkarma, skaler çarpım, matris çarpımı, transpoz, iz, determinant (kofaktör / eliminasyon), ters (formül / Gauss-Jordan), rank, denklem çözümü (Gauss / Cramer / ters matris), özdeğer-özvektör, çubuk / kiriş / kafes eleman rijitlik matrisleri, birleştirme (assembly), sınır koşulu uygulama ve çözüm; Sonlu eleman sayfasında 2B ve 3B yapıların tam çözümü; Bina sayfasında 3B bina modelinin yük akışı, deprem, birleşimler ve kesit tahkikleri. Elemanlar kesir, ondalık ya da sembol (`E*A/L`, `k`, `P`) olabilir; hesap kesin (sembolik) yapılır.
 
 ## Dersler
 
@@ -42,20 +42,59 @@ Uygulamadaki **Sonlu eleman** sayfasında hazır bir model seçilir ya da düğ�
 
 **Kolon–kiriş–temel sistemleri:** elastik mesnetler (temel altındaki zemini temsil eden kx, ky, kr yayları), Winkler zeminine oturan sürekli temel kirişi (eleman başına yatak katsayısı `zemin`, zemin basıncı diyagramı) ve mesnet çökmesi (verilen yer değiştirme, K_ff·u_f = F_f − K_fs·u_s) modellenir. Hazır örnekler arasında iki katlı çerçeve, zemin yaylarına oturan portal, sürekli temel kirişli çerçeve, farklı oturan temel, elastik zemindeki temel kirişi, tripod ve kule uzay kafesleri, L konsol, kiriş ızgarası ve kutu uzay çerçeve vardır.
 
+## Bina sayfası (yapı analizi)
+
+Aks tabanlı 3B bina modeli: çiz, yükle, çöz, tahkik et, raporla. Öğretim ve ön boyutlandırma içindir.
+
+- **9 hazır şablon:** 7 aks–kat binası (tek açıklıklı çerçeve; 2, 3 ve 4 katlı betonarme; tek katlı çelik depo; mütemadi temelli
+  ve radye temelli betonarme) ve 2 genel (surum 3) düğüm–çubuk–panel modeli (çelik sanayi yapısı: 4 hol, vuteli mertek, aşık,
+  çaprazlar, kren yolu; 3 katlı merkezi çaprazlı çelik çerçeve).
+- **Aks sistemi ve aks tabanlı çizim:** Hızlı aks sihirbazı, açılı / silindirik ek aks sistemleri, plan ve cephe düzlemi seçici
+  (PgUp / PgDn). Her düğüm bir aks kesişimi ya da çubuğun bölme / kesişim noktasıdır; aks taşınınca bağlı elemanlar da taşınır.
+  Kolon, kiriş, çapraz, panel, eğik çubuk; makas, beşik çerçeve, aşık ve kren yolu üreteçleri; mesnet ve yük atama.
+- **Yükler ve çözüm:** TS 498:2021 yükleri, döşemeden zemine yük akışı, kar, rüzgâr, TBDY 2018 eşdeğer deprem yükü, kren;
+  TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf; yalnız çekme çaprazları yinelemeli çözülür.
+- **Tasarım ve kesit önerisi:** TS 500 betonarme ve ÇYTHYE 2018 çelik kontrolleri, eleman başına D/C; seçili eleman ya da bütün
+  model için kesit önerisi ve "Hepsini uygula" ile yeniden çözüm.
+- **Temeller:** tekil temel; mütemadi (ters T temel kirişleri) ve radye (ızgara plak) Winkler zemininde, taban basıncı ve oturma.
+  Mütemadi ve radye yalnız aks–kat modelinde çözülür; genel modele geçerken temel (onayla) tekil yapılır.
+- **Çıktılar:** statik hesap raporu (önizleme, yazdır / PDF, HTML), tablolar ve metraj (hücre düzenleme, yapıştırma, CSV), ısı
+  haritası (yer değiştirme, iç kuvvet, gerilme, kullanım oranı; döşeme paneli ve radye alanları), IFC4 yapı modeli, `.matris`
+  proje dosyası.
+- **Arayüz:** sürüklenip yeniden gruplanan yüzen araç kutuları, sağ tık (dokunmatikte uzun basma) ile eleman bilgisi ve komutları,
+  ölçme araçları (uzaklık, açı, alan, kot farkı, koordinat), tek geri al yığını; `?` bütün klavye kısayollarını gösterir.
+
+Ayrıntılar: [`KULLANIM.md`](KULLANIM.md) §3.9 (Python: `yapi`, genel model, rapor, tablolar, ısı haritası alanları) ve §3.10–3.12
+(Bina sayfası, aks tabanlı çizim, kısayollar); modüllerin dayandığı tasarım kararları ve veri şemaları: [`TASARIM.md`](TASARIM.md).
+
 ## Dosyalar
 
 | Dosya | İçerik |
 |---|---|
-| `matris_ogren.py` | Hesap motoru (sympy). Colab'da ve uygulamanın içinde aynı dosya çalışır. |
-| `sonlu_eleman.py` | Model sözlüğünden sonlu eleman çözümü (`se_coz`) ve hazır örnek modeller. |
+| `matris_ogren.py` | Matris hesap motoru (sympy): adım adım anlatım ve Python kodu. Colab defteri ve uygulama bu modülü kullanır. |
+| `sonlu_eleman.py` | Model sözlüğünden sonlu eleman çözümü (`se_coz`, `coz_coklu`) ve hazır örnek modeller. |
+| `yapi.py` | Aks–kat bina modeli (surum 1): TS 498 yükleri, yük akışı, kar, rüzgâr, TBDY 2018 deprem, birleşimler, zarf; `bina_coz` genel modeli `yapi_serbest`'e yönlendirir. |
+| `yapi_serbest.py` | Genel düğüm–çubuk–panel modeli (surum 3): aks sistemleri, REF düğümleri, panel yük dağıtımı, kren, yalnız çekme, kesit önerisi (`kesit_oner`). |
+| `yapi_veri.py` | Kütüphane: malzemeler, profiller, TS 498 yükleri, duvar ve kaplama takımları, kombinasyon kümeleri, TBDY tabloları (kaynaklı). |
+| `tasarim.py` | TS 500 betonarme ve ÇYTHYE 2018 çelik kesit tahkikleri, N–M etkileşimi, kesit önerisi. |
+| `temel.py` | Mütemadi ve radye temel: temel kirişi / ızgara plak, Winkler zemini, taban basıncı, zımbalama, donatı. |
+| `rapor.py` | Statik hesap raporu (tek dosya HTML, A4 yazdırma). |
+| `tablolar.py` | Bina tabloları (düzenlenebilir hücreler, JSON yolları) ve metraj. |
+| `alan.py` | Isı haritası alanları: çubuk boyunca iç kuvvet, gerilme, kullanım, eğri yer değiştirme; döşeme plağı ve radye. |
+| `docs/web_kopru.py` | Tarayıcı ↔ Python köprüsü (`calistir`): bütün işlemlerin girdi / yanıt şemaları. Kopya değil kaynaktır, yalnız `docs/`'ta durur. |
 | `dersler/` | Markdown dersler; yazım kuralları `dersler/BICIM.md`'de. |
 | `ders_derle.py` | Dersleri denetler (`--denetle`) ve `docs/dersler.json`'a derler. |
 | `PLAN_SONLU_ELEMANLAR.md` | Matristen sonlu eleman uygulamasına geçiş planı. |
-| `Matris_Ogren.ipynb` | Google Colab defteri: konu anlatımı + çalıştırılabilir örnekler. |
-| `KULLANIM.md` | Motorun fonksiyon fonksiyon kullanım kılavuzu. |
-| `docs/` | Yüklenebilir web uygulaması (PWA); motor tarayıcıda Pyodide ile çalışır. |
+| `Matris_Ogren.ipynb` | Google Colab defteri: matris modülünün (`matris_ogren.py`) konu anlatımı ve çalıştırılabilir örnekleri. Sonlu eleman ve bina modülleri defterde yoktur; onlar uygulamadadır. |
+| `KULLANIM.md` | Motorun fonksiyon fonksiyon kullanım kılavuzu (matris, sonlu eleman, bina, rapor, tablolar, ısı haritası, köprü işlemleri, Bina sayfası). |
+| `TASARIM.md` | Tasarım belgesi haritası: kod yorumlarındaki §1–§19 bölümleri, veri şemaları ve sürüm şeması. |
+| `docs/` | Yüklenebilir web uygulaması (PWA); motor tarayıcıda Pyodide ile çalışır. `docs/*.py` (köprü hariç) kökteki modüllerin kopyasıdır. |
 | `masaustu/` | Masaüstü sürümü: `docs/`'u çevrimdışı çalışan bir bilgisayar programı olarak paketler (bkz. `masaustu/README.md`). |
-| `testler/` | pytest testleri. |
-| `defter_yap.py`, `web_yap.py` | Defteri ve `docs/` klasörünü üreten betikler. |
+| `testler/` | pytest testleri; `testler/js/` node testleri. |
+| `web_yap.py` | `docs/` klasörünü üretir: modülleri kopyalar, dersleri derler, sürüm damgası basar. |
+| `defter_yap.py` | Colab defterini üretir (matris modülünü gömer). |
+| `.github/workflows/` | `testler.yml` (her itmede testler), `masaustu.yml` (masaüstü paketleri). |
 
-Geliştirme: `python web_yap.py` docs klasörünü günceller (motoru kopyalar, dersleri çıkarır, sürüm damgası basar); testler `pytest testler`.
+Geliştirme: kökteki bir modül ya da ders değişince `python3 web_yap.py` docs klasörünü günceller (modülleri kopyalar, dersleri
+derler, sürüm damgası basar); `matris_ogren.py` değişince `defter_yap.py` defteri yeniden üretir (nbformat gerekir). Testler:
+`python3 -m pytest testler -q` ve `node --test testler/js/*.test.js`; dersler için ayrıca `python3 ders_derle.py --denetle`.

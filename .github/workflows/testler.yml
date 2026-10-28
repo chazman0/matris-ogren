@@ -1,0 +1,57 @@
+# Matris Öğren testleri: her itmede ve çekme isteğinde Python (pytest) ve JavaScript (node --test) birim testleri.
+# Ayrıca docs/ altındaki motor kopyalarının ve derlenmiş derslerin kaynaklarla aynı olduğu (web_yap.py) ve derslerin
+# dersler/BICIM.md kurallarına uyduğu (ders_derle.py --denetle) denetlenir. sw.js ve surum.json sürüm damgasını taşır
+# (surum.json'da tarih de var); karşılaştırmaya girmez.
+# Eylemler değişmez işleme özetleriyle sabitlenmiştir (yorumdaki sürüm bilgi içindir).
+name: Testler
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testler-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testler:
+    name: Python ve JavaScript testleri
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Testlerin kullandığı paketler (sürümler testlerin geçtiği ortamdakiyle aynı). İsteğe bağlı olanlar (playwright,
+      # ifcopenshell, nbformat) kurulmaz: bunlara dayanan testler kendiliğinden atlanır.
+      - name: Python paketleri
+        run: python3 -m pip install --disable-pip-version-check "numpy==2.5.3" "sympy==1.14.0" "pytest==9.2.0" "PyYAML==6.0.3"
+
+      - name: docs kopyaları kaynaklarla aynı (web_yap.py)
+        run: |
+          python3 web_yap.py
+          git diff --exit-code -- docs/ ':!docs/sw.js' ':!docs/surum.json'
+
+      - name: Ders biçimi (ders_derle.py --denetle)
+        run: python3 ders_derle.py --denetle
+
+      - name: Python testleri (pytest)
+        run: python3 -m pytest testler -q -p no:cacheprovider
+
+      - name: JavaScript testleri (node --test)
+        run: node --test testler/js/*.test.js

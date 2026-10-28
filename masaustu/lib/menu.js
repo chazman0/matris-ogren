@@ -49,9 +49,9 @@ function menuSablonu(ctx) {
       komut("Kaydet", "kaydet", "CmdOrCtrl+S"),
       komut("Farklı kaydet…", "farkli-kaydet", "CmdOrCtrl+Shift+S"),
       ayrac,
+      // Tablo içe aktarma dosyadan değil yapıştırmayla yapılır: Analiz › Tablolar (düzenle, yapıştır)… (CSV dosyası okuyucusu yok).
       { label: "İçe aktar", submenu: [
         komut("Bina verisi (.json)…", "json-iceri"),
-        komut("Tablo (.csv)…", "csv-iceri"),
       ] },
       { label: "Dışa aktar", submenu: [
         komut("IFC yapı modeli (.ifc)…", "ifc", "CmdOrCtrl+E"),
@@ -220,7 +220,7 @@ function menuSablonu(ctx) {
       komut("Deprem parametreleri…", "deprem"),
       komut("Kar ve rüzgâr…", "kar-ruzgar"),
       ayrac,
-      komut("Tablolar", "tablolar", "CmdOrCtrl+T"),
+      komut("Tablolar (düzenle, yapıştır)…", "tablolar", "CmdOrCtrl+T"),
       komut("Isı haritası", "isi-haritasi", "CmdOrCtrl+Shift+H"),
       komut("Yük akışı", "yuk-akisi"),
       komut("Şekil değiştirmiş biçim", "sekil-degistirme"),
@@ -323,7 +323,8 @@ function kisayolGoster(h, mac) {
   return String(h).split("+").map(function (p) { return ad[p] || p; }).join(mac ? "" : "+");
 }
 
-// Klavye kısayolları listesi (Yardım > Klavye kısayolları penceresi)
+// Klavye kısayolları listesi (Yardım > Klavye kısayolları penceresi): menü kısayolları. Bina sayfasının araç kısayolları sayfadaki
+// komut kaydından üretilir (ana süreç onu okuyamaz); son satır oraya yönlendirir.
 function kisayolMetni(platform) {
   const mac = platform === "darwin";
   const gorulen = new Set();
@@ -340,6 +341,8 @@ function kisayolMetni(platform) {
   ekle("CmdOrCtrl+=", "Yakınlaştır (Görünüm)");
   ekle("CmdOrCtrl+-", "Uzaklaştır (Görünüm)");
   ekle("CmdOrCtrl+0", "Gerçek boyut (Görünüm)");
+  satirlar.push("", "Bina sayfasındaki araç kısayolları (S seç, L çubuk çiz, K kolon, Ctrl+Enter çöz…): Yardım › Kullanım kılavuzu " +
+    "sayfasındaki Klavye kısayolları kartı ya da Bina sayfasında ? tuşu.");
   return satirlar.join("\n");
 }
 

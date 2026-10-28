@@ -4,12 +4,17 @@ Sonlu elemanlar dersi için **adım adım matris hesaplayıcı**. Bir matris yaz
 **kuralını** ve **elle nasıl yapıldığını** (her ara hesapla birlikte) gösterir, sonra aynı işi yapan
 **🐍 Python kodunu ve gerçek çıktısını** verir. Böylece hem matematiği hem Python'u aynı ekranda öğrenirsin.
 
-Uygulama iki parçadan oluşur:
+Uygulama üç parçadan oluşur:
 
 | Parça | Dosya | Ne işe yarar |
 |---|---|---|
-| Colab defteri | `Matris_Ogren.ipynb` | Tarayıcıda açılır, kurulum gerektirmez; bölüm bölüm form alanlarıyla çalışılır |
-| Python modülü | `matris_ogren.py` | Hesapları yapan ve anlatan asıl kod; defter bunu `mo` kısaltmasıyla kullanır |
+| Colab defteri | `Matris_Ogren.ipynb` | Tarayıcıda açılır, kurulum gerektirmez; matris işlemleri bölüm bölüm form alanlarıyla çalışılır |
+| Python modülleri | `matris_ogren.py` (matris), `sonlu_eleman.py`, `yapi.py`, `yapi_serbest.py`, `yapi_veri.py`, `tasarim.py`, `temel.py`, `rapor.py`, `tablolar.py`, `alan.py` | Hesapları yapan ve anlatan asıl kod; defter matris modülünü `mo` kısaltmasıyla kullanır |
+| Web / masaüstü uygulaması | `docs/` ([chazman0.github.io/matris-ogren](https://chazman0.github.io/matris-ogren/)), `masaustu/` | Hesapla, Dersler, Sonlu eleman, Bina ve Yardım sayfaları; aynı Python modülleri tarayıcıda (Pyodide) ya da masaüstü programının içinde, çevrimdışı çalışır |
+
+Bu kılavuzun 1–3.7 bölümleri Colab defterini ve matris modülünü, 3.8 sonlu eleman modülünü, 3.9 bina modüllerini (aks–kat ve genel
+model, rapor, tablolar, ısı haritası alanları, köprü işlemleri), 3.10–3.12 uygulamanın Bina sayfasını ve kısayollarını anlatır.
+Kod yorumlarının başvurduğu tasarım bölümleri (§1–§19) ve veri şemaları: [`TASARIM.md`](TASARIM.md).
 
 ---
 
@@ -303,7 +308,8 @@ Hazır örnekler: `kiris-elastik-zemin`, `cerceve-iki-katli`, `cerceve-elastik-m
 Web uygulamasında aynı çözücü **Sonlu eleman** sayfasında çalışır (3B modeller için bakış açısı kaydırıcıları, yay /
 çökme tabloları ve altı diyagram düğmesi vardır); 11–20 numaralı dersler (yay, çubuk, kafes, birleştirme, sınır koşulu,
 kiriş, çerçeve, titreşim, uzay yapılar, temel sistemleri) bu zinciri etkileşimli çizimler ve çözümlü örneklerle anlatır;
-21. ders (yük akışı: döşemeden zemine) aynı zinciri bina ölçeğinde `yapi.py` ile sürdürür (toplam 19 ders).
+21–26. dersler (yük akışı, yük durumları ve kombinasyonlar, TBDY eşdeğer deprem, TS 500, ÇYTHYE, bina analizinin program akışı)
+aynı zinciri bina ölçeğinde `yapi.py` ile sürdürür (toplam 24 ders).
 
 ### 3.9 Bina analizi ve yük akışı (yapi.py)
 
@@ -317,8 +323,9 @@ her kayıtta `kaynak` ve `dogrulandi` taşır.
 
 ```python
 import yapi
-b = yapi.bina_sablon("betonarme-2kat-3x2")          # 7 şablon: yapi.bina_sablonlar()
+b = yapi.bina_sablon("betonarme-2kat-3x2")          # 9 şablon (2'si genel surum 3 modeli): yapi.bina_sablonlar()
 r = yapi.bina_coz(b)                                # 13 adımlı anlatım (12: kesit tahkikleri) + bağımsız numpy betiği
+                                                    # (genel modelin kendi ardışık adımları vardır, betik adımı yoktur; 3.9.1)
 v = r.veri
 v["yukler"]["dosemeler"][0]["paylar"]               # her kenar kirişine giden üçgen/trapez pay (tepe, q_eM, q_eV, toplam kN)
 v["akis"]["kolonlar"]                               # kat kat N (FE) ve yük alanı (tributary) karşılaştırması, fark %
@@ -356,8 +363,8 @@ oturduğu kirişe yük verir; yüksekliği kirişin **altındaki** kat yüksekli
 verilir: çatıda parapet 1,0 m; şablonlar çatı kirişine kat boyu duvar koymaz). Betonarme kirişin öz ağırlığı varsayılan
 `analiz.kiris_oz = "net"`: A = b·(h − t_döşeme), döşeme içindeki kısım plak ağırlığında sayıldığı için (`"brut"`: b·h). Bina
 koordinatı X sağa, Y derinlik, Z yukarı; motor dönüşümü (`x_m = X, y_m = Z, z_m = −Y`) tek yerde yapılır ve sonuçlar
-bina koordinatında döner. Sınırlar: 12×12 aks, 12 kat, 1500 SD; hatalar öğreticidir (yüzen döşeme, kolonsuz kat, bilinmeyen
-kesit, model çok büyük…). `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü
+bina koordinatında döner. Sınırlar: aks–kat modelinde 12×12 aks, 12 kat, 1500 SD; genel (surum 3) modelde 2000 SD, aks sınırı yok.
+Hatalar öğreticidir (yüzen döşeme, kolonsuz kat, bilinmeyen kesit, model çok büyük…). `yapi.dogrulanmamis_kayitlar()` doğrulanmamış kütüphane kayıtlarını listeler; web köprüsü
 bunları yanıtın `ozet.uyarilar` alanına yazar.
 
 **Kar, rüzgâr, deprem ve kombinasyonlar (Dilim 2).** Yük durumları yapı analiz programlarındaki "load pattern" gibi ayrı ayrı kurulur ve bir
@@ -407,11 +414,8 @@ nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırla
 Yanıt boyutu için `durumlar` içinde yalnız G ve Q tam diyagramlıdır; S, W, E durumları uç kuvvetleri ve `enb` taşır
 (`diyagram: false`), `sonuclar` yalnız ilk dayanım kombinasyonunu içerir (büyük modelde o da tembel kalır, `ozet.sonuclar_tembel`).
 
-Köprü işlemleri: `bina_coz`, `bina_kutuphane` (`tasiyici_sistemler` dahil), `bina_sablonlar`, `bina_sablon`, `bina_yuk_yolu`,
-`bina_deprem` (girdi `{bina}` → `{deprem}`: çözümsüz önizleme), `bina_kombinasyon` (girdi `{cozum_kimligi, ad, katsayilar}`
-→ `{ad, sonuc}`: tam kayıt; köprü son 3 çözümü bellekte tutar, kimlik yoksa `bina` verilirse yeniden çözer) ve
-`bina_eleman_tasarim` (girdi `{cozum_kimligi, tur: "kiris"|"kolon", no, bina?}` → `{ad, bloklar, sonuc}`: tek elemanın anlatımlı
-kesit tahkiki; aynı önbellek).
+Köprü işlemleri (`bina_coz`, `bina_kombinasyon`, `bina_eleman_tasarim`, `bina_kesit_oner`, `bina_eleman_bilgi`, `bina_rapor`,
+`bina_tablolar`, `bina_alan` …): girdi / yanıt tablosu 3.9.5'te.
 
 **Kesit tahkikleri (Dilim 3).** `tasarim.py` yüklüyse `bina_coz` her bina kirişini ve kolonunu dayanım ve deprem
 kombinasyonlarının (servis ve öteleme birleşimleri hariç) her biriyle denetler ve sonucu `veri["tasarim"]`a, en büyük D/C'yi
@@ -445,25 +449,210 @@ k = yapi.eleman_tasarim(r.ic, "kolon", 1)                           # anlatıml�
 k.veri["egri_x"][:3], k.veri["noktalar"][0]                         # [{N, M}], {ad, kombinasyon, uc, N, Mx, My, dc}
 ```
 
+### 3.9.1 Genel (surum 3) model: `yapi_serbest.py`
+
+Aks–kat sözlüğü (kolonlar, kirişler, döşemeler) düzenli katlı binaları tanımlar. Çapraz, makas, eğik çatı, kren yolu ya da kat
+dışı düğüm gereken yapılar için **genel düğüm–çubuk–panel modeli** kullanılır (bina JSON `"surum": 3`; tasarım haritası
+[`TASARIM.md`](TASARIM.md) §12, §19). Motoru `yapi_serbest.py`'dir; `yapi.bina_coz` binayı kendisi yönlendirir (`yapi._serbest_mi`):
+
+- **Genel model** ⇔ `surum` ≥ 3, ya da `cubuklar`, `paneller`, `dugumler`, `mesnetler`, `uretecler` listelerinden biri dolu, ya da
+  bir ek yük düğüm başvurulu (`"dugum": {"aks": [..], "z": ..}`), çubuk ya da panel yüküdür. Aks–kat düğüm yükü
+  (`{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`) ve boş listeler binayı aks–kat bırakır.
+- Aks–kat elemanları varsa önce aynı kurallarla genel listeye çevrilir (`docs/model_ops.js` `genellestir` ile birebir); aynı bina iki
+  yoldan aynı tepkileri ve iç kuvvetleri verir.
+- Anlatımın kendi ardışık adımları vardır (aks sistemi ve elemanlar, panel yük dağıtımı, ağ ve mesnetler, yük durumları (rüzgâr
+  ve kren dahil), deprem, varsa yalnız çekme, kombinasyonlar, denge, kesit tahkikleri); bağımsız Python betiği adımı yoktur.
+
+**Düğüm başvurusu (REF):** her düğüm bir aks kesişimi ya da bir çubuğun bölme / kesişim noktasıdır; konumlar her çözümde akslardan
+hesaplanır, aks taşınınca bağlı düğümler de taşınır. Aynı konuma (1 mm) düşen başvurular tek düğümdür.
+
+```python
+{"aks": ["B", "3"], "z": "Saçak"}                       # GLOBAL akslar: X aksı, Y aksı, Z aksı adı
+{"sistem": "KANAT-B", "aks": ["C", "2"], "z": "±0.00"}   # ek aks sistemi (silindirikte aks = [r, teta])
+{"aks": ["B", "3"], "kat": 1}                            # eski aks–kat başvurusu (= kat 1'in Z aksı)
+{"dugum": 100004}                                        # dugumler kaydı:
+# {"no": 100004, "tur": "bolme", "cubuk_i": REF, "cubuk_j": REF, "oran": 0.25}      i–j doğrusunun 1/4'ü
+# {"no": 100005, "tur": "kesisim", "a": [REF, REF], "b": [REF, REF]}             iki doğrunun kesişimi
+# {"no": 100006, "X": 1.0, "Y": 2.0, "Z": 3.0}                                     yalnız geriye uyum (serbest koordinat)
+```
+
+**Şema** (aks–kat alanlarına ek; birimler kN, m):
+
+| Alan | Biçim |
+|---|---|
+| `akslar` | `x`, `y`: `[{ad, konum}]`; `z`: `[{ad, konum, kat?}]` — `kat` işareti olan Z aksı kat seviyesidir (0 = temel), ötekiler (Saçak, Mahya, Kren…) ara kotlardır. `z` yoksa `katlar`'dan türetilir. |
+| `aks_sistemleri` | `[{ad, tur: "kartezyen" \| "silindirik", orijin: [X, Y, Z], aci (°), x, y \| r, teta, z?}]`; `z` yoksa GLOBAL Z aksları kullanılır. |
+| `dugumler` | bölme, kesişim ya da aks kayıtları (yukarıda); numaralar 100001'den başlar. |
+| `cubuklar` | `{no, i: REF, j: REF, tur, kesit, aci?, serbest?: {"i": [...], "j": [...]}, yalniz_cekme?, K?: [güçlü, zayıf], Lb?, duvar?, duvar_h?, grup?}`; `tur`: kolon, kiris, capraz, makas-ust, makas-alt, makas-dikme, makas-diyagonal, asik, kren, bag, diger; serbestlik adları N, Vy, Vz, T, My, Mz. |
+| `kesitler` | aks–kat kartlarına ek basit çelik kesitler: `{"tip": "profil", "profil": "BORU 114.3x4" \| "KUTU 150x8" \| "L 100x10" \| "2L 70x7 s=10" \| "UPN 200"}`; vute `{"tip": "vute", ...}`. |
+| `paneller` | `{no, kose: [REF × 3+], tur: "doseme" \| "cati" \| "cephe", kalinlik?, g?, q? \| kullanim?, dagitim: "iki" \| "tek-13" \| "tek-24" \| "yok", kar?, ruzgar?: {"cp": "otomatik" \| [4 sayı]}}`; kalınlık 0 taşıyıcı olmayan kaplamadır. |
+| `mesnetler` | `{dugum: REF, ux, uy, uz, rx, ry, rz}` (bool). En alt Z aksındaki (kat 0) bütün aks kesişimleri `temeller.mesnet` ile kendiliğinden mesnetlenir; bölme / kesişim düğümlerine mesnet bu listeyle verilir. |
+| `ek_yukler` | çubuk `{tur: "cubuk", cubuk, durum, q \| q1, q2, x1?, x2?, yon?}` ya da tekil `{..., P, x}`; düğüm `{tur: "dugum", dugum: REF, durum, FX, FY, FZ, MX, MY, MZ}`; panel `{tur: "panel", panel, durum: "G" \| "Q" \| "S", p}` (kN/m², aşağı +; eski `{g, q}` biçimi de okunur). |
+| `kren` | `[{no, yol: [çubuk no…], tekerlek: {P_maks, P_min, H_yanal, H_fren, aralik, adet}, dinamik, konum_sayisi}]` → K durumu; her köprü konumu bir alt durumdur ve hareketli yük içeren birleşimlere eklenir. |
+| `uretecler` | `[{no, tur: "makas" \| "besik-cerceve" \| "asik" \| "kren-yolu" \| "capraz" \| "cephe-kirisi", ...}]`: üreteçlerin kaydı (düzenlemek için); ürettikleri çubuklar `kaynak: {"uretec": no}` taşır, çözüm `cubuklar` / `paneller`'den yapılır. |
+| `temeller` | `tip: "tekil"` (B × L, `ozel` ek sistemde `{sistem, aks}`); **mütemadi ve radye genel modelde çözülmez** (öğretici hata; arayüz genel modele geçerken onayla tekil yapar). |
+
+Küçük bir örnek (tek gözlü çelik çerçeve, çatı döşemesi, yalnız çekme çapraz, panel ve düğüm yükü):
+
+```python
+import yapi, yapi_serbest
+A = lambda x, y, z: {"aks": [x, y], "z": z}
+b = {"surum": 3, "tur": "bina", "baslik": "Çelik portal", "sistem": "celik",
+     "akslar": {"x": [{"ad": "A", "konum": 0}, {"ad": "B", "konum": 6}], "y": [{"ad": "1", "konum": 0}, {"ad": "2", "konum": 5}],
+                "z": [{"ad": "±0.00", "konum": 0, "kat": 0}, {"ad": "Saçak", "konum": 4, "kat": 1}]},
+     "malzemeler": {"S275": {"kutuphane": "S275"}},
+     "kesitler": {"HEA200": {"tip": "profil", "profil": "HEA 200", "malzeme": "S275"},
+                  "IPE240": {"tip": "profil", "profil": "IPE 240", "malzeme": "S275"},
+                  "BORU89": {"tip": "profil", "profil": "BORU 88.9x4", "malzeme": "S275"}},
+     "cubuklar": [{"no": n, "i": A(x, y, "±0.00"), "j": A(x, y, "Saçak"), "tur": "kolon", "kesit": "HEA200"}
+                  for n, (x, y) in enumerate([("A", "1"), ("B", "1"), ("A", "2"), ("B", "2")], start=1)]
+               + [{"no": 4 + n, "i": A(*p, "Saçak"), "j": A(*q, "Saçak"), "tur": "kiris", "kesit": "IPE240"}
+                  for n, (p, q) in enumerate([(("A", "1"), ("B", "1")), (("A", "2"), ("B", "2")),
+                                               (("A", "1"), ("A", "2")), (("B", "1"), ("B", "2"))], start=1)]
+               + [{"no": 9, "i": A("A", "1", "±0.00"), "j": A("A", "2", "Saçak"), "tur": "capraz", "kesit": "BORU89",
+                   "serbest": {"i": ["My", "Mz"], "j": ["My", "Mz"]}, "yalniz_cekme": True}],
+     "paneller": [{"no": 1, "kose": [A("A", "1", "Saçak"), A("B", "1", "Saçak"), A("B", "2", "Saçak"), A("A", "2", "Saçak")],
+                   "tur": "doseme", "kalinlik": 0.12, "kullanim": "konut"}],
+     "ek_yukler": [{"tur": "panel", "panel": 1, "durum": "G", "p": 1.5},
+                   {"tur": "dugum", "dugum": A("B", "2", "Saçak"), "durum": "Q", "FX": 10}]}
+r = yapi.bina_coz(b)                                # yapi._serbest_mi(b) → True: yapi_serbest.bina_coz
+v = r.veri                                          # v["surum"] == 3, v["model"] == "genel"
+v["akis"]["temeller"][0]                            # temel mesnetleri: {dugum, adres, tip, N_G, N_Q, MX, MY, B, L, h, N_temel…}
+v["akis"]["mesnetler"]                              # açık "mesnetler" kayıtlarının tepkileri (burada boş)
+v["yalniz_cekme"]                                   # birleşim başına devre dışı çubuk ve yineleme sayısı
+v["tasarim"]["elemanlar"][0]["cubuk"], v["tasarim"]["en_buyuk_dc"]
+yapi.eleman_tasarim(r.ic, "cubuk", 5)               # tek çubuğun anlatımlı tahkiki (genel modelde tur "cubuk")
+```
+
+Hazır genel şablonlar: `celik-sanayi-4hol` (4 hol, 7 çerçeve, vuteli mertek, aşık, çatı ve cephe çaprazları, rüzgâr kolonları,
+kren yolu) ve `celik-cbf-3kat` (3 katlı merkezi çaprazlı çerçeve: ters V ve X çaprazlar, mafsallı kirişler, TBDY Bölüm 9 koşulları).
+
+**Kesit önerisi** (`yapi_serbest.kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0)`; köprü `bina_kesit_oner`): her hedef
+çubuk için aynı aileden D/C ≤ 1 en hafif çelik profil ya da betonarme b × h. `ic` genel model paketi doğrudan kullanılır; aks–kat
+paketi verilirse bina genel motorla bir kez yeniden çözülür (mütemadi / radye temel tekil temel mesnetleriyle, uyarıyla) ve D/C önce
+görünen aks–kat tasarım tablosundan alınır. `yinele` > 0 (en çok 3): öneriler binaya uygulanıp yeniden çözülür (aynı kesit ve
+türdeki çubuklara grubun en ağır önerisi) ve önerilen bina JSON'u döner.
+
+```python
+o = yapi_serbest.kesit_oner(b, ic=r.ic, hedef=[{"tur": "cubuk", "no": 5}])
+x = o["oneriler"][0]                                # {cubuk, tur, kesit, oneri, sistem, malzeme, b, h, kaynak, gerekce,
+x["oneri"], x["dc_once"], x["dc_oneri"], x["degisim"]   #  dc_once, dc_oneri, dc_sonra, degisim, uygula}
+x["uygula"]                                         # {"ad": "IPE270", "tanim": {"tip": "profil", "profil": "IPE 270", ...}, "yeni": True}
+o2 = yapi_serbest.kesit_oner(b, ic=r.ic, hedef="hepsi", yinele=1)    # o2["bina"]: önerileri uygulanmış bina, o2["uyarilar"]
+```
+
+Sınır: genel modelde en çok 2000 serbestlik (`yapi_serbest.EN_FAZLA_SD`), aks sınırı yok.
+
+### 3.9.2 Statik hesap raporu: `rapor.py`
+
+`rapor.statik_rapor(bina, veri, *, secenek=None)` tek dosya HTML5 rapor döndürür (gömülü CSS, A4 yazdırma, içindekiler, satır içi
+SVG; dış kaynak yok). Bölümler sabit sıradadır: 1 kapak / künye, 2 yönetmelikler, 3 genel bilgiler, 4 malzemeler, 5 kesitler,
+6 yükler, 7 deprem, 8 analiz yöntemi, 9 yük birleşimleri, 10 analiz sonuçları, 11 betonarme, 12 çelik, 13 temel, 14 sonuç; metraj
+özeti, Ek A düğümler, Ek B çubuklar, Ek C seçilen tablolar. Veri olmayan bölüm "Bu modelde uygulanmadı" notuyla kalır. Köprü:
+`bina_rapor`.
+
+```python
+import yapi, rapor
+b = yapi.bina_sablon("betonarme-3kat-3x3")
+v = yapi.bina_coz(b, anlat=False).veri
+html = rapor.statik_rapor(b, v, secenek={"proje": {"ad": "Örnek konut", "yer": "Ankara", "hazirlayan": "…"},
+                                         "bolumler": [1, 2, 3, 6, 7, 11, 14], "eleman_detay": "kritik",
+                                         "tablolar": ["katlar", "metraj_ozet"]})
+open(rapor.dosya_adi(b, v, {"proje": {"ad": "Örnek konut"}}), "w", encoding="utf-8").write(html)   # statik_rapor_ornek_konut.html
+```
+
+`secenek`: `proje` (ad, yer, il, ilce, ada, parsel, malik, hazirlayan, kontrol, tarih), `bolumler` (1–14, "A", "B", "C", "metraj"),
+`eleman_detay` ("kritik": her türde D/C en büyük 5 ve D/C > 1 olanlar; "hepsi"; "yok"), `ek_tablolar` (hazır TABLO listesi),
+`tablolar` + `tablo_filtre` (`{ad: {"satirlar": [indeks…]}}`), `program_surumu`.
+
+### 3.9.3 Tablolar ve metraj: `tablolar.py`
+
+Arayüzdeki tablo editörü ve rapor aynı tabloları kullanır. `tablolar.bina_tablolari(bina, veri=None)` TABLO listesi döndürür:
+çözümsüz Model, Yükler ve Metraj (deprem kartı açıksa çözümsüz deprem önizlemesi); `veri` verilirse Analiz, Deprem, Tasarım ve Temel
+tabloları da. Düzenlenebilir hücrenin `yol`u bina JSON'undaki gerçek alana işaret eder; düzenlemeler binanın kopyasına uygulanır.
+Köprü: `bina_tablolar`.
+
+```python
+import yapi, tablolar
+b = yapi.bina_sablon("betonarme-2kat-3x2")
+T = tablolar.bina_tablolari(b, yapi.bina_coz(b, anlat=False).veri)    # [{ad, baslik, grup, sutunlar, satirlar, toplam, aciklama, kaynak}]
+[t["ad"] for t in T][:4]                                               # ['genel', 'katlar', 'akslar', 'aks_sistemleri']
+yeni = tablolar.degisiklikleri_uygula(b, [{"yol": ["katlar", {"no": 2}, "kot"], "deger": 6.5}])   # kopya; b değişmez
+tablolar.aks_yeniden_adlandir(b, "x", "A", "A1")    # YERİNDE: kolon/kiriş/döşeme aksları ve bütün REF'ler güncellenir
+tablolar.metraj_ozeti(b)["satirlar"][0]["degerler"]  # {'kalem': 'Beton — kolon', 'malzeme': 'C30/37', 'miktar': …, 'birim': 'm³'}
+```
+
+Metraj eğitim amaçlı yaklaşık keşiftir (birim fiyat yok): betonarme kolon b·h·(H − t), kiriş b·(h − t)·L_net, döşeme alan·t, tekil
+temel B·L·h, kalıp alanları, donatı tasarımdan ya da "yaklaşık" etiketli oranlardan; çelikte profil başına uzunluk, birim ağırlık,
+bağlantı payı ve boya yüzeyi; genel modelde basit kesitler, vute ve panel / kaplama alanları da.
+
+### 3.9.4 Isı haritası alanları: `alan.py`
+
+Köprünün önbelleğindeki çözüm paketinden (`r.ic`) yeniden çözmeden alan üretir: kombinasyon = durumların katsayılı toplamı, zarf =
+istasyon bazında en büyük / en küçük. Aks–kat ve genel modelde çalışır. Köprü: `bina_alan` (eleman bilgi paneli için
+`bina_eleman_bilgi`).
+
+```python
+import yapi, alan
+r = yapi.bina_coz(yapi.bina_sablon("betonarme-2kat-3x2"), anlat=False)
+alan.durum_listesi(r.ic)                       # {"durumlar": ["G", "Q"], "kombinasyonlar": [{ad, tur}], "zarf": ["zarf+", "zarf-"]}
+a = alan.eleman_alanlari(r.ic, "1.4G+1.6Q")    # {durum, birim, elemanlar: [istasyonlarda N, Vy, Vz, T, My, Mz, eğri u,
+                                               #  σ_maks/σ_min, τ, von Mises, kullanım], dugumler, aralik, not, secenekler}
+p = alan.panel_alanlari(r.ic, "G")             # döşeme: {no, adres, kose, izgara: {x, y, w, mx, my, q, ...}, yuk_payi, ...}
+rr = yapi.bina_coz(yapi.bina_sablon("betonarme-4kat-radye"), anlat=False)
+alan.radye_alani(rr.ic, "G+Q")                 # {tip, k0, q_em, x, y, w, p, p_maks, w_maks, ...}; tekil temelde None
+```
+
+İşaret: σ(y, z) = N/A − Mz·y/Iz − My·z/Iy (çekme +, MPa); Mz > 0 alt lifi çeker. Genel modelde döşeme plakları yatay, dört köşeli,
+eksenlere paralel `doseme` panellerinden kurulur; öteki paneller notla atlanır.
+
+### 3.9.5 Köprü işlemleri (web ve masaüstü uygulaması)
+
+Uygulama Python modüllerini `docs/web_kopru.py` `calistir(json)` ile çağırır; girdi / yanıt şemalarının tamamı o dosyanın başındadır.
+Bina işlemleri:
+
+| İşlem | Girdi → yanıt |
+|---|---|
+| `bina_coz` | `{bina}` → `{bloklar, veri, sonuc_metin}`; çözümün iç paketi önbelleğe alınır (`veri.cozum_kimligi`) |
+| `bina_kutuphane`, `bina_sablonlar`, `bina_sablon` | kütüphane (`tasiyici_sistemler` dahil), şablon listesi, `{ad}` → `{bina}` |
+| `bina_yuk_yolu` | `{bina, veri, hedef: {tur: "doseme" \| "kiris" \| "kolon", no, durum}}` → `{adimlar}` |
+| `bina_deprem` | `{bina}` → `{deprem}` (çözümsüz önizleme: spektrum, V_tE, F_i) |
+| `bina_kombinasyon` | `{cozum_kimligi, ad, katsayilar?, bina?}` → `{ad, sonuc}` (tam kayıt). Köprü son çözümleri bellekte tutar; kimlik yoksa `bina` verilirse yeniden çözer |
+| `bina_eleman_tasarim` | `{cozum_kimligi, tur: "kiris" \| "kolon" \| "cubuk", no, bina?}` → `{ad, bloklar, sonuc}`; genel modelde `tur: "cubuk"` ve çubuk numarası (tam eşleşme) |
+| `bina_kesit_oner` | `{cozum_kimligi \| bina, hedef: "hepsi" \| [{tur, no}], yinele: 0…3}` → `{oneriler, turlar, dc_once, dc_sonra, bina?, uyarilar}` (3.9.1) |
+| `bina_eleman_bilgi` | `{cozum_kimligi, tur: "cubuk" \| "kolon" \| "kiris" \| "fe", no, durum?}` → `{paket: {sekmeler: {ic, yer}, sekme_adlari, uyarilar}}`: eleman bilgi panelinin "Motor ayrıntısı" (istasyon iç kuvvetleri, en büyük değerler, uç yer değiştirmeleri) |
+| `bina_rapor` | `{cozum_kimligi \| bina, secenek?}` → `{html, dosya_adi}` (3.9.2) |
+| `bina_tablolar` | `{cozum_kimligi \| bina}` → `{tablolar, cozumlu}` (3.9.3; önbellekte bu binanın çözümü varsa sonuç tabloları da) |
+| `bina_alan` | `{cozum_kimligi \| bina, durum, istasyon?, katsayilar?, elemanlar?}` → `{alan}` (`eleman_alanlari` + `paneller` + `radye`; 3.9.4) |
+
 ### 3.10 Bina sayfası (web ve masaüstü): araç kutuları, sağ tık, rapor, IFC, tablolar, ısı haritası
 
-- **Yüzen araç kutuları** sahnenin üstündedir (tam ekranda da): Çizim, Düzenleme, Aks, Ölçme, Görünüm, Analiz, Sonuç, Değiştirme.
-  Kutuyu tutamağından sürükleyin; düğmeyi bir kutudan ötekine sürükleyip bırakın (boş alana bırakmak yeni kutu açar); köşedeki
-  menüden “Özelleştir”, hazır yerleşimler ve “Varsayılana dön”. Telefonda kutular sahnenin altında kaydırılabilir şerittir.
-  Kısayollar tek yerden çalışır: S seç, K kolon, R kiriş, D döşeme, W duvar, Del sil, Ctrl+Z / Ctrl+Y, Ctrl+Enter çöz,
-  1–4 görünüm (3B, plan, ön, yan), F tam ekran, Shift+F sığdır, U uzaklık ölç, PgUp/PgDn kat (aks tabanlı modelde: önceki / sonraki
-  düzlem). Soluk düğmelerin ipucunda nedeni yazar (ör. Böl / Birleştir için önce çubuk seçin).
+- **Yüzen araç kutuları** sahnenin üstündedir (tam ekranda da): Çizim, Üreteç ve yük, Düzenleme, Aks, Değiştirme, Ölçme, Görünüm,
+  Analiz, Sonuç (dar ekranda Aks, Düzenleme kutusuyla birleşir). Kutuyu tutamağından sürükleyin; düğmeyi bir kutudan ötekine sürükleyip
+  bırakın (boş alana bırakmak yeni kutu açar); köşedeki menüden “Özelleştir” (varsayılan kutularda olmayan komutlar, ör. “Kesit öner
+  ve uygula”, buradan eklenir), hazır yerleşimler ve “Varsayılana dön”. Telefonda kutular sahnenin altında kaydırılabilir şerittir.
+  Kısayollar tek kaynaktan (araç kutusu komut kaydı) çalışır; tam tablo 3.12'de, sayfada **?** tuşu da gösterir. Soluk düğmelerin
+  ipucunda nedeni yazar (ör. Böl / Birleştir için önce çubuk seçin; Deforme için önce çözün).
 - **Ölçme:** Uzaklık, açı, alan, eleman boyu, kot farkı, koordinat; imleç düğüme / aks kesişimine / çubuğa yakalanır. Esc yarım ölçümü,
   “Ölçüleri temizle” hepsini siler.
 - **Sağ tık (dokunmatikte uzun basma):** elemanın özeti ve komutları: Bilgi (geometri, kesit, yükler, iç kuvvetler, tasarım, metraj,
-  yük yolu sekmeli pencere; iğnelenip karşılaştırılabilir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Gizle, Yalıt, Sil.
-  Klavyede sahneyi seçip Shift+F10.
+  yük yolu sekmeli pencere; iğnelenip karşılaştırılabilir; çözümden sonra motorun istasyon iç kuvvetleri ve uç yer değiştirmeleri
+  “Motor ayrıntısı” olarak eklenir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Kesit öner ve uygula, Gizle, Yalıt, Sil.
+  Klavyede sahneyi seçip Shift+F10. Denetçi açıkken model yeniden çözülürse içeriği tazelenir.
+- **Kesit önerisi:** “Kesit öner ve uygula” komutu sağ tıkta tek eleman için; araç kutusunda (Özelleştir ile eklenir) ve masaüstünde
+  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir
+  öneriyi, “Hepsini uygula” hepsini binaya yazar ve modeli yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi
+  verilir).
 - **📄 Statik Rapor:** çözüm yoksa önce çözer; önizleme, “Yazdır / PDF”, “HTML indir”. Proje künyesi (ad, yer, ada/parsel, hazırlayan…)
-  bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer.
+  bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer. Masaüstünde Rapor › Yazdır…
+  (Ctrl+Shift+P) Bina sayfasında statik raporu yazdırır.
 - **▦ Tablolar:** model, yük, deprem, analiz, tasarım, temel ve metraj tabloları; sarı hücreler düzenlenebilir, “Uygula” modeli değiştirir
-  (Ctrl+Z ile geri alınır; sonuçlar yeniden çözülene kadar eski sayılır), CSV dışa aktarım.
-- **🌡 Isı haritası:** yük durumu, kombinasyon ya da zarf için yer değiştirme, iç kuvvet, gerilme ve kullanım oranı renkleri; elemana dokunun:
-  seçilir, “İncele” ile kesit gerilmeleri. “Tasarım ayrıntısı” Tasarım sekmesine geçer.
+  (Ctrl+Z ile geri alınır; sonuçlar yeniden çözülene kadar eski sayılır). Tablo programından kopyalanan hücreler (sekmeyle ayrılmış)
+  etkin hücreden itibaren yapıştırılır; CSV dışa aktarım (BOM, `;`, ondalık virgül). Masaüstünde Dosya › Dışa aktar › Tablolar (.csv)
+  ve Rapor › Tabloları CSV kaydet bütün tabloları tek bir CSV dosyasına yazar; CSV dosyası içe aktarılmaz.
+- **🌡 Isı haritası:** yük durumu, kombinasyon ya da zarf için yer değiştirme, iç kuvvet, gerilme ve kullanım oranı renkleri; döşeme
+  panellerinde plak sehimi ve momentleri, radye ve mütemadi temelde taban basıncı ve oturma. Aks–kat ve genel modelde çalışır. Elemana
+  dokunun: seçilir, “İncele” ile kesit gerilmeleri. “Tasarım ayrıntısı” Tasarım sekmesine geçer.
 - **⬇ IFC:** IFC4 yapı modeli (katlar, aks ızgaraları, elemanlar, kesit ve malzemeler; isteğe bağlı yapısal analiz modeli, yükler ve D/C).
   BIM görüntüleyicilerinde açılır.
 - **Proje dosyası:** “💾 Kaydet” `.matris` dosyası indirir (bina + görünüm + araç kutusu yerleşimi); “📂 Aç” `.matris` ya da eski bina
@@ -489,13 +678,63 @@ aynen açılır, çizilir ve çözülür; aks–kat modelinde kat düzlemindeyke
   *Hızlı panel* (betonarme döşeme ya da çatı, sac çatı ya da cephe kaplaması), *Eğik çubuk* (iki farklı Z aksı arasında: mertek, çapraz).
   *Makas*, *Beşik çerçeve*, *Aşık* ve *Kren yolu* önizlemeli pencereyle üretir; gereken Saçak / Mahya / Kren Z aksları ve açıklık
   ortasındaki mahya X aksları kendiliğinden eklenir.
-- **Mesnet** (ankastre, mafsal, kayıcı) ve **Yük ata** (çubuğa yayılı / tekil, panele kN/m², düğüme kuvvet; G, Q, S durumları).
+- **Mesnet** (ankastre, mafsal, kayıcı ya da kaldır) ve **Yük ata** (G, Q, S durumları). Genel modelde çubuğa yayılı / tekil, panele tek
+  bir p (kN/m², aşağı +), düğüme kuvvet; aks–kat modelinde model çevrilmeden kirişe düzgün yayılı q, döşemeye g / q, düğüme kuvvet.
 - **Düzenleme / değiştirme:** Taşı, Döndür, Ayna (aks düzlemine göre), Doğrusal dizi, Kopyala / yapıştır (kesişimden kesişime),
   Özellik ata, Mafsal, Yalnız çekme, Böl (eşit parça, uzunluk, oran, aks kesişimlerinde), Kesişimlerde böl, Düzlemle böl, Birleştir,
-  Düğüm birleştir, Kesit değiştir, Açı. Çubuğa sağ tık: Böl, Birleştir, Mafsal, Kesit öner.
+  Düğüm birleştir, Kesit değiştir, Açı. Çubuğa sağ tık: Böl, Birleştir, Mafsal, Kesit öner ve uygula.
+- **Üreteç düzenle:** makas, beşik çerçeve, aşık, kren yolu ve çapraz pencereleri kayıttan dolu açılır; değişiklik üretilen çubukları
+  günceller (sağ tık › Üreteci düzenle… ya da Çizim grubundaki “Üreteci düzenle” komutu).
+- **Aks–kattan genel modele:** aks–kat modeline çubuk, çapraz, panel ya da mesnet eklemek (ya da üreteç kullanmak) modeli genel (surum 3)
+  modele çevirir; uygulama önce sorar, iptal edilirse işlem yapılmaz. Mütemadi ya da radye temel varsa bu adımda (onayla) tekil temele
+  döner, çünkü genel model yalnız tekil temel çözer.
 - **3B çizimde:** çubuklar türüne göre renklenir, mafsallı uç içi boş daire, yalnız çekme kesikli çizgi, paneller yarı saydam
-  (sac ince çizgi), mesnetler ve ek yükler simgeyle gösterilir. Kaydet / Aç, Ctrl+Z, tablolar, rapor ve IFC aks tabanlı modelde de
-  çalışır. Motor aks tabanlı modeli çözemiyorsa çöz düğmesi bunun nedenini açıklayan bir ileti verir.
+  (sac ince çizgi), mesnetler ve ek yükler simgeyle gösterilir. Kaydet / Aç, Ctrl+Z, tablolar, rapor, ısı haritası ve IFC genel
+  modelde de çalışır.
+- **Genel modelin yapabildikleri ve sınırları:** G, Q, S, W (panel normaline rüzgâr), E (TBDY eşdeğer deprem, kat seviyeleri Z
+  aksının `kat` işaretinden), kren (K durumu ve konum alt durumları), yalnız çekme çubukları (birleşim başına yinelemeli çözüm),
+  uç serbestlikleri, vuteli ve basit çelik kesitler (boru, kutu, korniyer, U), betonarme ve çelik tahkik, kesit önerisi, yük akışı,
+  rapor, tablolar, ısı haritası ve IFC. Sınırlar: en çok 2000 serbestlik; mütemadi ve radye temel yok (tekil temel); ısı haritasının
+  plak alanı yalnız yatay, dört köşeli, eksenlere paralel döşeme panellerinde; ikinci mertebe etkileri ve kapasite tasarımı yok.
+
+### 3.12 Klavye kısayolları
+
+Bina sayfasında geçerlidir; yazı alanı ya da bir pencere açıkken çalışmaz. Liste araç kutusunun komut kaydından üretilir: aynı tablo
+Bina sayfasında **?** tuşuyla açılan pencerede ve Yardım sayfasındaki “Klavye kısayolları” kartındadır; araç kutusu düğmesinin
+üstünde beklemek de kısayolu gösterir.
+
+| Tuş | İş | Tuş | İş |
+|---|---|---|---|
+| `S` | Seç | `M` | Taşı |
+| `L` | Çubuk çiz (kesişimden kesişime) | `Shift+R` | Döndür |
+| `Shift+L` | Hızlı çubuk (aks parçası) | `B` | Böl |
+| `K` | Hızlı kolon | `J` | Birleştir |
+| `R` | Hızlı kiriş | `Shift+J` | Düğümleri birleştir |
+| `X` | Hızlı çapraz | `Ctrl+C` / `Ctrl+V` | Kopyala / yapıştır (kesişimden kesişime) |
+| `D` | Hızlı panel / döşeme | `Del` (`Backspace`) | Seçileni sil (seçim yoksa Sil aracı) |
+| `E` | Eğik çubuk | `Ctrl+Z` | Geri al |
+| `W` | Duvar | `Ctrl+Y` (`Ctrl+Shift+Z`) | Yinele |
+| `Shift+M` | Mesnet | `Ctrl+Enter` | Çöz |
+| `Y` | Yük ata | `1` `2` `3` `4` | 3B, plan, ön (cephe), yan (kesit) görünüm |
+| `G` | Aks verisi düzenle | `F` | Tam ekran (Esc ya da F ile çıkılır) |
+| `Shift+G` | Hızlı aks sihirbazı | `Shift+F` | Modeli sığdır |
+| `PgUp` / `PgDn` | Düzlem yukarı / aşağı (aks–kat çiziminde kat) | `U` | Uzaklık ölç |
+| `Shift+F10` | Seçili elemanın bağlam (sağ tık) menüsü | `Esc` | Kipten çık, seçimi ya da yarım çizimi / ölçümü bırak; tam ekrandan çık |
+| `?` | Kısayol listesi | | |
+
+Yalnız masaüstü sürümünde (menü kısayolları; macOS'ta Ctrl yerine ⌘, tam liste Yardım › Klavye kısayolları):
+
+| Tuş | İş | Tuş | İş |
+|---|---|---|---|
+| `Ctrl+N` / `Ctrl+O` | Yeni proje / aç | `F5` | Çöz |
+| `Ctrl+S` / `Ctrl+Shift+S` | Kaydet / farklı kaydet | `F6` | Tasarım: tüm kontroller |
+| `Ctrl+Shift+N` | Yeni pencere | `F9` | Statik hesap raporu |
+| `Ctrl+E` | IFC dışa aktar | `Ctrl+T` | Tablolar (düzenle, yapıştır) |
+| `Ctrl+P` | Raporu PDF olarak kaydet | `Ctrl+Shift+H` | Isı haritası |
+| `Ctrl+Shift+P` | Yazdır (Bina sayfasında statik rapor) | `Ctrl+G` | Aks verisini düzenle |
+| `Ctrl+1` … `Ctrl+4` | Hesapla, Dersler, Sonlu eleman, Bina | `Ctrl+Shift+F` | Modeli sığdır |
+| `F1` | Dersler | `Ctrl+Shift+T` | Araç kutularını göster / gizle |
+| `F11` | Tam ekran (pencere) | `Ctrl+,` | Ayarlar |
 
 ---
 
@@ -542,6 +781,12 @@ aynen açılır, çizilir ve çözülür; aks–kat modelinde kat düzlemindeyke
 | Hücre uzun süre "çalışıyor" ya da "Bağlantı kesildi" | Colab oturumu kapandı (uzun süre kullanılmayınca olur) | **Çalışma zamanı → Oturumu yeniden başlat** (Runtime → Restart session), sonra **Kurulum**'u tekrar çalıştır |
 | Formüller düzgün görünmüyor (ham `\begin{bmatrix}` metni) | Çıktı Colab dışında (düz Python) alındı | Colab/Jupyter'de çalıştır; düz terminalde anlatım Markdown metni olarak basılır |
 | colab-mcp görünmüyor / "Colab'a bağlan" çalışmıyor | Claude Code yeniden başlatılmadı ya da tarayıcıda Google girişi yok | Claude Code'u kapatıp aç, `claude mcp list` ile `Connected` gör, tarayıcıda Google hesabına gir, 60 sn içinde bağlantıyı bekle |
+| `Bina ağı … serbestlik derecesi; tarayıcıda çözüm için en fazla 1500.` (genel modelde `Model … en fazla 2000.`) | Model çözüm sınırını aşıyor: aks–kat 12×12 aks, 12 kat, 1500 SD; genel model 2000 SD | Aks ya da kat sayısını azaltın; genel modelde gereksiz bölme düğümlerini birleştirin, vute parça sayısını düşürün (`analiz.vute_parca`) |
+| `Mütemadi (sürekli) ve radye temel genel (surum 3) modelde henüz çözülmüyor; …` | Bina genel modele geçmiş (çubuk, çapraz, panel, mesnet ya da REF yükü eklenmiş) ama `temeller.tip` mütemadi ya da radye | `temeller.tip = "tekil"` yapın ya da modeli aks–kat (kolon / kiriş / döşeme) olarak çözün; arayüz genel modele geçerken bunu onayla kendisi yapar |
+| `Döşeme … 'yüzen döşeme': … kenarı (…) üzerinde kiriş yok.` | Aks–kat döşemesinin bir kenarında kiriş yok; yük aktarılacak eleman yok | Eksik kirişleri ekleyin (Hızlı kiriş) ya da döşemeyi silin |
+| `… hiçbir çubuğa bağlı değil (yüzen düğüm)` | Genel modelde panel köşesi, mesnet ya da düğüm yükü çubuğa bağlı olmayan bir düğümde | Düğüme çubuk çizin ya da yükü / mesneti bağlı bir düğüme taşıyın |
+| Bina sayfasında komut düğmesi soluk | Komutun ön koşulu yok (çözüm, seçim, ölçü…) | Düğmenin ipucundaki nedene bakın (ör. "Önce modeli çözün (Çöz ▶)") |
+| Isı haritasında döşeme plağı görünmüyor (genel model) | Plak alanı yalnız yatay, dört köşeli, eksenlere paralel `doseme` panellerinde kurulur | Çatı / cephe panelleri ve eğik paneller notla atlanır; çubuk alanları yine gösterilir |
 
 ---
 
@@ -552,10 +797,16 @@ Klasör: `$env:USERPROFILE\Desktop\matris_ogren`
 | Dosya | Görev |
 |---|---|
 | `matris_ogren.py` | Modül (sympy tabanlı; anlatım + Python kodu üretimi). Sürüm: `mo.__version__` |
-| `defter_yap.py` | `Matris_Ogren.ipynb` defterini üreten betik |
-| `Matris_Ogren.ipynb` | Colab defteri (üretilmiş dosya; elle düzenlenmez, `defter_yap.py` ile yeniden üretilir) |
-| `testler\` | pytest testleri |
-| `KULLANIM.md` | bu kılavuz |
+| `sonlu_eleman.py`, `yapi.py`, `yapi_serbest.py`, `yapi_veri.py`, `tasarim.py`, `temel.py`, `rapor.py`, `tablolar.py`, `alan.py` | Sonlu eleman ve bina modülleri (3.8, 3.9) |
+| `defter_yap.py` | `Matris_Ogren.ipynb` defterini üreten betik (yalnız matris modülünü gömer) |
+| `Matris_Ogren.ipynb` | Colab defteri (üretilmiş dosya; elle düzenlenmez, `defter_yap.py` ile yeniden üretilir; `testler/test_defter.py` gömülü modülün güncelliğini denetler) |
+| `web_yap.py` | `docs/` klasörünü üretir: kökteki modülleri `docs/`'a kopyalar, dersleri derler (`docs/dersler.json`), `docs/sw.js` ve `docs/surum.json`'a sürüm damgası basar (yalnız izlenen dosyalardan; `__pycache__` sayılmaz) |
+| `ders_derle.py` | `dersler/*.md` derslerini `dersler/BICIM.md` kurallarına göre denetler (`--denetle`) ve derler |
+| `docs/` | Web uygulaması (PWA). `docs/*.py` kopyadır (elle düzenlenmez), yalnız `docs/web_kopru.py` (köprü) kaynaktır |
+| `masaustu\` | Masaüstü sürümü (Node.js 22; `npm ci`, `npm run hazirla`, `npm start`; bkz. `masaustu/README.md`) |
+| `testler\` | pytest testleri; `testler\js\` node testleri (`node --test`) |
+| `.github/workflows/testler.yml` | Her itmede ve çekme isteğinde: `web_yap.py` sonrası `docs/` farkı yok mu, ders denetimi, pytest, node testleri |
+| `KULLANIM.md`, `TASARIM.md` | bu kılavuz; tasarım bölümleri (§1–§19) ve veri şemaları haritası |
 
 Yerel Python 3.12'de sympy/IPython/nbformat yok; **her zaman uv reçetesi** kullanılır
 (PowerShell 5.1: `&&` yok, `;` kullan; yolda boşluk var, çift tırnak şart):
@@ -576,3 +827,16 @@ $uv = "$env:USERPROFILE\.local\bin\uv.exe"
 
 Defteri yeniden ürettikten sonra Colab'daki kopyayı da güncelle (Yol A: yeniden yükle; Yol B: Drive'daki
 dosyanın üzerine yaz).
+
+Linux / macOS (ya da Python paketleri kurulu herhangi bir ortam), proje klasöründen:
+
+```bash
+python3 web_yap.py                                   # kökteki bir modül ya da ders değişince docs/'u güncelle
+python3 ders_derle.py --denetle                      # ders biçimi
+python3 -m pytest testler -q                         # Python testleri (numpy, sympy, pytest, pyyaml)
+node --test testler/js/*.test.js                     # JavaScript testleri (Node.js 22)
+uv run --no-project --python 3.13 --with nbformat python3 defter_yap.py   # matris_ogren.py değişince defteri yeniden üret
+```
+
+`docs/*.py` kopyaları ve derlenmiş dersler (`docs/dersler.json`) kaynaklarla aynı tutulur; CI `web_yap.py`'den sonra `docs/` altında
+fark kalmamasını ister (`docs/sw.js` ve `docs/surum.json` hariç).

@@ -122,6 +122,32 @@ def test_md_yedeginde_ozel_soz_dizimi_kalmaz(ders):
     assert not re.search(r"^:::", ders["md"], re.M)
 
 
+def test_bina_sablon_baglantilari_gecerli():
+    """Derslerdeki "Bina sayfasında aç" bağlantıları (#bina/sablon/<ad>) var olan bir şablonu açar; temel, çelik ve
+    program akışı dersleri revizyonun şablonlarına (mütemadi/radye temel, genel model) bağlanır."""
+    yapi = _yapi_modulu()
+    if yapi is None:
+        pytest.skip("yapi.py yok")
+    sablonlar = {s["ad"] for s in yapi.bina_sablonlar()}
+    baglanti = re.compile(r"\]\(#bina/sablon/([A-Za-z0-9_-]+)\)")
+    bulunan = {}
+    for yol in sorted(Path(dd.KOK, "dersler").glob("[0-9][0-9]-*.md")):
+        for ad in baglanti.findall(yol.read_text(encoding="utf-8")):
+            bulunan.setdefault(ad, []).append(yol.name[:2])
+    gecersiz = {ad: d for ad, d in bulunan.items() if ad not in sablonlar}
+    assert not gecersiz, f"var olmayan şablona bağlantı: {gecersiz}"
+    for ad, ders in (("betonarme-3kat-surekli-temel", "20"), ("betonarme-4kat-radye", "20"), ("celik-cbf-3kat", "25"),
+                     ("celik-sanayi-4hol", "25"), ("celik-cbf-3kat", "26")):
+        assert ders in bulunan.get(ad, []), f"{ders}. ders {ad} şablonuna bağlanmıyor"
+    # bağlantı Bina sayfası hiç açılmamışken de çalışır: app.js #bina/… adresinde sayfayı gösterir (bina.js görünür olunca
+    # kurulur ve adresi kendisi okur); yoksa ders sayfasındaki tıklama hiçbir şey yapmaz
+    app = (DOCS / "app.js").read_text(encoding="utf-8")
+    govde = app[app.index("function hashYonlendir()"):app.index("function sayfaGoster(")]
+    assert re.search(r'h\.indexOf\("bina/"\) === 0\) \{[^}]*sayfaGoster\("bina", true\)', govde, re.S)
+    bina = (DOCS / "bina.js").read_text(encoding="utf-8")
+    assert "bina\\/sablon\\/(.+)" in bina and "hashKontrol();" in bina
+
+
 KATALOG = [(ad, ad) for ad in dd.ETKILESIMLER] + [(ad, "alistirma:" + ad) for ad in dd.ALISTIRMALAR]
 
 

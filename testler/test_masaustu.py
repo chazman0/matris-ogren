@@ -16,6 +16,7 @@ import glob
 import hashlib
 import http.server
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -136,6 +137,33 @@ def test_is_akisi():
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u), u
 
 
+def test_testler_is_akisi():
+    """.github/workflows/testler.yml: her itme ve çekme isteğinde docs eşleşmesi, ders denetimi, pytest ve node testleri."""
+    yaml = pytest.importorskip("yaml")
+    w = yaml.safe_load((PROJE / ".github" / "workflows" / "testler.yml").read_text(encoding="utf-8"))
+    tetik = w.get("on", w.get(True))
+    assert "push" in tetik and "pull_request" in tetik
+    assert w["permissions"] == {"contents": "read"}
+    (is_,) = w["jobs"].values()
+    assert is_["runs-on"] == "ubuntu-latest" and "permissions" not in is_
+    adimlar = is_["steps"]
+    kullan = [a["uses"] for a in adimlar if "uses" in a]
+    for u in kullan:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u), u
+    py = next(a for a in adimlar if a.get("uses", "").startswith("actions/setup-python@"))
+    assert str(py["with"]["python-version"]) == "3.13"
+    dugum = next(a for a in adimlar if a.get("uses", "").startswith("actions/setup-node@"))
+    assert str(dugum["with"]["node-version"]) == "22"
+    calistir = [a.get("run", "") for a in adimlar]
+    metin = "\n".join(calistir)
+    for paket in ("numpy", "sympy", "pytest", "PyYAML"):
+        assert paket in metin, paket
+    sira = ["python3 web_yap.py", "git diff --exit-code -- docs/ ':!docs/sw.js' ':!docs/surum.json'", "python3 ders_derle.py --denetle",
+            "python3 -m pytest testler", "node --test testler/js/*.test.js"]
+    yer = [metin.index(k) for k in sira]
+    assert yer == sorted(yer), "adım sırası: docs eşleşmesi → ders denetimi → pytest → node"
+
+
 # ---------------------------------------------------------------------------------------------- git, güvenlik, belgeler
 def test_uretilen_dosyalar_gitte_yok():
     satirlar = (PROJE / ".gitignore").read_text(encoding="utf-8").splitlines()
@@ -193,6 +221,55 @@ def test_web_sayfasi_kopruyu_yukler():
     w = (DOCS / "motor.worker.js").read_text(encoding="utf-8")
     assert "self.MATRIS_PYODIDE_URL" in w and 'searchParams.get("pyodide")' in w
     assert 'const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_SURUM + "/full/";' in w
+
+
+def test_kullanim_kopru_islemlerini_kapsar():
+    """KULLANIM.md 3.9.5 tablosu köprünün (docs/web_kopru.py BINA_ISLEMLER) bütün bina işlemlerini anlatır; README ve Yardım
+    sayfası Bina sayfasını ve kısayolları anlatır (uygulama ile web/masaüstü belgeleri aynı yüzeyi kapsar)."""
+    kopru = (DOCS / "web_kopru.py").read_text(encoding="utf-8")
+    m = re.search(r"^BINA_ISLEMLER = \{(.*?)\}", kopru, re.M | re.S)
+    assert m, "BINA_ISLEMLER bulunamadı"
+    islemler = set(re.findall(r'"(bina_[a-z_]+)"', m.group(1)))
+    assert len(islemler) >= 12
+    kullanim = (PROJE / "KULLANIM.md").read_text(encoding="utf-8")
+    bolum = kullanim[kullanim.index("### 3.9.5"):kullanim.index("### 3.10")]
+    eksik = sorted(i for i in islemler if f"`{i}`" not in bolum)
+    assert not eksik, f"KULLANIM.md 3.9.5'te anlatılmayan köprü işlemleri: {eksik}"
+    assert "`bina_eleman_bilgi`" in bolum and "### 3.12 Klavye kısayolları" in kullanim
+    ana = (PROJE / "README.md").read_text(encoding="utf-8")
+    assert "## Bina sayfası (yapı analizi)" in ana and "TASARIM.md" in ana and "node --test testler/js/*.test.js" in ana
+    html = (DOCS / "index.html").read_text(encoding="utf-8")
+    for kimlik in ('id="yardim-bina"', 'id="yardim-kisayollar"', 'id="yardim-masaustu"', "github.com/chazman0/matris-ogren/releases"):
+        assert kimlik in html, kimlik
+    assert "kisayolTablosu" in (DOCS / "app.js").read_text(encoding="utf-8")
+
+
+@nodeli
+def test_surum_damgasi_uretilmis_dosyalari_saymaz(tmp_path, monkeypatch):
+    """web_yap.py sürüm damgası git'e girmeyen üretilmiş dosyaları (docs/__pycache__/*.pyc, işletim sistemi artıkları) saymaz;
+    masaustu/hazirla.js dosya listesiyle aynı kural. Böylece aynı kaynaktan her makinede aynı SURUM çıkar."""
+    import importlib.util
+    ozellik = importlib.util.spec_from_file_location("web_yap_deneme", PROJE / "web_yap.py")
+    wy = importlib.util.module_from_spec(ozellik)
+    ozellik.loader.exec_module(wy)
+    k = tmp_path / "docs"
+    for y in ("a.js", "alt/b.py", "icons/i.svg", "__pycache__/b.cpython-313.pyc", "alt/__pycache__/c.cpython-313.pyc", "alt/d.pyc",
+              "Thumbs.db", ".DS_Store", "alt/desktop.ini", "sw.js", "surum.json"):
+        (k / y).parent.mkdir(parents=True, exist_ok=True)
+        (k / y).write_text("x", encoding="utf-8")
+    monkeypatch.setattr(wy, "DOCS", k)
+    damga = [p.relative_to(k).as_posix() for p in wy.damga_dosyalari()]
+    assert damga == ["a.js", "alt/b.py", "icons/i.svg"]
+    r = _node("-e", f"process.stdout.write(JSON.stringify(require('./hazirla.js').dosyaListesi({json.dumps(str(k))})))", cwd=MASAUSTU)
+    assert r.returncode == 0, r.stderr
+    assert [y for y in json.loads(r.stdout) if y not in ("sw.js", "surum.json")] == damga
+    # önbellek klasörü değişince damga değişmez
+    (k / "sw.js").write_text('const SURUM = "x";\n', encoding="utf-8")
+    once = wy.surum_damgala()
+    (k / "__pycache__" / "yeni.cpython-313.pyc").write_bytes(b"\x00\x01")
+    assert wy.surum_damgala() == once
+    (k / "a.js").write_text("y", encoding="utf-8")
+    assert wy.surum_damgala() != once
 
 
 # ---------------------------------------------------------------------------------------------- hazirla.js çıktısı
@@ -260,20 +337,36 @@ def test_hazirla_cikti_yapisi(hazir_uygulama):
 
 
 # ---------------------------------------------------------------------------------------------- tarayıcı testleri
+def _chromium_adaylari() -> list[str]:
+    """Hazır Chromium yolları (öncelik sırasıyla): MATRIS_CHROMIUM ortam değişkeni, /opt/pw-browsers/chromium bağlantısı ve
+    tarayıcı paketlerinin klasörleri (eski düzende chrome-linux, yenisinde chrome-linux64)."""
+    adaylar = [os.environ.get("MATRIS_CHROMIUM") or "", "/opt/pw-browsers/chromium"]
+    adaylar += sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"), reverse=True)
+    gorulen, sonuc = set(), []
+    for y in adaylar:
+        if y and y not in gorulen and os.path.isfile(y) and os.access(y, os.X_OK):
+            gorulen.add(y)
+            sonuc.append(y)
+    return sonuc
+
+
 @pytest.fixture(scope="module")
 def tarayici():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as p:
+        b, hata = None, None
         try:
             b = p.chromium.launch()
-        except Exception:
-            yollar = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
-            if not yollar:
-                pytest.skip("Chromium yok")
-            try:
-                b = p.chromium.launch(executable_path=yollar[-1])
-            except Exception as e:  # pragma: no cover
-                pytest.skip(f"Chromium açılamadı: {e}")
+        except Exception as e:
+            hata = e
+            for yol in _chromium_adaylari():
+                try:
+                    b = p.chromium.launch(executable_path=yol)
+                    break
+                except Exception as e2:  # pragma: no cover
+                    hata = e2
+        if b is None:
+            pytest.skip("Chromium yok" if not _chromium_adaylari() else f"Chromium açılamadı: {hata}")
         yield b
         b.close()
 
@@ -486,3 +579,39 @@ def test_hazirlanan_uygulama_cevrimdisi_motoru_yukler(hazir_uygulama, tarayici):
         baglam.close()
         sunucu.shutdown()
         sunucu.server_close()
+
+
+def test_yardim_kisayol_tablosu_soguk_acilista_dolar(tarayici):
+    """Adres #yardim iken açılan sayfada (yeniden yükleme, yer imi) Yardım'ın kısayol tablosu dolar. app.js ertelenmiş betiklerin
+    ilkidir ve sayfayı hemen gösterir; arac_kutusu.js (MatrisArac) ondan sonra çalışır. Tablo "araç kutusu modülü yüklenmedi"
+    yazısında kalmamalı (yalnız modül gerçekten yoksa o yazı çıkar)."""
+    import mimetypes
+
+    def yanitla(route):
+        url = route.request.url
+        if not url.startswith(TEST_KOK):
+            return route.abort()                       # dış kaynaklar (CDN) yok: tablo onlara bağlı değil
+        dosya = DOCS / (url[len(TEST_KOK):].split("#")[0].split("?")[0] or "index.html")
+        if dosya.is_file() and DOCS.resolve() in dosya.resolve().parents:
+            tur = mimetypes.guess_type(dosya.name)[0] or "application/octet-stream"
+            return route.fulfill(status=200, content_type=tur, body=dosya.read_bytes())
+        return route.fulfill(status=404, body="")
+
+    baglam = tarayici.new_context(service_workers="block")
+    try:
+        baglam.route("**/*", yanitla)
+        sayfa = baglam.new_page()
+        hatalar = []
+        sayfa.on("pageerror", lambda e: hatalar.append(str(e)))
+        sayfa.goto(TEST_KOK + "index.html#yardim")
+        sayfa.wait_for_load_state("load")
+        durum = sayfa.evaluate("""() => { const t = document.getElementById('yardim-kisayollar');
+          return {aktif: document.querySelector('.sayfa.aktif').id, kaynak: t.dataset.kaynak || null,
+                  satir: t.querySelectorAll('tbody tr').length, metin: t.textContent}; }""")
+        assert durum["aktif"] == "sayfa-yardim", durum
+        assert durum["kaynak"] == "katalog" and durum["satir"] >= 30, durum
+        for tus in ("Shift+F10", "PgUp", "Ctrl+Enter", "?"):
+            assert tus in durum["metin"], tus
+        assert not hatalar, hatalar
+    finally:
+        baglam.close()

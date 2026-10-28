@@ -159,6 +159,12 @@ Zemin raporu yatak katsayısını $k_0$ [kN/m³] verir; kiriş modeli $k_s=k_0\,
 $-0.01$ m'yi $\mathbf{F}$'nin bir satırına yazmak hem birim hem anlam hatasıdır. Çökme `cokmeler` listesine, yani $\mathbf{u}_s$'ye girer; sağ tarafa $-\mathbf{K}_{fs}\mathbf{u}_s$ olarak kendisi taşınır ve ancak o zaman birimi kN olur.
 :::
 
+### Bina ölçeğinde: mütemadi temel ve radye
+
+Bina sayfası aynı fikri bütün binaya uygular. `betonarme-3kat-surekli-temel` şablonunda kolonlar iki doğrultudaki aks çizgileri boyunca ters T kesitli temel kirişlerine oturur; temel kirişinin her düğümü bir Winkler yayına ($k_z=k_0A_{etki}$) bağlanır, tabla dönmesine de bir yay eklenir. Taban basıncı $p=k_0w$, oturma ve farklı oturma anlatımın "Temel ve zemin" adımındadır: [Bina sayfasında aç](#bina/sablon/betonarme-3kat-surekli-temel).
+
+`betonarme-4kat-radye` şablonunda 70 cm kirişsiz radye bütün planı kaplar. Plak 1 m aralıklı bir ızgarayla (her şerit $I=bh^3/12$) temsil edilir ve her ızgara düğümü zemin yayına oturur. Çözümden sonra ısı haritası taban basıncını plak üzerinde renkli bir harita olarak çizer: basıncın kolon altlarında toplandığını ve $p_{maks}\le q_{em}$ denetimini görürsün. [Bina sayfasında aç](#bina/sablon/betonarme-4kat-radye).
+
 ## Çözümlü örnekler
 
 ::: ornek Yaylı kiriş: kesin çözüm
