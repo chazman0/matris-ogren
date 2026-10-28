@@ -4288,9 +4288,10 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
 
 
 _GENEL_LISTELER = ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler")
-# JavaScript'in \s kümesi (Python'unkinden farklı: ﻿ var, \x1c–\x1f ve \x85 yok): üç uygulama aynı dizeleri kabul etsin
-_JS_BOSLUK = "\t\n\v\f\r    -     　﻿"
+# JavaScript'in \s kümesi (Python'unkinden farklı: \ufeff var, \x1c–\x1f ve \x85 yok): üç uygulama aynı dizeleri kabul etsin
+_JS_BOSLUK = "\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 _SURUM_DESENI = re.compile(f"[{_JS_BOSLUK}]*([+-]?[0-9]+(?:\\.[0-9]+)?)[{_JS_BOSLUK}]*")
+_JS_KIRP = re.compile(f"^[{_JS_BOSLUK}]+|[{_JS_BOSLUK}]+$")       # JS String.prototype.trim()
 
 
 def _surum_sayi(s):
@@ -4335,7 +4336,7 @@ def _serbest_mi(bina):
     for y in bina.get("ek_yukler") or []:
         if not isinstance(y, dict):
             continue
-        if isinstance(y.get("dugum"), dict) or str(y.get("tur") or "").strip().lower() in ("cubuk", "panel"):
+        if isinstance(y.get("dugum"), dict) or _JS_KIRP.sub("", str(y.get("tur") or "")).lower() in ("cubuk", "panel"):
             return True
     return False
 

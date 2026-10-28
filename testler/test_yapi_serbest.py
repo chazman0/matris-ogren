@@ -811,6 +811,8 @@ def test_yonlendirme_dogruluk_tablosu():
         (b(ek_yukler=[{"tur": "Cubuk", "cubuk": 1, "durum": "G", "q": -1}]), True),
         (b(ek_yukler=[{"tur": " panel", "panel": 1, "durum": "G", "p": -1}]), True),
         (b(ek_yukler=[{"tur": "PANEL", "panel": 1, "durum": "G", "p": -1}]), True),
+        (b(ek_yukler=[{"tur": "\ufeffpanel\u3000", "panel": 1, "durum": "G", "p": -1}]), True),       # JS trim() kümesi
+        (b(ek_yukler=[{"tur": "\x1cpanel", "panel": 1, "durum": "G", "p": -1}]), False),
         (b(surum="3.0"), True),
         (b(surum="3.5"), True),
         (b(surum=" 3 "), True),
