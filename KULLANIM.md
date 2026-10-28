@@ -637,10 +637,10 @@ Bina işlemleri:
   “Ölçüleri temizle” hepsini siler.
 - **Sağ tık (dokunmatikte uzun basma):** elemanın özeti ve komutları: Bilgi (geometri, kesit, yükler, iç kuvvetler, tasarım, metraj,
   yük yolu sekmeli pencere; iğnelenip karşılaştırılabilir; çözümden sonra motorun istasyon iç kuvvetleri ve uç yer değiştirmeleri
-  “Motor ayrıntısı” olarak eklenir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Kesit öner, Gizle, Yalıt, Sil.
+  “Motor ayrıntısı” olarak eklenir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Kesit öner ve uygula, Gizle, Yalıt, Sil.
   Klavyede sahneyi seçip Shift+F10. Denetçi açıkken model yeniden çözülürse içeriği tazelenir.
-- **Kesit önerisi:** sağ tık “Kesit öner” tek eleman için; “Kesit öner ve uygula” komutu (masaüstünde Tasarım menüsü) seçili eleman
-  ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir öneriyi, “Hepsini uygula” hepsini binaya
+- **Kesit önerisi:** “Kesit öner ve uygula” komutu sağ tıkta tek eleman için; araç kutusunda (Özelleştir ile eklenir) ve masaüstünde
+  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir öneriyi, “Hepsini uygula” hepsini binaya
   yazar ve modeli yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi verilir).
 - **📄 Statik Rapor:** çözüm yoksa önce çözer; önizleme, “Yazdır / PDF”, “HTML indir”. Proje künyesi (ad, yer, ada/parsel, hazırlayan…)
   bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer. Masaüstünde Rapor › Yazdır…
@@ -681,7 +681,7 @@ aynen açılır, çizilir ve çözülür; aks–kat modelinde kat düzlemindeyke
   bir p (kN/m², aşağı +), düğüme kuvvet; aks–kat modelinde model çevrilmeden kirişe düzgün yayılı q, döşemeye g / q, düğüme kuvvet.
 - **Düzenleme / değiştirme:** Taşı, Döndür, Ayna (aks düzlemine göre), Doğrusal dizi, Kopyala / yapıştır (kesişimden kesişime),
   Özellik ata, Mafsal, Yalnız çekme, Böl (eşit parça, uzunluk, oran, aks kesişimlerinde), Kesişimlerde böl, Düzlemle böl, Birleştir,
-  Düğüm birleştir, Kesit değiştir, Açı. Çubuğa sağ tık: Böl, Birleştir, Mafsal, Kesit öner.
+  Düğüm birleştir, Kesit değiştir, Açı. Çubuğa sağ tık: Böl, Birleştir, Mafsal, Kesit öner ve uygula.
 - **Üreteç düzenle:** makas, beşik çerçeve, aşık, kren yolu ve çapraz pencereleri kayıttan dolu açılır; değişiklik üretilen çubukları
   günceller (sağ tık › Üreteci düzenle… ya da Çizim grubundaki “Üreteci düzenle” komutu).
 - **Aks–kattan genel modele:** aks–kat modeline çubuk, çapraz, panel ya da mesnet eklemek (ya da üreteç kullanmak) modeli genel (surum 3)

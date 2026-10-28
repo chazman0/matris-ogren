@@ -579,3 +579,39 @@ def test_hazirlanan_uygulama_cevrimdisi_motoru_yukler(hazir_uygulama, tarayici):
         baglam.close()
         sunucu.shutdown()
         sunucu.server_close()
+
+
+def test_yardim_kisayol_tablosu_soguk_acilista_dolar(tarayici):
+    """Adres #yardim iken açılan sayfada (yeniden yükleme, yer imi) Yardım'ın kısayol tablosu dolar. app.js ertelenmiş betiklerin
+    ilkidir ve sayfayı hemen gösterir; arac_kutusu.js (MatrisArac) ondan sonra çalışır. Tablo "araç kutusu modülü yüklenmedi"
+    yazısında kalmamalı (yalnız modül gerçekten yoksa o yazı çıkar)."""
+    import mimetypes
+
+    def yanitla(route):
+        url = route.request.url
+        if not url.startswith(TEST_KOK):
+            return route.abort()                       # dış kaynaklar (CDN) yok: tablo onlara bağlı değil
+        dosya = DOCS / (url[len(TEST_KOK):].split("#")[0].split("?")[0] or "index.html")
+        if dosya.is_file() and DOCS.resolve() in dosya.resolve().parents:
+            tur = mimetypes.guess_type(dosya.name)[0] or "application/octet-stream"
+            return route.fulfill(status=200, content_type=tur, body=dosya.read_bytes())
+        return route.fulfill(status=404, body="")
+
+    baglam = tarayici.new_context(service_workers="block")
+    try:
+        baglam.route("**/*", yanitla)
+        sayfa = baglam.new_page()
+        hatalar = []
+        sayfa.on("pageerror", lambda e: hatalar.append(str(e)))
+        sayfa.goto(TEST_KOK + "index.html#yardim")
+        sayfa.wait_for_load_state("load")
+        durum = sayfa.evaluate("""() => { const t = document.getElementById('yardim-kisayollar');
+          return {aktif: document.querySelector('.sayfa.aktif').id, kaynak: t.dataset.kaynak || null,
+                  satir: t.querySelectorAll('tbody tr').length, metin: t.textContent}; }""")
+        assert durum["aktif"] == "sayfa-yardim", durum
+        assert durum["kaynak"] == "katalog" and durum["satir"] >= 30, durum
+        for tus in ("Shift+F10", "PgUp", "Ctrl+Enter", "?"):
+            assert tus in durum["metin"], tus
+        assert not hatalar, hatalar
+    finally:
+        baglam.close()

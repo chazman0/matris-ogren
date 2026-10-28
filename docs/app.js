@@ -1399,11 +1399,18 @@
     }
     dersSoz = dersleriYukle();
     window.addEventListener("hashchange", hashYonlendir);
-    // Bina sayfası kurulunca (kendi kısayol bağlamaları kayda girer) açık Yardım sayfasındaki kısayol tablosu tazelenir
-    window.addEventListener("matris-bina-hazir", function () {
+    // Açık Yardım sayfasındaki kısayol tablosu tazelenir: (1) Bina sayfası kurulunca (kendi kısayol bağlamaları kayda girer);
+    // (2) adres #yardim iken açılışta: app.js ertelenmiş betiklerin ilkidir, arac_kutusu.js (MatrisArac) ondan sonra çalışır,
+    // yoksa tablo "modül yüklenmedi" yazısında kalırdı. DOMContentLoaded ertelenmiş betiklerin hepsi çalıştıktan sonra gelir.
+    const yardimTazele = function () {
       const y = $("sayfa-yardim");
       if (y && y.classList.contains("aktif")) { try { kisayolTablosu(); } catch (e) { /* yoksay */ } }
-    });
+    };
+    window.addEventListener("matris-bina-hazir", yardimTazele);
+    if (document.readyState !== "complete") {
+      document.addEventListener("DOMContentLoaded", yardimTazele, { once: true });
+      window.addEventListener("load", yardimTazele, { once: true });
+    }
     hashYonlendir();
     motoruBaslat();
   }
