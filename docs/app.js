@@ -893,6 +893,64 @@
     } catch (e) { /* yardım isteğe bağlı */ }
   }
 
+  // ---------- Yardım: Bina sayfasının klavye kısayolları ----------
+  // Tek kaynak: araç kutusu kayıt defteri (MatrisArac.kisayollar(); bina.js ve bina_cizim.js bağlamaları dahil). Bina sayfası henüz
+  // açılmadıysa kayıt boştur; o zaman katalogdaki kısayollar gösterilir. Sayfanın kendi tuşları (bina.js klavye işleyicisi) aynı
+  // tuştaki kayıttan önce gelir: F / Shift+F bina.js'te tam ekran / sığdır olarak yeniden atanır.
+  const SAYFA_TUSLARI = [
+    { kisayol: "Esc", ad: "Kipten çık, seçimi ya da yarım çizimi / ölçümü bırak; tam ekrandan çık", grup: "sayfa" },
+    { kisayol: "Shift+F10", ad: "Seçili elemanın bağlam (sağ tık) menüsü", grup: "sayfa" },
+    { kisayol: "?", ad: "Kısayol listesini aç", grup: "sayfa" },
+    { kisayol: "PgUp", ad: "Düzlem yukarı: bir üst Z aksı ya da sonraki cephe aksı (aks–kat çiziminde üst kat)", grup: "aks" },
+    { kisayol: "PgDn", ad: "Düzlem aşağı", grup: "aks" },
+    { kisayol: "F", ad: "Tam ekran (Esc ya da F ile çıkılır)", grup: "gorunum" },
+    { kisayol: "Shift+F", ad: "Modeli sığdır", grup: "gorunum" },
+    { kisayol: "Ctrl+Shift+Z", ad: "Yinele", grup: "duzenleme" },
+    { kisayol: "Backspace", ad: "Seçileni sil (seçim yoksa Sil aracı)", grup: "duzenleme" },
+  ];
+  function kisayolSatirlari(M) {
+    let liste = [];
+    try { liste = M.kisayollar() || []; } catch (e) { liste = []; }
+    let kaynak = "kayit";
+    if (liste.length) {
+      liste = liste.map(function (k) { const kk = M.komut ? M.komut(k.id) : null; return { kisayol: k.kisayol, ad: k.ad, grup: (kk && kk.grup) || "diger" }; });
+    } else {
+      kaynak = "katalog";
+      liste = (M.KATALOG || []).filter(function (k) { return k.kisayol && M.kisayolMetni(k.kisayol); })
+        .map(function (k) { return { kisayol: M.kisayolMetni(k.kisayol), ad: k.ad, grup: k.grup }; });
+    }
+    const sayfa = {};
+    SAYFA_TUSLARI.forEach(function (t) { sayfa[t.kisayol] = 1; });
+    const satirlar = liste.filter(function (k) { return !sayfa[k.kisayol]; }).concat(SAYFA_TUSLARI);
+    const sira = {};
+    (M.GRUPLAR || []).forEach(function (g, i) { sira[g.id] = i; });
+    const siraAl = function (g) { return g === "sayfa" ? 1000 : (sira[g] != null ? sira[g] : 500); };
+    satirlar.forEach(function (s, i) { s.i = i; });
+    satirlar.sort(function (a, b) { return siraAl(a.grup) - siraAl(b.grup) || a.i - b.i; });
+    return { satirlar: satirlar, kaynak: kaynak };
+  }
+  function kisayolTablosu() {
+    const tablo = $("yardim-kisayollar");
+    if (!tablo) return;
+    const M = window.MatrisArac;
+    if (!M || typeof M.kisayollar !== "function") {
+      tablo.dataset.kaynak = "yok";
+      tablo.innerHTML = '<tbody><tr><td class="not">Araç kutusu modülü yüklenmedi; kısayollar Bina sayfasında araç kutusu düğmelerinin ' +
+        "ipucunda yazar (tam liste: KULLANIM.md, 3.10).</td></tr></tbody>";
+      return;
+    }
+    const s = kisayolSatirlari(M);
+    const grupAd = { sayfa: "Bina sayfası", diger: "Diğer" };
+    (M.GRUPLAR || []).forEach(function (g) { grupAd[g.id] = g.ad; });
+    tablo.dataset.kaynak = s.kaynak;
+    tablo.innerHTML = '<thead><tr><th scope="col">Tuş</th><th scope="col">Komut</th><th scope="col">Araç grubu</th></tr></thead><tbody>' +
+      s.satirlar.map(function (r) {
+        return '<tr><td style="white-space:nowrap"><kbd>' + kacis(r.kisayol) + "</kbd></td><td>" + kacis(r.ad) + '</td><td style="white-space:nowrap">' +
+          kacis(grupAd[r.grup] || r.grup) + "</td></tr>";
+      }).join("") + "</tbody>" +
+      (s.kaynak === "katalog" ? '<tfoot><tr><td colspan="3" class="not">Bina sayfası açılınca sayfanın kendi komutları (ör. W duvar) da listeye eklenir.</td></tr></tfoot>' : "");
+  }
+
   // ---------- Dersler ----------
   // dersler.json iki biçimde olabilir. Yeni: [{no, id, baslik, bolum, bolum_adi, ozet, sure, md, parcalar[]}] (zengin dersler);
   // eski: [{no, baslik, md}] (defterden çıkarılan düz markdown). İkisi de aynı sayfada çizilir.
@@ -1180,6 +1238,7 @@
   function sayfaGoster(ad, adresDokunma) {
     document.querySelectorAll(".sayfa").forEach(function (s) { s.classList.toggle("aktif", s.id === "sayfa-" + ad); });
     document.querySelectorAll(".alt-nav button").forEach(function (b) { b.classList.toggle("aktif", b.dataset.sayfa === ad); });
+    if (ad === "yardim") { try { kisayolTablosu(); } catch (e) { /* yardım tablosu isteğe bağlı */ } }
     if (adresDokunma) return;
     const hedef = ad === "dersler" && dersDurum.acik != null ? dersBaglanti(dersDurum.acik) : "#" + ad;
     try { history.replaceState(null, "", hedef); } catch (e) { /* yoksay */ }
@@ -1336,6 +1395,11 @@
     }
     dersSoz = dersleriYukle();
     window.addEventListener("hashchange", hashYonlendir);
+    // Bina sayfası kurulunca (kendi kısayol bağlamaları kayda girer) açık Yardım sayfasındaki kısayol tablosu tazelenir
+    window.addEventListener("matris-bina-hazir", function () {
+      const y = $("sayfa-yardim");
+      if (y && y.classList.contains("aktif")) { try { kisayolTablosu(); } catch (e) { /* yoksay */ } }
+    });
     hashYonlendir();
     motoruBaslat();
   }

@@ -102,7 +102,15 @@
       <div class="bn-baslik-satir">
         <h2 id="bina-baslik">Bina: yük akışı ve 3B analiz</h2>
         <details class="bn-tanitim"><summary>Bu sayfa ne yapar?</summary>
-          <p class="not">Aks–kat sisteminde 3B bina çiz (kolon, kiriş, döşeme, duvar), yükleri TS 498’e göre topla, döşeme → kiriş → kolon → temel → zemin yük akışını izle; G/Q çözümü, 1,4G+1,6Q ve G+Q kombinasyonları, deforme şekil ve kesit tesir diyagramları; tekil, mütemadi ya da radye temel (zemin basıncı ve oturma haritası). Sahnenin köşesindeki düğmelerle araç çubuğu ve özellik paneli daraltılır, sonuçlar sağ panele ya da alt çekmeceye alınır; panel kenarındaki ayırıcı sürüklenerek genişlik ayarlanır. ⛶ düğmesi (ya da F tuşu) tam ekran açar, Esc kapatır. Sahnenin üstündeki yüzen araç kutuları (çizim, düzenleme, ölçme, görünüm, analiz, sonuç) sürüklenip yeniden gruplanabilir; bir elemana sağ tıklayınca (dokunmatikte uzun basınca) o elemanın bütün bilgileri ve komutları açılır. 📄 Statik Rapor (yazdır / PDF, HTML), ▦ Tablolar (metraj, yükler, sonuçlar; düzenleme ve CSV), 🌡 Isı haritası ve ⬇ IFC dışa aktarımı üst şeritte; proje .matris dosyası olarak kaydedilip açılır. Öğretim ve ön boyutlandırma içindir.</p>
+          <ul class="not adim-listesi">
+            <li><b>Aks–kat şablonları ve aks tabanlı çizim:</b> kolon, kiriş, döşeme, duvar, çapraz, makas, beşik çerçeve, aşık, kren yolu ve panel çizilir; her düğüm bir aks kesişimine ya da bir çubuğun bölme / kesişim noktasına yakalanır, aks taşınınca bağlı elemanlar da taşınır. Yüzen araç kutuları: Aks, Çizim, Üreteç ve yük, Düzenleme, Değiştirme (ayrıca Ölçme, Görünüm, Analiz, Sonuç). Üst şeritteki Düzlem seçici ya da PgUp / PgDn ile plan ve cephe düzlemleri arasında geçilir.</li>
+            <li><b>Genel (surum 3) model:</b> düğüm–çubuk–panel modeli; hazır şablonlar <i>Çelik sanayi yapısı (4 hol)</i> (vuteli mertek, aşık, çatı ve cephe çaprazları, kren yolu) ve <i>3 katlı çelik merkezi çaprazlı çerçeve</i> (ters V ve X çaprazlar); çubuklara mafsal ve yalnız çekme verilebilir.</li>
+            <li><b>Yükler:</b> G, Q, S (kar), W (rüzgâr), E (TBDY 2018 eşdeğer deprem) ve kren durumları; TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf; döşeme → kiriş → kolon → temel → zemin yük akışı, şekil değiştirmiş biçim ve iç kuvvet diyagramları.</li>
+            <li><b>Tasarım:</b> TS 500 ve ÇYTHYE 2018 kontrolleri, eleman başına D/C; kesit önerisi (sağ tık ya da Değiştirme kutusunda “Kesit öner ve uygula”).</li>
+            <li><b>Temeller:</b> tekil; mütemadi ve radye (Winkler zemini, taban basıncı ve oturma haritası) yalnız aks–kat modelinde.</li>
+            <li><b>Çıktılar:</b> 📄 Statik rapor (yazdır / PDF, HTML), ▦ Tablolar ve metraj (düzenleme, yapıştırma, CSV), 🌡 Isı haritası, ⬇ IFC, 💾 <code>.matris</code> proje dosyası. Elemana sağ tık (dokunmatikte uzun basma) bilgi ve komutları açar; <kbd>?</kbd> bütün kısayolları gösterir, <kbd>F</kbd> tam ekran, <kbd>Esc</kbd> çıkış.</li>
+          </ul>
+          <p class="not">Öğretim ve ön boyutlandırma içindir; mühendislik kararı için yetkili bir mühendisin denetimi gerekir.</p>
         </details>
       </div>
       <div id="bina-kok"><p class="not">Yükleniyor…</p></div>
@@ -126,6 +134,14 @@
         <li><b>Yükle</b> deyin. Başlat menüsüne ve masaüstüne "Matris Öğren" eklenir; kendi penceresinde açılır.</li>
       </ol>
       <p class="not">İlk açılışta Python motoru (≈30 MB) bir kez indirilir ve cihazda saklanır. Yeni sürüm çıkınca "Yenile" uyarısı görünür.</p>
+      <p id="yardim-masaustu"><b>Masaüstü sürümü (Windows, macOS, Linux):</b> aynı uygulama, kurulabilen bir bilgisayar programı olarak; Python motoru
+        programla birlikte gelir (ilk açılışta bile internet gerekmez). Türkçe menü çubuğu ve kısayollar (Ctrl+S kaydet, F5 çöz, F9 rapor…),
+        <code>.matris</code> proje dosyaları (çift tıklayınca açılır), son dosyalar, çoklu pencere, otomatik kayıt ve kurtarma, IFC / CSV / rapor için
+        yerel "Kaydet" penceresi ve rapordan doğrudan PDF. Paketler GitHub'daki
+        <a href="https://github.com/chazman0/matris-ogren/releases" target="_blank" rel="noopener">Releases</a> sayfasındadır (Windows kurulum ve taşınabilir
+        <code>.exe</code>, macOS <code>.dmg</code>, Linux <code>.AppImage</code> / <code>.deb</code>).</p>
+      <p class="not">Paketler imzasızdır: Windows "bilgisayarınızı korudu" derse <b>Ek bilgi → Yine de çalıştır</b>; macOS "doğrulanamadı" derse
+        Uygulamalar'da simgeye <b>sağ tık → Aç</b>.</p>
     </div>
     <div class="kart">
       <h2>Nasıl kullanılır</h2>
@@ -137,14 +153,56 @@
         <li>Ayarlar (⚙): ondalık gösterim, basamak sayısı, kural kutuları, Python bölümü, açık/koyu tema.</li>
       </ul>
     </div>
+    <div class="kart" id="yardim-bina">
+      <h2>Bina sayfası</h2>
+      <ul class="adim-listesi">
+        <li><b>Model:</b> şablon listesinden hazır bir bina seçin (7 aks–kat şablonu ve 2 genel model) ya da Aks kutusundaki <b>Hızlı aks</b>
+          sihirbazıyla (<code>4@5</code>, <code>6, 7.5</code> gibi aralıklar; Z sekmesinde kat kotları, Saçak, Mahya, Kren) boş bir aks modeli açın.
+          Her düğüm bir aks kesişimi ya da bir çubuğun bölme / kesişim noktasıdır; aks taşınınca bağlı düğüm ve elemanlar da taşınır.</li>
+        <li><b>Çizim:</b> Çizim kutusu (çubuk çiz, hızlı kolon / kiriş / çapraz / panel, eğik çubuk, duvar), Üreteç ve yük kutusu (makas, beşik
+          çerçeve, aşık, kren yolu, mesnet, yük ata), Düzenleme ve Değiştirme kutuları (taşı, döndür, ayna, doğrusal dizi, kopyala / yapıştır,
+          böl, birleştir, düğümleri birleştir, mafsal, yalnız çekme, kesit değiştir, kesit öner ve uygula). Üst şeritteki <b>Düzlem</b> seçici ya da
+          PgUp / PgDn plan (Z aksı) ve cephe (X / Y aksı) düzlemleri arasında geçer.</li>
+        <li><b>Araç kutuları:</b> tutamağından sürüklenir; düğme bir kutudan ötekine sürüklenip bırakılır (boş alana bırakmak yeni kutu açar);
+          köşedeki menüde Özelleştir, hazır yerleşimler ve Varsayılana dön. Soluk düğmenin ipucu nedenini söyler. Telefonda kutular sahnenin
+          altında kaydırılabilir şerittir.</li>
+        <li><b>Sağ tık</b> (dokunmatikte uzun basma, klavyede Shift+F10): elemanın özeti ve komutları; <b>Bilgi</b> penceresi (geometri, kesit,
+          yükler, iç kuvvetler, tasarım, metraj, yük yolu; çözümden sonra motor ayrıntısı), Özellikler, Isı haritasında incele, Yük akışı,
+          Tasarım ayrıntısı, Kesit öner, Gizle, Yalıt, Sil.</li>
+        <li><b>Ölçme:</b> uzaklık, açı, alan, eleman boyu, kot farkı, koordinat; imleç düğüme, aks kesişimine ya da çubuğa yakalanır.
+          Esc yarım ölçümü bırakır, “Ölçüleri temizle” hepsini siler.</li>
+        <li><b>Çöz</b> (Ctrl+Enter): G, Q, S, W, E ve kren durumları, TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf, yük akışı, D/C. Mütemadi ve
+          radye temel yalnız aks–kat modelinde çözülür; model genel modele çevrilirken (ör. çapraz ya da mesnet eklenince) temel onayla tekil yapılır.</li>
+        <li><b>Çıktılar:</b> 📄 Statik rapor (önizleme, yazdır / PDF, HTML; proje künyesi), ▦ Tablolar ve metraj (sarı hücreler düzenlenir, tablo
+          programından yapıştırılır, Ctrl+Z geri alır; CSV), 🌡 Isı haritası (yer değiştirme, iç kuvvet, gerilme, kullanım oranı; döşeme paneli
+          ve radye alanları), ⬇ IFC4 yapı modeli, 💾 Kaydet / 📂 Aç (<code>.matris</code>: bina + görünüm + araç kutusu yerleşimi).</li>
+      </ul>
+    </div>
+    <div class="kart" id="yardim-kisayol-kart">
+      <h2>Klavye kısayolları</h2>
+      <p class="not">Bina sayfasında geçerlidir; yazı alanı ya da bir pencere açıkken çalışmaz. Bina sayfasında <kbd>?</kbd> aynı listeyi açar.
+        Masaüstü sürümünün menü kısayolları (Ctrl+N, Ctrl+O, Ctrl+S, F5 çöz, F6 tasarım kontrolleri, F9 rapor, Ctrl+T tablolar, Ctrl+E IFC,
+        Ctrl+G aks verisi, Ctrl+1…4 sayfalar, F11 tam ekran) menülerde ve <b>Yardım › Klavye kısayolları</b> penceresindedir.</p>
+      <div class="se-tablo-kutu">
+        <table id="yardim-kisayollar" class="se-sonuc-tablo" aria-label="Bina sayfası klavye kısayolları">
+          <tbody><tr><td class="not">Liste, araç kutusu modülü yüklenince dolar.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
     <div class="kart">
       <h2>Fonksiyonlar</h2>
       <div id="yardim-fonksiyonlar" class="anlatim"><p class="not">Motor hazır olunca listelenir.</p></div>
     </div>
     <div class="kart">
       <h2>Hakkında</h2>
-      <p class="not" id="hakkinda">Matris Öğren — sonlu elemanlar dersi için öğrenme odaklı matris hesaplayıcı. Hesap motoru: matris_ogren.py
-        (sympy ile kesin hesap), tarayıcıda Pyodide üzerinde çalışır; girdiğiniz veriler cihazdan dışarı çıkmaz.</p>
+      <p class="not" id="hakkinda">Matris Öğren — matris işlemleri, sonlu elemanlar ve yapı analizi için öğrenme odaklı hesaplayıcı: dersler, adım
+        adım çözümler, sonlu eleman çözücü ve aks tabanlı 3B bina modeli. Hesap motoru Python modülleridir: <code>matris_ogren</code> (matris
+        işlemleri, sympy ile kesin hesap), <code>sonlu_eleman</code> (yay, çubuk, kafes, kiriş, çerçeve, uzay yapı), <code>yapi</code> (aks–kat
+        bina modeli, TS 498 yükleri, yük akışı, TBDY 2018 deprem, birleşimler), <code>yapi_serbest</code> (genel düğüm–çubuk–panel modeli),
+        <code>tasarim</code> (TS 500 ve ÇYTHYE kontrolleri, kesit önerisi), <code>temel</code> (mütemadi ve radye temel, Winkler zemini),
+        <code>rapor</code> (statik rapor), <code>tablolar</code> (tablolar ve metraj) ve <code>alan</code> (ısı haritası alanları). Motor
+        tarayıcıda Pyodide üzerinde (masaüstü sürümünde programla birlikte gelen kopyasıyla) çalışır; girdiğiniz veriler cihazdan dışarı çıkmaz.
+        Hesaplar eğitim ve ön boyutlandırma içindir.</p>
     </div>
   </section>
 </main>
