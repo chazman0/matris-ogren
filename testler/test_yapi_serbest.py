@@ -516,6 +516,267 @@ def test_genellestir_esdegerligi(ad):
         assert v2["deprem"][yon]["Tp"] == pytest.approx(v1["deprem"][yon]["Tp"], rel=1e-9)
     assert v2["deprem"]["m_t"] == pytest.approx(v1["deprem"]["m_t"], rel=1e-9)
     assert v2["yukler"]["toplam"] == pytest.approx(v1["yukler"]["toplam"])
+    # tasarım: eleman başına D/C aks–kat motoruyla aynı (betonarme kolonda öz ağırlık çubuk boyunca yayılı → üst uçta N biraz farklı)
+    tol = 0.05 if ad == "betonarme-2kat-3x2" else 0.20
+    t1 = {(k["tur"], k["no"]): k for k in v1["tasarim"]["elemanlar"]}
+    for k in v2["tasarim"]["elemanlar"]:
+        k1 = t1[(k["kaynak"]["aks_kat"], k["kaynak"]["no"])]
+        assert k["dc"] == pytest.approx(k1["dc"], rel=tol), (k["cubuk"], k["kaynak"], k1["dc"], k["dc"], k1["belirleyen"], k["belirleyen"])
+        assert k["belirleyen"]["kombinasyon"] is not None, k
+        bas = k["kontroller"][0]                       # D/C'yi belirleyen satır başta; sağlanan bir koşul satırı olamaz
+        assert bas["dc"] == pytest.approx(k["dc"]) and not (bas.get("kosul") and bas["saglandi"]), (k["cubuk"], bas)
+
+
+def test_betonarme_dc_kosul_satirlari():
+    """surum 3'te betonarme kolon D/C'si yönetmelik koşul satırlarından (ρ ≥ 0,01, etriye aralığı, boyut) gelmez; aks–kat ile aynı."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    v1 = coz(b).veri
+    b3 = copy.deepcopy(b)
+    b3["surum"] = 3
+    v3 = coz(b3).veri
+    assert v3["model"] == "genel"
+    t1 = {(k["tur"], k["no"]): k["dc"] for k in v1["tasarim"]["elemanlar"]}
+    kolon1 = next(k for k in v3["tasarim"]["elemanlar"] if k["kaynak"] == {"aks_kat": "kolon", "no": 1})
+    assert kolon1["dc"] == pytest.approx(t1[("kolon", 1)], rel=0.03) and kolon1["dc"] < 0.5          # eskiden 1,0 (ρ satırı)
+    assert kolon1["belirleyen"] == {"kontrol": "N–M", "kombinasyon": "1.4G+1.6Q"}
+    for k in v3["tasarim"]["elemanlar"]:
+        etkin = [x for x in k["kontroller"] if not (x.get("kosul") and x["saglandi"])]      # sağlanan koşul D/C'ye girmez
+        assert max(x["dc"] for x in etkin) == pytest.approx(k["dc"])
+        rho = [x for x in k["kontroller"] if "ρ ≥ 0,01" in x["ad"] or "aralığı" in x["ad"]]
+        assert all(x.get("kosul") for x in rho), rho
+    # deprem: kolonlarda TBDY N_dm ≤ 0,40 f_ck A_c (dayanım) ve en küçük boyut ≥ 300 mm (koşul) satırları
+    b3 = yapi.bina_sablon("betonarme-3kat-3x3")
+    b3["surum"] = 3
+    r = coz(b3)
+    import tasarim
+    kont = YS._ba_kontroller(tasarim, *_ba_girdisi(r.ic["tasarim"], r.ic["B"].cubuk_no[1]))
+    ndm = [x for x in kont if x["ad"] == "TBDY: Ndm ≤ 0,40 fck Ac"]
+    assert len(ndm) == 1 and not ndm[0]["kosul"] and ndm[0]["kombinasyon"]
+    assert any("en küçük boyutu ≥ 300" in x["ad"] and x["kosul"] for x in kont)
+
+
+def _ba_girdisi(T, c):
+    """_ba_kontroller girdileri (test): _cubuk_tasarla'nın betonarme dalını yeniden kurmadan T.sonuclar'dan."""
+    import tasarim
+    YS._cubuk_tasarla(tasarim, T, c)
+    s = T.sonuclar[c["no"]]
+    ks = T.B.kesitler[c["kesit"]]
+    kuv = s["bilgi"]["kuvvetler"]
+    ad_komb = {x["ad"]: x["ad"].rsplit(" (", 1)[0] for x in kuv}
+    return s["r"], kuv, ad_komb, "kolon", ks, T.B.malzemeler[ks["malzeme"]], None
+
+
+def test_belirleyen_satir_basta_ve_kisaltmada_korunur():
+    r = coz(yapi.bina_sablon("celik-sanayi-4hol"))
+    v = r.veri
+    assert v["ozet"].get("tasarim_kisaltildi")                  # büyük model: yanıtta 3 satır
+    for k in v["tasarim"]["elemanlar"]:
+        assert len(k["kontroller"]) <= 3
+        bas = k["kontroller"][0]
+        assert bas["dc"] == pytest.approx(k["dc"]) and not (bas.get("kosul") and bas["saglandi"]), (k["cubuk"], bas)
+    tam = r.ic["tas_tam"]                                       # rapor için kısaltılmamış satırlar
+    assert any(len(k["kontroller"]) > 3 for k in tam["elemanlar"])
+    assert [k["dc"] for k in tam["elemanlar"]] == [k["dc"] for k in v["tasarim"]["elemanlar"]]
+
+
+# ---------------------------------------------------------------------------
+# tek yönlendirme kuralı (C1), temel tipi, akış kayıtları, otomatik mesnetler, diyafram, panel ek yükü, balkon, anlatım
+# ---------------------------------------------------------------------------
+def test_yonlendirme_dogruluk_tablosu():
+    """yapi._serbest_mi = yapi_serbest.serbest_mi (arayüz s3Var ile aynı tablo)."""
+    def b(**ek):
+        x = yapi.bina_sablon("betonarme-2kat-3x2")
+        x.update(ek)
+        return x
+    tablo = [
+        (b(), False),
+        (b(mesnetler=[{"dugum": {"aks": ["B", "2"], "z": "+3.00"}, "ux": True, "uy": True, "uz": True}]), True),
+        (b(dugumler=[{"no": 100001, "X": 0, "Y": 0, "Z": 3}]), True),
+        (b(uretecler=[{"no": 1, "tur": "makas", "parametreler": {}}]), True),
+        (b(ek_yukler=[{"tur": "dugum", "aks": ["B", "2"], "kat": 1, "durum": "G", "FZ": -10}]), False),
+        (b(ek_yukler=[{"tur": "dugum", "dugum": {"aks": ["B", "2"], "z": "+3.00"}, "durum": "G", "FZ": -10}]), True),
+        (b(ek_yukler=[{"tur": "cubuk", "cubuk": 1, "durum": "G", "q": -1}]), True),
+        (b(surum=3), True),
+        (yapi.bina_sablon("celik-cbf-3kat"), True),
+        (b(cubuklar=[], mesnetler=[]), False),
+    ]
+    for bina, beklenen in tablo:
+        assert yapi._serbest_mi(bina) is beklenen and YS.serbest_mi(bina) is beklenen, bina.get("ek_yukler") or bina.get("surum")
+        assert yapi._serbest_mi(json.dumps(bina)) is beklenen
+    # aks–kat modeline açık mesnet: genel motora gider ve mesnet hesaba girer (eskiden sessizce yok sayılırdı)
+    x = b(mesnetler=[{"dugum": {"aks": ["B", "2"], "kat": 1}, "uz": True}])
+    v = coz(x).veri
+    assert v["model"] == "genel" and v["akis"]["mesnetler"] and v["akis"]["mesnetler"][0]["adres"].startswith("B2/")
+
+
+@pytest.mark.parametrize("ad", list(YS.SERBEST_SABLONLAR))
+def test_cozum_kimligi_cozmeden(ad):
+    b = yapi.bina_sablon(ad)
+    assert yapi.cozum_kimligi(b) == coz(b).veri["cozum_kimligi"] == yapi.cozum_kimligi(json.dumps(b))
+    b2 = yapi.bina_sablon("betonarme-2kat-3x2")
+    assert yapi.cozum_kimligi(b2) == coz(b2).veri["cozum_kimligi"]
+
+
+def test_mutemadi_radye_genel_modelde_hata():
+    for tip in ("surekli", "radye"):
+        b = yapi.bina_sablon("celik-cbf-3kat")
+        b["temeller"]["tip"] = tip
+        with pytest.raises(mo.MatrisHatasi, match="henüz çözülmüyor"):
+            coz(b)
+        r = YS.bina_coz(b, goster="yok", anlat=False, _temel_tekil=True)         # yalnız kesit önerisi: tekil temelle, uyarıyla
+        assert r.veri["bina"]["temeller"]["tip"] == "tekil" and any("genel modelde çözülmüyor" in u for u in r.veri["uyarilar"])
+    b = yapi.bina_sablon("celik-cbf-3kat")
+    b["temeller"]["tip"] = "kazik"
+    with pytest.raises(mo.MatrisHatasi, match="tanımsız"):
+        coz(b)
+    b = yapi.bina_sablon("betonarme-4kat-radye")                  # aks–kat modeline mesnet: genel motor + radye → öğretici hata
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "kat": 1}, "uz": True}]
+    with pytest.raises(mo.MatrisHatasi, match="radye temel genel"):
+        coz(b)
+
+
+def test_akis_temel_ve_acik_mesnet_kayitlari():
+    b = yapi.bina_sablon("celik-cbf-3kat")
+    v0 = coz(copy.deepcopy(b)).veri
+    assert v0["akis"]["mesnetler"] == []
+    assert v0["akis"]["temeller"] and all(t["B"] and t["L"] and t["h"] and t["N_temel"] > 0 and t["aks"] for t in v0["akis"]["temeller"])
+    t = v0["akis"]["temeller"][0]
+    assert t["N_temel"] == pytest.approx(yapi.GAMMA_BA * t["B"] * t["L"] * t["h"])
+    assert t["N_servis"] == pytest.approx(t["N_G"] + t["N_Q"] + t["N_temel"])
+    b["mesnetler"] = [{"dugum": {"aks": ["B", "2"], "z": "±0.00"}, "ux": True, "uy": True, "uz": True}]
+    v = coz(b).veri
+    assert len(v["akis"]["temeller"]) == len(v0["akis"]["temeller"]) - 1
+    assert all(x.get("B") and x.get("L") and x.get("N_temel") for x in v["akis"]["temeller"])
+    m = v["akis"]["mesnetler"]
+    assert len(m) == 1 and set(m[0]) == {"dugum", "adres", "tip", "N_G", "N_Q", "MX", "MY"} and m[0]["adres"] == "B2/±0.00"
+    assert m[0]["N_G"] > 0 and m[0]["tip"] == "mafsal"
+    assert [x["dugum"] for x in v["bina"]["temeller"]["liste"]] == [x["dugum"] for x in v["akis"]["temeller"]]
+    assert m[0]["dugum"] not in [x["dugum"] for x in v["bina"]["temeller"]["liste"]]
+
+
+def test_ek_aks_sistemi_kolon_tabanlari_mesnetli():
+    """30° dönük ek aks sisteminin kesişimlerindeki kolon tabanları temele oturur (C3); bölme düğümü oturmaz."""
+    b = kutu_bina(0.0, deprem=False)
+    b["aks_sistemleri"] = [{"ad": "KANAT", "tur": "kartezyen", "orijin": [12, 0, 0], "aci": 30,
+                            "x": [{"ad": "P", "konum": 0}, {"ad": "R", "konum": 5}], "y": [{"ad": "1", "konum": 0}, {"ad": "2", "konum": 4}],
+                            "z": None}]
+    K = lambda a, z: {"sistem": "KANAT", "aks": a, "z": z}  # noqa: E731
+    n = max(c["no"] for c in b["cubuklar"])
+    for a in (["P", "1"], ["R", "1"], ["R", "2"], ["P", "2"]):
+        n += 1
+        b["cubuklar"].append({"no": n, "i": K(a, "±0.00"), "j": K(a, "Çatı"), "tur": "kolon", "kesit": "K"})
+    for a, c_ in ((["P", "1"], ["R", "1"]), (["R", "1"], ["R", "2"]), (["R", "2"], ["P", "2"]), (["P", "2"], ["P", "1"])):
+        n += 1
+        b["cubuklar"].append({"no": n, "i": K(a, "Çatı"), "j": K(c_, "Çatı"), "tur": "kiris", "kesit": "B"})
+    b["temeller"]["ozel"] = [{"sistem": "KANAT", "aks": ["R", "2"], "B": 2.5, "L": 2.5}, {"aks": ["A", "1"], "B": 2.2, "L": 2.2}]
+    v = coz(b).veri                                              # eskiden: 'Yapı mekanizma'
+    tem = v["akis"]["temeller"]
+    assert len(tem) == 8
+    kanat = [t for t in tem if t.get("sistem") == "KANAT"]
+    assert len(kanat) == 4 and next(t for t in kanat if t["aks"] == ["R", "2"])["B"] == 2.5
+    assert next(t for t in tem if t["aks"] == ["A", "1"] and not t.get("sistem"))["B"] == 2.2
+    assert all(abs(p["kolon_taban"] - p["toplam"]) < 1e-6 * max(1.0, p["toplam"]) for p in v["akis"]["korunum"].values())
+    # bölme düğümü taban kotunda olsa da otomatik mesnet almaz
+    B = YS._oku(b)
+    assert all(B.coz.dugum[n_]["tur"] == "aks" for n_, m in B.mesnetler.items() if m["kaynak"] == "temel")
+
+
+def test_rijit_diyafram_seviyesinde_acik_mesnet():
+    b = yapi.bina_sablon("celik-cbf-3kat")
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uy": True}]
+    with pytest.raises(mo.MatrisHatasi, match=r"rijit diyaframlı \+3\.50 seviyesinde: yatay ux/uy ve dönme rz ayrıca mesnetlenemez") as h:
+        coz(b)
+    assert "analiz" in str(h.value) and "esnek" in str(h.value) and "efendi düğüm 9" not in str(h.value)
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet verilebilir
+    assert coz(b).veri["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "ux": True}]
+    b["analiz"]["diyafram"] = {"1": "esnek"}                                             # önerilen çıkış yolu
+    assert coz(b).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+
+
+def test_panel_ek_yuku_durumu():
+    b = kutu_bina(0.0, deprem=False)
+    b["yuk_durumlari"]["S"] = {"acik": True, "bolge": 3, "rakim": 0}
+    v0 = coz(copy.deepcopy(b)).veri["yukler"]["toplam"]
+    A = 36.0
+    for durum, ek, beklenen in (("S", {"p": 1.0}, {"S": A}), ("Q", {"p": 0.5}, {"Q": 0.5 * A}), ("G", {"p": 2.0}, {"G": 2.0 * A}),
+                                ("S", {"g": 0.3, "q": 0.2}, {"S": 0.5 * A}),                 # eski biçim, durum S → ikisi de S
+                                (None, {"g": 0.3, "q": 0.2}, {"G": 0.3 * A, "Q": 0.2 * A})):   # eski biçim, durumsuz → g G, q Q
+        x = copy.deepcopy(b)
+        y = {"tur": "panel", "panel": 1, **ek}
+        if durum:
+            y["durum"] = durum
+        x["ek_yukler"] = [y]
+        t = coz(x).veri["yukler"]["toplam"]
+        for d in ("G", "Q", "S"):
+            assert t[d] == pytest.approx(v0[d] + beklenen.get(d, 0.0), rel=1e-6), (durum, ek, d)
+
+
+def test_balkon_ts498_genel_model():
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["dosemeler"][0]["kullanim"] = "balkon"
+    v1 = coz(b).veri
+    b3 = copy.deepcopy(b)
+    b3["surum"] = 3
+    v3 = coz(b3).veri
+    assert v1["yukler"]["toplam"]["Q"] == pytest.approx(274.0)
+    assert v3["yukler"]["toplam"]["Q"] == pytest.approx(v1["yukler"]["toplam"]["Q"])
+    p = next(p for p in v3["yukler"]["paneller"] if p["no"] == 1)
+    assert p["q"] == pytest.approx(5.0 + 0.35 * (20.0 - 10.0)) and "Çizelge 6 satır 4" in p["q_kaynak"]
+
+
+@pytest.mark.parametrize("ad", list(YS.SERBEST_SABLONLAR) + ["portal"])
+def test_anlatim_adimlari_ardisik(ad):
+    import re
+    b = portal(H=10.0, capraz="yalniz", kiris_mafsal=True, taban="mafsal") if ad == "portal" else yapi.bina_sablon(ad)
+    r = coz(b, anlat=True)
+    nolar = [int(m.group(1)) for _, i, _ in r.anlatim.bloklar for m in [re.match(r"^#+\s*(\d+)\. Adım", str(i))] if m]
+    assert nolar == list(range(1, len(nolar) + 1)) and len(nolar) >= 6, nolar
+    metin = " ".join(str(i) for _, i, _ in r.anlatim.bloklar)
+    if ad != "portal":                    # deprem adımının alt başlıkları da aynı numarayla (5.1, 5.2 …)
+        n_dep = next(n for _, i, _ in r.anlatim.bloklar for m in [re.match(r"^#+\s*(\d+)\. Adım: TBDY", str(i))] if m for n in [int(m.group(1))])
+        assert f"**{n_dep}.1 Girdiler" in metin and "**7.1 Girdiler" not in metin
+
+
+def test_aks_kat_deprem_anlatimi_numarasi_degismez():
+    r = coz(yapi.bina_sablon("betonarme-3kat-3x3"), anlat=True)
+    metin = " ".join(str(i) for _, i, _ in r.anlatim.bloklar)
+    assert "7. Adım: TBDY 2018" in metin and "**7.1 Girdiler" in metin and "**7.10 Düşey deprem" in metin
+
+
+def test_basit_kesit_ust_duzey_lehcesi():
+    """IFC/arayüz örneklerindeki {"tip": "boru", "D": 0.1143, "t": 0.004} (m) ve 2L {"h": 60, "ara": 10} (mm) kesitleri."""
+    B = YS._oku(portal(H=0.0))
+    kart = lambda k: YS._kesit_kart("X", dict(k, malzeme="S275"), B)  # noqa: E731
+    a = kart({"tip": "boru", "D": 0.1143, "t": 0.004})
+    assert a["profil"].startswith("BORU") and a["h"] == pytest.approx(0.1143)
+    assert a["A"] == pytest.approx(kart({"tip": "boru", "boyutlar": {"D": 114.3, "t": 4.0}})["A"])
+    assert a["A"] == pytest.approx(math.pi * (0.1143 ** 2 - (0.1143 - 0.008) ** 2) / 4, rel=1e-6)
+    assert kart({"tip": "kutu", "h": 0.10, "b": 0.10, "t": 0.005})["aile"] == "KUTU"
+    assert kart({"tip": "L", "h": 0.07, "b": 0.07, "t": 0.007})["aile"] == "L"
+    assert kart({"tip": "U", "h": 0.16, "b": 0.065, "tw": 0.0075, "tf": 0.0105})["aile"] == "UPN"
+    k2 = kart({"tip": "2L", "h": 60, "b": 60, "t": 6, "ara": 10})
+    assert k2["aile"] == "2L" and k2["b"] == pytest.approx(0.06)
+    with pytest.raises(mo.MatrisHatasi, match="eşit kollu"):
+        kart({"tip": "L", "h": 0.08, "b": 0.06, "t": 0.006})
+
+
+_ORNEK_BETIK = 'const O=require(process.argv[1]);process.stdout.write(JSON.stringify(O[process.argv[2]]()));'
+
+
+@pytest.mark.skipif(NODE is None, reason="node kurulu değil")
+@pytest.mark.parametrize("ad", ["serbest", "aks"])
+def test_ifc_orneklerinin_kesitleri_cozulur(ad):
+    r = subprocess.run([NODE, "-e", _ORNEK_BETIK, str(PROJE / "testler" / "js" / "ifc_ornekler.js"), ad], capture_output=True, text=True,
+                       timeout=60)
+    assert r.returncode == 0, r.stderr
+    b = json.loads(r.stdout)
+    B = YS._oku(dict(b, temeller=dict(b.get("temeller") or {}, tip="tekil"), paneller=[], ek_yukler=[]))
+    assert {ad_: k["tip"] for ad_, k in B.kesitler.items() if ad_ in ("BORU", "KUTU")} == {"BORU": "basit", "KUTU": "basit"}
+    try:                                         # IFC örneği yapısal olarak tam olmayabilir; kesit hatası olmamalı
+        coz(b)
+    except mo.MatrisHatasi as h:
+        assert "çözümlenemedi" not in str(h) and "Kesit" not in str(h), str(h)
 
 
 def test_aks_kat_bina_genel_motorla_dogrudan():
