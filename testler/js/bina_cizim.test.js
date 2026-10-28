@@ -300,3 +300,259 @@ test("sayı ve biçim: virgül / eksi işareti, kısa kot biçimi", function () 
   assert.equal(BC.fmt(-1.5), "−1,50");
   assert.equal(BC.fmtK(7.5), "7,5");
 });
+
+// ------------------------------------------------------------------ genel model kapısı (C1), aks–kat yolları
+/** Aks–kat (surum 1) betonarme modeli: A–B–C (0, 5, 9) × 1–2 (0, 4), 2 kat; her kesişimde kolon, X ve Y kirişleri, iki döşeme / kat. */
+function aksKatModel(temelTip) {
+  const kol = [], kir = [], dos = [];
+  let n = 0, kn = 0, d = 0;
+  for (const k of [1, 2]) for (const x of ["A", "B", "C"]) for (const y of ["1", "2"]) kol.push({ no: ++n, aks: [x, y], kat: k, kesit: "S40x40", yon: "x" });
+  for (const k of [1, 2]) {
+    for (const y of ["1", "2"]) kir.push({ no: ++kn, kat: k, bas: ["A", y], son: ["C", y], kesit: "K25x50", duvar: null });
+    for (const x of ["A", "B", "C"]) kir.push({ no: ++kn, kat: k, bas: [x, "1"], son: [x, "2"], kesit: "K25x50", duvar: null });
+    dos.push({ no: ++d, kat: k, kose: [["A", "1"], ["B", "2"]], h: 0.14, kullanim: "konut" }, { no: ++d, kat: k, kose: [["B", "1"], ["C", "2"]], h: 0.14, kullanim: "konut" });
+  }
+  return { tur: "bina", surum: 1, sistem: "betonarme",
+    akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 5 }, { ad: "C", konum: 9 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 4 }] },
+    katlar: [{ no: 0, ad: "Temel", kot: 0 }, { no: 1, ad: "1. kat", kot: 3 }, { no: 2, ad: "2. kat", kot: 6 }],
+    kesitler: { S40x40: { tip: "dikdortgen", b: 0.4, h: 0.4, malzeme: "C30" }, K25x50: { tip: "dikdortgen", b: 0.25, h: 0.5, malzeme: "C30" } },
+    duvarlar: { tugla19: { kutuphane: "tugla19" } },
+    kolonlar: kol, kirisler: kir, dosemeler: dos, ek_yukler: [],
+    temeller: Object.assign({ mesnet: "ankastre" }, temelTip ? { tip: temelTip } : {}) };
+}
+
+test("C1 genel model kuralı: sabit doğruluk tablosu (motor _serbest_mi ve bina.js s3Var ile aynı)", function () {
+  const b = aksKatModel();
+  const ek = function (o) { return Object.assign(JSON.parse(JSON.stringify(b)), o); };
+  const tablo = [
+    [b, false],
+    [ek({ mesnetler: [{ dugum: { aks: ["B", "2"], z: "+3.00" }, ux: true, uy: true, uz: true }] }), true],
+    [ek({ dugumler: [{ no: 100001, X: 0, Y: 0, Z: 3 }] }), true],
+    [ek({ uretecler: [{ no: 1, tur: "makas", parametreler: {} }] }), true],
+    [ek({ ek_yukler: [{ tur: "dugum", aks: ["B", "2"], kat: 1, durum: "G", FZ: -10 }] }), false],
+    [ek({ ek_yukler: [{ tur: "dugum", dugum: { aks: ["B", "2"], z: "+3.00" }, durum: "G", FZ: -10 }] }), true],
+    [ek({ ek_yukler: [{ tur: "cubuk", cubuk: 1, durum: "G", q: -1 }] }), true],
+    [ek({ surum: 3 }), true],
+    [ek({ cubuklar: [], mesnetler: [] }), false],
+    [ek({ surum: "3" }), true],
+    [ek({ ek_yukler: [{ tur: "kiris", kiris: 1, durum: "G", q: 2 }, { tur: "doseme", doseme: 1, g: 1 }] }), false],
+  ];
+  tablo.forEach(function (t, i) { assert.equal(BC.genelMi(t[0]), t[1], "satır " + (i + 1)); });
+  assert.equal(BC.genelMi(bos()), true, "yeni aks modeli surum 3");
+  assert.equal(BC.genelGecisGerekli(b), true);
+  assert.equal(BC.genelGecisGerekli(bos()), false);
+  assert.equal(BC.genelGecisGerekli(ek({ surum: 3 })), true, "aks–kat elemanı taşıyan surum 3 (karma) da çevrilir");
+});
+
+test("genelleştirme kapısı: mütemadi / radye temel tekil olur, onay metni temeli söyler", function () {
+  const r = BC.genellestirHazirla(aksKatModel("radye"));
+  assert.equal(r.model.temeller.tip, "tekil");
+  assert.equal(r.temelDegisti, true);
+  assert.equal(r.model.surum, 3);
+  assert.equal(BC.genelMi(r.model), true);
+  assert.equal(r.model.kolonlar.length + r.model.kirisler.length + r.model.dosemeler.length, 0);
+  assert.ok(r.notlar.some(function (n) { return /genelleştirildi/.test(n); }) && r.notlar.some(function (n) { return /Radye/.test(n); }));
+  assert.equal((r.model.dugumler || []).length, 0, "koordinatlı aks–kat düğüm kaydı yazılmaz");
+  const t = BC.genellestirHazirla(aksKatModel());
+  assert.equal(t.temelDegisti, false); assert.equal(t.model.temeller.tip, undefined);
+  assert.match(BC.genelGecisMetni(aksKatModel("surekli"), "Böl"), /^Böl — Model genel \(surum 3\) modele çevrilecek: .*mütemadi \(sürekli\) temel tekil temel mesnetlerine döner\. Devam edilsin mi\?$/);
+  assert.doesNotMatch(BC.genelGecisMetni(aksKatModel()), /temel/);
+});
+
+test("yük ekle (aks–kat, C10): düğüm {aks, kat}, kiriş q (aşağı +), döşeme g/q; model çevrilmez; kolon ve döşemede kar reddedilir", function () {
+  const b = aksKatModel();
+  let r = BC.yukEkle(b, { tur: "dugum", ref: { aks: ["C", "2"], kat: 2 } }, { durum: "G", FZ: "-50" });
+  assert.deepEqual(r.kayit, { tur: "dugum", aks: ["C", "2"], kat: 2, durum: "G", FZ: -50 });
+  assert.equal(BC.genelMi(r.model), false, "aks–kat düğüm yükü modeli genel yapmaz");
+  r = BC.yukEkle(r.model, { tur: "dugum", ref: { aks: ["B", "1"], z: "+3.00" } }, { durum: "Q", FX: 4 });
+  assert.deepEqual(r.kayit, { tur: "dugum", aks: ["B", "1"], kat: 1, durum: "Q", FX: 4 }, "{aks, z} → kat");
+  r = BC.yukEkle(r.model, { tur: "dugum", ref: { dugum: 2022 } }, { durum: "G", FZ: -1 });
+  assert.deepEqual([r.kayit.aks, r.kayit.kat], [["B", "2"], 2], "aks–kat düğüm numarası 1000·kat + 20·ix + iy + 1");
+  r = BC.yukEkle(r.model, { tur: "kiris", no: 1 }, { durum: "S", q1: "-3" });
+  assert.deepEqual(r.kayit, { tur: "kiris", kiris: 1, durum: "S", q: 3 });
+  r = BC.yukEkle(r.model, { tur: "kiris", no: 2 }, { durum: "Q", q: "2,5" });
+  assert.deepEqual(r.kayit, { tur: "kiris", kiris: 2, durum: "Q", q: 2.5 });
+  r = BC.yukEkle(r.model, { tur: "doseme", no: 1 }, { g: 1, q: "2" });
+  assert.deepEqual(r.kayit, { tur: "doseme", doseme: 1, g: 1, q: 2 });
+  assert.equal(r.model.ek_yukler.length, 6);
+  assert.equal(BC.genelMi(r.model), false);
+  assert.throws(function () { BC.yukEkle(b, { tur: "kolon", no: 1 }, { durum: "G", FZ: -1 }); }, /kolonuna ek yük verilemez/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "doseme", no: 1 }, { durum: "S", g: 1 }); }, /kar \(S\)/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "kiris", no: 1 }, { durum: "G", q1: -1, q2: -2 }); }, /düzgün yayılı/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "kiris", no: 1 }, { durum: "G", P: -5, x: 1 }); }, /tekil yük/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "kiris", no: 1 }, { durum: "G", yon: "X", q1: -1 }); }, /düşey/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "kiris", no: 99 }, { durum: "G", q: 1 }); }, /yok/);
+  assert.throws(function () { BC.yukEkle(b, { tur: "dugum", ref: { sistem: "K", aks: ["A", "1"], z: "a" } }, { durum: "G", FZ: -1 }); }, /kat düzlemlerindeki/);
+  // genel modelde panel yükü (C6): {durum, p}
+  const g = bos();
+  const p = BC.yukEkle(g, { tur: "panel", no: 1 }, { durum: "S", p: "0,8" });
+  assert.deepEqual(p.kayit, { tur: "panel", panel: 1, durum: "S", p: 0.8 });
+  assert.throws(function () { BC.yukEkle(g, { tur: "panel", no: 1 }, { durum: "G", p: "0" }); }, /sıfırdan farklı/);
+});
+
+test("mesnet (SAF): aks–kat düğümüne mesnet modeli genelleştirir (surum 3, temel tekil); kaldırmada çevirmez", function () {
+  const b = aksKatModel("surekli");
+  const r = BC.mesnetAta(b, { aks: ["C", "2"], kat: 2 }, "mafsal");
+  assert.equal(r.eylem, "eklendi");
+  assert.equal(r.genellesti, true);
+  assert.equal(r.model.surum, 3);
+  assert.equal(BC.genelMi(r.model), true);
+  assert.equal(r.model.kolonlar.length, 0);
+  assert.equal(r.model.temeller.tip, "tekil");
+  assert.equal(r.temelDegisti, true);
+  assert.deepEqual(r.model.mesnetler, [{ dugum: { aks: ["C", "2"], kat: 2 }, ux: true, uy: true, uz: true, rx: false, ry: false, rz: false }]);
+  yakin(A.refKoordinat(r.model, r.model.mesnetler[0].dugum), [9, 4, 6]);
+  // akslar.z tanımlıysa {aks, kat} → {aks, z}
+  const z = aksKatModel(); z.akslar.z = [{ ad: "T", konum: 0, kat: 0 }, { ad: "K1", konum: 3, kat: 1 }, { ad: "K2", konum: 6, kat: 2 }];
+  assert.deepEqual(BC.mesnetAta(z, { aks: ["C", "2"], kat: 2 }, "ankastre").model.mesnetler[0].dugum, { aks: ["C", "2"], z: "K2" });
+  const k = BC.mesnetAta(b, { aks: ["C", "2"], kat: 2 }, "kaldir");
+  assert.equal(k.eylem, "yok"); assert.equal(k.model.surum, 1); assert.equal(k.genellesti, false);
+});
+
+test("aksa bağla: genelleştirilmiş modelde yanlış 'aks ekleyin' yok; eski aks–kat kayıtları atlanır; kesişimdeki kayıt REF olur", function () {
+  const g = BC.genellestirHazirla(aksKatModel()).model;
+  const r = BC.aksaBaglaHepsi(g);
+  assert.deepEqual(r.uyarilar, []); assert.deepEqual(r.kalan, []);
+  // eski genelleştirmenin kayıtları ({no, X, Y, Z, aks, kat}) ve tam kesişimdeki koordinatlı kayıt
+  const m = JSON.parse(JSON.stringify(g));
+  m.dugumler = [{ no: 1001, X: 0, Y: 0, Z: 3, aks: ["A", "1"], kat: 1 }, { no: 100001, X: 5, Y: 4, Z: 6 }];
+  m.cubuklar.push({ no: 99, i: { dugum: 100001 }, j: { aks: ["C", "2"], kat: 2 }, tur: "kiris", kesit: "K25x50" });
+  m.mesnetler = [{ dugum: { dugum: 100001 }, ux: true, uy: true, uz: true }];
+  const s = BC.serbestleriBagla(m);
+  assert.deepEqual(s.kalan, []);
+  assert.deepEqual(s.baglanan, [100001]);
+  const c = s.model.cubuklar.find(function (x) { return x.no === 99; });
+  assert.deepEqual(c.i, { aks: ["B", "2"], z: "+6.00" });
+  assert.deepEqual(s.model.mesnetler[0].dugum, { aks: ["B", "2"], z: "+6.00" });
+  assert.deepEqual(s.model.dugumler.map(function (d) { return d.no; }), [1001], "eski kayıt dokunulmadan kalır, kesişimdeki kayıt silinir");
+  assert.ok(!BC.aksaBaglaHepsi(m).uyarilar.some(function (u) { return /aks ekleyin/.test(u); }));
+});
+
+test("aks–kat özellik yazımı (genelleştirmeden): kesit, grup, kolon açısı 0/90 → yon, kiriş duvarı; desteklenmeyen alan → null", function () {
+  const b = aksKatModel();
+  let r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "kiris", no: 2 }], { kesit: "K25x50", grup: "G1" });
+  assert.equal(r.sayi, 2);
+  assert.equal(r.model.kolonlar[0].kesit, "K25x50"); assert.equal(r.model.kirisler[1].grup, "G1"); assert.equal(r.model.surum, 1);
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { aci: 90 });
+  assert.equal(r.model.kolonlar[0].yon, "y");
+  assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kolon", no: 1 }], { aci: 180 }).model.kolonlar[0].yon, "x");
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar: "tugla19", duvar_h: 2.5 });
+  assert.deepEqual([r.model.kirisler[0].duvar, r.model.kirisler[0].duvar_h], ["tugla19", 2.5]);
+  assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kiris", no: 1 }], { duvar: null }).model.kirisler[0].duvar, null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { aci: 30 }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { aci: 90 }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { duvar: "tugla19" }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { yalniz_cekme: true }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "cubuk", no: 3 }], { kesit: "K25x50" }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [], { kesit: "K25x50" }), null);
+});
+
+test("ileti çevirisi: genelleştirilmiş modelde çubuk numarasına aks–kat adresi eklenir", function () {
+  const g = BC.genellestirHazirla(aksKatModel()).model;
+  const k1 = g.cubuklar.filter(function (c) { return c.kaynak.aks_kat === "kiris" && c.kaynak.no === 1; });
+  const kol = g.cubuklar.find(function (c) { return c.kaynak.aks_kat === "kolon" && c.kaynak.no === 3; });
+  assert.equal(k1.length, 2);
+  assert.equal(BC.cubukAksKatAdi(g, k1[1].no), "kiriş 1, 2. parça");
+  assert.equal(BC.cubukAksKatAdi(g, kol.no), "kolon 3");
+  assert.equal(BC.cubukAdlari(g, "Çubuk " + k1[0].no + ", " + kol.no + " birleştirilemedi; çubuk 999 yok."),
+    "Çubuk " + k1[0].no + " (kiriş 1, 1. parça), " + kol.no + " (kolon 3) birleştirilemedi; çubuk 999 yok.");
+  assert.equal(BC.cubukAdlari(bos(), "Çubuk 3 ve 4"), "Çubuk 3 ve 4");
+});
+
+test("yeni engeller: işlemin ürettiği sıfır boylu / çakışan çubuk ve bozuk panel; önceden var olanlar sayılmaz", function () {
+  let m = bos();
+  m = cubukEkle(m, G("A", "1", "+3.00"), G("B", "1", "+3.00"));
+  assert.deepEqual(BC.yeniEngeller(m, m), []);
+  const s = cubukEkle(m, G("A", "1", "+3.00"), G("B", "1", "+3.00"));
+  const e = BC.yeniEngeller(m, s);
+  assert.deepEqual(e.map(function (u) { return u.kod; }), ["cakisan-cubuk"]);
+  assert.deepEqual(BC.yeniEngeller(s, s), [], "zaten var olan bulgu yeni sayılmaz");
+  const z = cubukEkle(m, G("C", "1", "+3.00"), G("C", "1", "+3.00"));
+  assert.deepEqual(BC.yeniEngeller(m, z).map(function (u) { return u.kod; }), ["sifir-boy"]);
+});
+
+// ------------------------------------------------------------------ kesit önerisi (C4)
+test("kesit önerisi: IPE, BORU, KUTU, betonarme, vute ve C4 uygula; kesitler'de olmayan ad asla atanmaz", function () {
+  const m = { tur: "bina", surum: 3, sistem: "celik", malzemeler: { S275: { kutuphane: "S275" } },
+    kesitler: { "CAPRAZ-V": { tip: "profil", profil: "BORU 88.9x3.2", malzeme: "S275" }, MERTEK: { tip: "profil", profil: "IPE 400", malzeme: "S355" },
+      VUTE: { tip: "vute", temel: "MERTEK", ek_yukseklik: 0.4, boy: 2 }, KIRIS: { tip: "profil", profil: "IPE 300", malzeme: "S275" } },
+    cubuklar: [{ no: 32, tur: "capraz", kesit: "CAPRAZ-V" }, { no: 8, tur: "kiris", kesit: "VUTE" }, { no: 5, tur: "kiris", kesit: "KIRIS" }] };
+  const gecerli = function (model, ad) {
+    const k = model.kesitler[ad];
+    assert.ok(k, "kesit " + ad + " tanımlı");
+    if (k.tip === "profil") assert.ok(k.profil && k.malzeme && model.malzemeler[k.malzeme], ad);
+    if (k.tip === "vute") assert.ok(model.kesitler[k.temel] && model.kesitler[k.temel].tip === "profil", "vute temeli " + k.temel);
+    if (k.tip === "dikdortgen") assert.ok(k.b > 0 && k.h > 0, ad);
+  };
+  // çelik BORU (eski motor: uygula yok, sistem verilmemiş): ad boşluksuz, profil adı boşluklu
+  let o = { cubuk: 32, tur: "capraz", kesit: "CAPRAZ-V", oneri: "BORU 168.3x6.3", degisim: "büyüt" };
+  let r = BC.oneriUygula(m, o, { tur: "cubuk", no: 32 });
+  assert.equal(r.ad, "BORU168.3x6.3"); gecerli(r.model, r.ad);
+  assert.equal(r.model.kesitler[r.ad].profil, "BORU 168.3x6.3");
+  assert.equal(r.model.cubuklar[0].kesit, r.ad);
+  // KUTU, sistem çelik
+  r = BC.oneriUygula(m, { cubuk: 32, tur: "capraz", kesit: "CAPRAZ-V", oneri: "KUTU 100x100x5", sistem: "celik", malzeme: "S355", degisim: "büyüt" }, null);
+  assert.equal(r.ad, "KUTU100x100x5"); gecerli(r.model, r.ad); assert.equal(r.model.kesitler[r.ad].malzeme, "S355");
+  // IPE kiriş
+  r = BC.oneriUygula(m, { cubuk: 5, tur: "kiris", kesit: "KIRIS", oneri: "IPE 330", sistem: "celik", degisim: "büyüt" }, null);
+  assert.equal(r.ad, "IPE330"); gecerli(r.model, r.ad);
+  // vute: temel profil değişen yeni vute kartı, tip vute korunur
+  r = BC.oneriUygula(m, { cubuk: 8, tur: "kiris", kesit: "VUTE", oneri: "IPE 330", sistem: "celik", malzeme: "S355", degisim: "küçült" }, null);
+  assert.equal(r.ad, "VUTE-IPE330");
+  assert.equal(r.model.kesitler["VUTE-IPE330"].tip, "vute"); assert.equal(r.model.kesitler["VUTE-IPE330"].temel, "IPE330");
+  assert.equal(r.model.kesitler["VUTE-IPE330"].ek_yukseklik, 0.4); gecerli(r.model, r.ad);
+  assert.equal(r.model.cubuklar[1].kesit, "VUTE-IPE330");
+  // betonarme: b, h (m) → B30x50; dizgeden de
+  const rc = { tur: "bina", surum: 1, kesitler: { S40x40: { tip: "dikdortgen", b: 0.4, h: 0.4, malzeme: "C30", donati: "B420C" } },
+    kolonlar: [{ no: 2, aks: ["A", "1"], kat: 1, kesit: "S40x40" }], kirisler: [] };
+  r = BC.oneriUygula(rc, { cubuk: 7, tur: "kolon", kesit: "S40x40", oneri: "30x30", sistem: "betonarme", b: 0.3, h: 0.3, malzeme: "C30", degisim: "küçült", kaynak: { aks_kat: "kolon", no: 2 } }, null);
+  assert.equal(r.ad, "B30x30"); gecerli(r.model, r.ad);
+  assert.equal(r.model.kesitler.B30x30.donati, "B420C", "donatı eski karttan");
+  assert.equal(r.model.kolonlar[0].kesit, "B30x30", "aks–kat kolonuna yazıldı (kaynak)"); assert.deepEqual(r.hedef, { tur: "kolon", no: 2 });
+  r = BC.oneriUygula(rc, { cubuk: 7, tur: "kolon", kesit: "S40x40", oneri: "35x45", degisim: "küçült" }, { tur: "kolon", no: 2 });
+  assert.equal(r.ad, "B35x45"); assert.equal(r.model.kolonlar[0].kesit, "B35x45", "kaynak yoksa tıklanan hedef");
+  // C4 uygula: {ad, tanim, yeni, ek_kesitler}
+  r = BC.oneriUygula(m, { cubuk: 8, tur: "kiris", kesit: "VUTE", oneri: "IPE 360", sistem: "celik", degisim: "küçült",
+    uygula: { ad: "VUTE-IPE360", tanim: { tip: "vute", temel: "IPE360", ek_yukseklik: 0.4, boy: 2 }, yeni: true, ek_kesitler: { IPE360: { tip: "profil", profil: "IPE 360", malzeme: "S275" } } } }, null);
+  assert.equal(r.ad, "VUTE-IPE360"); gecerli(r.model, r.ad);
+  // değişiklik yok / öneri yok / tanımsız ad → hata, model değişmez
+  assert.throws(function () { BC.oneriUygula(m, { cubuk: 32, kesit: "CAPRAZ-V", oneri: "BORU 88.9x3.2", degisim: "aynı" }, null); }, /aynı/);
+  assert.throws(function () { BC.oneriUygula(m, { cubuk: 32, kesit: "CAPRAZ-V", oneri: null }, null); }, /öneri yok/);
+  assert.throws(function () { BC.oneriUygula(m, { cubuk: 32, kesit: "CAPRAZ-V", oneri: "X", degisim: "büyüt", uygula: { ad: "YOK", yeni: false } }, null); }, /tanımı gelmedi/);
+  assert.throws(function () { BC.oneriUygula(m, { cubuk: 99, kesit: "KIRIS", oneri: "IPE 330", sistem: "celik", degisim: "büyüt" }, null); }, /modelde yok/);
+  assert.throws(function () { BC.oneriUygula(rc, { cubuk: 7, kesit: "S40x40", oneri: "?", sistem: "betonarme", degisim: "büyüt" }, null); }, /okunamadı/);
+  // Uygula düğmesi koşulu ve satır etiketi
+  assert.equal(BC.oneriUygulanir({ oneri: "BORU 168.3x6.3", kesit: "CAPRAZ-V", degisim: "aynı" }), false);
+  assert.equal(BC.oneriUygulanir({ oneri: "IPE 330", kesit: "VUTE", degisim: "küçült", uygula: null }), false);
+  assert.equal(BC.oneriUygulanir({ oneri: "IPE 330", kesit: "IPE330", degisim: "büyüt" }), false);
+  assert.equal(BC.oneriUygulanir({ oneri: "IPE 330", kesit: "KIRIS", degisim: "büyüt" }), true);
+  assert.equal(BC.oneriEtiketi({ cubuk: 21, tur: "kiris", kaynak: { aks_kat: "kiris", no: 9 } }), "kiriş 9");
+  assert.equal(BC.oneriEtiketi({ cubuk: 32, tur: "capraz", kaynak: null }), "capraz 32");
+});
+
+// ------------------------------------------------------------------ üreteç düzenleme
+test("üreteç düzenle: kayıt bulma ve pencere başlangıç değerleri (makas, beşik, aşık, kren, çapraz)", function () {
+  let m = bos();
+  for (const x of ["A", "C"]) m = cubukEkle(m, G(x, "1", "±0.00"), G(x, "1", "+3.00"), { tur: "kolon" });
+  const mk = O.makasUret(m, { tip: "pratt", bas: G("A", "1", "+3.00"), son: G("C", "1", "+3.00"), yukseklik: 1.5, goz: 4, kesitler: { ust: "HEA300" } });
+  const k = BC.uretecKaydi(mk.model, { tur: "cubuk", no: mk.model.cubuklar.find(function (c) { return c.kaynak && c.kaynak.uretec; }).no });
+  assert.equal(k.tur, "makas");
+  assert.equal(BC.uretecKaydi(mk.model, 1), k);
+  assert.equal(BC.uretecKaydi(mk.model, { tur: "cubuk", no: 1 }), null, "üreteçsiz çubuk");
+  const f = BC.uretecFormu(mk.model, k);
+  assert.deepEqual([f.tur, f.tip, f.xa, f.xb, f.y0, f.z, f.h, f.goz, f.ust, f.mafsal], ["makas", "pratt", "A", "C", "1", "+3.00", "1.5", "4", "HEA300", true]);
+  // beşik çerçeve: mutlak saçak / mahya kotu
+  const bp = BC.besikPlan(bos(), { acikliklar: [["A", "C"]], y: ["1", "2"], taban: "±0.00", sacak: 3, mahya: 4.5, kesitler: { kolon: "HEA300", mertek: "IPE300" }, asik: { aralik: 2 }, mesnet: "mafsal" });
+  const bc = O.besikCerceveUret(bp.model, bp.parametreler[0]);
+  const fb = BC.uretecFormu(bc.model, BC.uretecKaydi(bc.model, bc.uretec));
+  assert.deepEqual([fb.kx, fb.y0, fb.y1, fb.taban, fb.sacak, fb.mahya, fb.mesnet, fb.asik, fb.kolon], [["A", "C"], "1", "2", "±0.00", "3", "4.5", "mafsal", true, "HEA300"]);
+  // kren yolu, aşık ve çapraz
+  const kr = { tur: "kren-yolu", no: 5, kolonlar: [[1, 2], [3, 4]], kot: 4.5, konsol_boy: 0.5, kesitler: { kiris: "HEB400" }, kren: { tekerlek: { P_maks: 80, P_min: 25, H_yanal: 8, H_fren: 6, aralik: 3.5 }, dinamik: 1.25 } };
+  const fk = BC.uretecFormu(bos(), kr);
+  assert.deepEqual([fk.kot, fk.konsol, fk.kiris, fk.Pmaks, fk.din, fk.hatSayisi], ["4.5", "0.5", "HEB400", "80", "1.25", 2]);
+  assert.deepEqual(BC.uretecFormu(bos(), { tur: "asik", hedef: [3, 4], aralik: 1.5, kesit: "IPE200", secenek: { uclar: false } }),
+    { tur: "asik", aralik: "1.5", kesit: "IPE200", uclar: false, mafsal: true, hedefMetin: "2 mertek çubuğu" });
+  assert.equal(BC.uretecFormu(bos(), { tur: "capraz", tip: "V", secenek: { kesit: "L", mafsalli_uclar: false } }).mafsal, false);
+  assert.ok(BC.uretecFormu(bos(), { tur: "cephe-kirisi" }).hata);
+  assert.ok(BC.uretecFormu(bos(), { tur: "makas", bas: { dugum: 100001 }, son: { dugum: 100002 } }).hata, "aks adresiyle yazılmamış uç");
+});
