@@ -404,6 +404,19 @@ def test_kesit_oner_hepsini_uygula_aks_kat_yeterli(kopru, ad):
     assert set(yb["kesitler"]) <= kullanilan | set(b["kesitler"])
     for d in y["donati_azaltma"]:
         assert d["donati_orani"] < d["rho_once"] and d["yeni"] in kullanilan and d["kesit"] not in yb["kesitler"]
+    # öneriler yalnız D/C'ye göre seçilir (0. tur küçültür): aks–kat çözümünde göreli kat ötelemesini yeni aşan kat varsa yanıt
+    # bunu söyler (eskiden 3kat-3x3 'yakınsadı' derken X yönünde bütün katlarda öteleme sınırı aşılırdı, uyarısız). Genel motorun
+    # karşılaştırması tekil temelli çözümledir: mütemadi/radye şablonlarında aks–kat katları farklı olabilir, yalnız tekil denetlenir.
+    if (b.get("temeller") or {}).get("tip", "tekil") == "tekil":
+        asan = lambda vv: {yn: {k["kat"] for k in (vv.get("deprem") or {}).get("katlar") or [] if k.get(f"uygun_{yn}") is False}  # noqa: E731
+                           for yn in "xy"}
+        a0, a1 = asan(v), asan(z["veri"])
+        yeni = {yn: sorted(a1[yn] - a0[yn]) for yn in "xy" if a1[yn] - a0[yn]}
+        u = [x for x in y["uyarilar"] if "göreli kat ötelemesi" in x]
+        if yeni:
+            assert len(u) == 1 and all(f"{yn.upper()} yönü kat {', '.join(map(str, k))}" in u[0] for yn, k in yeni.items()), (ad, yeni, u)
+        else:
+            assert not u, (ad, u)
 
 
 def test_kesit_oner_genel_model_c4(kopru):

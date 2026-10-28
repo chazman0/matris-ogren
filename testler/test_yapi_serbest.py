@@ -477,6 +477,27 @@ def test_kesit_onerisi_yinele_yakinsar_ve_rho_grubu():
     assert o["turlar"][-1]["asan"] == 0
     son = coz(o["bina"]).veri
     assert son["tasarim"]["en_buyuk_dc"] == pytest.approx(o["dc_sonra"], abs=1e-4)
+    # öneriler (0. tur kirişleri küçültür) göreli kat ötelemesini yeni aşan katlar doğurursa yanıt bunu söyler: 'yakınsadı' (D/C ≤ 1)
+    # ötelemeyi kapsamaz (eskiden uyarısızdı)
+    asan = lambda v: {y: {k["kat"] for k in v["deprem"]["katlar"] if k.get(f"uygun_{y}") is False} for y in "xy"}  # noqa: E731
+    a0, a1 = asan(coz(_rc_30()).veri), asan(son)
+    yeni = {y: sorted(a1[y] - a0[y]) for y in "xy" if a1[y] - a0[y]}
+    u = [x for x in o["uyarilar"] if "göreli kat ötelemesi" in x]
+    assert yeni and len(u) == 1 and "(öneriden önce bu katlarda sağlanıyordu)" in u[0]
+    assert all(f"{y.upper()} yönü kat {', '.join(map(str, k))}" in u[0] for y, k in yeni.items())
+
+
+def test_oteleme_uyarisi():
+    """_oteleme_uyarisi: yalnız YENİ aşan katlar; önce bilinmiyorsa son çözümde aşan bütün katlar; aşan yoksa None."""
+    assert YS._oteleme_uyarisi({"x": [2], "y": []}, {"x": [2], "y": []}) is None
+    assert YS._oteleme_uyarisi({"x": [], "y": []}, None) is None
+    u = YS._oteleme_uyarisi({"x": [2], "y": []}, {"x": [1, 2, 3], "y": [3]})
+    assert u.startswith("Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: X yönü kat 1, 3; Y yönü kat 3 "
+                        "(öneriden önce bu katlarda sağlanıyordu).")
+    u = YS._oteleme_uyarisi(None, {"x": [1], "y": []})
+    assert "aşılıyor: X yönü kat 1. Öneriler yalnız eleman D/C'sine göre" in u and "sağlanıyordu" not in u
+    assert YS._oteleme_asan(None) == {"x": [], "y": []}
+    assert YS._oteleme_asan({"katlar": [{"kat": 1, "uygun_x": True, "uygun_y": False}, {"kat": 2, "uygun_x": False}]}) == {"x": [2], "y": [1]}
 
 
 def test_kesit_onerisi_yakinsamazsa_uyari():
@@ -494,6 +515,8 @@ def test_kesit_onerisi_yakinsamazsa_uyari():
     assert asan and all(ad(k) in u[0] for k in asan[:8]) and "(1,1" in u[0]
     el = [{"cubuk": 12, "dc": 1.0712, "kaynak": None}, {"cubuk": 3, "dc": 0.5}, {"cubuk": 9, "dc": 1.2, "kaynak": {"aks_kat": "kiris", "no": 4}}]
     assert YS._yakinsamadi_uyarisi(el, 2).startswith("Kesit önerileri 2 turda yakınsamadı: kiriş 4 (1,2), Ç12 (1,07) — ")
+    # hiç tur uygulanamadıysa nedeni de yazılır ("0 turda" tek başına yanıltıcıydı)
+    assert YS._yakinsamadi_uyarisi(el, 0).startswith("Kesit önerileri 0 turda yakınsamadı (uygulanabilir kesit değişikliği bulunamadı): kiriş 4")
     o3 = YS.kesit_oner(b, yinele=3)                                # üç turla yakınsar
     assert o3["dc_sonra"] <= 1.0 and not any("yakınsamadı" in x for x in o3["uyarilar"])
 
@@ -803,6 +826,11 @@ def test_yonlendirme_dogruluk_tablosu():
         assert yapi._serbest_mi(bina) is beklenen and YS.serbest_mi(bina) is beklenen, bina.get("ek_yukler") or bina.get("surum")
         assert yapi._serbest_mi(json.dumps(bina)) is beklenen
     assert [yapi._surum_sayi(x) for x in (float("inf"), float("nan"), "+3", "-3", "3.", "", [3], 0)] == [1, 1, 3, -3, 1, 1, 1, 0]
+    # JS ile aynı uç durumlar (eskiden OverflowError): float'a sığmayan tamsayı (JSON'u JS Infinity okur → 1), çok uzun rakam dizisi
+    # (JS Math.trunc(parseFloat) = ±Infinity); boşluk kümesi JS \s (\ufeff var, \x1c ve \x85 yok)
+    assert [yapi._surum_sayi(x) for x in (10 ** 400, "1" * 400, "-" + "9" * 400, "\ufeff3", "\u00a03\u3000", "\x1c3", "\x853")] == [
+        1, math.inf, -math.inf, 3, 3, 1, 1]
+    assert yapi._serbest_mi({"surum": "1" * 400}) is True and yapi._serbest_mi({"surum": 10 ** 400}) is False
     # aks–kat modeline açık mesnet: genel motora gider ve mesnet hesaba girer (eskiden sessizce yok sayılırdı)
     x = b(mesnetler=[{"dugum": {"aks": ["B", "2"], "kat": 1}, "uz": True}])
     v = coz(x).veri

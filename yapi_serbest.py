@@ -3618,14 +3618,16 @@ def _rho_kart(k):
     return Y._RHO_VARSAYILAN
 
 
-def _grup_rho(tt, lst, b, h, rho):
+def _grup_rho(tt, lst, b, h, rho, dc_cikti=None):
     """Betonarme kolon grubu kartının (b × h) boyuna donatı oranı: her üye bu kartla, KENDİ iç kuvvetleriyle §11 kaydının bütün
     kurallarıyla yeniden doğrulanır; D/C > 1 olan üye için ρ 0,0025 adımla artırılır (en çok 0,04). Dönüş (ρ, yetmeyen çubuklar):
-    0,04 ile de yetmeyen (boyut / eksenel sınırı, N–M) üyeler ayrıca döner. T.sonuclar korunur."""
+    0,04 ile de yetmeyen (boyut / eksenel sınırı, N–M) üyeler ayrıca döner. T.sonuclar korunur. ``dc_cikti`` (sözlük) verilirse
+    son ρ ile doğrulanmış üyelerin D/C'leri {çubuk no: dc} yazılır (daha düşük ρ ile doğrulananlar yazılmaz)."""
     ts, T = tt
     B = T.B
     rho = min(max(float(rho), Y._RHO_VARSAYILAN), _RHO_EN_COK)
     yetmeyen = []
+    son = {}
     for o in lst:
         c = B.cubuk_no.get(o["cubuk"])
         if c is None:
@@ -3641,6 +3643,7 @@ def _grup_rho(tt, lst, b, h, rho):
                 except MatrisHatasi:
                     dc = None
                 if dc is not None and dc <= 1.0 + 1e-9:
+                    son[c["no"]] = (rho, dc)
                     break
                 if rho >= _RHO_EN_COK - 1e-12:
                     yetmeyen.append(o["cubuk"])
@@ -3651,6 +3654,8 @@ def _grup_rho(tt, lst, b, h, rho):
                 T.sonuclar[c["no"]] = eski
             else:
                 T.sonuclar.pop(c["no"], None)
+    if dc_cikti is not None:
+        dc_cikti.update({no: d for no, (r_, d) in son.items() if abs(r_ - rho) < 1e-12})
     return rho, yetmeyen
 
 
@@ -4103,7 +4108,7 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", "", "")
     sonuc.veri = veri
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T,
-                "serbest": True, "bina": B.ham, "B": B, "tas": tas, "temel": None,
+                "serbest": True, "bina": B.ham, "B": B, "tas": tas, "temel": None, "oteleme_asan": _oteleme_asan(deprem),
                 # alan.py (ısı haritası, eleman bilgisi): yapi.bina_coz ile aynı paket — normalize bina, ağ, motor modeli, yükler,
                 # tasarım sonucu (yanıtta kısaltıldıysa tam satırlar: betonarme kullanımı kapasite satırlarını arar), kombinasyon türleri
                 "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas_tam if tas_tam is not None else tas,
@@ -4113,6 +4118,13 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
     mo.son_anlatim = anl
     anl.goster(goster)
     return sonuc
+
+
+def _oteleme_asan(deprem):
+    """Göreli kat ötelemesi sınırını (TBDY 2018 md. 4.9.1) aşan katlar {"x": [kat], "y": [kat]} (deprem yoksa boş listeler).
+    Kesit önerisi (``kesit_oner`` yinele) öneriden önceki ve sonraki çözümü karşılaştırır: öneriler yalnız D/C'ye göre seçilir."""
+    katlar = (deprem or {}).get("katlar") or []
+    return {y: [s["kat"] for s in katlar if s.get(f"uygun_{y}") is False] for y in ("x", "y")}
 
 
 YANIT_SINIRI = 1_600_000     # karakter: büyük modelde (yüzlerce çubuk) yanıt bu sınırı aşarsa ayrıntılar tembel bırakılır
@@ -4249,6 +4261,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     gorunen_dc = _gorunen_dc(gorunen)
     bina_ham = copy.deepcopy(ic["bina"])
     ic0_kesitler = copy.deepcopy(bina_ham.get("kesitler") or {})
+    oteleme0 = ic.get("oteleme_asan")            # öneriden önce göreli kat ötelemesini aşan katlar (genel motor çözümü)
     turlar = []
     sonuc_oneriler = None
     for tur_no in range(yinele + 1):
@@ -4321,6 +4334,10 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     dc_sonra = _r5(max(dc_son.values(), default=0.0)) if yinele else None
     if yinele and dc_sonra > 1.0 + 1e-9:
         uyarilar.append(_yakinsamadi_uyarisi(son["elemanlar"], sum(1 for t in turlar if t.get("degisen"))))
+    if yinele and any(t.get("degisen") for t in turlar):
+        u = _oteleme_uyarisi(oteleme0, ic.get("oteleme_asan"))
+        if u:
+            uyarilar.append(u)
     return {"oneriler": sonuc_oneriler, "turlar": turlar, "dc_once": turlar[0]["dc_maks"], "dc_sonra": dc_sonra,
             "bina": bina_ham if yinele else None, "cozum_kimligi": (gorunen or {}).get("kimlik") or ic.get("kimlik"),
             "donati_azaltma": donati_azaltma, "uyarilar": uyarilar, "aciklama": ONER_ACIKLAMA}
@@ -4346,7 +4363,8 @@ def _rho_azalt(bina, T, ts, ilk_kesitler, dc_son):
         if not uyeler or any(c["tur"] != "kolon" for c in uyeler):
             continue
         lst = [{"cubuk": c["no"]} for c in uyeler]
-        rho, yet = _grup_rho((ts, T), lst, float(kart["b"]), float(kart["h"]), Y._RHO_VARSAYILAN)
+        dcs = {}
+        rho, yet = _grup_rho((ts, T), lst, float(kart["b"]), float(kart["h"]), Y._RHO_VARSAYILAN, dc_cikti=dcs)
         if yet or rho >= rho0 - 1e-9:
             continue
         en = {"sistem": "betonarme", "b": float(kart["b"]), "h": float(kart["h"]), "malzeme": kart.get("malzeme"),
@@ -4355,7 +4373,8 @@ def _rho_azalt(bina, T, ts, ilk_kesitler, dc_son):
         yeni_ad, _, _, _ = _oneri_kesit(kes, ad, en)
         if yeni_ad == ad:
             continue
-        dcs = _uyeler_dc(ts, T, uyeler, dict(B.kesitler[ad], donati_orani=rho, As=None))
+        # son ρ ile _grup_rho'da doğrulanmamış (daha düşük ρ ile geçmiş) üyeler bu ρ ile yeniden (kesin D/C'ler dc_son'a yazılır)
+        dcs.update(_uyeler_dc(ts, T, [c for c in uyeler if c["no"] not in dcs], dict(B.kesitler[ad], donati_orani=rho, As=None)))
         if any(d is None or d > 1.0 + 1e-9 for d in dcs.values()):
             continue
         for liste in ("cubuklar", "kolonlar", "kirisler"):
@@ -4406,7 +4425,23 @@ ONER_ACIKLAMA = ("D/C (öneri) mevcut iç kuvvetlerle tahmindir: öneri, modelin
                  "D/C > 1 kalan gruplar büyütülür, hiçbir grup küçültülmez). Aynı (kesit, tür) grubundaki çubuklara grubun ortak "
                  "kartı verilir: çelikte en ağır öneri, betonarmede en büyük b × h; kolon grubunda boyuna donatı oranı her üye "
                  "yeniden doğrulanarak seçilir. Yakınsayınca (son çözümde bütün D/C ≤ 1) eklenen kolon kartlarının ρ'su son "
-                 "çözümün iç kuvvetleriyle en küçük yeterli değere indirilir (ρ rijitliği değiştirmez; 'donati_azaltma').")
+                 "çözümün iç kuvvetleriyle en küçük yeterli değere indirilir (ρ rijitliği değiştirmez; 'donati_azaltma'). Öneriler "
+                 "göreli kat ötelemesini (TBDY 2018 md. 4.9.1) denetlemez; 'yinele' sonunda yeni aşan kat varsa uyarılır.")
+
+
+def _oteleme_uyarisi(once, sonra):
+    """Önerilen kesitlerle çözümde göreli kat ötelemesi sınırını (TBDY 2018 md. 4.9.1) yeni aşan katlar → uyarı metni (yoksa None).
+    Öneriler yalnız eleman D/C'sine göre seçilir (0. tur ekonomi için küçültebilir): rijitlik azalınca öteleme sınırı aşılabilir;
+    'yakınsadı' (D/C ≤ 1) bunu kapsamaz. ``once`` bilinmiyorsa (None) son çözümde aşan bütün katlar yazılır."""
+    if not sonra:
+        return None
+    yeni = {y: sorted(set(sonra.get(y) or []) - set((once or {}).get(y) or [])) for y in ("x", "y")}
+    parca = [f"{y.upper()} yönü kat {', '.join(map(str, k))}" for y, k in yeni.items() if k]
+    if not parca:
+        return None
+    return ("Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: " + "; ".join(parca)
+            + (" (öneriden önce bu katlarda sağlanıyordu)" if once is not None else "")
+            + ". Öneriler yalnız eleman D/C'sine göre seçilir, rijitlik (öteleme) denetlenmez: kolon / kiriş boyutlarını artırın.")
 
 
 def _yakinsamadi_uyarisi(elemanlar, tur_sayisi, en_cok=8):
@@ -4421,8 +4456,10 @@ def _yakinsamadi_uyarisi(elemanlar, tur_sayisi, en_cok=8):
 
     liste = ", ".join(f"{ad(k)} ({_f(k['dc'], 2).replace('.', ',')})" for k in asan[:en_cok]) + (
         f" … +{len(asan) - en_cok} çubuk" if len(asan) > en_cok else "")
-    return (f"Kesit önerileri {tur_sayisi} turda yakınsamadı: {liste} — son çözümde D/C > 1. Bu çubukların kesitini elle büyütün "
-            "ya da önerileri yeniden çalıştırın.")
+    # hiç tur uygulanamadıysa (aşan çubukların uygulanabilir önerisi yok) "0 turda" tek başına yanıltıcı: nedeni de söylenir
+    neden = " (uygulanabilir kesit değişikliği bulunamadı)" if not tur_sayisi else ""
+    return (f"Kesit önerileri {tur_sayisi} turda yakınsamadı{neden}: {liste} — son çözümde D/C > 1. Bu çubukların kesitini elle "
+            "büyütün ya da önerileri yeniden çalıştırın.")
 
 
 def deprem_onizleme(bina):
