@@ -338,6 +338,25 @@ test("C1 genel model kuralı: sabit doğruluk tablosu (motor _serbest_mi ve bina
     [ek({ ek_yukler: [{ tur: "kiris", kiris: 1, durum: "G", q: 2 }, { tur: "doseme", doseme: 1, g: 1 }] }), false],
   ];
   tablo.forEach(function (t, i) { assert.equal(BC.genelMi(t[0]), t[1], "satır " + (i + 1)); });
+  // K2 ek doğruluk satırları (üç uygulamada aynı: yapi._serbest_mi, genelMi, bina.js s3Var)
+  const k2 = [
+    [ek({ ek_yukler: [{ tur: "Cubuk", cubuk: 1, durum: "G", q: -1 }] }), true, "tur 'Cubuk'"],
+    [ek({ ek_yukler: [{ tur: " panel", panel: 1, durum: "G", p: 1 }] }), true, "tur ' panel'"],
+    [ek({ ek_yukler: [{ tur: "PANEL", panel: 1, durum: "G", p: 1 }] }), true, "tur 'PANEL'"],
+    [ek({ surum: "3.0" }), true, "surum '3.0'"],
+    [ek({ surum: "3.5" }), true, "surum '3.5'"],
+    [ek({ surum: "3a" }), false, "surum '3a'"],
+    [ek({ surum: "0x3" }), false, "surum '0x3'"],
+    [ek({ surum: "1e1" }), false, "surum '1e1'"],
+    [ek({ surum: 2.9 }), false, "surum 2.9 (tam kısmı 2)"],
+    [ek({ surum: 3.7 }), true, "surum 3.7"],
+    [ek({ surum: " 3 " }), true, "surum ' 3 '"],
+    [ek({ surum: true }), false, "surum true → 1"],
+    [ek({ surum: null }), false, "surum null → 1"],
+    [ek({ surum: Infinity }), false, "surum ∞ → 1"],
+  ];
+  k2.forEach(function (t) { assert.equal(BC.genelMi(t[0]), t[1], t[2]); });
+  assert.deepEqual(["3.0", "3.5", "3a", "0x3", "1e1", 2.9, true, "-2", "+4.25", "", undefined].map(BC.surumSayi), [3, 3, 1, 1, 1, 2, 1, -2, 4, 1, 1]);
   assert.equal(BC.genelMi(bos()), true, "yeni aks modeli surum 3");
   assert.equal(BC.genelGecisGerekli(b), true);
   assert.equal(BC.genelGecisGerekli(bos()), false);
@@ -428,14 +447,25 @@ test("aksa bağla: genelleştirilmiş modelde yanlış 'aks ekleyin' yok; eski a
   assert.ok(!BC.aksaBaglaHepsi(m).uyarilar.some(function (u) { return /aks ekleyin/.test(u); }));
 });
 
-test("aks–kat özellik yazımı (genelleştirmeden): kesit, kolon açısı 0/90 → yon, kiriş duvarı; desteklenmeyen alan → null", function () {
+test("aks–kat özellik yazımı (genelleştirmeden): kesit, grup, kolon açısı 0/90 → yon, kiriş duvarı ve duvar_h; desteklenmeyen alan → null", function () {
   const b = aksKatModel();
   let r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "kiris", no: 2 }], { kesit: "K25x50" });
   assert.equal(r.sayi, 2);
   assert.equal(r.model.kolonlar[0].kesit, "K25x50"); assert.equal(r.model.kirisler[1].kesit, "K25x50"); assert.equal(r.model.surum, 1);
-  // grup ve duvar_h bina.js aks–kat normalleştirmesinde (binaYukle) atılır: genel modelde yazılır (null → çubuk özelliği yolu)
-  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { kesit: "K25x50", grup: "G1" }), null);
-  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar_h: 2.5 }), null);
+  // NEW-4: grup ve kiriş duvar_h bina.js binaYukle'de korunur (c8d681c) ve aks–kat motoru duvar_h'yi okur → surum 1'de yazılır
+  // (eski beklenti null'du: model gereksiz yere genel modele çevriliyordu)
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { kesit: "K25x50", grup: "G1" });
+  assert.equal(r.model.kolonlar[0].grup, "G1"); assert.equal(r.model.surum, 1); assert.equal(BC.genelMi(r.model), false);
+  assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kolon", no: 1 }], { grup: null }).model.kolonlar[0].grup, undefined, "boş grup kaldırılır");
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar_h: 2.5 });
+  assert.equal(r.model.kirisler[0].duvar_h, 2.5); assert.equal(r.model.surum, 1); assert.equal(BC.genelMi(r.model), false);
+  assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kiris", no: 1 }], { duvar_h: "" }).model.kirisler[0].duvar_h, undefined, "boş = kat yüksekliği");
+  // karışık seçimde duvar alanları yalnız kirişe yazılır; kolon tek başına duvar alamaz; geçersiz yükseklik genel yola düşer
+  r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "kiris", no: 1 }], { duvar_h: 1.5, grup: "G2" });
+  assert.equal(r.sayi, 2); assert.equal(r.model.kirisler[0].duvar_h, 1.5); assert.equal(r.model.kolonlar[0].duvar_h, undefined);
+  assert.equal(r.model.kolonlar[0].grup, "G2"); assert.equal(r.model.kirisler[0].grup, "G2");
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { duvar_h: 2 }), null);
+  assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kiris", no: 1 }], { duvar_h: -1 }), null);
   r = BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { aci: 90 });
   assert.equal(r.model.kolonlar[0].yon, "y");
   assert.equal(BC.aksKatOzellikYaz(r.model, [{ tur: "kolon", no: 1 }], { aci: 180 }).model.kolonlar[0].yon, "x");
@@ -448,6 +478,21 @@ test("aks–kat özellik yazımı (genelleştirmeden): kesit, kolon açısı 0/9
   assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }], { yalniz_cekme: true }), null);
   assert.equal(BC.aksKatOzellikYaz(b, [{ tur: "kolon", no: 1 }, { tur: "cubuk", no: 3 }], { kesit: "K25x50" }), null);
   assert.equal(BC.aksKatOzellikYaz(b, [], { kesit: "K25x50" }), null);
+});
+
+test("Düzlemle böl (NEW-5): yalnız seçimi iç noktasından kesen aks düzlemleri sunulur; aks–kat kirişini hiçbir aks düzlemi kesmez", function () {
+  const g = BC.genellestirHazirla(aksKatModel()).model;
+  const k1 = BC.genelSecim(g, [{ tur: "kiris", no: 1 }]).map(function (s) { return s.no; });
+  assert.ok(k1.length >= 2, "A1–C1 kirişi B aksında parçalı");
+  assert.deepEqual(BC.kesenDuzlemler(g, k1), [], "X aksı A / B / C parçaların uçlarından geçer: bölünecek yer yok");
+  // ModelOps.duzlemleBol da aynı: kesmeyen düzlem hiçbir şey eklemez
+  const r = O.duzlemleBol(g, k1, { X: 0 });
+  assert.equal(BC.ozet(r), ""); assert.equal(JSON.stringify(r.model), JSON.stringify(g));
+  // eğik çubuk A1/kat 1 → C2/kat 2: yalnız X aksı B (5 m) iç noktasından keser
+  const m = JSON.parse(JSON.stringify(g));
+  m.cubuklar.push({ no: 99, i: { aks: ["A", "1"], kat: 1 }, j: { aks: ["C", "2"], kat: 2 }, tur: "capraz" });
+  assert.deepEqual(BC.kesenDuzlemler(m, [99]), [{ yon: "x", ad: "B", konum: 5, sayi: 1 }]);
+  assert.equal(O.duzlemleBol(m, [99], { X: 5 }).eklenen.cubuklar.length, 1);
 });
 
 test("ileti çevirisi: genelleştirilmiş modelde çubuk numarasına aks–kat adresi eklenir", function () {
@@ -477,6 +522,23 @@ test("yeni engeller: işlemin ürettiği sıfır boylu / çakışan çubuk ve bo
   const u2 = JSON.parse(JSON.stringify(u1)); u2.cubuklar[0].j = G("C", "1", "+3.00");   // 1–2 artık aynı iki düğüm (12 m)
   assert.notEqual(BC.yeniEngeller(m, u1)[0].mesaj, BC.yeniEngeller(m, u2)[0].mesaj);
   assert.deepEqual(BC.yeniEngeller(u1, u2), []);
+});
+
+test("aks sil kapısı (ui-s3-13): yeni sıfır boy / çakışan çubuk / eksik düğüm ve çözümlenemeyen model engeldir; önceden bozuk olan sayılmaz", function () {
+  const m = BC.genellestirHazirla(aksKatModel()).model;
+  assert.deepEqual(BC.aksSilEngelleri(m, m), []);
+  const s = JSON.parse(JSON.stringify(m));
+  s.cubuklar[0].j = JSON.parse(JSON.stringify(s.cubuklar[0].i));                                   // sıfır boylu
+  assert.deepEqual(BC.aksSilEngelleri(m, s).map(function (u) { return u.kod; }), ["sifir-boy"]);
+  const e = JSON.parse(JSON.stringify(m));
+  e.cubuklar[0].j = { dugum: 199999 };                                                           // olmayan düğüm
+  const ee = BC.aksSilEngelleri(m, e);
+  assert.ok(ee.length && ee.every(function (u) { return u.kod === "eksik-dugum"; }), JSON.stringify(ee));
+  const k = JSON.parse(JSON.stringify(m)), r = k.cubuklar[0].i, q = k.cubuklar[0].j;
+  k.dugumler = [{ no: 100001, tur: "kesisim", a: [r, q], b: [r, q] }];                           // paralel doğrular: denetim çözümleyemez
+  k.cubuklar.push({ no: 999, i: r, j: { dugum: 100001 }, tur: "capraz" });
+  assert.deepEqual(BC.aksSilEngelleri(m, k).map(function (u) { return u.kod; }), ["cozulemez"]);
+  assert.deepEqual(BC.aksSilEngelleri(k, k), [], "önceden de çözümlenemiyorsa aks silmeyi engellemez");
 });
 
 test("taşıyan kenar: panel kenarı bulgusu dağıtıma göre motorun reddettiği kenarda mı (iki, tek-13, tek-24, yok, otomatik)", function () {
@@ -556,6 +618,52 @@ test("kesit önerisi: IPE, BORU, KUTU, betonarme, vute ve C4 uygula; kesitler'de
   assert.equal(BC.oneriUygulanir({ oneri: "IPE 330", kesit: "KIRIS", degisim: "büyüt" }), true);
   assert.equal(BC.oneriEtiketi({ cubuk: 21, tur: "kiris", kaynak: { aks_kat: "kiris", no: 9 } }), "kiriş 9");
   assert.equal(BC.oneriEtiketi({ cubuk: 32, tur: "capraz", kaynak: null }), "capraz 32");
+});
+
+test("kesit önerisi K1: donatı değişimi uygulanır (uygula.ad ile karşılaştırma), satır uygula.ad ve tahmini D/C gösterir; Hepsini özeti", function () {
+  // "donatı": b × h aynı, gerekli ρ büyük → uygula.ad "B30x30-ρ%2.00" (kesit "30x30" adlı olsa da öneri adı farklıdır)
+  const don = { cubuk: 1, tur: "kolon", kesit: "30x30", oneri: "30x30", sistem: "betonarme", b: 0.3, h: 0.3, degisim: "donatı", dc_once: 1.65, dc_oneri: 0.98, dc_sonra: 0.98,
+    kaynak: { aks_kat: "kolon", no: 1 }, uygula: { ad: "B30x30-ρ%2.00", tanim: { tip: "dikdortgen", b: 0.3, h: 0.3, malzeme: "C30", donati: "B420C", donati_orani: 0.02 }, yeni: true } };
+  assert.equal(BC.oneriUygulanir(don), true, "eski kural (oneri ≡ kesit) donatı önerisini gizliyordu");
+  assert.equal(BC.oneriAdi(don), "B30x30-ρ%2.00");
+  const rc = { tur: "bina", surum: 1, kesitler: { "30x30": { tip: "dikdortgen", b: 0.3, h: 0.3, malzeme: "C30", donati: "B420C" } }, kolonlar: [{ no: 1, aks: ["A", "1"], kat: 1, kesit: "30x30" }], kirisler: [] };
+  const r = BC.oneriUygula(rc, don, null);
+  assert.equal(r.ad, "B30x30-ρ%2.00");
+  assert.equal(r.model.kolonlar[0].kesit, "B30x30-ρ%2.00");
+  assert.equal(r.model.kesitler["B30x30-ρ%2.00"].donati_orani, 0.02);
+  // uygula.ad mevcut kesitle aynıysa (motor zaten bu kartı önerdi) değişiklik yok
+  assert.equal(BC.oneriUygulanir(Object.assign({}, don, { kesit: "B30x30-ρ%2.00" })), false);
+  assert.equal(BC.oneriUygulanir(Object.assign({}, don, { uygula: null })), false, "motor uygula: null → uygulanmaz");
+  assert.equal(BC.oneriUygulanir(Object.assign({}, don, { degisim: "aynı" })), false);
+  // satır: uygula.ad, öneri ayraçta; D/C tahmini (mevcut iç kuvvetlerle); yeniden çözümde "yeniden çözümle" ve dc_sonra
+  const st = BC.oneriSatiri(don, false);
+  assert.equal(st.ad, "B30x30-ρ%2.00"); assert.equal(st.oneri, "30x30");
+  assert.equal(st.dc, "1,65 → 0,98"); assert.equal(st.dcEtiket, "tahmini (mevcut iç kuvvetlerle)");
+  const ct = BC.oneriSatiri({ kesit: "CAPRAZ-X", oneri: "BORU 168.3x6.3", dc_once: 18.4, dc_oneri: 0.64, dc_sonra: 1.36, uygula: { ad: "BORU168.3x6.3" } }, true);
+  assert.equal(ct.oneri, "", "boşluk farkı ayrı yazılmaz"); assert.equal(ct.dc, "18,40 → 1,36"); assert.equal(ct.dcEtiket, "yeniden çözümle");
+  // Hepsini özeti: dc_sonra > 1 → aşan çubuklar (büyükten küçüğe)
+  const oz = BC.hepsiOzeti({ dc_sonra: 1.07, oneriler: [{ cubuk: 7, tur: "kolon", kaynak: { aks_kat: "kolon", no: 7 }, dc_sonra: 1.05 },
+    { cubuk: 12, tur: "capraz", dc_sonra: 1.07 }, { cubuk: 3, tur: "kiris", dc_sonra: 0.9 }] });
+  assert.equal(oz.asiyor, true); assert.equal(oz.dc, 1.07);
+  assert.deepEqual(oz.asan, [{ etiket: "capraz 12", dc: 1.07 }, { etiket: "kolon 7", dc: 1.05 }]);
+  assert.deepEqual(BC.hepsiOzeti({ dc_sonra: 0.99, oneriler: [{ cubuk: 1, dc_sonra: 0.99 }] }), { dc: 0.99, asan: [], asiyor: false });
+  assert.equal(BC.hepsiOzeti({}).asiyor, false);
+  // yinele yanıtının yeni uyarıları (motor: öteleme sınırı, yakınsamadı) — ilk yanıtta olanlar tekrar edilmez; aşanları arayüz listeler
+  const ilk = { uyarilar: ["D/C önce, aks–kat motorunun tasarım tablosundan (görünen çözüm); öneri ve D/C sonra genel model motoruyla."] };
+  const ikinci = { uyarilar: ilk.uyarilar.concat(["Kesit önerileri 3 turda yakınsamadı: kolon 7 (1,05) — son çözümde D/C > 1.", "Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: X yönü kat 1, 2."]) };
+  const eu = BC.hepsiEkUyarilari(ikinci, ilk);
+  assert.equal(eu.tum.length, 2);
+  assert.deepEqual(eu.diger, [ikinci.uyarilar[2]]);
+  assert.deepEqual(BC.hepsiEkUyarilari({}, null), { tum: [], diger: [] });
+  // D/C metni 1'e çok yakınken "1,00 > 1" gibi çelişkili görünmez
+  assert.equal(BC.dcFmt(0.9963), "0,996"); assert.equal(BC.dcFmt(1.004), "1,004"); assert.equal(BC.dcFmt(1), "1,00"); assert.equal(BC.dcFmt(1.36), "1,36");
+  // çözüm verisinde elemanın D/C'si: genel model (cubuk), aks–kat (tur, no) ve genelleştirilmiş kaynağı
+  const v = { tasarim: { elemanlar: [{ cubuk: 41, tur: "capraz", dc: 1.32 }, { tur: "kolon", no: 2, dc: 0.4 }, { cubuk: 9, tur: "kiris", kaynak: { aks_kat: "kiris", no: 3 }, dc: 0.7 }, { cubuk: 10, tur: "kiris", kaynak: { aks_kat: "kiris", no: 3 }, dc: 0.8 }] } };
+  assert.equal(BC.elemanDc(v, { tur: "cubuk", no: 41 }), 1.32);
+  assert.equal(BC.elemanDc(v, { tur: "kolon", no: 2 }), 0.4);
+  assert.equal(BC.elemanDc(v, { tur: "kiris", no: 3 }), 0.8, "parçalı kirişin en büyüğü");
+  assert.equal(BC.elemanDc(v, { tur: "cubuk", no: 99 }), null);
+  assert.equal(BC.elemanDc(null, { tur: "cubuk", no: 41 }), null);
 });
 
 // ------------------------------------------------------------------ üreteç düzenleme
