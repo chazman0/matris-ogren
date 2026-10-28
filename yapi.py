@@ -55,6 +55,8 @@ import copy
 import importlib
 import json
 import math
+import numbers
+import re
 from types import SimpleNamespace
 
 import sympy as sp
@@ -4286,13 +4288,40 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
 
 
 _GENEL_LISTELER = ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler")
+# JavaScript'in \s kümesi (Python'unkinden farklı: \ufeff var, \x1c–\x1f ve \x85 yok): üç uygulama aynı dizeleri kabul etsin
+_JS_BOSLUK = "\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+_SURUM_DESENI = re.compile(f"[{_JS_BOSLUK}]*([+-]?[0-9]+(?:\\.[0-9]+)?)[{_JS_BOSLUK}]*")
+_JS_KIRP = re.compile(f"^[{_JS_BOSLUK}]+|[{_JS_BOSLUK}]+$")       # JS String.prototype.trim()
+
+
+def _surum_sayi(s):
+    """Bina ``surum`` alanının sayısı (K2 — arayüzdeki ``genelMi`` / ``s3Var`` / ``binaYukle`` ile aynı kural): bool → 1; sonlu
+    sayı → tam kısmı (2.9 → 2); ``^\\s*[+-]?[0-9]+(\\.[0-9]+)?\\s*$`` dizesi (JS ``\\s``) → tam kısmı ("3.0" → 3, " 3.5 " → 3;
+    çok uzun rakam dizisi JS'deki gibi ±sonsuz); başka her şey ("3a", "0x3", "1e1", None, sonsuz ya da float'a sığmayan sayı —
+    JSON'u JS ``Infinity`` okur) → 1."""
+    if isinstance(s, bool):
+        return 1
+    if isinstance(s, numbers.Real):
+        try:
+            x = float(s)
+        except OverflowError:                    # float'a sığmayan tamsayı: JS'de Infinity (sonlu değil) → 1
+            return 1
+        if not math.isfinite(x):
+            return 1
+        return int(s) if isinstance(s, numbers.Integral) else int(x)
+    m = _SURUM_DESENI.fullmatch(s) if isinstance(s, str) else None
+    if m:
+        x = float(m.group(1))
+        return int(x) if math.isfinite(x) else (math.inf if x > 0 else -math.inf)      # JS Math.trunc(±Infinity)
+    return 1
 
 
 def _serbest_mi(bina):
     """Genel (surum 3) model mi — tek yönlendirme kuralı (arayüzdeki ``s3Var`` ile aynı; ``yapi_serbest.serbest_mi`` bunu çağırır):
-    ``surum`` ≥ 3, ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da
-    bir ek yükün ``dugum`` değeri REF sözlüğü (``{"aks": [..], "z": ..}``) ya da türü ``cubuk`` / ``panel``. Aks–kat düğüm yükü
-    ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
+    ``surum`` ≥ 3 (``_surum_sayi``: sayı ya da tamsayı/ondalık dizesi, tam kısmı), ya da ``cubuklar`` / ``paneller`` /
+    ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da bir ek yükün ``dugum`` değeri REF sözlüğü
+    (``{"aks": [..], "z": ..}``) ya da türü (büyük/küçük harf ve baş/son boşluk duyarsız) ``cubuk`` / ``panel``. Aks–kat düğüm
+    yükü ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
     if isinstance(bina, str):
         try:
             bina = json.loads(bina)
@@ -4300,18 +4329,14 @@ def _serbest_mi(bina):
             return False
     if not isinstance(bina, dict):
         return False
-    try:
-        surum = int(bina.get("surum") or 1)
-    except (TypeError, ValueError):
-        surum = 1
-    if surum >= 3:
+    if _surum_sayi(bina.get("surum")) >= 3:
         return True
     if any(isinstance(bina.get(a), list) and len(bina.get(a)) > 0 for a in _GENEL_LISTELER):
         return True
     for y in bina.get("ek_yukler") or []:
         if not isinstance(y, dict):
             continue
-        if isinstance(y.get("dugum"), dict) or str(y.get("tur") or "").strip().lower() in ("cubuk", "panel"):
+        if isinstance(y.get("dugum"), dict) or _JS_KIRP.sub("", str(y.get("tur") or "")).lower() in ("cubuk", "panel"):
             return True
     return False
 

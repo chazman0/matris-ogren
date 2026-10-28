@@ -318,7 +318,7 @@ def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
     o = y["oneriler"][0]
     assert _C4_ALANLARI <= set(o) and o["kaynak"] == {"aks_kat": "kolon", "no": 1} and o["sistem"] == "betonarme"
     assert o["dc_once"] == pytest.approx(tablo[("kolon", 1)]) and o["dc_once"] == pytest.approx(0.233, abs=0.001)
-    assert o["dc_oneri"] is not None and o["degisim"] in ("büyüt", "küçült", "aynı")
+    assert o["dc_oneri"] is not None and o["degisim"] in ("büyüt", "küçült", "aynı", "donatı")      # K1: "donatı" (yalnız ρ)
     if o["degisim"] != "aynı":
         u = o["uygula"]
         assert set(u) >= {"ad", "tanim", "yeni"} and u["tanim"]["tip"] == "dikdortgen"
@@ -355,6 +355,68 @@ def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
     assert z["hata"] is None
     k1 = next(k for k in z["veri"]["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
     assert k1["kesit"] == u["ad"] and k1["dc"] <= 1.0 and k1["durum"] == "yeterli"
+
+
+def test_kesit_oner_yalniz_donati_uygula_kesin(kopru):
+    """K1 'donatı' (aks–kat çözüm kimliğiyle): b × h yeterli, ρ yetmiyor → uygula {ad 'B30x30-ρ%2.00', tanım = mevcut kart +
+    donati_orani}. ρ rijitliği değiştirmediğinden uygulanınca aks–kat tablosunun D/C'si öneridekiyle aynıdır. Eskiden degisim
+    'aynı', uygula null: arayüzde Uygula düğmesi yoktu ve Hepsini uygula kolonu atlardı (KO-1)."""
+    kopru._BINA_ONBELLEK.clear()
+    kopru._GENEL_ONBELLEK.clear()
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["kesitler"]["S45x45"].update({"b": 0.3, "h": 0.3})
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 1}]})
+    o = y["oneriler"][0]
+    assert y["hata"] is None and o["degisim"] == "donatı" and o["dc_once"] > 1.5 and o["dc_oneri"] <= 1.0
+    u = o["uygula"]
+    assert u == {"ad": "B30x30-ρ%2.00", "tanim": dict(b["kesitler"]["S45x45"], donati_orani=0.02), "yeni": True}
+    b["kesitler"][u["ad"]] = u["tanim"]
+    next(k for k in b["kolonlar"] if k["no"] == 1)["kesit"] = u["ad"]
+    z = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    k1 = next(k for k in z["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
+    assert k1["kesit"] == u["ad"] and k1["dc"] == pytest.approx(o["dc_oneri"], rel=1e-4) and k1["durum"] == "yeterli"
+
+
+_S1_SABLONLAR = [s["ad"] for s in yapi.bina_sablonlar() if yapi.bina_sablon(s["ad"]).get("surum", 1) < 3]
+
+
+@pytest.mark.parametrize("ad", _S1_SABLONLAR)
+def test_kesit_oner_hepsini_uygula_aks_kat_yeterli(kopru, ad):
+    """K1 'Hepsini uygula' (yinele 3) + aks–kat motoruyla yeniden çözüm: en büyük D/C ≤ 1, ya da yanıt açık '… turda yakınsamadı'
+    uyarısı taşır. Eskiden (yinele 1, grup kartı b·h ile seçilip ρ düşerdi, ρ-only değişiklik hiç uygulanmazdı) 2kat 1,09,
+    radye 1,26 (16 kolon) çıkar ve arayüz 'uygulandı' derdi."""
+    b = yapi.bina_sablon(ad)
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "bina": b, "hedef": "hepsi", "yinele": 3})
+    assert y["hata"] is None and y["bina"] is not None and y["bina"].get("surum", 1) < 3
+    assert "mevcut iç kuvvetlerle tahmin" in y["aciklama"]
+    z = iste(kopru, "bina_coz", {"bina": y["bina"]})
+    assert z["hata"] is None
+    dc = z["veri"]["tasarim"]["en_buyuk_dc"]
+    assert dc <= 1.0 or any("turda yakınsamadı" in u for u in y["uyarilar"]), (ad, dc, y["turlar"])
+    assert y["dc_sonra"] == pytest.approx(dc, abs=0.01)           # genel motorun son çözümü ≈ aks–kat tablosu
+    for t in y["turlar"][1:]:                                     # onarım turları küçültmez
+        assert all(d["degisim"] in ("büyüt", "donatı") for d in t.get("degisen") or [])
+    # turlarda eklenip kullanılmayan kesit kartı kalmaz; yakınsayınca ρ yalnız azalır ve kart kullanılır
+    yb = y["bina"]
+    kullanilan = {e["kesit"] for a in ("kolonlar", "kirisler") for e in yb.get(a) or []}
+    assert set(yb["kesitler"]) <= kullanilan | set(b["kesitler"])
+    for d in y["donati_azaltma"]:
+        assert d["donati_orani"] < d["rho_once"] and d["yeni"] in kullanilan and d["kesit"] not in yb["kesitler"]
+    # öneriler yalnız D/C'ye göre seçilir (0. tur küçültür): aks–kat çözümünde göreli kat ötelemesini yeni aşan kat varsa yanıt
+    # bunu söyler (eskiden 3kat-3x3 'yakınsadı' derken X yönünde bütün katlarda öteleme sınırı aşılırdı, uyarısız). Genel motorun
+    # karşılaştırması tekil temelli çözümledir: mütemadi/radye şablonlarında aks–kat katları farklı olabilir, yalnız tekil denetlenir.
+    if (b.get("temeller") or {}).get("tip", "tekil") == "tekil":
+        asan = lambda vv: {yn: {k["kat"] for k in (vv.get("deprem") or {}).get("katlar") or [] if k.get(f"uygun_{yn}") is False}  # noqa: E731
+                           for yn in "xy"}
+        a0, a1 = asan(v), asan(z["veri"])
+        yeni = {yn: sorted(a1[yn] - a0[yn]) for yn in "xy" if a1[yn] - a0[yn]}
+        u = [x for x in y["uyarilar"] if "göreli kat ötelemesi" in x]
+        if yeni:
+            assert len(u) == 1 and all(f"{yn.upper()} yönü kat {', '.join(map(str, k))}" in u[0] for yn, k in yeni.items()), (ad, yeni, u)
+        else:
+            assert not u, (ad, u)
 
 
 def test_kesit_oner_genel_model_c4(kopru):
