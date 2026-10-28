@@ -102,3 +102,91 @@ def test_tek_geri_al_yigini():
     assert "gecmis.geri.push" in govde and "gecmis.ileri = []" in govde and "GECMIS_EN_FAZLA" in govde
     # tablo düzenlemesi aynı yığından geçer
     assert re.search(r"duzenle: function \(yeni, degisiklikler, bilgi\) \{\s*const geri = .*?\n\s*binaAyarla\(yeni, \{ geriAl: true", BINA, re.S)
+
+
+# ---- surum 3 sonuç ekranı, masaüstü komutları ve CSP sözleşmeleri
+
+def _s3var_kaynagi() -> str:
+    bas = BINA.index("const S3_LISTELER = [")
+    son = BINA.index("\n  }\n", BINA.index("function s3Var(b) {")) + 4
+    return BINA[bas:son]
+
+
+# C1 doğruluk tablosu (motor paketiyle ortak); taban model: betonarme-2kat-3x2 şablonu
+C1_TABLOSU = [
+    ("taban", {}, False),
+    ("mesnet", {"mesnetler": [{"dugum": {"aks": ["B", "2"], "z": "+3.00"}, "ux": True, "uy": True, "uz": True}]}, True),
+    ("dugum", {"dugumler": [{"no": 100001, "X": 0, "Y": 0, "Z": 3}]}, True),
+    ("uretec", {"uretecler": [{"no": 1, "tur": "makas", "parametreler": {}}]}, True),
+    ("aks-kat dugum yuku", {"ek_yukler": [{"tur": "dugum", "aks": ["B", "2"], "kat": 1, "durum": "G", "FZ": -10}]}, False),
+    ("ref dugum yuku", {"ek_yukler": [{"tur": "dugum", "dugum": {"aks": ["B", "2"], "z": "+3.00"}, "durum": "G", "FZ": -10}]}, True),
+    ("cubuk yuku", {"ek_yukler": [{"tur": "cubuk", "cubuk": 1, "durum": "G", "q": -1}]}, True),
+    ("surum 3", {"surum": 3}, True),
+    ("bos listeler", {"cubuklar": [], "mesnetler": []}, False),
+]
+
+
+def test_s3var_c1_anahtarlari():
+    kaynak = _s3var_kaynagi()
+    for anahtar in ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler", "surum", "ek_yukler", "dugum", "cubuk", "panel"):
+        assert f'"{anahtar}"' in kaynak or f".{anahtar}" in kaynak, anahtar
+    # iç API modeli de alır (tarayıcı testi ve sağ tık menüsü için)
+    assert re.search(r"s3Var: function \(b\) \{ return s3Var\(b\); \}", _api_govdesi())
+
+
+@pytest.mark.skipif(NODE is None, reason="node kurulu değil")
+def test_s3var_c1_dogruluk_tablosu():
+    import yapi
+    taban = yapi.bina_sablon("betonarme-2kat-3x2")
+    assert int(taban.get("surum", 1)) < 3
+    girdiler = [dict(taban, **ek) for _ad, ek, _b in C1_TABLOSU]
+    betik = ("let B = null;\n" + _s3var_kaynagi() + "\nlet v = ''; process.stdin.on('data', d => v += d);"
+             "process.stdin.on('end', () => process.stdout.write(JSON.stringify(JSON.parse(v).map(b => s3Var(b)))));")
+    r = subprocess.run([NODE, "-e", betik], input=json.dumps(girdiler), cwd=PROJE, capture_output=True, text=True, check=True)
+    sonuc = json.loads(r.stdout)
+    assert {ad: s for (ad, _e, _b), s in zip(C1_TABLOSU, sonuc)} == {ad: b for ad, _e, b in C1_TABLOSU}
+
+
+def test_s3_yonlendirme_zehirlemiyor():
+    govde = BINA[BINA.index("function coz("):BINA.index("function coz(") + 6000]
+    assert "S3_YONLENDIRME" in govde
+    # eski motor genel modeli aks–kat çözdüyse hata gösterilir; sonraki genel model çözümleri engellenmez
+    assert "MOTOR_S3 = false" not in BINA
+
+
+def test_aks_kat_sinirlari_genel_modelde_yok():
+    govde = BINA[BINA.index("function dogrula()"):BINA.index("function dogrula()") + 3000]
+    i = govde.index("if (!s3Var()) {")
+    assert govde.index("En çok 12×12 aks") > i and govde.index("En çok 12 kat") > i
+
+
+def test_masaustu_sayfa_komutlari():
+    islev = BINA[BINA.index("function masaustuKomut(d)"):BINA.index("function raporHazirOlunca(fn)")]
+    for k in ("yazdir", "csv", "kisayollar"):
+        assert f'case "{k}"' in islev, k
+    # CSV üreticisi tablo_editoru.js'in gerçek API'sinden (MatrisTablo._ic.tumunuCsv; "ac" dışında doğrudan dışa açık değil)
+    csv = BINA[BINA.index("function tablolarCsvKaydet()"):BINA.index("function kisayolPenceresi()")]
+    assert "M._ic.tumunuCsv" in csv and 'ayirici: ";"' in csv and "ondalikVirgul: true" in csv
+    tablo = (PROJE / "docs" / "tablo_editoru.js").read_text(encoding="utf-8")
+    assert re.search(r"const _ic = \{[^}]*\btumunuCsv: tumunuCsv\b", tablo, re.S)
+    assert "return { ac: ac, _ic: _ic" in tablo
+    assert "function kisayolPenceresi()" in BINA
+
+
+def test_satir_ici_olay_ozniteligi_yok():
+    """Masaüstü CSP'si (script-src 'self') satır içi olay özniteliklerini (onclick=, onsubmit=…) çalıştırmaz: HTML dizgilerinde yok."""
+    oznitelik = re.compile(r"""\son[a-z]+=\\?["']""")
+    etiket = re.compile(r"""<[a-zA-Z][^<>]*\son[a-z]+\s*=""")
+    bulunan = []
+    for yol in sorted((PROJE / "docs").glob("*.js")) + sorted((PROJE / "docs").glob("*.html")):
+        metin = yol.read_text(encoding="utf-8")
+        for r in (oznitelik, etiket):
+            bulunan += [f"{yol.name}:{metin.count(chr(10), 0, m.start()) + 1}" for m in r.finditer(metin)]
+    assert not bulunan, f"satır içi olay özniteliği: {bulunan}"
+
+
+def test_devre_disi_komut_nedeni():
+    komutlar = BINA[BINA.index("function aracKomutlari()"):BINA.index("function aracKur()")]
+    assert "neden:" in komutlar and "Önce modeli çözün (Çöz ▶)." in BINA
+    # reddedilen komut sayfada bildirilir (araç kutusu "reddedildi" olayı)
+    assert '"reddedildi"' in BINA

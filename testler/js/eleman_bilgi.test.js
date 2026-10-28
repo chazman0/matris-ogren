@@ -332,3 +332,159 @@ test("gerçek çözüm: bütün elemanlar için bilgi motor verisiyle tutarlı",
     });
   });
 });
+
+test("karma model: aks–kat kiriş, tasarım kaydına ve FE parçalarına kaynak {aks_kat, no} → çubuk numarasıyla bağlanır", function () {
+  const d = mini();
+  // genelleştirilmiş model çözümü: FE elemanı çubuk 12'yi taşır, tasarım kaydı no = çubuk no, kaynak aks–kat kiriş 1
+  const fe = d.veri.ag.elemanlar[2];
+  fe.cubuk = 12; fe.kaynak_no = 12;
+  const t = d.veri.tasarim.elemanlar[0];
+  t.no = 12; t.cubuk = 12; t.kaynak = { aks_kat: "kiris", no: 1 };
+  // aynı numaralı başka bir aks–kat kaydı (tür + no eşleşmesi) kaynaktan sonra gelmeli
+  d.veri.tasarim.elemanlar.push({ no: 1, tur: "kiris", sistem: "betonarme", dc: 0.99, durum: "yeterli", kontroller: [] });
+  const m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
+  yakin(m.ham.dc, 0.52);
+  yakin(m.ham.ext.M.max, 1.4 * 31.25 + 1.6 * 12.5, 1e-9);      // FE parçası bulundu (çubuk 12)
+  assert.match(metin(m, "tasarim"), /Talep\/kapasite D\/C\t0,520/);
+});
+
+test("karma model, genel çözüm: aks–kat kiriş ve kolonun yükleri ve yük yolu çözümdeki çubuk numarasıyla okunur", function () {
+  const d = mini();
+  const v = d.veri;
+  v.model = "genel";
+  const t = v.tasarim.elemanlar[0];
+  t.no = 12; t.cubuk = 12; t.kaynak = { aks_kat: "kiris", no: 1 };
+  v.yukler.kirisler = [];
+  v.yukler.cubuklar = [{ no: 12, L: 5, G: { oz: 15.6, panel: 30, duvar: 0, ek: 10, toplam_kN: 55.6 }, Q: { panel: 12, toplam_kN: 12 } }];
+  v.akis.sankey = [{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }];
+  // akış kolon kaydı: no = çubuk numarası (7), kaynak aks–kat kolon 2 (tasarım kaydı yok)
+  v.akis.kolonlar = [{ no: 7, kat: 1, adres: "B1/+3.00", N_G: 40, N_Q: 9, N_kum_G: 40, N_kum_Q: 9, kaynak: { aks_kat: "kolon", no: 2 } }];
+  const m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, v);
+  yakin(m.ham.yuk.G, 55.6, 1e-12);
+  yakin(m.ham.panelPay, 30, 1e-12);
+  assert.match(metin(m, "yukler"), /Panelden\t30,00\t12,00/);
+  assert.match(metin(m, "yol"), /Panel 1/);
+  const k = B.bilgi({ tur: "kolon", no: 2 }, d.bina, v);
+  yakin(k.ham.N_kum.G, 40, 1e-12);
+  assert.match(metin(k, "yukler"), /Birikimli N \(G \/ Q\)\t40,00 \/ 9,00/);
+  // aks–kat çözümünde (model genel değil) eski yol: yukler.kirisler
+  delete v.model;
+  const ak = metin(B.bilgi({ tur: "kiris", no: 1 }, d.bina, v), "yukler");
+  assert.match(ak, /Döşemeden aktarılan paylar/);
+  assert.ok(ak.indexOf("Çubuğa gelen") < 0);
+});
+
+test("tasarım özeti: dizi değerleri ' / ' ile birleşir, iç içe nesneler satıra yazılmaz", function () {
+  const d = mini();
+  d.veri.tasarim.elemanlar[0].ozet = { K: [0.65, 1], yalniz_cekme: true, Tc_kN: 412.5, ayrinti: { a: 1 } };
+  const s = metin(B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri), "tasarim");
+  assert.match(s, /K \(güçlü \/ zayıf\)\t0,650 \/ 1,000|K \(güçlü \/ zayıf\)\t0,65 \/ 1/);
+  assert.match(s, /Yalnız çekme\tevet/);
+  assert.match(s, /T_c = T_n\/Ω \(çekme\)\t412,5/);
+  assert.ok(s.indexOf("ayrinti") < 0 && s.indexOf("[object") < 0);
+});
+
+test("tekil temel: veri.akis.temeller'deki B'siz kayıt (açık mesnet) temel sayılmaz", function () {
+  const d = mini();
+  d.veri.akis.temeller.push({ dugum: 21, kolon_no: 2, aks: null, tip: "mafsal", N_G: 30, N_Q: 10, MX: 0, MY: 0 });
+  const t2 = B.bilgi({ tur: "temel", no: 2 }, d.bina, d.veri);
+  assert.equal(t2.ham.dc, undefined);
+  assert.equal(sekme(t2, "tasarim"), undefined);   // taban basıncı / D/C yalnız B × L'si olan tekil temelde
+  assert.ok(!/NaN|undefined/.test(B.tsv(t2)));
+  assert.equal(t2.adres, "T-B1");              // aks, kolondan (B'siz kaydın aks: null değerinden değil)
+  yakin(B.bilgi({ tur: "temel", no: 1 }, d.bina, d.veri).ham.dc, 0.175);
+});
+
+test("mütemadi temel kirişi ve radye: veri.temel hatlarından geometri, zemin basıncı, tasarım ve metraj", function () {
+  const d = mini();
+  d.bina.temeller = { tip: "surekli", mesnet: "elastik", zemin: { q_em: 200, k0: 20000 },
+    surekli: { B: 1.2, h_tabla: 0.3, b_govde: 0.4, h_govde: 0.8, tasma: 0.5 } };
+  d.veri.bina.temeller = d.bina.temeller;
+  d.veri.temel = { tip: "surekli", belirleyen_servis: "G+Q",
+    dugumler: [{ no: 1, X: -0.5, Y: 0, w_mm: 2.5, p_kNm2: 50 }, { no: 2, X: 2.5, Y: 0, w_mm: 4, p_kNm2: 80 }, { no: 3, X: 5.5, Y: 0, w_mm: 3, p_kNm2: 60 }],
+    hatlar: [{ ad: "1", yon: "x", L: 6, bas: -0.5, son: 5.5, dugumler: [1, 2, 3], kolonlar: [1, 2] }],
+    kolonlar: [{ kolon_no: 1, adres: "A1", N_servis: 120 }],
+    tasarim: [{ tur: "temel-kirisi", hat: "1", yon: "x", b: 0.4, h: 0.8, Md_alt: 100, Md_ust: 50, As_alt_cm2: 5, As_ust_cm2: 3, oneri_alt: "4Φ14", oneri_ust: "3Φ12",
+      Vd: 80, etriye: "Φ8/15", dc: 0.6, durum: "yeterli", kontroller: [{ ad: "Eğilme", talep: 100, kapasite: 180, birim: "kN·m", dc: 0.556, saglandi: true }] }],
+    model: { k0: 20000 } };
+  const m = B.bilgi({ tur: "temel", alt: "surekli", no: 1, aks: "1", yon: "x" }, d.bina, d.veri);
+  assert.equal(m.baslik, "Mütemadi temel kirişi 1");
+  assert.deepEqual(m.sekmeler.map(function (s) { return s.id; }), ["geometri", "zemin", "tasarim", "metraj"]);
+  yakin(m.ham.p_maks, 80); yakin(m.ham.dc, 0.6);
+  yakin(m.ham.metraj.beton_m3, (1.2 * 0.3 + 0.4 * 0.5) * 6, 1e-12);
+  assert.match(metin(m, "geometri"), /Kolon 1\tA1 · N = 120,0 kN/);
+  assert.match(metin(m, "zemin"), /Zemin D\/C \(p_maks \/ q_em\)\t0,400/);
+  assert.ok(!/NaN|undefined/.test(B.tsv(m)));
+  // çözümsüz: geometri bina tanımından, zemin basıncı "Önce çözün"
+  const c = B.bilgi({ tur: "temel", alt: "surekli", no: 1, aks: "1", yon: "x" }, d.bina, null);
+  assert.match(metin(c, "zemin"), /Önce çözün/);
+  assert.match(metin(c, "geometri"), /Tabla B × h_tabla\t1,20 × 0,30/);
+  // radye
+  d.bina.temeller = { tip: "radye", mesnet: "elastik", zemin: { q_em: 200, k0: 20000 }, radye: { h: 0.6, tasma: 0.5, ag: 1 } };
+  d.veri.bina.temeller = d.bina.temeller;
+  d.veri.temel = { tip: "radye", p_maks: 90, p_min: 20, DC_zemin: 0.45, oturma_maks_mm: 4.5, oturma_min_mm: 1, farkli_oturma_metin: "1/2000", en_buyuk_dc: 0.7,
+    model: { k0: 20000, plak: { X0: -0.5, X1: 5.5, Y0: -0.5, Y1: 4.5, h: 0.6, alan: 30 } },
+    tasarim: [{ tur: "radye-serit", yon: "x", M_alt_m: 40, M_ust_m: 20, As_alt_cm2_m: 6, As_ust_cm2_m: 4, oneri_alt: "Φ12/18", oneri_ust: "Φ10/18", dc: 0.7 }],
+    zemin_kontrolleri: [{ ad: "Zemin basıncı", talep: 90, kapasite: 200, birim: "kN/m²", dc: 0.45, saglandi: true }] };
+  const r = B.bilgi({ tur: "temel", alt: "radye", no: 1 }, d.bina, d.veri);
+  assert.equal(r.baslik, "Radye temel");
+  yakin(r.ham.dc, 0.7); yakin(r.ham.p_maks, 90); yakin(r.ham.metraj.beton_m3, 18, 1e-12);
+  assert.match(metin(r, "tasarim"), /X\t40,0 \/ 20,0\t6,00 \/ 4,00\tΦ12\/18 \/ Φ10\/18\t0,70/);
+  assert.ok(!/NaN|undefined/.test(B.tsv(r)));
+});
+
+test("menü: yük akışı çubuk ve temel için, ısı haritası temel için; devre dışı öğe nedenini taşır", function () {
+  const ids = function (tur) { return B.menuOgeleri(tur, {}).map(function (o) { return o.id; }); };
+  assert.ok(ids("cubuk").indexOf("yuk-akisi") >= 0);
+  assert.ok(ids("temel").indexOf("isi-haritasi") >= 0);
+  const l = B.menuOgeleri("kolon", { tasarim: { calistir: function () {}, etkin: false, neden: "Bu çözümde tasarım kaydı yok." },
+    "yuk-akisi": { calistir: function () {}, etkin: function () { return false; }, neden: function () { return "Önce modeli çözün."; } } });
+  const o = function (id) { return l.find(function (x) { return x.id === id; }); };
+  assert.equal(o("tasarim").etkin, false); assert.equal(o("tasarim").neden, "Bu çözümde tasarım kaydı yok.");
+  assert.equal(o("yuk-akisi").neden, "Önce modeli çözün.");
+  assert.equal(o("bilgi").neden, "");
+});
+
+const GENEL = process.env.MATRIS_BILGI_GENEL || "";
+test("genel (surum 3) çözüm: çubuk, panel ve temel bilgisi motor kayıtlarıyla tutarlı", { skip: GENEL ? false : "MATRIS_BILGI_GENEL yok" }, function () {
+  const d = JSON.parse(fs.readFileSync(GENEL, "utf8"));
+  const v = d.veri;
+  assert.equal(v.model, "genel");
+  let n = 0;
+  (v.tasarim.elemanlar || []).forEach(function (t) {
+    if (t.cubuk == null) return;
+    const m = B.bilgi({ tur: "cubuk", no: t.cubuk }, d.bina, v, { durum: "G" });
+    const ad = "çubuk " + t.cubuk + " (" + t.tur + ")";
+    assert.equal(m.durum, "G", ad);
+    yakin(m.ham.dc, t.dc, 1e-12, ad + " D/C");
+    // FE parçaları çubuk numarasıyla (ag.elemanlar[].cubuk)
+    const fe = v.ag.elemanlar.filter(function (e) { return e.cubuk === t.cubuk; });
+    assert.ok(fe.length > 0, ad + " FE");
+    let mx = -Infinity;
+    fe.forEach(function (e) { const r = v.durumlar.G.elemanlar.find(function (x) { return x.no === e.no; }); r.N.forEach(function (y) { mx = Math.max(mx, y); }); });
+    yakin(m.ham.ext.N.max, mx, 1e-9, ad + " N max");
+    // yükler veri.yukler.cubuklar'dan; panel payları sankey'den (P → Ç)
+    const y = v.yukler.cubuklar.find(function (x) { return x.no === t.cubuk; });
+    if (y) yakin(m.ham.yuk.G, y.G.toplam_kN, 1e-9, ad + " G");
+    const pay = v.akis.sankey.filter(function (e) { return e.hedef === "Ç" + t.cubuk && e.durum === "G"; }).reduce(function (a, e) { return a + e.kN; }, 0);
+    if (pay > 0) yakin(m.ham.panelPay, pay, 1e-9, ad + " panel payı");
+    assert.ok(!/undefined|NaN/.test(B.tsv(m)), ad + " TSV");
+    n++;
+  });
+  assert.ok(n > 50, "tasarım kaydı olan çubuk sayısı " + n);
+  (v.yukler.paneller || []).forEach(function (p) {
+    const m = B.bilgi({ tur: "panel", no: p.no }, d.bina, v);
+    yakin(m.ham.yuk.G, p.G_toplam, 1e-9, "panel " + p.no);
+    assert.ok(!/undefined|NaN/.test(B.tsv(m)), "panel " + p.no + " TSV");
+  });
+  const tl = v.akis.temeller || [];
+  assert.ok(tl.some(function (t) { return t.B == null; }), "fixture'da açık mesnet (B'siz kayıt) olmalı");
+  tl.forEach(function (t) {
+    if (t.B == null) {
+      assert.throws(function () { B.bilgi({ tur: "temel", no: t.kolon_no }, d.bina, v); }, /modelde yok/);
+      return;
+    }
+    const m = B.bilgi({ tur: "temel", no: t.kolon_no }, d.bina, v);
+    yakin(m.ham.dc, t.DC, 1e-12); yakin(m.ham.N_servis, t.N_servis, 1e-12);
+  });
+});
