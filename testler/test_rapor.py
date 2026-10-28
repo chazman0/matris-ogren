@@ -559,3 +559,42 @@ def test_genel_eski_veri_ile_aks_kat_raporu_degismez(cozumler):
     assert "Kolon / kiriş / döşeme sayısı" in h and "6.2 Döşeme yükleri (G, Q) ve kirişlere aktarım" in h and "6.3 Kiriş yük dökümü" in h
     assert "Panel yükleri ve çubuklara dağıtım" not in h and "Çelik basit kesitler" not in h
     assert "Yük akışı korunumu (döşeme → kiriş → kolon → temel)" in h and "(kiriş ve kolon)" in h
+
+
+def test_genel_betonarme_s11_ozet_alanlari_ve_varsayimlar(cozumler):
+    """Genel motorla çözülen betonarme modelde §11.2/11.3 özet hücreleri dolu (Md, donatı, Vd, etriye, Nmaks/Nmin, Ndm oranı;
+    eskiden 120 hücre '–'), değerler aks–kat motoruyla aynı; §11.1'de çelik (ÇYTHYE) ve kren varsayımı yok; §11.5 kolon
+    ayrıntısı gerçek b_X × b_Y ile (eskiden '0 × 0 mm'). Çelik modelin §12.1'inde TS 500 satırı yok (motor-tuketici-new-4)."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["surum"] = 3
+    v = yapi.bina_coz(copy.deepcopy(b), anlat=False, goster="yok").veri
+    assert v["model"] == "genel"
+    h = rapor.statik_rapor(b, v)
+    dengeli(h)
+    b11 = bolum(h, 11)
+    i, j = b11.index("11.2 Kirişler"), b11.index("11.4 Döşemeler")
+    hucreler = [re.sub(r"<[^>]+>", "", x).strip() for x in re.findall(r"<td[^>]*>(.*?)</td>", b11[i:j], flags=re.S)]
+    assert len(hucreler) > 100 and "–" not in hucreler
+    s111 = metin(b11[b11.index("11.1 Varsayımlar"):i])
+    assert "ÇYTHYE" not in s111 and "Kren kirişi" not in s111 and "TS 500" in s111
+    assert "0 × 0 mm" not in metin(b11) and "400 × 400 mm" in metin(b11)
+    # genel ve aks–kat motorlarının özetleri aynı (aynı bina)
+    _, v1 = cozumler["betonarme-2kat-3x2"]
+    for tur, anahtar in (("kiris", "Md_mesnet"), ("kiris", "Md_aciklik"), ("kiris", "Vd"), ("kolon", "N_max_kN"), ("kolon", "Ndm_kN"),
+                         ("kolon", "N_sinir_TBDY_kN")):
+        g = sorted(round(k["ozet"][anahtar], 1) for k in v["tasarim"]["elemanlar"] if k["tur"] == tur)
+        a = sorted(round(k["ozet"][anahtar], 1) for k in v1["tasarim"]["elemanlar"] if k["tur"] == tur)
+        assert g == pytest.approx(a, rel=0.01, abs=0.15), (tur, anahtar)
+    for k in v["tasarim"]["elemanlar"]:
+        o = k["ozet"]
+        if k["tur"] == "kiris":
+            assert o["oneri_ust"] and o["oneri_alt"] and o["etriye"].startswith("Φ") and o["b"] == 0.25 and o["d_m"] == pytest.approx(0.45)
+        else:
+            assert o["N_min_kN"] <= o["N_max_kN"] and o["bX"] == o["bY"] == 0.4
+    # çelik model: §12.1'de betonarme satırı yok, §11 yok
+    bc, vc = cozumler["celik-cbf-3kat"]
+    hc = rapor.statik_rapor(bc, vc)
+    b12 = bolum(hc, 12)
+    s121 = metin(b12[b12.index("12.1 Varsayımlar"):b12.index("12.2 Özet")])
+    assert "TS 500" not in s121 and "ÇYTHYE" in s121 and "Kren kirişi" not in s121
+    assert "Kren kirişi" in metin(rapor.statik_rapor(*cozumler["celik-sanayi-4hol"]))

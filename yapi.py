@@ -55,6 +55,8 @@ import copy
 import importlib
 import json
 import math
+import numbers
+import re
 from types import SimpleNamespace
 
 import sympy as sp
@@ -4286,11 +4288,26 @@ def _gosterilecek_sec(B, kombinasyonlar, zarf):
 
 
 _GENEL_LISTELER = ("cubuklar", "paneller", "dugumler", "mesnetler", "uretecler")
+_SURUM_DESENI = re.compile(r"\s*[+-]?[0-9]+(\.[0-9]+)?\s*")
+
+
+def _surum_sayi(s):
+    """Bina ``surum`` alanının sayısı (K2 — arayüzdeki ``genelMi`` / ``s3Var`` / ``binaYukle`` ile aynı kural): bool → 1; sonlu
+    sayı → tam kısmı (2.9 → 2); ``^\\s*[+-]?[0-9]+(\\.[0-9]+)?\\s*$`` dizesi → tam kısmı ("3.0" → 3, " 3.5 " → 3); başka her şey
+    ("3a", "0x3", "1e1", None, sonsuz) → 1."""
+    if isinstance(s, bool):
+        return 1
+    if isinstance(s, numbers.Real):
+        x = float(s)
+        return int(x) if math.isfinite(x) else 1
+    if isinstance(s, str) and _SURUM_DESENI.fullmatch(s):
+        return int(float(s))
+    return 1
 
 
 def _serbest_mi(bina):
     """Genel (surum 3) model mi — tek yönlendirme kuralı (arayüzdeki ``s3Var`` ile aynı; ``yapi_serbest.serbest_mi`` bunu çağırır):
-    ``surum`` ≥ 3, ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da
+    ``surum`` ≥ 3 (``_surum_sayi``: sayı ya da tamsayı/ondalık dizesi, tam kısmı), ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da
     bir ek yükün ``dugum`` değeri REF sözlüğü (``{"aks": [..], "z": ..}``) ya da türü ``cubuk`` / ``panel``. Aks–kat düğüm yükü
     ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
     if isinstance(bina, str):
@@ -4300,11 +4317,7 @@ def _serbest_mi(bina):
             return False
     if not isinstance(bina, dict):
         return False
-    try:
-        surum = int(bina.get("surum") or 1)
-    except (TypeError, ValueError):
-        surum = 1
-    if surum >= 3:
+    if _surum_sayi(bina.get("surum")) >= 3:
         return True
     if any(isinstance(bina.get(a), list) and len(bina.get(a)) > 0 for a in _GENEL_LISTELER):
         return True

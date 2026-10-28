@@ -1829,6 +1829,7 @@ def _yukleri_hazirla(B):
         p["mu"] = (mu_sabit if mu_sabit is not None else yv.kar_mu1(p["egim"])) if (B.kar and p["kar"]) else 0.0
         p["s"] = p["mu"] * sk
         yogun = {"G": gs, "Q": qh * p["cos_a"], "S": (p["s"] + p["ek_s"]) * p["cos_a"]}
+        p["yogun"] = yogun                      # kN/m² (plan düzlemine dik düşey): yük akışı kenarları (_akis) da bunu kullanır
         p["toplam"] = {d: yogun[d] * p["alan"] for d in ("G", "Q", "S")}
         for d in durumlar:
             v = yogun[d]
@@ -2186,10 +2187,17 @@ def _ag_kur(B, kutle=None):
             m = B.mesnetler.get(n)
             if m and m.get("kaynak") == "mesnetler" and (m["ux"] or m["uy"] or m["rz"]):
                 bas = [a for a in ("ux", "uy", "rz") if m[a]]
+                if mod[kat]["neden"] == "analiz.diyafram":
+                    # kat diyaframı JSON'daki analiz.diyafram ile rijit verildi: arayüzdeki Deprem › Diyafram ayarı bunu geçmez
+                    ipucu = (f"ya da bu katın diyaframını esnek yapın: model JSON'unda analiz.diyafram rijit verilmiş, "
+                             f"\"analiz\": {{\"diyafram\": {{\"{kat}\": \"esnek\"}}}} yazın (Deprem › Diyafram ayarı bunu geçmez)")
+                else:
+                    ipucu = (f"ya da diyaframı esnek yapın: Bina sayfası › Deprem sekmesi › Diyafram: «Esnek» (bütün katlar; JSON'da "
+                             f"\"deprem\": {{\"diyafram\": \"esnek\"}}, yalnız bu kat için \"analiz\": {{\"diyafram\": {{\"{kat}\": "
+                             f"\"esnek\"}}}})")
                 raise MatrisHatasi(
                     f"Düğüm {n} ({dno[n]['adres']}) rijit diyaframlı {B.kat[kat]['ad']} seviyesinde: yatay ux/uy ve dönme rz ayrıca "
-                    f"mesnetlenemez (verilen: {', '.join(bas)}); yalnız düşey uz ve rx/ry verilebilir ya da analizde diyaframı esnek "
-                    f"yapın (\"analiz\": {{\"diyafram\": {{\"{kat}\": \"esnek\"}}}}).")
+                    f"mesnetlenemez (verilen: {', '.join(bas)}); yalnız düşey uz ve rx/ry verilebilir {ipucu}.")
         no = _EFENDI + kat
         x, y, z = Y._motor_koordinat(kk["X"], kk["Y"], kk["kot"])
         diyaframlar.append({"dugumler": koleler, "ana": {"no": no, "x": x, "y": y, "z": z}, "ad": f"Kat {kat}"})
@@ -2704,15 +2712,25 @@ def _akis(B, YK, ag, durumlar_kisa):
         parca["ek"] = YK.toplam[d] - sum(parca.values())
         parca.update({"toplam": YK.toplam[d], "temel": tep, "yay": yay, "kolon_taban": tep + yay})
         korunum[d] = parca
+    # panel → çubuk bantları her düşey yük durumu için (G, Q ve kar varsa S): çubuğa düşen pay = yoğunluk × Σ kenar dağıtım alanı
+    # (veri.yukler.cubuklar[].<durum>.panel ile aynı sayı). Eskiden yalnız G vardı: Yük akışı Q/S 'akış verisi yok', G+Q yalnız G
+    # ve eleman bilgisi Yük yolu Q = 0 gösterirdi (AKIS-QS). Her durumda en çok 600 bant (en büyükler).
     sankey = []
-    for p in B.paneller:
-        if p["toplam"]["G"] <= 0:
+    for d in ("G", "Q", "S"):
+        if d not in durumlar_kisa:
             continue
-        for cno, parcalar in p["dag"]["cubuklar"]:
-            kN = p["g_yuzey"] * sum((x2 - x1) * (f1 + f2) / 2.0 for x1, x2, f1, f2 in parcalar)
-            sankey.append({"kaynak": f"P{p['no']}", "hedef": f"Ç{cno}", "durum": "G", "kN": kN})
-    if len(sankey) > 600:
-        sankey = sorted(sankey, key=lambda s: -s["kN"])[:600]
+        bantlar = []
+        for p in B.paneller:
+            v = (p.get("yogun") or {}).get(d, p["g_yuzey"] if d == "G" else 0.0)
+            if v <= 1e-12 or p["toplam"][d] <= 0:
+                continue
+            for cno, parcalar in p["dag"]["cubuklar"]:
+                kN = v * sum((x2 - x1) * (f1 + f2) / 2.0 for x1, x2, f1, f2 in parcalar)
+                if kN > 1e-12:
+                    bantlar.append({"kaynak": f"P{p['no']}", "hedef": f"Ç{cno}", "durum": d, "kN": kN})
+        if len(bantlar) > 600:
+            bantlar = sorted(bantlar, key=lambda s: -s["kN"])[:600]
+        sankey += bantlar
     return {"kolonlar": kolonlar, "temeller": temeller, "mesnetler": mesnetler, "korunum": korunum, "sankey": sankey}
 
 
@@ -3034,7 +3052,10 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
             prc = B.parca[c["no"]]
             b0, b1 = Y._blok(T, prc[0]["fe"], T.GQ), Y._blok(T, prc[-1]["fe"], T.GQ)
             gq_N = max(-float(b0[_I_N, 0]), -float(b1[_I_N, -1]))
-        kont = _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N)
+        ndm = {}
+        kont = _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N, cikti=ndm)
+        if ndm:
+            bilgi.update({"N_dm": ndm["Ndm"], "N_dm_kaynak": ndm["kaynak"]})
         ozet = {"kontrol": {"kiris": "kiriş (TS 500 eğilme + kesme)", "kolon": "kolon (N–M)", "egik": "eğik eleman (TS 500 Denk. 7.2)"}[tur_ba],
                 "As_toplam_cm2": r.get("As_toplam_cm2"), "As_kaynak": r.get("As_kaynak"), "b_mm": r["b_mm"], "h_mm": r["h_mm"],
                 "esik_kN": r["esik_kN"]}
@@ -3061,6 +3082,20 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
             ozet["As_alt_cm2"] = r["egilme_alt"].get("As_gerekli_cm2")
         if r.get("egilme_ust"):
             ozet["As_ust_cm2"] = r["egilme_ust"].get("As_gerekli_cm2")
+        if tur_ba == "kolon":
+            # yapi._kolon_ba özet alanları (rapor §11.3 / §11.5): N maks/min (bütün birleşimler, iki uç), N_dm ve sınırları, b_X × b_Y
+            fcd = ts.beton_malzeme(mal["kutuphane"])["fcd"]
+            ozet.update({"N_max_kN": max(k["N"] for k in kuv_tum), "N_min_kN": min(k["N"] for k in kuv_tum),
+                         "Ndm_kN": ndm.get("Ndm"), "N_sinir_TBDY_kN": ndm.get("N040"),
+                         "N_sinir_TS500_kN": 0.9 * fcd * kt["b"] * kt["h"] * 1000.0, "bX": kt["b"], "bY": kt["h"]})
+        else:
+            # yapi._kiris_ba özet alanları (rapor §11.2 / §11.5): mesnet (üst) ve açıklık (alt) M_d, donatı önerisi, V_d, etriye
+            eu, ea, kk = r.get("egilme_ust"), r.get("egilme_alt"), r.get("kesme")
+            et = (kk or {}).get("oneri")
+            ozet.update({"Md_mesnet": eu["Md_kNm"] if eu else 0.0, "oneri_ust": ((eu or {}).get("oneri") or {}).get("metin"),
+                         "Md_aciklik": ea["Md_kNm"] if ea else 0.0, "oneri_alt": ((ea or {}).get("oneri") or {}).get("metin"),
+                         "Vd": kk["Vd_kN"] if kk else 0.0, "etriye": f"Φ{et['cap']}/{et['s_mm'] / 10:.0f}" if et else None,
+                         "d_m": kt["h"] - (pas + Y._PAS_EK), "b": kt["b"], "h": kt["h"]})
         uy += list(r["uyarilar"])
         T.sonuclar[c["no"]] = {"r": r, "bilgi": bilgi}
         durum = r["durum"] if r["durum"] in ("yeterli", "donatı artır", "kesit büyüt") else "yeterli"
@@ -3110,11 +3145,12 @@ _BA_DAYANIM = ("Eğilme taşıma gücü", "Kesme üst sınırı", "Kesme dayanı
                "Denk. 7.2")
 
 
-def _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N=None):
+def _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N=None, cikti=None):
     """tasarim.betonarme_eleman_kontrol satırları → §11 satırları: dayanım / koşul ayrımı (beyaz liste), satırın kombinasyonu
     (ad ekinden ya da belirleyen kuvvetten) ve aks–kat motoruyla aynı etiketler. Kolonda (yapi._kolon_ba ile aynı) TBDY en küçük
     boyut ≥ 300 mm (koşul) ve N_dm ≤ 0,40 f_ck A_c (dayanım) satırları: N_dm bütün deprem kombinasyonlarının (ön elemeden önce)
-    en büyük N'i; deprem kombinasyonu yoksa G + Q (``gq_N``)."""
+    en büyük N'i; deprem kombinasyonu yoksa G + Q (``gq_N``). ``cikti`` (sözlük) verilirse kolonda kullanılan N_dm, kaynağı
+    ("deprem" | "G+Q" | "bütün") ve 0,40 f_ck A_c sınırı yazılır (rapor özeti ve kesit önerisi aynı N_dm'i kullanır)."""
     eg = [x for x in r.get("kombinasyonlar") or [] if x.get("yol") == "eğilme"]
     k_acik = max((x for x in eg if x["Mx"] > 0), key=lambda x: x["Mx"], default=None)
     k_mes = min((x for x in eg if x["Mx"] < 0), key=lambda x: x["Mx"], default=None)
@@ -3182,6 +3218,9 @@ def _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N=None):
             not_ = "; deprem kombinasyonu yok: bütün kombinasyonlar"
         kont.append(Y._yeni_kontrol("TBDY: Ndm ≤ 0,40 fck Ac", max(Ndm, 0.0), N040, ts.K_TS500["N040"] + not_, "kN", kdm,
                                     "TBDY Ndm ≤ 0,40 fck Ac"))
+        if cikti is not None:
+            cikti.update({"Ndm": max(Ndm, 0.0), "N040": N040, "kombinasyon": kdm,
+                          "kaynak": "deprem" if dep else ("G+Q" if gq_N is not None else "bütün")})
     return kont
 
 
@@ -3233,20 +3272,40 @@ def _tasarim(ts, T):
         genel.append(f"Çapraz koşulları TBDY 2018 {'md. 9.6 (SDY)' if _suneklik(B) == 'SDY' else 'md. 9.7 (SDS)'}: KL/i ≤ 200, Tablo 9.3 "
                      "genişlik/kalınlık; K düzeni yasak; yalnız çekme çaprazı SDY'de yasak, SDS'de KL/i ≤ 300.")
     ks_varsayim = sorted({v for k in gecerli for v in k.get("varsayimlar", [])})
-    varsayimlar = [
-        "Çelik: ÇYTHYE 2018 " + ("GKT" if B.kombinasyon_kumesi == "cythye_gkt" else "YDKT") + "; kolon, kiriş, aşık, kren ve bağ "
-        "kirişi I/H kesitlerde eğilmeli eleman (Bölüm 11 etkileşim), çapraz ve makas çubukları ile basit kesitler (kutu, boru, "
-        "korniyer, U) eksenel çubuk (Bölüm 7–8). Kombinasyon başına eleman boyunca en büyük |N|, |M|, |V| (aynı kombinasyon).",
-        "Varsayılan burkulma ve yanal burulma boyları (çubukta Lb / K verilmezse): " + ("; ".join(ks_varsayim) or "—") + ". İkinci "
-        "mertebe etkileri (B1/B2) yok; yanal ötelemesi önlenmemiş çerçeve kolonunda K > 1 olabilir — çubuğa K verin.",
-        "Kren kirişi: yanal kuvvet momenti yalnız üst başlıkça taşınır (öğretici yaklaşım); yorulma ve tekerlek yerel basıncı yok.",
-        "Betonarme: TS 500 (eğik eleman: |N_d| ≤ 0,1 f_ck A_c ise kiriş gibi, değilse N–M), TBDY sınırları deprem varsa.",
-        f"Tahkik kombinasyonları: dayanım ve deprem birleşimleri ({len(T.kombs)} adet); servis ve öteleme birleşimleri tahkike girmez.",
-    ]
+    # varsayımlar modelde bulunan sisteme göre (rapor §11.1 betonarme + ortak, §12.1 çelik + ortak; aks–kat motoru gibi):
+    # yalnız betonarme modelde ÇYTHYE / burkulma / kren satırları, yalnız çelik modelde TS 500 satırı yazılmaz
+    sistemler = {k.get("sistem") for k in kayitlar}
+    celik_var, ba_var = "celik" in sistemler, "betonarme" in sistemler
+    if not (celik_var or ba_var):                # hiçbir eleman tahkik edilemedi: malzemeden
+        mal_tur = {B.malzemeler[B.kesitler[c["kesit"]].get("malzeme")]["tur"] for c in B.cubuklar
+                   if B.kesitler.get(c["kesit"], {}).get("malzeme") in B.malzemeler}
+        celik_var, ba_var = "celik" in mal_tur, "beton" in mal_tur
+    gruplar = {"celik": [], "betonarme": [], "ortak": []}
+    if celik_var:
+        gruplar["celik"] += [
+            "Çelik: ÇYTHYE 2018 " + ("GKT" if B.kombinasyon_kumesi == "cythye_gkt" else "YDKT") + "; kolon, kiriş, aşık, kren ve bağ "
+            "kirişi I/H kesitlerde eğilmeli eleman (Bölüm 11 etkileşim), çapraz ve makas çubukları ile basit kesitler (kutu, boru, "
+            "korniyer, U) eksenel çubuk (Bölüm 7–8). Kombinasyon başına eleman boyunca en büyük |N|, |M|, |V| (aynı kombinasyon).",
+            "Varsayılan burkulma ve yanal burulma boyları (çubukta Lb / K verilmezse): " + ("; ".join(ks_varsayim) or "—") + ". İkinci "
+            "mertebe etkileri (B1/B2) yok; yanal ötelemesi önlenmemiş çerçeve kolonunda K > 1 olabilir — çubuğa K verin."]
+        if B.kren:
+            gruplar["celik"].append("Kren kirişi: yanal kuvvet momenti yalnız üst başlıkça taşınır (öğretici yaklaşım); yorulma ve "
+                                    "tekerlek yerel basıncı yok.")
+    if ba_var:
+        gruplar["betonarme"].append(
+            "Betonarme: TS 500 (eğik eleman: |N_d| ≤ 0,1 f_ck A_c ise kiriş gibi, değilse N–M), TBDY sınırları deprem varsa; donatı "
+            "ağırlık merkezi = paspayı + 20 mm. Kolon: her birleşimin iki ucundaki eş zamanlı (N, Mx, My) noktaları; TBDY N_dm = "
+            "deprem birleşimlerindeki en büyük N (deprem yoksa G + Q).")
+        if any(k.get("sistem") == "betonarme" and k["tur"] == "kolon" and (k.get("ozet") or {}).get("rho_varsayim") for k in kayitlar):
+            gruplar["betonarme"].append("Kolon boyuna donatısı kesitte (donati_orani ya da As, cm²) verilmediyse ρ = %1 (TS 500 md. "
+                                        "7.4.1 / TBDY 2018 md. 7.3.2 en az değeri); 'gerekli ρ' 0,01 → 0,04 taranır.")
+    gruplar["ortak"].append(f"Tahkik kombinasyonları: dayanım ve deprem birleşimleri ({len(T.kombs)} adet); servis ve öteleme "
+                            "birleşimleri tahkike girmez.")
+    varsayimlar = gruplar["celik"] + gruplar["betonarme"] + gruplar["ortak"]
     return {
         "yontem": {"betonarme": "TS 500:2000 (+TBDY 2018 Bölüm 7 sınırları)",
                    "celik": f"ÇYTHYE 2018 {'GKT' if B.kombinasyon_kumesi == 'cythye_gkt' else 'YDKT'} (+TBDY 2018 Bölüm 9 çapraz koşulları)"},
-        "varsayimlar": varsayimlar, "kombinasyon_sayisi": len(T.adlar), "elemanlar": kayitlar,
+        "varsayimlar": varsayimlar, "varsayim_gruplari": gruplar, "kombinasyon_sayisi": len(T.adlar), "elemanlar": kayitlar,
         "en_buyuk_dc": sirali[0]["dc"] if sirali else 0.0, "kritik": [k["no"] for k in sirali[:5]],
         "kritik_elemanlar": [{"tur": k["tur"], "no": k["no"], "adres": k["adres"], "dc": k["dc"],
                               "kontrol": (k["belirleyen"] or {}).get("kontrol"), "kombinasyon": (k["belirleyen"] or {}).get("kombinasyon")}
@@ -3384,9 +3443,21 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
         # öneri, tahkikle aynı donatı ağırlık merkezi derinliğiyle (paspayı + etriye + çubuk yarıçapı = pas + 20 mm; tasarim'ın
         # kiriş varsayılanı 40 mm, kolon 50 mm) — yoksa önerilen kesit kendi tahkikinde yetmeyebilir
         kis = {"paspayi": float(bilgi.get("pas", 0.03)) + Y._PAS_EK}
+        ndm_kaynak = None
+        if tur == "kolon" and bilgi.get("N_dm") is not None:
+            # TBDY 7.3.1.2 boyutlandırması, kaydın 'Ndm ≤ 0,40 fck Ac' satırıyla aynı N_dm ile: deprem birleşimi yoksa G + Q (ön
+            # elemede düşen deprem birleşimi de olabilir). Eskiden deprem yokken gerekçe 'N_dm = 0 → A_c ≥ 0 cm²' derdi.
+            dep_N = [k["N"] for k in kuv if k.get("deprem")]
+            if not dep_N or max(dep_N) < bilgi["N_dm"] - 1e-9:
+                kuv.append({"ad": "N_dm", "N": bilgi["N_dm"], "Mx": 0.0, "My": 0.0, "V": 0.0, "deprem": True})
+            ndm_kaynak = bilgi.get("N_dm_kaynak")
         o = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis)
         on = o.get("oneri") or {}
         gerekce = list(o.get("gerekce", []))
+        if ndm_kaynak in ("G+Q", "bütün"):
+            ack = ("(deprem birleşimi yok: N_dm ≈ G + Q, tasarım kaydının 'Ndm ≤ 0,40 fck Ac' satırıyla aynı)" if ndm_kaynak == "G+Q"
+                   else "(deprem birleşimi yok: bütün birleşimlerin en büyük eksenel basıncı)")
+            gerekce = [g.replace("(N_dm = deprem birleşimlerindeki en büyük eksenel basınç)", ack) for g in gerekce]
         durum = o.get("durum")
         dc_oneri = degisim = None
 

@@ -769,7 +769,7 @@ class _Rapor:
         satir = [
             ("Taşıyıcı sistem", _e(sistem)),
             ("Bina modeli sürümü", _e(f"surum {self.ham.get('surum', v.get('surum', '–'))}"
-                                      + (" (aks sistemi tabanlı serbest çubuk/panel modeli)" if str(self.ham.get('surum')) == "3" else ""))),
+                                      + (" (aks sistemi tabanlı serbest çubuk/panel modeli)" if self.genel else ""))),
             ("Kat sayısı (temel üstü)", _f(max(len(katlar) - 1, 0), 0)),
             ("Bina yüksekliği " + _v("H", "N"), _b(HN, "m")),
             ("Plan boyutları " + _v("B", "X") + " × " + _v("B", "Y"), f"{_b(BX, 'm')} × {_b(BY, 'm')}" if BX is not None and BY is not None else "–"),
@@ -1911,6 +1911,16 @@ class _Rapor:
         oz, ts = _sozluk(e.get("ozet")), self.ts
         beton, donati = self._ba_malzeme(e)
         kon = {str(k.get("ad")): k for k in _liste(e.get("kontroller")) if isinstance(k, dict)}
+        # genel model (yapi_serbest) satır adları tasarim.py'nin adlarıdır ("Mesnet (üst donatı): …Eğilme taşıma gücü…",
+        # "Kesme (<kombinasyon>): …Kesme dayanımı…"): aks–kat adıyla bulunamayan satır desenle eşlenir
+        for anahtar, bas, icerik in (("Eğilme (mesnet, üst) Md ≤ Mr", "Mesnet", "Eğilme taşıma gücü"),
+                                     ("Eğilme (açıklık, alt) Md ≤ Mr", "Açıklık", "Eğilme taşıma gücü"),
+                                     ("Kesme Vd ≤ Vc + Vw", "Kesme (", "Kesme dayanımı"),
+                                     ("Kesme üst sınırı Vd ≤ 0,22 fcd bw d", "Kesme (", "Kesme üst sınırı")):
+            if anahtar not in kon:
+                k_ = next((k for a, k in kon.items() if a.startswith(bas) and icerik in a), None)
+                if k_ is not None:
+                    kon[anahtar] = k_
         b, h, d = oz.get("b"), oz.get("h"), oz.get("d_m")
         satir = []
         if ts is None or not all(_sayi_mi(x) for x in (b, h, d)):
@@ -1999,6 +2009,9 @@ class _Rapor:
         for k in kon:
             ad = str(k.get("ad") or "")
             komb, kayn = k.get("kombinasyon"), k.get("kaynak")
+            tam = ad
+            if ad.startswith("N–M: "):          # genel model satırı "N–M: <kombinasyon> (uç): N–Mx etkileşimi …": kuyruğuyla eşlenir
+                ad = ad.rsplit(": ", 1)[-1]
             if ad.startswith("N–Mx") or ad.startswith("N–My"):
                 x = ad.startswith("N–Mx")
                 derinlik = bY if x else bX
@@ -2010,11 +2023,14 @@ class _Rapor:
                                 f"{_v('M', 'd' + eks)} = max(|{_v('M', eks)}|, {_v('N', 'd')}{_v('e', 'min')}) = {_f(k.get('talep'), 2)} kN·m")
                 adim.append(f"{_v('M', 'r' + eks)}({_v('N', 'd')}): TS 500 eşdeğer dikdörtgen blokla kurulan N–M etkileşim eğrisi üzerinde, "
                             "orijinden geçen ışın boyunca (radyal) kapasite = " + _b(k.get("kapasite"), "kN·m"))
-                satir.append((_formul(ad), f"{_v('M', 'd' + eks)} ≤ {_v('M', 'r' + eks)}({_v('N', 'd')})", adim,
+                satir.append((_formul(tam), f"{_v('M', 'd' + eks)} ≤ {_v('M', 'r' + eks)}({_v('N', 'd')})", adim,
                               f"{_b(k.get('talep'), 'kN·m')} ≤ {_b(k.get('kapasite'), 'kN·m')}", k.get("dc"), k.get("saglandi"), kayn, komb))
             elif ad.startswith("İki eksenli"):
-                mx = next((q for q in kon if str(q.get("ad", "")).startswith("N–Mx")), {})
-                my = next((q for q in kon if str(q.get("ad", "")).startswith("N–My")), {})
+                kuyruk = lambda q: str(q.get("ad", "")).rsplit(": ", 1)[-1] if str(q.get("ad", "")).startswith("N–M: ") else str(q.get("ad", ""))  # noqa: E731
+                mx = next((q for q in kon if kuyruk(q).startswith("N–Mx") and (q.get("kombinasyon") == komb or not komb)), None) \
+                    or next((q for q in kon if kuyruk(q).startswith("N–Mx")), {})
+                my = next((q for q in kon if kuyruk(q).startswith("N–My") and (q.get("kombinasyon") == komb or not komb)), None) \
+                    or next((q for q in kon if kuyruk(q).startswith("N–My")), {})
                 adim = [f"{_v('M', 'dx')}/{_v('M', 'rx')} = {_f(mx.get('talep'), 2)}/{_f(mx.get('kapasite'), 2)} = {_f(mx.get('dc'), 3)}; "
                         f"{_v('M', 'dy')}/{_v('M', 'ry')} = {_f(my.get('talep'), 2)}/{_f(my.get('kapasite'), 2)} = {_f(my.get('dc'), 3)}",
                         "Bresler ters yük (1/" + _v("N", "r") + " = 1/" + _v("N", "rx") + " + 1/" + _v("N", "ry") + " − 1/" + _v("N", "0")
@@ -2030,11 +2046,11 @@ class _Rapor:
                               [f"0.40·{_f(fck, 1)}·{_f(Ac, 0)}·10<sup>−3</sup> = {_f(0.40 * fck * Ac / 1000, 1)} kN"],
                               f"{_b(k.get('talep'), 'kN')} ≤ {_b(k.get('kapasite'), 'kN')}", k.get("dc"), k.get("saglandi"), kayn, komb))
             elif "ρ" in ad:
-                satir.append((_formul(ad), f"ρ = {_v('A', 's')}/{_v('A', 'c')} ≥ 0.01",
+                satir.append((_formul(tam), f"ρ = {_v('A', 's')}/{_v('A', 'c')} ≥ 0.01",
                               [f"ρ = {_f(oz.get('As_toplam_cm2'), 2)}/{_f(Ac / 100, 1)} = {_f(oz.get('rho'), 4)}"],
                               f"{_f(k.get('kapasite'), 4)} ≥ {_f(k.get('talep'), 4)}", k.get("dc"), k.get("saglandi"), kayn, komb))
             else:
-                satir.append((_formul(ad), "", [], f"{_s(k.get('talep'), 4)} / {_s(k.get('kapasite'), 4)} {_e(k.get('birim') or '')}",
+                satir.append((_formul(tam), "", [], f"{_s(k.get('talep'), 4)} / {_s(k.get('kapasite'), 4)} {_e(k.get('birim') or '')}",
                               k.get("dc"), k.get("saglandi"), kayn, komb))
         return f"<p>{genel}</p>" + self._kontrol_tablosu(satir)
 
@@ -2046,6 +2062,15 @@ class _Rapor:
                 f"{_e(bel.get('kombinasyon') or '–')}; durum: {_e(e.get('durum') or '–')}; FE elemanları: "
                 f"{_e(', '.join(map(str, _liste(e.get('fe_elemanlar')))))}</p>")
 
+    @staticmethod
+    def _varsayimlar(tas, sistem):
+        """§11.1 / §12.1 varsayım satırları: genel model (``varsayim_gruplari``) yalnız bu sistemin ve ortak satırları — betonarme
+        bölümünde ÇYTHYE / kren satırı, çelik bölümünde TS 500 satırı yazılmaz; aks–kat modeli (gruplar yok) bütün liste."""
+        gr = _sozluk(tas.get("varsayim_gruplari"))
+        if gr:
+            return _liste(gr.get(sistem)) + _liste(gr.get("ortak"))
+        return _liste(tas.get("varsayimlar"))
+
     def b11(self):
         tas = _sozluk(self.v.get("tasarim"))
         el = self._tasarim_elemanlari("betonarme")
@@ -2054,7 +2079,7 @@ class _Rapor:
         if not el:
             return _not("Modelde betonarme eleman yok. " + UYGULANMADI)
         h = _p(f"Yöntem: <b>{_e(_g(tas, 'yontem', 'betonarme') or 'TS 500:2000')}</b>; tahkik birleşim sayısı "
-               f"{_f(tas.get('kombinasyon_sayisi'), 0)}.") + _h3("11.1 Varsayımlar") + _ul([_e(x) for x in _liste(tas.get("varsayimlar"))])
+               f"{_f(tas.get('kombinasyon_sayisi'), 0)}.") + _h3("11.1 Varsayımlar") + _ul([_e(x) for x in self._varsayimlar(tas, "betonarme")])
         kir = [e for e in el if e.get("tur") == "kiris"]
         kol = [e for e in el if e.get("tur") == "kolon"]
         if kir:
@@ -2218,7 +2243,7 @@ class _Rapor:
             return _not("Modelde çelik eleman yok. " + UYGULANMADI)
         h = _p(f"Yöntem: <b>{_e(_g(tas, 'yontem', 'celik') or 'ÇYTHYE 2018')}</b>; tahkik birleşim sayısı {_f(tas.get('kombinasyon_sayisi'), 0)}. "
                "YDKT: φ<sub>b</sub> = φ<sub>c</sub> = 0.90, φ<sub>v</sub> = 1.00 (haddelenmiş I, 10.2.1(a)); GKT: Ω<sub>b</sub> = Ω<sub>c</sub> = 1.67, Ω<sub>v</sub> = 1.50.")
-        h += _h3("12.1 Varsayımlar") + _ul([_e(x) for x in _liste(tas.get("varsayimlar"))])
+        h += _h3("12.1 Varsayımlar") + _ul([_e(x) for x in self._varsayimlar(tas, "celik")])
         rows = []
         for e in el:
             o = _sozluk(e.get("ozet"))

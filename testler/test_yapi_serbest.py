@@ -498,6 +498,29 @@ def test_kesit_onerisi_yakinsamazsa_uyari():
     assert o3["dc_sonra"] <= 1.0 and not any("yakınsamadı" in x for x in o3["uyarilar"])
 
 
+def test_kesit_onerisi_kolon_ndm_deprem_yokken_g_q():
+    """Deprem birleşimi yokken kolon önerisinin TBDY 7.3.1.2 satırı, kaydın 'Ndm ≤ 0,40 fck Ac' satırıyla aynı N_dm'i (G + Q)
+    kullanır; eskiden 'A_c ≥ N_dm/(0,40 f_ck) = 0·10³/(0,40·30) = 0 cm²' yazardı (motor-tuketici-new-5)."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["surum"] = 3
+    r = coz(b)
+    k1 = next(k for k in r.veri["tasarim"]["elemanlar"] if k["cubuk"] == 1)
+    import tasarim
+    kont = YS._ba_kontroller(tasarim, *_ba_girdisi(r.ic["tasarim"], r.ic["B"].cubuk_no[1])[:6], 152.0, cikti=(cik := {}))
+    assert cik == {"Ndm": 152.0, "N040": pytest.approx(0.4 * 30 * 0.16 * 1000), "kombinasyon": "G+Q", "kaynak": "G+Q"}
+    assert next(x for x in kont if x["ad"] == "TBDY: Ndm ≤ 0,40 fck Ac")["talep"] == 152.0
+    Ndm = k1["ozet"]["Ndm_kN"]
+    assert Ndm > 100 and k1["ozet"]["N_sinir_TBDY_kN"] == pytest.approx(0.4 * 30 * 0.16 * 1000)
+    x = YS.kesit_oner(b, hedef=[{"tur": "cubuk", "no": 1}])["oneriler"][0]
+    tbdy = next(g for g in x["gerekce"] if g.startswith("TBDY 2018 md. 7.3.1.2"))
+    assert f"= {Ndm:.1f}·10³/(0,40·30)" in tbdy and "deprem birleşimi yok: N_dm ≈ G + Q" in tbdy and "= 0 cm²" not in tbdy
+    # deprem varken satır deprem birleşimlerinden (değişmedi)
+    b3 = yapi.bina_sablon("betonarme-3kat-3x3")
+    b3["surum"] = 3
+    x3 = YS.kesit_oner(b3, hedef=[{"tur": "cubuk", "no": 1}])["oneriler"][0]
+    assert any("(N_dm = deprem birleşimlerindeki en büyük eksenel basınç)" in g for g in x3["gerekce"])
+
+
 def test_oneri_uygula_onarim_turunda_kucultmez():
     """_oneri_uygula(kucultme=False): çelikte 'küçült' grubu atlanır; betonarme kolon grubunda b × h mevcut boyuttan küçülmez,
     ρ azalmaz (atlama yalnız b, h ve ρ aynıysa)."""
@@ -557,6 +580,30 @@ def test_sablon_cozulur_makul(sablonlar, ad):
     assert t["en_buyuk_dc"] <= 1.0, t["kritik_elemanlar"][:3]
     assert all(s["uygun"] for s in v["deprem"]["katlar"])
     assert v["ruzgar"]["yontem"] == ("panel" if ad == "celik-sanayi-4hol" else "kat")
+
+
+@pytest.mark.parametrize("ad", list(YS.SERBEST_SABLONLAR))
+def test_akis_sankey_g_q_s(sablonlar, ad):
+    """AKIS-QS: panel → çubuk bantları her düşey yük durumunda (G, Q, kar varsa S); bir çubuğa gelen bantların toplamı
+    veri.yukler.cubuklar[].<durum>.panel ile, durum toplamı korunum 'paneller' (dağıtılan) ile aynı. Eskiden yalnız G vardı."""
+    v = sablonlar[ad].veri
+    sk = v["akis"]["sankey"]
+    durumlar = {e["durum"] for e in sk}
+    assert durumlar == {"G", "Q", "S"} if v["kar"] else {"G", "Q"}
+    assert all(e["kaynak"].startswith("P") and e["hedef"].startswith("Ç") and e["kN"] > 0 for e in sk)
+    yuk = {y["no"]: y for y in v["yukler"]["cubuklar"]}
+    for d in durumlar:
+        pay = {}
+        for e in sk:
+            if e["durum"] == d:
+                pay[int(e["hedef"][1:])] = pay.get(int(e["hedef"][1:]), 0.0) + e["kN"]
+        for no, kN in pay.items():
+            assert kN == pytest.approx((yuk[no].get(d) or {}).get("panel", 0.0), rel=1e-4, abs=1e-3), (d, no)
+        dagitilan = sum(p[f"{d}_toplam"] for p in v["yukler"]["paneller"] if p.get("dagitim") != "yok")
+        assert sum(pay.values()) == pytest.approx(dagitilan, rel=1e-4) and dagitilan > 0
+    if ad == "celik-cbf-3kat":
+        assert sorted((e["kaynak"], e["durum"], round(e["kN"], 2)) for e in sk if e["hedef"] == "Ç97") == [
+            ("P13", "G", 40.5), ("P13", "Q", 18.0), ("P13", "S", 5.4), ("P14", "G", 40.5), ("P14", "Q", 18.0), ("P14", "S", 5.4)]
 
 
 def test_sanayi_sablonu_ayrintilari(sablonlar):
@@ -736,10 +783,26 @@ def test_yonlendirme_dogruluk_tablosu():
         (b(surum=3), True),
         (yapi.bina_sablon("celik-cbf-3kat"), True),
         (b(cubuklar=[], mesnetler=[]), False),
+        # K2 ek satırları (bina_cizim.js genelMi, bina.js s3Var/binaYukle ile aynı): tür büyük/küçük harf ve boşluk duyarsız;
+        # surum: sayı ya da tamsayı/ondalık dizesi → tam kısmı, başka her şey → 1 (eskiden "3.0" aks–kat sayılırdı)
+        (b(ek_yukler=[{"tur": "Cubuk", "cubuk": 1, "durum": "G", "q": -1}]), True),
+        (b(ek_yukler=[{"tur": " panel", "panel": 1, "durum": "G", "p": -1}]), True),
+        (b(ek_yukler=[{"tur": "PANEL", "panel": 1, "durum": "G", "p": -1}]), True),
+        (b(surum="3.0"), True),
+        (b(surum="3.5"), True),
+        (b(surum=" 3 "), True),
+        (b(surum="3a"), False),
+        (b(surum="0x3"), False),
+        (b(surum="1e1"), False),
+        (b(surum=2.9), False),
+        (b(surum=3.7), True),
+        (b(surum=True), False),
+        (b(surum=None), False),
     ]
     for bina, beklenen in tablo:
         assert yapi._serbest_mi(bina) is beklenen and YS.serbest_mi(bina) is beklenen, bina.get("ek_yukler") or bina.get("surum")
         assert yapi._serbest_mi(json.dumps(bina)) is beklenen
+    assert [yapi._surum_sayi(x) for x in (float("inf"), float("nan"), "+3", "-3", "3.", "", [3], 0)] == [1, 1, 3, -3, 1, 1, 1, 0]
     # aks–kat modeline açık mesnet: genel motora gider ve mesnet hesaba girer (eskiden sessizce yok sayılırdı)
     x = b(mesnetler=[{"dugum": {"aks": ["B", "2"], "kat": 1}, "uz": True}])
     v = coz(x).veri
@@ -824,6 +887,16 @@ def test_rijit_diyafram_seviyesinde_acik_mesnet():
     with pytest.raises(mo.MatrisHatasi, match=r"rijit diyaframlı \+3\.50 seviyesinde: yatay ux/uy ve dönme rz ayrıca mesnetlenemez") as h:
         coz(b)
     assert "analiz" in str(h.value) and "esnek" in str(h.value) and "efendi düğüm 9" not in str(h.value)
+    # ipucu önce arayüz ayarını söyler (DIYAFRAM-IPUCU; eskiden yalnız JSON düzenlemesi önerilirdi)
+    assert "Bina sayfası › Deprem sekmesi › Diyafram: «Esnek»" in str(h.value)
+    b2 = copy.deepcopy(b)
+    b2["deprem"]["diyafram"] = "esnek"                                                  # arayüzün yazdığı alan
+    assert coz(b2).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    b2 = copy.deepcopy(b)
+    b2["analiz"]["diyafram"] = {"1": "rijit"}                                            # JSON'da kat bazında rijit: ayar geçmez
+    with pytest.raises(mo.MatrisHatasi, match=r"analiz\.diyafram rijit verilmiş") as h:
+        coz(b2)
+    assert '"analiz": {"diyafram": {"1": "esnek"}}' in str(h.value) and "Deprem sekmesi" not in str(h.value)
     b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet verilebilir
     assert coz(b).veri["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
     b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "ux": True}]
