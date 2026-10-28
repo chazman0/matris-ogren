@@ -516,9 +516,12 @@ def test_olcumde_esc_tamamlanan_olculeri_silmez(sayfa):
     pg, hatalar = sayfa
     _sablon(pg, "betonarme-2kat-3x2")
     pg.evaluate("MatrisBina.gorunumAyarla({ kat: 1 }); MatrisArac.calistir('olc-uzaklik')")
+    ipucu = "(document.querySelector('.bn-ipucu') || {}).textContent || ''"
     _tikla(pg, (0, 0, 3))
+    assert "Esc: yarım ölçümü siler" in pg.evaluate(ipucu)          # ipucu Esc'in o anki etkisini söyler
     _tikla(pg, (5, 0, 3))
     assert "L = 5,000" in _olcum_metni(pg)
+    assert "Esc: ölçümden çıkar (sonuçlar kalır)" in pg.evaluate(ipucu)
     pg.keyboard.press("Escape")             # yarım ölçüm yok: kipten çıkılır, sonuç kalır
     pg.wait_for_timeout(150)
     assert pg.evaluate("MatrisBina.kip()") == "sec"

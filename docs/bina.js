@@ -5294,6 +5294,9 @@
   }
   const OLCUM_IPUCU = "Ölçüm: düğüme, aks kesişimine ya da çubuğa dokunun (yakalama işareti görünür). Esc yarım ölçümü siler, yarım ölçüm yoksa " +
     "ölçümden çıkar (sonuçlar kalır); “Ölçüleri temizle” hepsini siler.";
+  function olcumEscNotu() {
+    return olcum && olcum.olcer.bekleyen.length ? " · Esc: yarım ölçümü siler." : " · Esc: ölçümden çıkar (sonuçlar kalır); “Ölçüleri temizle” hepsini siler.";
+  }
   function olcumKur() {
     const O = modul("MatrisOlcum");
     if (!O || !O.Arac || olcum) return;
@@ -5315,7 +5318,8 @@
         hareket: function (p) { olcum.sec.tol = 14 * pxOlcek(); olcum.hareket(p); },
         // Esc: yarım ölçüm varsa onu siler; yoksa işlenmez (escSonuclariKorur) → sayfa Esc'i kipten çıkar, tamamlanan ölçüler kalır
         tus: function (e) { return (e.key === "Escape" || e.key === "Enter" || e.key === "Backspace") && olcum.tus(e.key); },
-        ipucu: function () { return olcumMetin || OLCUM_IPUCU; },
+        // adım iletisi (olcum.js: "Birinci noktayı seçin." …) Esc'in o anki etkisini de söyler
+        ipucu: function () { return olcumMetin ? olcumMetin + olcumEscNotu() : OLCUM_IPUCU; },
       });
     });
   }
