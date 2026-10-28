@@ -451,8 +451,8 @@ k.veri["egri_x"][:3], k.veri["noktalar"][0]                         # [{N, M}], 
   Kutuyu tutamağından sürükleyin; düğmeyi bir kutudan ötekine sürükleyip bırakın (boş alana bırakmak yeni kutu açar); köşedeki
   menüden “Özelleştir”, hazır yerleşimler ve “Varsayılana dön”. Telefonda kutular sahnenin altında kaydırılabilir şerittir.
   Kısayollar tek yerden çalışır: S seç, K kolon, R kiriş, D döşeme, W duvar, Del sil, Ctrl+Z / Ctrl+Y, Ctrl+Enter çöz,
-  1–4 görünüm (3B, plan, ön, yan), F tam ekran, Shift+F sığdır, U uzaklık ölç, PgUp/PgDn kat. Soluk düğmelerin ipucunda nedeni yazar
-  (aks tabanlı çizim ve değiştirme komutları sonraki sürümde bağlanacak).
+  1–4 görünüm (3B, plan, ön, yan), F tam ekran, Shift+F sığdır, U uzaklık ölç, PgUp/PgDn kat (aks tabanlı modelde: önceki / sonraki
+  düzlem). Soluk düğmelerin ipucunda nedeni yazar (ör. Böl / Birleştir için önce çubuk seçin).
 - **Ölçme:** Uzaklık, açı, alan, eleman boyu, kot farkı, koordinat; imleç düğüme / aks kesişimine / çubuğa yakalanır. Esc yarım ölçümü,
   “Ölçüleri temizle” hepsini siler.
 - **Sağ tık (dokunmatikte uzun basma):** elemanın özeti ve komutları: Bilgi (geometri, kesit, yükler, iç kuvvetler, tasarım, metraj,
@@ -468,6 +468,34 @@ k.veri["egri_x"][:3], k.veri["noktalar"][0]                         # [{N, M}], 
   BIM görüntüleyicilerinde açılır.
 - **Proje dosyası:** “💾 Kaydet” `.matris` dosyası indirir (bina + görünüm + araç kutusu yerleşimi); “📂 Aç” `.matris` ya da eski bina
   `.json` dosyasını açar (açma da geri alınabilir). Masaüstü sürümünde Dosya menüsü ve Ctrl+S / Ctrl+O aynı işi yerel dosyayla yapar.
+
+### 3.11 Bina sayfası: aks tabanlı çizim (kolon, kiriş, çapraz, makas, beşik çerçeve, panel)
+
+Serbest koordinatla düğüm çizilmez: her düğüm bir **aks kesişimi** (X × Y × Z aksı) ya da mevcut bir çubuğun **bölme / kesişim
+noktasıdır**. Aks taşınınca ona bağlı bütün düğüm ve elemanlar birlikte taşınır. Eski aks–kat şablonları (betonarme, çelik çerçeve…)
+aynen açılır, çizilir ve çözülür; aks–kat modelinde kat düzlemindeyken Kolon / Kiriş / Döşeme eski davranışla çalışır.
+
+- **Hızlı aks (Aks kutusu → sihirbaz):** X, Y aralıklarını `4@20`, `6@6, 7.5` gibi yazın ya da tek tek girin; Z sekmesinde kat kotları
+  ve ek Z aksları (Saçak, Mahya, Kren…). “Yeni model” boş aks modeli açar (betonarme / çelik); “Mevcut aksları değiştir” aynı adlı
+  aksları taşır, olmayanları elemanlarıyla birlikte siler (önce sorar).
+- **Aks düzenle / ekle / sil / taşı:** tabloda ad, konum, aralık; sahnede iki aksın arasına dokununca tam ortasına aks eklenir;
+  balonu sürükleyerek (0,05 m adım) ya da balona dokunup yeni konumu yazarak taşıyın. Silerken bağlı eleman varsa “elemanlarla sil”
+  ya da “en yakın aksa taşı” seçilir. **Aks sistemi:** açılı kartezyen ya da silindirik ek sistemler. **Aks görünürlüğü:** balonlar,
+  ölçü zinciri, aks bazında görünür / balon yeri.
+- **Düzlem seçici** (üst şerit): plan görünümünde Z aksları, cephede X / Y aksları; PgUp / PgDn komşu düzleme geçer.
+- **Çizim:** *Çubuk çiz* (kesişimden kesişime zincir, Esc biter), *Hızlı kolon* (plan: kesişime dokunun; “Tüm katlara” en alttan bu
+  düzleme; cephe: düşey aks parçası), *Hızlı kiriş* (aks parçasına dokunun ya da sürükleyerek çoklu), *Hızlı çapraz* (göze dokunun;
+  X, tek /, tek \, V, ters V, K, dışmerkez, diz — K ve yalnız çekme seçeneklerinde deprem yönetmeliği uyarısı görünür),
+  *Hızlı panel* (betonarme döşeme ya da çatı, sac çatı ya da cephe kaplaması), *Eğik çubuk* (iki farklı Z aksı arasında: mertek, çapraz).
+  *Makas*, *Beşik çerçeve*, *Aşık* ve *Kren yolu* önizlemeli pencereyle üretir; gereken Saçak / Mahya / Kren Z aksları ve açıklık
+  ortasındaki mahya X aksları kendiliğinden eklenir.
+- **Mesnet** (ankastre, mafsal, kayıcı) ve **Yük ata** (çubuğa yayılı / tekil, panele kN/m², düğüme kuvvet; G, Q, S durumları).
+- **Düzenleme / değiştirme:** Taşı, Döndür, Ayna (aks düzlemine göre), Doğrusal dizi, Kopyala / yapıştır (kesişimden kesişime),
+  Özellik ata, Mafsal, Yalnız çekme, Böl (eşit parça, uzunluk, oran, aks kesişimlerinde), Kesişimlerde böl, Düzlemle böl, Birleştir,
+  Düğüm birleştir, Kesit değiştir, Açı. Çubuğa sağ tık: Böl, Birleştir, Mafsal, Kesit öner.
+- **3B çizimde:** çubuklar türüne göre renklenir, mafsallı uç içi boş daire, yalnız çekme kesikli çizgi, paneller yarı saydam
+  (sac ince çizgi), mesnetler ve ek yükler simgeyle gösterilir. Kaydet / Aç, Ctrl+Z, tablolar, rapor ve IFC aks tabanlı modelde de
+  çalışır. Motor aks tabanlı modeli çözemiyorsa çöz düğmesi bunun nedenini açıklayan bir ileti verir.
 
 ---
 

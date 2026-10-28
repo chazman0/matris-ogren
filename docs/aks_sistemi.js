@@ -1690,7 +1690,8 @@
    * sürüklerken sayısal giriş kutusu gösterir; tıklama (ya da çift tık) kutuyu yazmaya açar.
    * sec: {bina: bina | () => bina, gorunum: g | () => g, izdusum: (X,Y,Z) => [x,y] (ya da izdusumAl: () => izdusum; kamera değişirse),
    *       nokta: (e) => [x, y] (izdüşümle aynı koordinat; Cizim3B: kamera.svgNokta(svg, e.clientX, e.clientY)),
-   *       onizle: (hedef + {konum}) | null, degisti: (yeniBina, rapor), kaydir: false, adim: 0.05}
+   *       onizle: (hedef + {konum}) | null, degisti: (yeniBina, rapor), kaydir: false, adim: 0.05,
+   *       etkin: () => bool (yoksa her zaman; false iken balona dokunuş sahnenin kendi aracına geçer)}
    * Dönüş: {kaldir()}
    */
   function balonSurukle(svg, sec) {
@@ -1732,6 +1733,7 @@
     function down(e) {
       const h = aksHedefi(e.target);
       if (!h || !h.balon) return;
+      if (sec.etkin && !sec.etkin()) return;
       if (e.button != null && e.button !== 0 && e.pointerType === "mouse") return;
       e.stopPropagation(); e.preventDefault();
       const b = al(sec.bina), S = sistemBul(b, h.sistem);

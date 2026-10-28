@@ -190,6 +190,8 @@
     panelW: 0, sonucYer: "alt", sonucW: 0, yuzen: { arac: null, panel: null },
     // görünüm süzgeçleri ve gösterim (araç kutusu Görünüm komutları; .matris projesinde saklanır)
     gizli: {}, yalit: null, katSuzgec: null, telKafes: false, etiketler: false, izgara: true, cephe: { x: null, y: null },
+    // §19 aks tabanlı modelleme: plan düzleminin Z aksı (null: etkin katın Z aksı; "Mahya" gibi kat dışı Z aksları da olabilir)
+    zAks: null, aksOlcu: true, aksBalon: true,
   };
   (function () {
     try {
@@ -301,8 +303,10 @@
   }
   function dosemeBul(kose, kat) { return B.dosemeler.filter(function (d) { return d.kat === kat && aksEsit(d.kose[0], kose); })[0] || null; }
   function nesneBul(tur, no) {
-    const l = tur === "kolon" ? B.kolonlar : tur === "kiris" ? B.kirisler : tur === "doseme" ? B.dosemeler : [];
-    return l.filter(function (x) { return x.no === no; })[0] || null;
+    if (tur === "mesnet") return (B.mesnetler || [])[+no - 1] || null;          // mesnetler numarasız: sıra (1'den)
+    const l = tur === "kolon" ? B.kolonlar : tur === "kiris" ? B.kirisler : tur === "doseme" ? B.dosemeler :
+      tur === "cubuk" ? B.cubuklar || [] : tur === "panel" ? B.paneller || [] : tur === "dugum" ? B.dugumler || [] : [];
+    return l.filter(function (x) { return x && +x.no === +no; })[0] || null;
   }
   function yeniNo(liste) { return liste.reduce(function (m, x) { return Math.max(m, +x.no || 0); }, 0) + 1; }
   function aksSirala(p, q) {
@@ -364,7 +368,13 @@
     B.kolonlar.forEach(function (c) { dugum[adres(c.aks) + "/" + (c.kat - 1)] = 1; dugum[adres(c.aks) + "/" + c.kat] = 1; });
     B.kirisler.forEach(function (k) { kirisParcalari(k).forEach(function (p) { dugum[adres(p[0]) + "/" + k.kat] = 1; dugum[adres(p[1]) + "/" + k.kat] = 1; }); });
     const temel = Object.keys(dugum).filter(function (k) { return /\/0$/.test(k); }).length;
-    return Math.max(0, (Object.keys(dugum).length - temel) * 6);
+    let ek = 0;
+    if (s3Var()) {      // genel model: çubuk uçlarındaki ayrı noktalar (temel kotundakiler hariç)
+      const kot0 = B.katlar.length ? +B.katlar[0].kot : 0, gor = {};
+      (B.cubuklar || []).forEach(function (c) { [c.i, c.j].forEach(function (r) { const P = refP(r); if (P && Math.abs(P[2] - kot0) > 1e-6) gor[P.map(function (v) { return v.toFixed(3); }).join(",")] = 1; }); });
+      ek = Object.keys(gor).length * 6;
+    }
+    return Math.max(0, (Object.keys(dugum).length - temel) * 6) + ek;
   }
 
   // ---------- Şablon / sihirbaz ----------
@@ -437,7 +447,8 @@
     if (!B.akslar.x.length || !B.akslar.y.length) hata.push("En az bir X ve bir Y aksı gerekli.");
     if (B.akslar.x.length > 12 || B.akslar.y.length > 12) hata.push("En çok 12×12 aks desteklenir; modeli küçültün.");
     if (B.katlar.length > 13) hata.push("En çok 12 kat desteklenir.");
-    if (!B.kolonlar.length) hata.push("Hiç kolon yok: Kolon aracıyla etkin katın aks kesişimlerine dokunun.");
+    if (!B.kolonlar.length && !(B.cubuklar || []).length) hata.push("Hiç kolon yok: Kolon aracıyla etkin katın aks kesişimlerine dokunun.");
+    if (s3Var()) s3Dogrula(hata, uyari);
     B.kolonlar.forEach(function (c) {
       if (!B.kesitler[c.kesit]) hata.push("Kolon " + adres(c.aks) + "/k" + c.kat + ": kesit “" + c.kesit + "” tanımsız.");
       const ustKiris = B.kirisler.some(function (k) { return k.kat === c.kat && kirisParcalari(k).some(function (p) { return aksEsit(p[0], c.aks) || aksEsit(p[1], c.aks); }); });
@@ -455,9 +466,44 @@
       const eksik = eksikKenarlar(d.kose, d.kat);
       if (eksik.length) uyari.push({ tur: "doseme", no: d.no, kat: d.kat, metin: "Yüzen döşeme " + adres(d.kose[0]) + "/" + adres(d.kose[1]) + "/k" + d.kat + ": " + eksik.join(", ") + " kenarında kiriş yok." });
     });
-    const sd = sdTahmini();
-    if (sd > 1500) hata.push("Serbestlik derecesi " + sd + " > 1500: modeli küçültün (daha az kat ya da aks).");
+    const sd = sdTahmini(), sdSinir = s3Var() ? 2000 : 1500;      // genel model motoru 2000 SD'ye izin verir
+    if (sd > sdSinir) hata.push("Serbestlik derecesi " + sd + " > " + sdSinir + ": modeli küçültün (" + (s3Var() ? "daha seyrek aşık / bölme, daha az çerçeve" : "daha az kat ya da aks") + ").");
     return { uyari: uyari, hata: hata };
+  }
+
+  // genel model denetimi: kesit, çözülemeyen düğüm başvurusu (hata); ModelOps.denetle bulguları (uyarı). Anlık görüntü başına önbellek.
+  const s3DenetimOnbellek = { anahtar: null, hata: [], uyari: [] };
+  function s3Dogrula(hata, uyari) {
+    const a = sonAnlik || anlikGoruntu();
+    if (s3DenetimOnbellek.anahtar !== a) {
+      const h = [], u = [];
+      (B.cubuklar || []).forEach(function (c) {
+        if (!c) return;
+        if (!c.kesit) h.push("Çubuk " + c.no + ": kesit atanmamış (Seç → Özellikler ya da Değiştirme → Kesit değiştir).");
+        else if (!B.kesitler[c.kesit]) h.push("Çubuk " + c.no + ": kesit “" + c.kesit + "” tanımsız.");
+        if (!refP(c.i) || !refP(c.j)) h.push("Çubuk " + c.no + ": ucu tanımsız bir aksa ya da düğüme bağlı.");
+      });
+      (B.paneller || []).forEach(function (p) { if (p && Array.isArray(p.kose) && p.kose.some(function (r) { return !refP(r); })) h.push("Panel " + p.no + ": köşesi tanımsız bir aksa ya da düğüme bağlı."); });
+      const MO = window.ModelOps;
+      if (MO && MO.denetle && !h.length) {
+        try {
+          const TASIYAN = { iki: null, "tek-13": [1, 3], "tek-24": [2, 4], yok: [] };
+          (MO.denetle(B).uyarilar || []).forEach(function (x) {
+            if (x.kod === "panel-kenari") {      // motor yalnız taşıyan kenarlarda çubuk zinciri ister (dağıtım türüne göre)
+              const pn = (B.paneller || []).filter(function (q) { return +q.no === +x.panel; })[0], t = TASIYAN[(pn && pn.dagitim) || "iki"];
+              if (t && t.indexOf(+x.kenar) < 0) return;
+              if (t !== undefined) { h.push(x.mesaj + " (taşıyan kenar; dağıtımı değiştirin ya da kenar çubuğunu çizin)"); return; }
+            }
+            const tur = x.cubuk != null ? "cubuk" : x.panel != null ? "panel" : x.dugum != null ? "dugum" : x.cubuklar ? "cubuk" : null;
+            const no = x.cubuk != null ? x.cubuk : x.panel != null ? x.panel : x.dugum != null ? x.dugum : x.cubuklar ? x.cubuklar[0] : null;
+            u.push({ tur: tur, no: no, kat: null, metin: x.mesaj });
+          });
+        } catch (e) { u.push({ tur: null, no: null, kat: null, metin: "Genel model denetlenemedi: " + e.message }); }
+      }
+      s3DenetimOnbellek.anahtar = a; s3DenetimOnbellek.hata = h; s3DenetimOnbellek.uyari = u;
+    }
+    s3DenetimOnbellek.hata.forEach(function (m) { hata.push(m); });
+    s3DenetimOnbellek.uyari.forEach(function (m) { uyari.push(m); });
   }
 
   // ---------- Geri/ileri ve taslak ----------
@@ -465,6 +511,7 @@
   let sonAnlik = "";
   function degisti(etiket) {
     // her düzenleme: geçmişe yaz, taslağı kaydet, sahneyi/panelleri yenile
+    zKatSenkron(B);
     const simdi = anlikGoruntu();
     if (simdi !== sonAnlik) {
       gecmis.geri.push(sonAnlik || simdi);
@@ -553,7 +600,62 @@
     b.analiz = Object.assign({ catlamis_rijitlik: b.sistem !== "celik", diyagram_nokta: 11 }, b.analiz || {});   // TBDY 4.5.8.1: betonarmede varsayılan çatlamış
     b.analiz.catlamis_rijitlik = b.analiz.catlamis_rijitlik == null ? b.sistem !== "celik" : !!b.analiz.catlamis_rijitlik;
     if (b.analiz.celik_Lb != null && b.analiz.celik_Lb !== "boy") b.analiz.celik_Lb = "otomatik";
+    zKatSenkron(b);
     return b;
+  }
+  // §19.1 tek kaynak akslar.z: eski modellerde (surum 1/2) Z aksları katlardan türetilir (MatrisAks.yukselt / katlariSenkronla);
+  // kata bağlı Z aksının konumu kat kotudur. surum alanına dokunulmaz (aks–kat modeli aks–kat motorunda çözülmeye devam eder).
+  function zKatSenkron(b) {
+    const M = window.MatrisAks;
+    if (!M || !M.katlariSenkronla || !b || !b.akslar) return b;
+    try {
+      const r = M.katlariSenkronla(b);
+      b.akslar.z = r.model.akslar.z;
+      b.katlar = r.model.katlar.map(function (k, i) { return { no: k.no != null ? +k.no : i, ad: String(k.ad || (i ? i + ". kat" : "Temel")), kot: +k.kot || 0 }; });
+    } catch (e) { /* bozuk aks verisi: olduğu gibi */ }
+    return b;
+  }
+  // surum 3 içeriği (çubuk, panel, serbest/bölme düğümü, mesnet, üreteç) var mı
+  function s3Var(b) {
+    b = b || B;
+    return !!b && ["cubuklar", "paneller", "dugumler", "mesnetler", "uretecler"].some(function (k) { return Array.isArray(b[k]) && b[k].length > 0; });
+  }
+  // Z aksları (konum sıralı; MatrisAks yoksa katlardan)
+  function zAkslari() {
+    if (B && B.akslar && Array.isArray(B.akslar.z) && B.akslar.z.length) return B.akslar.z.slice().sort(function (a, b) { return +a.konum - +b.konum; });
+    return (B ? B.katlar : []).map(function (k) { return { ad: k.ad, konum: +k.kot, kat: k.no }; });
+  }
+  function zAksBul(ad) { return zAkslari().filter(function (a) { return String(a.ad) === String(ad); })[0] || null; }
+  // kat düzenlemelerinde (kat ekle / sil / kot) akslar.z de güncellenir
+  function zKatEkle(no, kot) {
+    if (!B.akslar || !Array.isArray(B.akslar.z)) return;
+    const var_ = B.akslar.z.filter(function (a) { return a.kat == null && Math.abs(+a.konum - kot) < 0.001; })[0];
+    if (var_) { var_.kat = no; return; }
+    const M = window.MatrisAks, adlar = B.akslar.z.map(function (a) { return String(a.ad); });
+    const ad = M ? M.benzersizAd(M.kotAdi(kot), adlar) : "Z" + no;
+    B.akslar.z.push({ ad: ad, konum: +(+kot).toFixed(6), kat: no });
+    B.akslar.z.sort(function (a, b) { return +a.konum - +b.konum; });
+  }
+  function zKatSil(no, h) {
+    if (!B.akslar || !Array.isArray(B.akslar.z)) return;
+    const z = B.akslar.z.filter(function (a) { return +a.kat === no; })[0];
+    const kot = z ? +z.konum : null;
+    const M = window.MatrisAks;
+    let kullaniliyor = false;
+    if (z && M && s3Var()) {
+      try { const r = M.bagliElemanlar(B, { yon: "z", ad: z.ad }); kullaniliyor = r.cubuklar.length + r.paneller.length + r.mesnetler.length + r.dugumler.length > 0; }
+      catch (e) { kullaniliyor = true; }
+    }
+    if (z) { if (kullaniliyor) delete z.kat; else B.akslar.z.splice(B.akslar.z.indexOf(z), 1); }
+    B.akslar.z.forEach(function (a) {
+      if (a.kat != null && +a.kat > no) { a.kat = +a.kat - 1; a.konum = +(+a.konum - h).toFixed(6); }
+      else if (a.kat == null && kot != null && +a.konum > kot + 1e-6 && !kullaniliyor) a.konum = +(+a.konum - h).toFixed(6);
+    });
+  }
+  function zKatKot(no, kot) {
+    if (!B.akslar || !Array.isArray(B.akslar.z)) return;
+    B.akslar.z.forEach(function (a) { if (+a.kat === no) a.konum = +(+kot).toFixed(6); });
+    B.akslar.z.sort(function (a, b) { return +a.konum - +b.konum; });
   }
   // temeller: tip tekil | surekli | radye; yalnız seçili tipin (ve önceden girilmiş olanların) alt nesnesi tutulur
   function temelNormalize(t0) {
@@ -900,6 +1002,12 @@
   function sinir() {
     const xs = B.akslar.x.map(function (a) { return +a.konum; }), ys = B.akslar.y.map(function (a) { return +a.konum; });
     const zs = B.katlar.map(function (k) { return +k.kot; });
+    zAkslari().forEach(function (a) { if (isFinite(+a.konum)) zs.push(+a.konum); });       // kat dışı Z aksları (saçak, mahya, kren)
+    const M = window.MatrisAks;
+    if (M && Array.isArray(B.aks_sistemleri) && B.aks_sistemleri.length) {                // ek aks sistemleri (döndürülmüş, silindirik)
+      try { M.kesisimler(B, { tur: "3b" }).forEach(function (k) { xs.push(k.P[0]); ys.push(k.P[1]); zs.push(k.P[2]); }); } catch (e) { /* bozuk sistem */ }
+    }
+    [xs, ys, zs].forEach(function (l) { if (!l.length) l.push(0); });
     const th = temelDerinlik();
     return { x0: Math.min.apply(null, xs), x1: Math.max.apply(null, xs), y0: Math.min.apply(null, ys), y1: Math.max.apply(null, ys), z0: Math.min.apply(null, zs) - th, z1: Math.max.apply(null, zs) };
   }
@@ -1000,7 +1108,15 @@
     if (snK !== sonSinir) { sonSinir = snK; kamera.sifirla(); }      // bina sınırları değişti: yeniden sığdır
     const pts = [];
     [sn.x0 - 1.4, sn.x1 + 1.4].forEach(function (X) { [sn.y0 - 1.2, sn.y1 + 0.6].forEach(function (Y) { [sn.z0, sn.z1 + 0.3].forEach(function (Z) { pts.push(C.izdusum(X, Y, Z, b)); }); }); });
-    const T = C.donusum(pts, W, H, { pl: 40, pu: 44, pa: 40 });
+    // §19 aks katmanı (balonlar, ölçü zinciri) plan ve cephede kenar payı ister
+    const aksK = aksKatmaniVar(), pay = { pl: 40, pu: 44, pa: 40 };
+    if (aksK && /^(plan|on|yan)$/.test(kamera.gorunum) && window.MatrisAks && window.MatrisAks.kenarPaylari) {
+      try {
+        const kp = window.MatrisAks.kenarPaylari(B, aksGorunumu(), { balonR: aksBalonR(), olcu: D.aksOlcu });
+        pay.pl = Math.max(40, kp.sol, kp.sag); pay.pu = Math.max(44, kp.ust); pay.pa = Math.max(40, kp.alt);
+      } catch (e) { /* varsayılan paylar */ }
+    }
+    const T = C.donusum(pts, W, H, pay);
     const P = function (X, Y, Z) { const q = C.izdusum(X, Y, Z, b); return [T.x(q[0]), T.y(q[1])]; };
     const sahne = new C.Sahne();
     const s = kamera.pxOlcek(svg) || 1;     // 1 ekran px = s viewBox birimi
@@ -1017,11 +1133,12 @@
       B.akslar.x.forEach(function (a) { const p = P(+a.konum, sn.y0 - 0.6, Z), q = P(+a.konum, sn.y1 + 0.6, Z); sahne.ekle(-1e9, C.cizgi(p, q, sinif), 0); });
       B.akslar.y.forEach(function (a) { const p = P(sn.x0 - 0.6, +a.konum, Z), q = P(sn.x1 + 0.6, +a.konum, Z); sahne.ekle(-1e9, C.cizgi(p, q, sinif), 0); });
     };
-    if (D.izgara) {
+    // aks katmanı (MatrisAks.sahneKatmani) varsa ızgara, aks adları ve kot etiketlerini o çizer (balon, ölçü zinciri, kesişimler)
+    if (D.izgara && !aksK) {
       izgara(0, "b3-izgara");
       if (kat >= 1 && kot != null && kot !== 0) izgara(kot, "b3-izgara b3-izgara-kat");
     }
-    if (!hafif) {
+    if (!hafif && !aksK) {
       const ze = kat >= 1 && kot != null ? kot : 0;
       if (D.izgara) {
         B.akslar.x.forEach(function (a) { const p = P(+a.konum, sn.y0 - 1.0, ze); sahne.ekle(1e9, metinSvg(p[0], p[1] + 4, a.ad, "b3-aks-t", "middle", ' data-aks-x="' + kacis(a.ad) + '"'), 2); });
@@ -1097,9 +1214,13 @@
         }
       }
     });
+    // §12/§19 genel model: çubuklar, paneller, mesnetler, bölme/kesişim düğümleri, ek yükler
+    if (s3Var()) s3Ciz(sahne, T, b, P, s, hafif, dcG, temelPlani);
     // dokunma hedefleri: etkin katın aks kesişimleri ve hücreleri
-    // (D/C görünümünde Seç aracıyla kesişim/hücre hedefleri konmaz: dokunuş doğrudan kolon/kirişe gider, bütün katlarda)
-    if (kat >= 1 && kot != null && !hafif && !(dcG && D.arac === "sec")) {
+    // (D/C görünümünde Seç aracıyla kesişim/hücre hedefleri konmaz: dokunuş doğrudan kolon/kirişe gider, bütün katlarda;
+    //  plan düzlemi kat dışı bir Z aksındaysa ya da aks tabanlı çizim kipi etkinse aks–kat hedefleri konmaz)
+    const aksKatModeli = !(+B.surum >= 3) || B.kolonlar.length + B.kirisler.length + B.dosemeler.length > 0;
+    if (kat >= 1 && kot != null && !hafif && !(dcG && D.arac === "sec") && duzlemKatMi() && !aktifKip() && aksKatModeli) {
       const kes = kesisimler();
       kes.forEach(function (aks) {
         const X = aksX(aks[0]), Y = aksY(aks[1]), p = P(X, Y, kot);
@@ -1140,6 +1261,194 @@
   function rozet(x, y) {
     return '<g class="b3-rozet"><circle cx="' + r1(x) + '" cy="' + r1(y) + '" r="8"/>' + metinSvg(x, y + 4, "!", "b3-rozet-t", "middle") + "</g>";
   }
+
+  // ---------- §12/§19 genel model (surum 3) çizimi ----------
+  // REF → koordinat (MatrisAks.Cozucu; model anlık görüntüsü başına önbellek). Çözülemeyen REF null (eleman çizilmez, denetim uyarır).
+  const s3Onbellek = { anahtar: null, cz: null, konum: new Map() };
+  function s3Cozucu() {
+    const M = window.MatrisAks;
+    if (!M || !B) return null;
+    const a = sonAnlik || anlikGoruntu();
+    if (s3Onbellek.anahtar !== a) {
+      s3Onbellek.anahtar = a; s3Onbellek.konum = new Map();
+      try { s3Onbellek.cz = new M.Cozucu(B); } catch (e) { s3Onbellek.cz = null; }
+    }
+    return s3Onbellek.cz;
+  }
+  function refP(ref) {
+    const cz = s3Cozucu();
+    if (!cz || ref == null) return null;
+    const k = typeof ref === "object" ? JSON.stringify(ref) : String(ref);
+    if (s3Onbellek.konum.has(k)) return s3Onbellek.konum.get(k);
+    let P = null;
+    try { P = cz.coz(ref); } catch (e) { P = null; }
+    s3Onbellek.konum.set(k, P);
+    return P;
+  }
+  function aksKatmaniVar() { return KATMANLAR.some(function (k) { return k.ad === "aks"; }); }
+  // aks balonu yarıçapı (viewBox birimi): dar sahnede küçük (balonlar ızgarayı örtmesin)
+  function aksBalonR() { return cizimW < 520 ? 7.5 : 11; }
+  // çizim boyutları: profil (mm → m), dikdörtgen, vute (temel + ek yükseklik), katalog dışı boru/kutu (addaki ilk sayı)
+  function kesitBoyut(ad, derin) {
+    const k = B.kesitler[ad];
+    if (!k || (derin || 0) > 3) return null;
+    if (k.tip === "vute") { const t = kesitBoyut(k.temel, (derin || 0) + 1) || { b: 0.18, h: 0.4, celik: true }; return { b: t.b, h: t.h + (+k.ek_yukseklik || 0) / 2, celik: t.celik }; }
+    if (k.tip === "profil") {
+      const p = profilBul(k.profil);
+      if (p) return { b: p.b / 1000, h: p.h / 1000, celik: true };
+      const m = /(\d+(?:[.,]\d+)?)/.exec(String(k.profil || ""));
+      const d = m ? parseFloat(m[1].replace(",", ".")) / 1000 : 0.15;
+      return { b: d, h: d, celik: true };
+    }
+    const o = kesitOz(ad);
+    return o ? { b: o.b, h: o.h, celik: !!o.celik } : null;
+  }
+  // etkin düzlem (plan: Z, önden cephe: Y, yandan kesit: X); 3B'de null. Düzlemdeki elemanlar tam, öbürleri soluk çizilir.
+  function s3Duzlem() {
+    const g = kamera ? kamera.gorunum : "3b";
+    if (g === "plan") { const z = zAksBul(duzlemZ()); return z ? { i: 2, v: +z.konum } : null; }
+    if (g === "on") { const y = aksY(cepheAks("y")); return y != null ? { i: 1, v: y } : null; }
+    if (g === "yan") { const x = aksX(cepheAks("x")); return x != null ? { i: 0, v: x } : null; }
+    return null;
+  }
+  function s3Duzlemde(dz, noktalar, hepsi) {
+    if (!dz) return true;
+    const ic = function (P) { return Math.abs(P[dz.i] - dz.v) < 0.002; };
+    return hepsi ? noktalar.every(ic) : noktalar.some(ic);
+  }
+  function dcKaydiCubuk(no) {
+    const v = V();
+    if (!v || !v.tasarim) return null;
+    return (v.tasarim.elemanlar || []).filter(function (e) { return e.cubuk === no || (e.tur === "cubuk" && e.no === no); })[0] || null;
+  }
+  const CUBUK_TURLERI = [["kolon", "Kolon"], ["kiris", "Kiriş"], ["capraz", "Çapraz"], ["makas-ust", "Makas üst başlık"], ["makas-alt", "Makas alt başlık"],
+    ["makas-dikme", "Makas dikmesi"], ["makas-diyagonal", "Makas diyagonali"], ["asik", "Aşık"], ["kren", "Kren kirişi"], ["bag", "Bağ"], ["diger", "Diğer"]];
+  function s3Ciz(sahne, T, b, P, s, hafif, dcG, temelPlani) {
+    const MO = window.ModelOps, dz = s3Duzlem(), kot0 = B.katlar.length ? +B.katlar[0].kot : 0;
+    const uyari = function (tur, no) { return (sonUyarilar || []).some(function (u) { return u.tur === tur && u.no === no; }); };
+    const ozelMesnet = new Set();
+    (B.mesnetler || []).forEach(function (m) { const Q = refP(m && m.dugum); if (Q) ozelMesnet.add(Q.map(function (v) { return v.toFixed(3); }).join(",")); });
+    const tabanlar = new Map();
+    // paneller (yarı saydam; kalınlık 0 = sac kaplama: ince kesikli kenar)
+    (B.paneller || []).forEach(function (p) {
+      if (!p || !Array.isArray(p.kose) || temelPlani || !gorunurMu("panel", p.no, p.kat)) return;
+      const K = p.kose.map(refP);
+      if (K.some(function (Q) { return !Q; })) return;
+      const icinde = s3Duzlemde(dz, K, true);
+      const sinif = "b3-panel b3-panel-" + (p.tur || "doseme") + (+p.kalinlik > 0 ? "" : " b3-sac") + (icinde ? "" : " b3-hayalet") + (secildiMi("panel", p.no) ? " b3-secili" : "") + (D.telKafes ? " b3-tel-doseme" : "");
+      const ekr = C.dortgen(sahne, T, b, K, sinif, ' data-tur="panel" data-no="' + p.no + '"', 1);
+      if (icinde) hedefler.push({ tur: "cokgen", pts: ekr, kind: "nesne", nesne: "panel", no: p.no });
+      if (!hafif && (D.etiketler || uyari("panel", p.no))) {
+        const m = [0, 1, 2].map(function (i) { return K.reduce(function (t, Q) { return t + Q[i]; }, 0) / K.length; }), q = P(m[0], m[1], m[2]);
+        if (D.etiketler) sahne.ekle(1e9, metinSvg(q[0], q[1] + 4, "P" + p.no, "b3-doseme-t", "middle"), 2);
+        if (uyari("panel", p.no)) sahne.ekle(1e9, rozet(q[0] + 16, q[1] - 10), 2);
+      }
+    });
+    // çubuklar: kesit prizması (yerel eksenler motor kuralıyla; aci), tel kafeste eksen çizgisi
+    (B.cubuklar || []).forEach(function (c) {
+      if (!c || temelPlani || !gorunurMu("cubuk", c.no, c.kat)) return;
+      const Pi = refP(c.i), Pj = refP(c.j);
+      if (!Pi || !Pj) return;
+      const L = Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1], Pj[2] - Pi[2]);
+      if (L < 1e-6) return;
+      const icinde = s3Duzlemde(dz, [Pi, Pj], dz && dz.i !== 2);
+      const kb = kesitBoyut(c.kesit), celik = kb ? kb.celik : B.sistem === "celik";
+      const tur = c.tur || "diger";
+      let sinif = "b3-cubuk b3-cubuk-" + tur + " " + (dcG ? (function () { const e = dcKaydiCubuk(c.no); return "b3-dc b3-dc-" + (e ? dcSinif(e.dc) : "yok"); })() : (celik ? "b3-celik" : "b3-beton")) +
+        (icinde ? "" : " b3-hayalet") + (secildiMi("cubuk", c.no) ? " b3-secili" : "") + (uyari("cubuk", c.no) ? " b3-uyarili" : "") + (c.yalniz_cekme ? " b3-yc" : "") + (kb ? "" : " b3-kesitsiz");
+      const ek = ' data-tur="cubuk" data-no="' + c.no + '"';
+      const ex = MO && MO.yerelEksenVektor ? MO.yerelEksenVektor(Pi, Pj, +c.aci || 0) : null;
+      if (D.telKafes || !kb || !ex || hafif && L > 0) {
+        sahne.ekle(C.derinlik((Pi[0] + Pj[0]) / 2, (Pi[1] + Pj[1]) / 2, (Pi[2] + Pj[2]) / 2, b), C.cizgi(P(Pi[0], Pi[1], Pi[2]), P(Pj[0], Pj[1], Pj[2]), "b3-tel " + sinif, ek), 1);
+      } else {
+        const h2 = Math.max(0.05, kb.h) / 2, b2 = Math.max(0.04, kb.b) / 2;
+        C.prizma(sahne, T, b, Pi, Pj, ex.y.map(function (v) { return v * h2; }), ex.z.map(function (v) { return v * b2; }), sinif, ek, 1);
+      }
+      const a = P(Pi[0], Pi[1], Pi[2]), q = P(Pj[0], Pj[1], Pj[2]);
+      if (icinde || !dz) hedefler.push({ tur: "dogru", a: a, b: q, r: 12 * s, kind: "nesne", nesne: "cubuk", no: c.no });
+      if (!hafif) {
+        // uç serbestliği: momentler serbest (mafsal) → içi boş daire; yalnız çekme → kesikli eksen
+        const ekrBoy = Math.hypot(q[0] - a[0], q[1] - a[1]) / s;
+        ["i", "j"].forEach(function (u) {
+          const sb = c.serbest && Array.isArray(c.serbest[u]) ? c.serbest[u] : [];
+          if (!sb.length || ekrBoy < 34 || (dz && !icinde)) return;
+          const t = Math.min(0.35, 0.6 / L), Q = u === "i" ? [Pi[0] + (Pj[0] - Pi[0]) * t, Pi[1] + (Pj[1] - Pi[1]) * t, Pi[2] + (Pj[2] - Pi[2]) * t] : [Pj[0] + (Pi[0] - Pj[0]) * t, Pj[1] + (Pi[1] - Pj[1]) * t, Pj[2] + (Pi[2] - Pj[2]) * t];
+          const w = P(Q[0], Q[1], Q[2]), mafsal = sb.indexOf("My") >= 0 && sb.indexOf("Mz") >= 0;
+          sahne.ekle(C.derinlik(Q[0], Q[1], Q[2], b) + 0.5, '<circle class="b3-mafsal' + (mafsal ? "" : " b3-mafsal-kismi") + (icinde ? "" : " b3-hayalet") + '" cx="' + r1(w[0]) + '" cy="' + r1(w[1]) + '" r="' + r1((dz ? 3.6 : 2.8) * s) + '"/>', 2);
+        });
+        if (c.yalniz_cekme) sahne.ekle(C.derinlik((Pi[0] + Pj[0]) / 2, (Pi[1] + Pj[1]) / 2, (Pi[2] + Pj[2]) / 2, b) + 0.4, C.cizgi(a, q, "b3-yc-c" + (icinde ? "" : " b3-hayalet")), 2);
+        if (D.etiketler) { const m = P((Pi[0] + Pj[0]) / 2, (Pi[1] + Pj[1]) / 2, (Pi[2] + Pj[2]) / 2); sahne.ekle(1e9, metinSvg(m[0] + 6, m[1] - 6, "C" + c.no + (c.kesit ? " " + c.kesit : ""), "b3-etiket-el", "start"), 2); }
+        if (uyari("cubuk", c.no)) { const m = P((Pi[0] + Pj[0]) / 2, (Pi[1] + Pj[1]) / 2, (Pi[2] + Pj[2]) / 2); sahne.ekle(1e9, rozet(m[0] + 12, m[1]), 2); }
+        // temel kotundaki GLOBAL uçlar: temel mesnedi (aks–kat temel kuralı, §12.3)
+        [Pi, Pj].forEach(function (Q) { if (Math.abs(Q[2] - kot0) < 1e-6) tabanlar.set(Q.map(function (v) { return v.toFixed(3); }).join(","), Q); });
+      }
+    });
+    if (!hafif) {
+      const tip = B.temeller && B.temeller.mesnet === "mafsal" ? "mafsal" : B.temeller && B.temeller.mesnet === "elastik" ? "elastik" : "ankastre";
+      tabanlar.forEach(function (Q, k) { if (!ozelMesnet.has(k) && !s3AksKatKolonTabani(Q)) C.mesnet(sahne, T, b, Q, tip, ' data-s3-taban="1"'); });
+      // açık mesnetler (mesnetler listesi)
+      (B.mesnetler || []).forEach(function (m, i) {
+        const Q = refP(m && m.dugum);
+        if (!Q) return;
+        const tum = m.ux && m.uy && m.uz, don = m.rx && m.ry && m.rz;
+        const tur = tum && don ? "ankastre" : "mafsal";
+        const w = C.mesnet(sahne, T, b, Q, tur, ' data-tur="mesnet" data-no="' + (i + 1) + '"' + (secildiMi("mesnet", i + 1) ? ' data-secili="1"' : ""));
+        if (!tum) sahne.ekle(1e9, '<path class="b3-kayici" d="M' + pt(w[0] - 12, w[1] + 17) + " L" + pt(w[0] + 12, w[1] + 17) + '"/>', 2);
+        hedefler.push({ tur: "daire", x: w[0], y: w[1] + 6 * s, r: 12 * s, kind: "nesne", nesne: "mesnet", no: i + 1 });
+      });
+      // bölme / kesişim düğümleri (yakalama noktaları; seçilebilir): plan / cephede ya da bir çizim aracı etkinken
+      const dugumGoster = !!dz || D.etiketler || (!!aktifKip() && /^(cubuk-ciz|egik-cubuk|mesnet|yuk-ata|tasi|dondur|dogrusal-dizi|yapistir|olc-)/.test(D.arac));
+      (B.dugumler || []).forEach(function (d) {
+        if (!dugumGoster || !d || (d.tur !== "bolme" && d.tur !== "kesisim")) return;
+        const Q = refP({ dugum: d.no });
+        if (!Q || !s3Duzlemde(dz, [Q], true)) return;
+        const w = P(Q[0], Q[1], Q[2]);
+        sahne.ekle(C.derinlik(Q[0], Q[1], Q[2], b) + 0.6, '<rect class="b3-bolme' + (d.tur === "kesisim" ? " b3-bolme-kesisim" : "") + (secildiMi("dugum", d.no) ? " b3-secili" : "") + '" x="' + r1(w[0] - 2.6 * s) + '" y="' + r1(w[1] - 2.6 * s) + '" width="' + r1(5.2 * s) + '" height="' + r1(5.2 * s) + '" transform="rotate(45 ' + r1(w[0]) + " " + r1(w[1]) + ')" data-tur="dugum" data-no="' + d.no + '"/>', 2);
+        hedefler.unshift({ tur: "daire", x: w[0], y: w[1], r: 9 * s, kind: "nesne", nesne: "dugum", no: d.no });
+      });
+      if (D.etiketler || D.arac === "yuk-ata") s3YukleriCiz(sahne, P, b, s);
+    }
+  }
+  // aks–kat kolonunun tabanı zaten temel olarak çizilir
+  function s3AksKatKolonTabani(Q) {
+    return B.kolonlar.some(function (c) { return c.kat === 1 && Math.abs(aksX(c.aks[0]) - Q[0]) < 1e-3 && Math.abs(aksY(c.aks[1]) - Q[1]) < 1e-3; });
+  }
+  // ek yükler: çubukta yayılı/tekil (global ya da yerel yönde ok), düğümde kuvvet, panelde yüzey yükü etiketi
+  function s3YukleriCiz(sahne, P, b, s) {
+    const MO = window.ModelOps;
+    (B.ek_yukler || []).forEach(function (y) {
+      if (!y) return;
+      const sinif = "b3-ekyuk b3-ekyuk-" + String(y.durum || "G").toUpperCase();
+      if (y.tur === "cubuk") {
+        const c = (B.cubuklar || []).filter(function (x) { return +x.no === +y.cubuk; })[0];
+        const Pi = c && refP(c.i), Pj = c && refP(c.j);
+        if (!Pi || !Pj) return;
+        let v = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[String(y.yon || "Z").toUpperCase()];
+        if (!v && MO) { const ex = MO.yerelEksenVektor(Pi, Pj, +c.aci || 0), k = String(y.yon || "").charAt(0); v = ex && ex[k] ? ex[k] : [0, 0, 1]; }
+        const q = y.q1 != null ? +y.q1 : y.q != null ? +y.q : y.P != null ? +y.P : 0;
+        if (!q) return;
+        const w = C.yon(v.map(function (x) { return x * Math.sign(q); }), b);
+        const ts = y.x != null && y.x1 == null && y.q1 == null ? [+y.x / (y.oransal ? 1 : Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1], Pj[2] - Pi[2]))] : [0.15, 0.5, 0.85];
+        ts.forEach(function (t, k) {
+          const Q = [Pi[0] + (Pj[0] - Pi[0]) * t, Pi[1] + (Pj[1] - Pi[1]) * t, Pi[2] + (Pj[2] - Pi[2]) * t], u = P(Q[0], Q[1], Q[2]);
+          sahne.ekle(1e9, C.kuvvetOku(u, w, 22 * s, sinif + "-c", sinif + "-o", k === 1 || ts.length === 1 ? f2(Math.abs(q)) + (ts.length === 1 ? " kN" : " kN/m") : "", "b3-ekyuk-t"), 2);
+        });
+      } else if (y.tur === "dugum") {
+        const Q = refP(y.dugum);
+        if (!Q) return;
+        const F = [+y.FX || 0, +y.FY || 0, +y.FZ || 0], Fb = Math.hypot(F[0], F[1], F[2]);
+        if (Fb < 1e-12) return;
+        const u = P(Q[0], Q[1], Q[2]), w = C.yon(F.map(function (x) { return x / Fb; }), b);
+        sahne.ekle(1e9, C.kuvvetOku(u, w, 30 * s, sinif + "-c", sinif + "-o", f2(Fb) + " kN", "b3-ekyuk-t"), 2);
+      } else if (y.tur === "panel") {
+        const p = (B.paneller || []).filter(function (x) { return +x.no === +y.panel; })[0];
+        const K = p && Array.isArray(p.kose) ? p.kose.map(refP) : null;
+        if (!K || K.some(function (Q) { return !Q; })) return;
+        const m = [0, 1, 2].map(function (i) { return K.reduce(function (t, Q) { return t + Q[i]; }, 0) / K.length; }), u = P(m[0], m[1], m[2]);
+        sahne.ekle(1e9, metinSvg(u[0], u[1] + 16, String(y.durum || "G") + ": " + (y.g ? "g " + f2(+y.g) : "") + (y.q ? " q " + f2(+y.q) : "") + " kN/m²", "b3-ekyuk-t", "middle"), 2);
+      }
+    });
+  }
   function eksenTakimi(vb, b) {
     const ox = vb[0] + 26, oy = vb[1] + vb[3] - 22;
     let s = "";
@@ -1170,7 +1479,7 @@
       dokun: function (p, e) {
         const k = aktifKip(), h = C.vurus(hedefler, p[0], p[1]);
         if (k && k.dokun) { k.dokun(p, e, h); return; }      // kayıtlı kip (ölçüm; 2. aşama çizim araçları)
-        aracUygula(h, p);
+        aracUygula(h, p, e);
       },
       // uzun basma tek kaynak (Cizim3B): bağlam menüsü; MatrisBilgi yoksa seç + özellik paneli
       uzunBas: function (p, e) { uzunBasmaMenusu(p, e); },
@@ -1208,7 +1517,7 @@
     });
     svg.addEventListener("pointerleave", function (e) { const k = aktifKip(); if (k && k.hareket && e.pointerType !== "touch") k.hareket(null, e); });
   }
-  function aracUygula(h, p) {
+  function aracUygula(h, p, e) {
     void p;
     if (!h) {
       if (D.kirisBas) { D.kirisBas = null; sahneCiz(); return; }
@@ -1238,11 +1547,12 @@
       if (D.arac === "sec" && D.secim.length) { D.secim = []; yenile(); }
       return;
     }
-    if (h.kind === "nesne") nesneDokun(h.nesne, h.no);
+    if (h.kind === "nesne") nesneDokun(h.nesne, h.no, e);
   }
-  function nesneDokun(tur, no) {
+  function nesneDokun(tur, no, e) {
     const n = nesneBul(tur, no);
     if (!n) return;
+    if (D.firca && tur === "cubuk" && D.arac === "sec") { n.kesit = D.firca; A.toast(D.firca + " atandı."); degisti(); return; }
     if (D.arac === "sil") { nesneSil(tur, no); return; }
     if (D.arac === "duvar") { if (tur === "kiris") duvarToggle(n); else A.toast("Duvar yalnız kirişe atanır."); return; }
     if (D.arac === "kolon" && tur === "kolon") { kolonToggle(n.aks); return; }
@@ -1261,7 +1571,7 @@
     if (SON && !sonEski && D.sekme === "tasarim" && tasarimVar() && (tur === "kolon" || tur === "kiris")) { tasarimSec(tur, no, false); return; }
     if (SON && !sonEski && D.sekme === "akis") { D.akisHedef = { tur: tur, no: no }; D.secim = [{ tur: tur, no: no }]; akisYenile(); yenile(); return; }
     if (secildiMi(tur, no)) D.secim = D.secim.filter(function (s) { return !(s.tur === tur && s.no === no); });
-    else if (D.secim.length && D.secim[0].tur === tur) D.secim.push({ tur: tur, no: no });
+    else if (D.secim.length && (D.secim[0].tur === tur || (e && (e.shiftKey || e.ctrlKey || e.metaKey)))) D.secim.push({ tur: tur, no: no });
     else D.secim = [{ tur: tur, no: no }];
     D.panelSekme = "nesne";
     yenile();
@@ -1340,9 +1650,40 @@
     });
     degisti();
   }
+  // surum 3 elemanlarını sil (ModelOps: bağlı yükler ve yetim düğümler de gider); B yerinde güncellenir
+  function s3Sil(liste) {
+    const MO = window.ModelOps, l = liste.filter(function (s) { return ["cubuk", "panel", "dugum", "mesnet"].indexOf(s.tur) >= 0; });
+    if (!l.length) return [];
+    const nolar = function (tur) { return l.filter(function (s) { return s.tur === tur; }).map(function (s) { return +s.no; }); };
+    const ms = new Set(nolar("mesnet"));
+    if (ms.size) B.mesnetler = (B.mesnetler || []).filter(function (m, i) { return !ms.has(i + 1); });
+    let m = B, uy = [];
+    const uygula = function (f) { const r = f(m); if (r && r.model) { m = r.model; uy = uy.concat(r.uyarilar || []); } };
+    if (MO) {
+      const pn = nolar("panel").filter(function (n) { return nesneBul("panel", n); }), cn = nolar("cubuk").filter(function (n) { return nesneBul("cubuk", n); }), dn = nolar("dugum").filter(function (n) { return nesneBul("dugum", n); });
+      try {
+        if (pn.length) uygula(function (x) { return MO.panelSil(x, pn); });
+        if (cn.length) uygula(function (x) { return MO.cubukSil(x, cn); });
+        if (dn.length) uygula(function (x) { return MO.dugumSil(x, dn.map(function (n) { return { dugum: n }; })); });
+      } catch (e) { A.toast(e.message); }
+      if (m !== B) { Object.keys(m).forEach(function (k) { B[k] = m[k]; }); }
+    } else {
+      const cs = new Set(nolar("cubuk")), ps = new Set(nolar("panel"));
+      B.cubuklar = (B.cubuklar || []).filter(function (c) { return !cs.has(+c.no); });
+      B.paneller = (B.paneller || []).filter(function (p) { return !ps.has(+p.no); });
+    }
+    return uy;
+  }
   function nesneSil(tur, no) {
     const n = nesneBul(tur, no);
     if (!n) return;
+    if (["cubuk", "panel", "dugum", "mesnet"].indexOf(tur) >= 0) {
+      const uy = s3Sil([{ tur: tur, no: no }]);
+      D.secim = D.secim.filter(function (s) { return nesneBul(s.tur, s.no); });
+      degisti();
+      if (uy.length) A.toast(uy.join(" "));
+      return;
+    }
     katlarHedef().forEach(function (k) {
       if (tur === "kolon") B.kolonlar = B.kolonlar.filter(function (c) { return !(c.kat === k && aksEsit(c.aks, n.aks)); });
       else if (tur === "kiris") B.kirisler = B.kirisler.filter(function (x) { return !(x.kat === k && aksEsit(x.bas, n.bas) && aksEsit(x.son, n.son)); });
@@ -1360,11 +1701,19 @@
       else if (s.tur === "kiris") B.kirisler = B.kirisler.filter(function (k) { return k.no !== s.no; });
       else if (s.tur === "doseme") B.dosemeler = B.dosemeler.filter(function (d) { return d.no !== s.no; });
     });
+    const uy = s3Sil(l);
     degisti();
+    if (uy.length) A.toast(uy.join(" "));
   }
   function ayniTurdenSec() {
     if (!D.secim.length) return;
-    const tur = D.secim[0].tur, liste = tur === "kolon" ? B.kolonlar : tur === "kiris" ? B.kirisler : B.dosemeler;
+    const tur = D.secim[0].tur;
+    if (tur === "cubuk" || tur === "panel") {      // genel model: aynı türden (çubukta aynı tür alanı) bütün elemanlar
+      const n0 = nesneBul(tur, D.secim[0].no), l = tur === "cubuk" ? B.cubuklar || [] : B.paneller || [];
+      D.secim = l.filter(function (x) { return x && (x.tur || "") === ((n0 && n0.tur) || ""); }).map(function (x) { return { tur: tur, no: x.no }; });
+      yenile(); return;
+    }
+    const liste = tur === "kolon" ? B.kolonlar : tur === "kiris" ? B.kirisler : B.dosemeler;
     D.secim = liste.filter(function (x) { return x.kat === D.kat; }).map(function (x) { return { tur: tur, no: x.no }; });
     yenile();
   }
@@ -1374,6 +1723,7 @@
     if (yeni > 12) { A.toast("En çok 12 kat."); return; }
     B.katlar.forEach(function (k) { if (k.no === ust && k.ad === "Çatı") k.ad = ust + ". kat"; });
     B.katlar.push({ no: yeni, ad: "Çatı", kot: +(katKot(ust) + h).toFixed(3) });
+    zKatEkle(yeni, +(katKot(ust) + h).toFixed(3));
     if (kopyala) {
       B.kolonlar.filter(function (c) { return c.kat === ust; }).forEach(function (c) { B.kolonlar.push(Object.assign(kopya(c), { no: yeniNo(B.kolonlar), kat: yeni })); });
       B.kirisler.filter(function (k) { return k.kat === ust; }).forEach(function (k) { B.kirisler.push(Object.assign(kopya(k), { no: yeniNo(B.kirisler), kat: yeni })); });
@@ -1387,6 +1737,7 @@
     const ust = ustKat();
     if (no !== ust && !window.confirm(katAd(no) + " ve üstündeki katlar bir alt kota kayar; bu kattaki elemanlar silinir. Devam?")) return;
     const h = katH(no);
+    zKatSil(no, h);
     B.kolonlar = B.kolonlar.filter(function (c) { return c.kat !== no; }).map(function (c) { if (c.kat > no) c.kat--; return c; });
     B.kirisler = B.kirisler.filter(function (k) { return k.kat !== no; }).map(function (k) { if (k.kat > no) k.kat--; return k; });
     B.dosemeler = B.dosemeler.filter(function (d) { return d.kat !== no; }).map(function (d) { if (d.kat > no) d.kat--; return d; });
@@ -1498,14 +1849,41 @@
   }
   function gorunumDugmeleri() {
     const g = kamera ? kamera.gorunum : "3b";
+    const odak = document.activeElement && document.activeElement.id === "bn-duzlem";
     ref.gorunum.innerHTML = '<span class="bn-etiket">Görünüm:</span>' + Object.keys(GORUNUM_AD).map(function (k) {
       return '<button type="button" class="bn-cip' + (g === k ? " aktif" : "") + '" data-gorunum="' + k + '" aria-pressed="' + (g === k) + '">' + GORUNUM_AD[k] + "</button>";
-    }).join("") + '<button type="button" class="bn-cip bn-ikon" data-gorunum="sifirla" title="Yakınlaştırmayı sıfırla" aria-label="Yakınlaştırmayı sıfırla">⟲</button>';
+    }).join("") + '<button type="button" class="bn-cip bn-ikon" data-gorunum="sifirla" title="Yakınlaştırmayı sıfırla" aria-label="Yakınlaştırmayı sıfırla">⟲</button>' + duzlemSecici(g);
+    if (odak) { const s = document.getElementById("bn-duzlem"); if (s) s.focus({ preventScroll: true }); }
+  }
+  // Düzlem seçici (§19.3): plan / 3B'de Z aksı (kat dışı saçak, mahya, kren dahil), önden cephede Y aksı, yandan kesitte X aksı. PgUp / PgDn de gezer.
+  function duzlemSecici(g) {
+    if (!B) return "";
+    const ag = aksGorunumu();
+    let tur, liste, secili, etiket;
+    if (ag.tur === "cephe") {
+      tur = ag.x != null ? "x" : "y"; secili = ag[tur];
+      liste = (B.akslar[tur] || []).map(function (a) { return [String(a.ad), (tur === "x" ? "X " : "Y ") + a.ad + " (" + f2(+a.konum) + " m)"]; });
+      etiket = tur === "x" ? "Kesit aksı (X)" : "Cephe aksı (Y)";
+    } else {
+      tur = "z"; secili = ag.z;
+      liste = zAkslari().map(function (a) {
+        const k = a.kat != null ? B.katlar.filter(function (x) { return x.no === +a.kat; })[0] : null;
+        const kotAd = window.MatrisAks && window.MatrisAks.kotAdi ? window.MatrisAks.kotAdi(+a.konum) : null;
+        return [String(a.ad), (String(a.ad) === kotAd ? String(a.ad).replace(".", ",") : a.ad + " " + ((+a.konum >= 0 ? "+" : "") + f2(+a.konum))) + (k && k.ad !== a.ad && k.ad !== kotAd ? " · " + k.ad : "")];
+      });
+      etiket = g === "plan" ? "Plan düzlemi (Z aksı)" : "Etkin Z aksı";
+    }
+    if (!liste.length) return "";
+    return '<label class="bn-duzlem" title="' + kacis(etiket + " — PgUp / PgDn ile komşu aksa geçilir") + '"><span class="bn-etiket">Düzlem:</span>' +
+      '<select class="girdi bn-duzlem-sec" id="bn-duzlem" data-duzlem-tur="' + tur + '" aria-label="' + kacis(etiket) + '">' + secenekler(liste, secili) + "</select></label>";
   }
   function durumCiz() {
     const nk = B.kolonlar.length, nr = B.kirisler.length, nd = B.dosemeler.length, nkat = B.katlar.length - 1;
-    ref.durum.textContent = nk + " kolon · " + nr + " kiriş · " + nd + " döşeme · " + nkat + " kat · " + (SON && !sonEski && SON.veri.ag ? SON.veri.ag.sd_sayisi + " SD" : sdTahmini() + " SD (tahmin)") +
-      (B.akslar.x.length && B.akslar.y.length ? " · " + B.akslar.x.length + "×" + B.akslar.y.length + " aks" : "");
+    // genel model (surum 3): çubuk / panel sayıları önce; aks–kat elemanları yalnız varsa
+    const s3 = s3Var() || +B.surum >= 3 ? (B.cubuklar || []).length + " çubuk · " + (B.paneller || []).length + " panel · " + (nk + nr + nd ? nk + " kolon · " + nr + " kiriş · " + nd + " döşeme · " : "") : nk + " kolon · " + nr + " kiriş · " + nd + " döşeme · ";
+    const nz = zAkslari().length;
+    ref.durum.textContent = s3 + nkat + " kat · " + (SON && !sonEski && SON.veri.ag ? SON.veri.ag.sd_sayisi + " SD" : sdTahmini() + " SD (tahmin)") +
+      (B.akslar.x.length && B.akslar.y.length ? " · " + B.akslar.x.length + "×" + B.akslar.y.length + (s3Var() || nz > B.katlar.length ? "×" + nz : "") + " aks" : "");
     const u = sonUyarilar;
     ref.uyarilar.innerHTML = u.length ? '<div class="bn-uyari-kutu"><strong>⚠ ' + u.length + " uyarı:</strong> " + u.slice(0, 4).map(function (x) { return '<span class="bn-uyari-satir" data-uyari-kat="' + x.kat + '">' + kacis(x.metin) + "</span>"; }).join(" ") + (u.length > 4 ? " …" : "") + "</div>" : "";
   }
@@ -1667,6 +2045,9 @@
       const ekQ = B.ek_yukler.filter(function (e) { return e.tur === "kiris" && e.kiris === n.no && e.durum === "Q"; }).reduce(function (t, e) { return t + (+e.q || 0); }, 0);
       h += '<div class="bn-iki">' + alanH("Ek yük G (kN/m, aşağı +)", '<input class="girdi" inputmode="decimal" data-oz="ekG" value="' + kacis(ekG || "") + '">') + alanH("Ek yük Q (kN/m)", '<input class="girdi" inputmode="decimal" data-oz="ekQ" value="' + kacis(ekQ || "") + '">') + "</div>";
       h += kesitKarti(n.kesit);
+    } else if (s0.tur === "cubuk" || s0.tur === "panel" || s0.tur === "mesnet" || s0.tur === "dugum") {
+      h += s3Paneli(s0.tur, n, cok);
+      return h + '<div class="dugmeler"><button type="button" class="dugme kucuk" id="bn-ayni-tur">Aynı türden tümünü seç</button><button type="button" class="dugme kucuk" id="bn-secim-sil">Seçileni sil</button></div>';
     } else {
       h += '<h3 class="bn-pbaslik">Döşeme D-' + kacis(adres(n.kose[0]) + "/" + adres(n.kose[1])) + "/k" + n.kat + "</h3>" + cok;
       const lx = Math.abs(aksX(n.kose[1][0]) - aksX(n.kose[0][0])), ly = Math.abs(aksY(n.kose[1][1]) - aksY(n.kose[0][1])), m = Math.max(lx, ly) / Math.min(lx, ly);
@@ -1682,6 +2063,99 @@
     h += '<div class="dugmeler"><button type="button" class="dugme kucuk" id="bn-ayni-tur">Aynı türden tümünü seç (bu kat)</button><button type="button" class="dugme kucuk" id="bn-secim-sil">Seçileni sil</button>' +
       (SON && !sonEski ? '<button type="button" class="dugme kucuk ana" id="bn-yuk-yolu">Yük yolunu izle</button>' : "") + "</div>";
     return h;
+  }
+  // ---------- Genel model (surum 3) özellik paneli: çubuk, panel, mesnet, bölme/kesişim düğümü ----------
+  function refMetin(r) {
+    if (r == null) return "—";
+    if (typeof r === "number") return "D" + r;
+    if (r.dugum != null) { const d = nesneBul("dugum", +r.dugum); return (d && d.tur === "bolme" ? "bölme " : d && d.tur === "kesisim" ? "kesişim " : "düğüm ") + r.dugum + (d && d.ad ? " (" + d.ad + ")" : ""); }
+    if (Array.isArray(r.aks)) return (r.sistem ? r.sistem + ": " : "") + r.aks.join("") + " / " + (r.z != null ? r.z : r.kat != null ? zAksiAdi(+r.kat) : "?");
+    if (r.X != null) return "(" + f2(+r.X) + "; " + f2(+r.Y) + "; " + f2(+r.Z) + ")";
+    return JSON.stringify(r);
+  }
+  const PANEL_TURLERI = [["doseme", "Döşeme"], ["cati", "Çatı"], ["cephe", "Cephe"]];
+  const DAGITIM_3 = [["iki", "İki doğrultulu (açıortay)"], ["tek-13", "Tek doğrultulu (1–3 kenarları taşır)"], ["tek-24", "Tek doğrultulu (2–4 kenarları taşır)"], ["yok", "Dağıtma (yalnız kütle)"]];
+  const SERBEST_ADI = { N: "N", Vy: "Vy", Vz: "Vz", T: "T", My: "My", Mz: "Mz" };
+  function s3Paneli(tur, n, cok) {
+    let h = "";
+    if (tur === "cubuk") {
+      const Pi = refP(n.i), Pj = refP(n.j), L = Pi && Pj ? Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1], Pj[2] - Pi[2]) : null;
+      const egim = Pi && Pj ? Math.atan2(Pj[2] - Pi[2], Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1])) * 180 / Math.PI : null;
+      const turAd = (CUBUK_TURLERI.filter(function (t) { return t[0] === (n.tur || "diger"); })[0] || ["", "Çubuk"])[1];
+      h += '<h3 class="bn-pbaslik">' + kacis(turAd) + " C" + n.no + (L != null ? " · L = " + f2(L) + " m" : "") + (egim != null && Math.abs(egim) > 0.05 && Math.abs(Math.abs(egim) - 90) > 0.05 ? " · eğim " + f1(egim) + "°" : "") + "</h3>" + cok;
+      h += '<p class="not">i: ' + kacis(refMetin(n.i)) + " → j: " + kacis(refMetin(n.j)) + "</p>";
+      h += '<div class="bn-iki">' + alanH("Tür", '<select class="girdi" data-oz3="tur">' + secenekler(CUBUK_TURLERI, n.tur || "diger") + "</select>") +
+        alanH("Kesit", '<select class="girdi" data-oz3="kesit">' + secenekler([["", "— (kesit yok)"]].concat(Object.keys(B.kesitler).map(function (k) { return [k, k + (B.kesitler[k].profil ? " (" + B.kesitler[k].profil + ")" : "")]; })).concat([["__yeni", "Yeni kesit…"]]), n.kesit || "") + "</select>") + "</div>";
+      h += '<div class="bn-iki">' + alanH("Yerel eksen açısı (°)", '<input class="girdi" inputmode="decimal" data-oz3="aci" value="' + kacis(n.aci != null ? n.aci : 0) + '">') +
+        alanH("Grup", '<input class="girdi" data-oz3="grup" value="' + kacis(n.grup || "") + '">') + "</div>";
+      const K = Array.isArray(n.K) ? n.K : [null, null];
+      h += '<div class="bn-iki">' + alanH("Lb (m; boş = otomatik)", '<input class="girdi" inputmode="decimal" data-oz3="Lb" value="' + kacis(n.Lb != null ? n.Lb : "") + '">') +
+        alanH("K güçlü / zayıf (boş = 1)", '<input class="girdi" data-oz3="K" value="' + kacis(K[0] != null ? K.join(" ") : "") + '" placeholder="1 1">') + "</div>";
+      h += '<label class="bn-onay"><input type="checkbox" data-oz3="yalniz_cekme"' + (n.yalniz_cekme ? " checked" : "") + "> Yalnız çekme (basınçta devre dışı)</label>";
+      const sb = function (u) { const l = n.serbest && n.serbest[u] || []; return l.length ? l.map(function (x) { return SERBEST_ADI[x] || x; }).join(", ") : "—"; };
+      h += '<p class="not">Uç serbestlikleri: i: ' + kacis(sb("i")) + " · j: " + kacis(sb("j")) + ' <button type="button" class="dugme kucuk" data-s3-komut="mafsal">Mafsal…</button></p>';
+      if (n.kaynak && n.kaynak.uretec != null) {
+        const u = (B.uretecler || []).filter(function (x) { return +x.no === +n.kaynak.uretec; })[0];
+        h += '<p class="not">Üreteç ' + kacis(n.kaynak.uretec) + (u ? " (" + kacis(u.tur) + ")" : "") + ' ile üretildi. <button type="button" class="dugme kucuk" data-s3-uretec-sil="' + kacis(n.kaynak.uretec) + '">Üreteci ve ürettiklerini sil</button></p>';
+      }
+      if (n.kaynak && n.kaynak.aks_kat) h += '<p class="not">Aks–kat ' + kacis(n.kaynak.aks_kat) + " " + kacis(n.kaynak.no) + " elemanından genelleştirildi.</p>";
+      if (n.kesit) h += kesitKarti(n.kesit);
+    } else if (tur === "panel") {
+      h += '<h3 class="bn-pbaslik">Panel P' + n.no + " · " + kacis((PANEL_TURLERI.filter(function (t) { return t[0] === (n.tur || "doseme"); })[0] || ["", "Panel"])[1]) + "</h3>" + cok;
+      h += '<p class="not">Köşeler: ' + kacis(n.kose.map(refMetin).join(" → ")) + "</p>";
+      h += '<div class="bn-iki">' + alanH("Tür", '<select class="girdi" data-oz3="tur">' + secenekler(PANEL_TURLERI, n.tur || "doseme") + "</select>") +
+        alanH("Kalınlık (m; 0 = sac kaplama)", '<input class="girdi" inputmode="decimal" data-oz3="kalinlik" value="' + kacis(n.kalinlik != null ? n.kalinlik : 0) + '">') + "</div>";
+      h += '<div class="bn-iki">' + alanH("Ek sabit yük g (kN/m², yüzeye)", '<input class="girdi" inputmode="decimal" data-oz3="g" value="' + kacis(n.g != null ? n.g : "") + '">') +
+        alanH("Hareketli q (kN/m², izdüşüme)", '<input class="girdi" inputmode="decimal" data-oz3="q" value="' + kacis(n.q != null ? n.q : "") + '">') + "</div>";
+      h += alanH("Kullanım sınıfı (TS 498)", '<select class="girdi" data-oz3="kullanim">' + secenekler([["", "—"]].concat((KUT.kullanim_siniflari || []).map(function (k) { return [k.ad, k.etiket + " — q = " + f1(k.q) + " kN/m²"]; })), n.kullanim || "") + "</select>");
+      h += alanH("Yük dağıtımı", '<select class="girdi" data-oz3="dagitim">' + secenekler(DAGITIM_3, n.dagitim || "iki") + "</select>");
+      h += '<label class="bn-onay"><input type="checkbox" data-oz3="kar"' + (n.kar ? " checked" : "") + "> Kar yükü (S; eğimden μ₁)</label>";
+    } else if (tur === "mesnet") {
+      h += '<h3 class="bn-pbaslik">Mesnet ' + D.secim[0].no + "</h3>" + cok + '<p class="not">Düğüm: ' + kacis(refMetin(n.dugum)) + "</p>";
+      h += '<div class="bn-mesnet-izin">' + ["ux", "uy", "uz", "rx", "ry", "rz"].map(function (k) { return '<label class="bn-onay"><input type="checkbox" data-oz3="' + k + '"' + (n[k] ? " checked" : "") + "> " + k + "</label>"; }).join("") + "</div>";
+      h += '<p class="not">İşaretli serbestlik tutulur (u: öteleme, r: dönme; bina eksenleri X, Y, Z).</p>';
+    } else {
+      h += '<h3 class="bn-pbaslik">' + (n.tur === "bolme" ? "Bölme" : n.tur === "kesisim" ? "Kesişim" : "") + " düğümü " + n.no + "</h3>";
+      const Q = refP({ dugum: n.no });
+      if (n.tur === "bolme") h += '<p class="not">' + kacis(refMetin(n.cubuk_i)) + " → " + kacis(refMetin(n.cubuk_j)) + ", oran t = " + kacis(String(n.oran)) + "</p>";
+      if (Q) h += '<p class="not">X = ' + f2(Q[0]) + " m, Y = " + f2(Q[1]) + " m, Z = " + f2(Q[2]) + " m (akslar taşınınca birlikte taşınır)</p>";
+    }
+    return h;
+  }
+  function s3OzellikDegistir(ad, el) {
+    const tur = D.secim.length ? D.secim[0].tur : null;
+    if (!tur) return;
+    const deger = el.type === "checkbox" ? el.checked : el.value;
+    const nolar = D.secim.filter(function (x) { return x.tur === tur; }).map(function (x) { return +x.no; });
+    if (tur === "cubuk") {
+      if (ad === "kesit" && deger === "__yeni") { D.panelSekme = "kutuphane"; A.toast("Kütüphanede “Yeni kesit” ekleyin; sonra burada seçin."); yenile(); return; }
+      const oz = {};
+      if (ad === "aci" || ad === "Lb") { const v = sayiOku(deger); if (deger === "" && ad === "Lb") oz.Lb = null; else if (v == null) { A.toast("Sayı girin."); panelCiz(); return; } else oz[ad] = v; }
+      else if (ad === "K") { const l = String(deger).trim() ? String(deger).trim().split(/[\s;]+/).map(sayiOku) : []; if (l.length && l.some(function (v) { return v == null || v <= 0; })) { A.toast("K iki pozitif sayı olmalı (ör. 1 0,7)."); panelCiz(); return; } oz.K = l.length ? [l[0], l[1] != null ? l[1] : l[0]] : null; }
+      else if (ad === "yalniz_cekme") oz.yalniz_cekme = deger ? true : null;
+      else if (ad === "grup") oz.grup = String(deger).trim() || null;
+      else oz[ad] = deger || null;
+      const MO = window.ModelOps;
+      if (MO) {
+        let r;
+        try { r = MO.ozellikAta(B, nolar, oz); } catch (e) { A.toast(e.message); return; }
+        binaAyarla(r.model, { normalize: false, etiket: r.uyarilar && r.uyarilar.length ? r.uyarilar.join(" ") : "" });
+        return;
+      }
+      nolar.forEach(function (no) { const c = nesneBul("cubuk", no); Object.keys(oz).forEach(function (k) { if (oz[k] === null) delete c[k]; else c[k] = oz[k]; }); });
+    } else if (tur === "panel") {
+      nolar.forEach(function (no) {
+        const p = nesneBul("panel", no);
+        if (!p) return;
+        if (ad === "kalinlik" || ad === "g" || ad === "q") { const v = sayiOku(deger); if (deger === "" && ad !== "kalinlik") delete p[ad]; else if (v != null && v >= 0) p[ad] = v; }
+        else if (ad === "kar") p.kar = !!deger;
+        else if (ad === "kullanim") { if (deger) p.kullanim = deger; else delete p.kullanim; }
+        else p[ad] = deger;
+      });
+    } else if (tur === "mesnet") {
+      nolar.forEach(function (no) { const m = nesneBul("mesnet", no); if (m) m[ad] = !!deger; });
+    }
+    degisti();
   }
   function kesitKarti(ad) {
     const o = kesitOz(ad);
@@ -2039,8 +2513,14 @@
     if (dg.hata.length) { sonCozumHatasi = dg.hata.join(" "); ref.hata.scrollIntoView({ block: "nearest", behavior: "smooth" }); return Promise.resolve(false); }
     if (dg.uyari.length && !window.confirm(dg.uyari.length + " uyarı var (ör. " + dg.uyari[0].metin + "). Yine de çözülsün mü?")) { sonCozumHatasi = "Çözüm, uyarılar nedeniyle iptal edildi."; return Promise.resolve(false); }
     D.cozuluyor = true; ilerlemeBaslat(); hatCiz(); aracYenile();
-    const cozulen = kopya(B), cozulenAnlik = anlikGoruntu();
-    cozumSozu = A.motorIstegi({ islem: "bina_coz", girdi: { bina: cozulen } }).then(function (y) {
+    const cozulen = kopya(B), cozulenAnlik = anlikGoruntu(), s3 = s3Var(cozulen);
+    // genel model (surum 3): motorun desteği yoklanır; desteklemeyen motor çubuk/panelleri sessizce atlamasın (öğretici hata)
+    cozumSozu = (s3 ? motorS3Yokla() : Promise.resolve(true)).then(function (destek) {
+      if (!destek) return { hata: S3_MOTOR_YOK, hata_turu: "girdi" };
+      return A.motorIstegi({ islem: "bina_coz", girdi: { bina: cozulen } });
+    }).then(function (y) {
+      if (y && !y.hata && s3 && y.veri && y.veri.model !== "genel") { MOTOR_S3 = false; y = { hata: S3_MOTOR_YOK, hata_turu: "girdi" }; }
+      else if (y && !y.hata && s3) MOTOR_S3 = true;
       if (!y || y.hata) { cekmeceAc(); SON = null; sonCozumHatasi = y && y.hata ? y.hata : "Boş yanıt."; hataGoster(ref.hata, [sonCozumHatasi], y && y.hata_turu === "ic" ? "Motor hatası" : "Bina çözülemedi"); sonucuTemizle(); return false; }
       if (!y.veri || !y.veri.ag || !y.veri.durumlar) { sonCozumHatasi = "Motor yanıtında “veri.ag” ya da “veri.durumlar” yok (şema §4)."; hataGoster(ref.hata, [sonCozumHatasi], "Beklenmeyen yanıt"); return false; }
       hataGoster(ref.hata, []);
@@ -2068,6 +2548,18 @@
     return cozumSozu;
   }
   function sonucuTemizle() { SON = null; sonEski = false; D.akisHedef = null; ref.sonuc.innerHTML = ""; }
+  // Motorun genel model (surum 3, köprüde bina_kesit_oner) desteği: bir kez yoklanır (aks–kat akışında hiç istek gitmez)
+  const S3_MOTOR_YOK = "Bu kurulumdaki hesap motoru genel (surum 3) modeli çözmüyor: aks tabanlı çubuk, panel, mesnet ve ek yükler hesaba " +
+    "katılamaz. Çizim, düzenleme, kaydetme, tablolar ve IFC dışa aktarımı çalışır; çözüm için uygulamayı güncelleyin (genel model motoru gerekir). " +
+    "Aks–kat modelleri (kolon, kiriş, döşeme) bu motorla çözülmeye devam eder.";
+  let MOTOR_S3 = null;
+  function motorS3Yokla() {
+    if (MOTOR_S3 != null) return Promise.resolve(MOTOR_S3);
+    return Promise.resolve(A.motorIstegi({ islem: "bina_kesit_oner", girdi: {} })).then(function (y) {
+      MOTOR_S3 = !(y && y.hata && /Bilinmeyen işlem/i.test(String(y.hata)));
+      return MOTOR_S3;
+    }, function () { return true; });     // motor hiç yüklenemediyse asıl çözüm isteği hatayı gösterir
+  }
   // ---------- Sonuç yardımcıları ----------
   function V() { return SON ? SON.veri : null; }
   function kisaAl(ad) { const v = V(); if (!v) return null; return (v.sonuclar && v.sonuclar[ad]) || (v.durumlar && v.durumlar[ad]) || null; }
@@ -3561,7 +4053,7 @@
       const t = e.target.closest("button, [data-sankey]");
       if (!t || !kok.contains(t) || disModul(t)) return;
       const ds = t.dataset;
-      if (ds.kat != null) { D.kat = +ds.kat; D.kirisBas = null; kamera.sifirla(); yenile(); olayYay("gorunum", gorunum()); return; }
+      if (ds.kat != null) { D.kat = +ds.kat; D.zAks = null; D.kirisBas = null; kamera.sifirla(); yenile(); olayYay("gorunum", gorunum()); return; }
       if (t.id === "bn-kat-ekle") {
         // menü sabit konumlu açılır: kaydırmalı kat şeridi (ve tam ekran şeridi) onu kırpmasın
         const m = document.getElementById("bn-kat-menu"), r = t.getBoundingClientRect();
@@ -3607,6 +4099,15 @@
       if (t.id === "bn-panel-ac") { D.panelKapali = !D.panelKapali; if (!D.panelKapali) ref.panel.open = true; yerlesimUygula(); return; }
       if (t.id === "bn-sonuc-yer") { sonucYerDegistir(); return; }
       if (t.id === "bn-ayni-tur") { ayniTurdenSec(); return; }
+      if (ds.s3Komut) { const M = modul("MatrisArac"); if (M && M.komut(ds.s3Komut)) aracCalistir(ds.s3Komut); return; }
+      if (ds.s3UretecSil) {
+        const MO = modul("ModelOps");
+        if (MO && window.confirm("Üreteç " + ds.s3UretecSil + " ve ürettiği bütün elemanlar silinsin mi?")) {
+          try { const r = MO.uretecSil(B, +ds.s3UretecSil); D.secim = []; binaAyarla(r.model, { normalize: false, etiket: "Üreteç " + ds.s3UretecSil + " silindi." + (r.uyarilar.length ? " " + r.uyarilar.join(" ") : "") }); }
+          catch (x) { A.toast(x.message); }
+        }
+        return;
+      }
       if (t.id === "bn-secim-sil") { secimiSil(); return; }
       if (t.id === "bn-yuk-yolu") { if (D.secim.length) { D.akisHedef = D.secim[0]; D.sekme = "akis"; sonucuCiz(); sahneCiz(); ref.sahneKutu.scrollIntoView({ block: "nearest" }); } return; }
       if (ds.aksEkle) { aksEkle(ds.aksEkle); return; }
@@ -3645,8 +4146,10 @@
       const el = e.target, ds = el.dataset;
       if (disModul(el)) return;
       if (el.id === "bn-sablon") { if (el.value) sablonYukle(el.value); return; }
+      if (el.id === "bn-duzlem") { duzlemSec(ds.duzlemTur, el.value); return; }
       if (el.id === "bn-tum-katlar") { D.tumKatlar = el.checked; return; }
       if (ds.oz) { ozellikDegistir(ds.oz, el.value); return; }
+      if (ds.oz3) { s3OzellikDegistir(ds.oz3, el); return; }
       if (ds.bina) { B[ds.bina] = el.value; degisti(); return; }
       if (ds.yd) { yukDurumuDegistir(ds.yd, ds.ydAlan, el); return; }
       if (ds.dep) { depremDegistir(ds.dep, el.value, el); return; }
@@ -3803,7 +4306,19 @@
   function aksSil(e, i) {
     const a = B.akslar[e][i];
     if (!a) return;
-    const bagli = B.kolonlar.filter(function (c) { return c.aks[e === "x" ? 0 : 1] === a.ad; }).length + B.kirisler.filter(function (k) { return k.bas[e === "x" ? 0 : 1] === a.ad || k.son[e === "x" ? 0 : 1] === a.ad; }).length;
+    const M = window.MatrisAks;
+    if (M && s3Var()) {      // genel model: aksa bağlı çubuk/panel/düğümler de (MatrisAks.aksSil "elemanlarla")
+      let r;
+      try { r = M.aksSil(B, { yon: e, ad: a.ad }); } catch (x) { A.toast(x.message); return; }
+      if (r.onayGerekli) {
+        if (!window.confirm("Aks " + a.ad + "'ya bağlı " + r.bagli.ozet + " var; elemanlarla birlikte silinsin mi?")) return;
+        try { r = M.aksSil(B, { yon: e, ad: a.ad, secenek: "elemanlarla" }); } catch (x) { A.toast(x.message); return; }
+      }
+      if (r.silindi === false) { if (r.uyarilar && r.uyarilar.length) A.toast(r.uyarilar.join(" ")); return; }
+      binaAyarla(r.model, { etiket: "Aks " + a.ad + " silindi" + (r.uyarilar && r.uyarilar.length ? ": " + r.uyarilar.join(" ") : ".") });
+      return;
+    }
+    const bagli =B.kolonlar.filter(function (c) { return c.aks[e === "x" ? 0 : 1] === a.ad; }).length + B.kirisler.filter(function (k) { return k.bas[e === "x" ? 0 : 1] === a.ad || k.son[e === "x" ? 0 : 1] === a.ad; }).length;
     if (bagli && !window.confirm("Aks " + a.ad + " silinince bağlı " + bagli + " eleman da silinir. Devam?")) return;
     const ix = e === "x" ? 0 : 1;
     B.akslar[e].splice(i, 1);
@@ -3819,6 +4334,11 @@
     else {
       const yeni = String(deger).trim();
       if (!yeni || B.akslar[e].some(function (x, j) { return j !== i && x.ad === yeni; })) { A.toast("Aks adı boş ya da çakışıyor."); panelCiz(); return; }
+      const M = window.MatrisAks;
+      if (M && M.aksYenidenAdlandir) {      // bütün başvurular (aks–kat elemanları, çubuk/panel REF'leri, temeller, yükler)
+        try { binaAyarla(M.aksYenidenAdlandir(B, { yon: e, eski: a.ad, yeni: yeni }).model, { normalize: false }); } catch (x) { A.toast(x.message); panelCiz(); }
+        return;
+      }
       const ix = e === "x" ? 0 : 1, eski = a.ad;
       a.ad = yeni;
       B.kolonlar.forEach(function (c) { if (c.aks[ix] === eski) c.aks[ix] = yeni; });
@@ -3832,7 +4352,7 @@
     const k = B.katlar[i];
     if (!k) return;
     if (alan === "ad") k.ad = String(deger).trim() || k.ad;
-    else { const n = sayiOku(deger); if (n == null || (i > 0 && n <= B.katlar[i - 1].kot) || (i < B.katlar.length - 1 && n >= B.katlar[i + 1].kot)) { A.toast("Kot komşu katların arasında olmalı."); panelCiz(); return; } k.kot = n; }
+    else { const n = sayiOku(deger); if (n == null || (i > 0 && n <= B.katlar[i - 1].kot) || (i < B.katlar.length - 1 && n >= B.katlar[i + 1].kot)) { A.toast("Kot komşu katların arasında olmalı."); panelCiz(); return; } k.kot = n; zKatKot(k.no, n); }
     degisti();
   }
   function kesitSil(ad) {
@@ -3891,7 +4411,7 @@
       gecmis.ileri = [];
     }
     sonAnlik = simdi;
-    D.secim = sec.secim ? sec.secim.slice() : D.secim.filter(function (s) { return ["kolon", "kiris", "doseme"].indexOf(s.tur) < 0 || nesneBul(s.tur, s.no); });
+    D.secim = sec.secim ? sec.secim.slice() : D.secim.filter(function (s) { return ["kolon", "kiris", "doseme", "cubuk", "panel", "dugum", "mesnet"].indexOf(s.tur) < 0 || nesneBul(s.tur, s.no); });
     D.kirisBas = null;
     D.kat = Math.min(Math.max(0, D.kat), ustKat());
     if (SON) sonEski = true;
@@ -3931,15 +4451,52 @@
     if (M && M.katZAksi) { try { const z = M.katZAksi(B, kat); if (z && z.ad != null) return z.ad; } catch (e) { /* yoksay */ } }
     return katAd(kat);
   }
+  function duzlemZ() { return D.zAks != null && zAksBul(D.zAks) ? String(D.zAks) : zAksiAdi(D.kat); }
   function aksGorunumu() {
     const g = kamera ? kamera.gorunum : "3b";
-    if (g === "plan") return { tur: "plan", z: zAksiAdi(D.kat) };
-    if (g === "on") return { tur: "cephe", y: D.cephe.y || (B.akslar.y[0] || {}).ad || null };
-    if (g === "yan") return { tur: "cephe", x: D.cephe.x || (B.akslar.x[0] || {}).ad || null };
-    return { tur: "3b" };
+    if (g === "plan") return { tur: "plan", z: duzlemZ() };
+    if (g === "on") return { tur: "cephe", y: cepheAks("y") };
+    if (g === "yan") return { tur: "cephe", x: cepheAks("x") };
+    return { tur: "3b", z: duzlemZ() };
+  }
+  function cepheAks(e) {
+    const l = B.akslar[e] || [];
+    return D.cephe[e] && l.some(function (a) { return a.ad === D.cephe[e]; }) ? D.cephe[e] : (l[0] || {}).ad || null;
+  }
+  // plan düzlemi etkin katın Z aksı mı (aks–kat araçları yalnız orada)
+  function duzlemKatMi() {
+    if (D.zAks == null) return true;
+    const z = zAksBul(D.zAks);
+    return !z || (z.kat != null && +z.kat === D.kat);
+  }
+  // aks–kat çizim kipi: aks–kat modeli (surum 3 içeriği yok) ve etkin kat düzlemi → kolon/kiriş/döşeme aks–kat elemanı olarak eklenir
+  function aksKatModu() { return !!B && !s3Var() && !(+B.surum >= 3) && D.kat >= 1 && duzlemKatMi(); }
+  // düzlem değiştir: plan/3B'de Z aksı, cephede X ya da Y aksı (PgUp / PgDn; kat dışı Z aksları — saçak, mahya — dahil)
+  function duzlemSec(tur, ad) {
+    if (tur === "z") {
+      const z = zAksBul(ad);
+      if (!z) return;
+      D.zAks = String(z.ad);
+      if (z.kat != null && B.katlar.some(function (k) { return k.no === +z.kat; })) { D.kat = +z.kat; D.zAks = null; }
+    } else if (tur === "x" || tur === "y") D.cephe[tur] = String(ad);
+    D.kirisBas = null;
+    yenile(); olayYay("gorunum", gorunum());
+  }
+  function duzlemGec(adim) {
+    const M = window.MatrisAks, g = aksGorunumu();
+    if (!M || !M.gorunumKomsu) { katGec(adim); return; }
+    let n;
+    try { n = M.gorunumKomsu(B, g, adim); } catch (e) { katGec(adim); return; }
+    if (g.tur === "cephe") { const e = g.x != null ? "x" : "y"; if (n[e] !== g[e]) duzlemSec(e, n[e]); }
+    else if (n.z !== g.z) duzlemSec("z", n.z);
+  }
+  function duzlemKomsuVar(adim) {
+    const M = window.MatrisAks, g = aksGorunumu();
+    if (!M || !M.gorunumKomsu) return adim > 0 ? D.kat < ustKat() : D.kat > 0;
+    try { const n = M.gorunumKomsu(B, g, adim); return g.tur === "cephe" ? n[g.x != null ? "x" : "y"] !== g[g.x != null ? "x" : "y"] : n.z !== g.z; } catch (e) { return false; }
   }
   function gorunum() {
-    return { tur: kamera ? kamera.gorunum : "3b", kat: D.kat, tumKatlar: D.tumKatlar, aks: B ? aksGorunumu() : null, cephe: Object.assign({}, D.cephe),
+    return { tur: kamera ? kamera.gorunum : "3b", kat: D.kat, zAks: D.zAks, tumKatlar: D.tumKatlar, aks: B ? aksGorunumu() : null, cephe: Object.assign({}, D.cephe),
       bakis: kamera ? { fi: kamera.bakis.fi, psi: kamera.bakis.psi } : null, gizli: Object.keys(D.gizli), yalit: D.yalit ? Object.keys(D.yalit) : null,
       katSuzgec: D.katSuzgec ? D.katSuzgec.slice() : null, telKafes: D.telKafes, etiketler: D.etiketler, izgara: D.izgara };
   }
@@ -3957,13 +4514,16 @@
     if (!B) return null;
     if (typeof g === "string") g = { tur: g };
     g = g || {};
-    if (g.kat != null && B.katlar.some(function (k) { return k.no === +g.kat; })) D.kat = +g.kat;
-    if (g.z != null) {
+    if (g.kat != null && B.katlar.some(function (k) { return k.no === +g.kat; })) { D.kat = +g.kat; D.zAks = null; }
+    if (g.cephe && typeof g.cephe === "object") { if (g.cephe.x != null) D.cephe.x = String(g.cephe.x); if (g.cephe.y != null) D.cephe.y = String(g.cephe.y); }
+    const zIstek = g.z != null ? g.z : (g.aks && g.aks.z != null ? g.aks.z : null);
+    if (zIstek != null) {
       const M = modul("MatrisAks");
       let kat = null;
-      if (M && M.zAksiKati) { try { kat = M.zAksiKati(B, g.z); } catch (e) { kat = null; } }
-      if (kat == null) { const k = B.katlar.filter(function (x) { return x.ad === String(g.z) || String(x.kot) === String(g.z); })[0]; kat = k ? k.no : null; }
-      if (kat != null) D.kat = kat;
+      if (M && M.zAksiKati) { try { kat = M.zAksiKati(B, zIstek); } catch (e) { kat = null; } }
+      if (kat == null && !zAksBul(zIstek)) { const k = B.katlar.filter(function (x) { return x.ad === String(zIstek) || String(x.kot) === String(zIstek); })[0]; kat = k ? k.no : null; }
+      if (kat != null && B.katlar.some(function (k) { return k.no === +kat; })) { D.kat = +kat; D.zAks = null; }
+      else if (zAksBul(zIstek)) D.zAks = String(zAksBul(zIstek).ad);
     }
     if (g.x != null) D.cephe.x = String(g.x);
     if (g.y != null) D.cephe.y = String(g.y);
@@ -4023,7 +4583,13 @@
   // k = {basla?(), bitir?(), dokun?(p, e, hedef), hareket?(p, e), surukleBasla?(p, e) → bool, surukle?(p, e), surukleBitir?(p, e), tus?(e) → bool, ipucu?: metin | fn}
   const KIPLER = {};
   function kipKaydet(id, k) { KIPLER[id] = k || {}; return function () { if (KIPLER[id] === k) delete KIPLER[id]; }; }
-  function aktifKip() { return KIPLER[D.arac] || null; }
+  // kip.eskiMi() true dönerse (ör. aks–kat modelinde kat düzleminde Kolon/Kiriş/Döşeme) sahnenin yerleşik aks–kat aracı çalışır
+  function aktifKip() {
+    const k = KIPLER[D.arac];
+    if (!k) return null;
+    if (k.eskiMi) { try { if (k.eskiMi()) return null; } catch (e) { /* yoksay */ } }
+    return k;
+  }
   function aracSec(id) {
     if (D.arac === id) return;
     const onceki = KIPLER[D.arac];
@@ -4063,7 +4629,9 @@
       g.setAttribute("class", "bn-katman bn-katman-" + k.ad);
       g.setAttribute("data-katman", k.ad);
       try { g.innerHTML = k.ciz(SAHNE_BAGLAM) || ""; } catch (e) { g.innerHTML = ""; }
-      ref.svg.appendChild(g);
+      // sira < 0: elemanların altında (aks ızgarası); değilse üstte (ölçü, yakalama, önizleme)
+      const defs = k.sira < 0 ? ref.svg.querySelector("defs") : null;
+      if (defs) ref.svg.insertBefore(g, defs.nextSibling); else ref.svg.appendChild(g);
       k.el = g;
       if (k.bagla) { try { k.bagla(g); } catch (e) { /* yoksay */ } }
     });
@@ -4144,13 +4712,22 @@
   function kopyala() {
     const l = kopyalanabilir();
     if (!l.length) return;
-    PANO = { kolonlar: [], kirisler: [], dosemeler: [] };
-    l.forEach(function (s) { const n = nesneBul(s.tur, s.no); PANO[s.tur === "kolon" ? "kolonlar" : s.tur === "kiris" ? "kirisler" : "dosemeler"].push(kopya(n)); });
-    A.toast(l.length + " eleman panoya alındı. Başka bir kata geçip Yapıştır (Ctrl+V): aynı akslara kopyalanır.");
+    PANO = { kolonlar: [], kirisler: [], dosemeler: [], s3: { cubuklar: [], paneller: [] } };
+    l.forEach(function (s) {
+      const n = nesneBul(s.tur, s.no), liste = { kolon: "kolonlar", kiris: "kirisler", doseme: "dosemeler" }[s.tur];
+      if (liste) PANO[liste].push(kopya(n));
+      else if (s.tur === "cubuk") PANO.s3.cubuklar.push(+s.no);
+      else if (s.tur === "panel") PANO.s3.paneller.push(+s.no);
+    });
+    const s3 = PANO.s3.cubuklar.length + PANO.s3.paneller.length;
+    A.toast(l.length + " eleman panoya alındı. " + (s3 ? "Yapıştır (Ctrl+V): kaynak kesişime, sonra hedef kesişime dokunun (aks aralığı kadar ötelenir)." : "Başka bir kata geçip Yapıştır (Ctrl+V): aynı akslara kopyalanır."));
     aracYenile();
   }
   function yapistir() {
     if (!PANO) return;
+    if (PANO.s3 && PANO.s3.cubuklar.length + PANO.s3.paneller.length && KIPLER.yapistir) {     // genel model: kesişimden kesişime öteleme kipi
+      aracSec("yapistir"); yenile(); return;
+    }
     const hedefKatlar = katlarHedef(), yeniSecim = [];
     let n = 0, atlanan = 0;
     const aksVar = function (aks) { return aksX(aks[0]) != null && aksY(aks[1]) != null; };
@@ -4186,7 +4763,7 @@
   function katGec(adim) {
     const l = B.katlar.map(function (k) { return k.no; }).sort(function (a, b) { return a - b; }), i = l.indexOf(D.kat), j = Math.max(0, Math.min(l.length - 1, i + adim));
     if (j === i) return;
-    D.kat = l[j]; D.kirisBas = null; if (kamera) kamera.sifirla(); yenile(); olayYay("gorunum", gorunum());
+    D.kat = l[j]; D.zAks = null; D.kirisBas = null; if (kamera) kamera.sifirla(); yenile(); olayYay("gorunum", gorunum());
   }
   function sonucSekmesiGit(sekme) {
     if (!SON) { A.toast("Önce modeli çözün (Çöz ▶)."); return; }
@@ -4199,9 +4776,8 @@
 
   // ---- Model denetimi (aks–kat: dogrula(); surum 3 listeleri varsa ModelOps.denetle de)
   function modelDenetle() {
-    const dg = dogrula(), M = modul("ModelOps");
-    let ek = [];
-    if (M && M.denetle && Array.isArray(B.cubuklar) && B.cubuklar.length) { try { ek = (M.denetle(B).uyarilar || []); } catch (e) { ek = [{ mesaj: "Serbest model denetlenemedi: " + e.message }]; } }
+    const dg = dogrula();
+    const ek = [];      // genel model (ModelOps.denetle) bulguları dogrula() uyarılarında
     const k = kaplamaAc("denetim", "Model denetimi", { kucuk: true });
     const satir = function (u, sinif) {
       const hedef = u.tur && u.no != null ? ' data-denetim-tur="' + kacis(u.tur) + '" data-denetim-no="' + u.no + '" data-denetim-kat="' + (u.kat != null ? u.kat : "") + '"' : "";
@@ -4477,8 +5053,14 @@
   // =====================================================================================================================
   let tabloIstekSira = 0, tabloTazeleZ = 0;
   function tabloIste() {
-    const sira = ++tabloIstekSira;
-    return A.motorIstegi({ islem: "bina_tablolar", girdi: { cozum_kimligi: cozumKimligi(), bina: kopya(B) } }).then(function (y) {
+    const sira = ++tabloIstekSira, kimlik = cozumKimligi();
+    // güncel çözüm varsa yalnız kimlik gider (köprü bina verilince kimliği aks–kat okuyucusuyla yeniden hesaplar; genel modelde eşleşmez);
+    // çözüm bellekten düşmüşse bina ile yeniden istenir
+    const iste = function (g) { return A.motorIstegi({ islem: "bina_tablolar", girdi: g }); };
+    return iste(kimlik ? { cozum_kimligi: kimlik } : { bina: kopya(B) }).then(function (y) {
+      if (kimlik && y && y.hata && /bellekte yok/i.test(String(y.hata))) return iste({ bina: kopya(B) });
+      return y;
+    }).then(function (y) {
       if (sira !== tabloIstekSira) return null;      // daha yeni istek var
       if (!y || y.hata || !Array.isArray(y.tablolar)) throw new Error(motorHatasi(y, "Tablo yanıtı boş."));
       return y;
@@ -4679,8 +5261,8 @@
   // =====================================================================================================================
   let aracYon = null;
   const ARAC_ANAHTAR = "bina.arac";
-  const SONRAKI_ASAMA = " — Etkin değil: aks tabanlı modelleme araçlarıyla bir sonraki aşamada bağlanacak.";
-  // 2. aşamada bağlanacak komutlar: şimdilik kayıtlı, soluk ve ipucunda nedeni yazılı
+  const SONRAKI_ASAMA = " — Etkin değil: aks tabanlı çizim modülü (bina_cizim.js) yüklenmedi; uygulamayı yenileyin.";
+  // aks tabanlı çizim / değiştirme komutları docs/bina_cizim.js'te bağlanır (MatrisBina.komutBagla); modül yoksa soluk ve ipucunda nedeni yazılı
   const SONRAKI = ["aks-ekle", "aks-sil", "aks-tasi", "aks-sistemi", "aks-gorunurluk", "cubuk-ciz", "hizli-cubuk", "hizli-capraz", "egik-cubuk", "makas", "besik-cerceve",
     "asik", "kren-yolu", "mesnet", "yuk-ata", "tasi", "dondur", "ayna", "dogrusal-dizi", "mafsal", "yalniz-cekme",
     "bol", "kesisimde-bol", "duzlemle-bol", "birlestir", "dugum-birlestir", "kesit-degistir", "aci"];
@@ -4724,8 +5306,8 @@
       // Aks (aks–kat modelinin mevcut karşılıkları)
       "aks-sihirbaz": { calistir: function () { sihirbazAc(); }, ipucu: "Aks aralıkları, kat sayısı ve yüksekliğiyle yeni aks–kat modeli kurar." },
       "aks-duzenle": { calistir: function () { panelGit("akslar"); }, ipucu: "Akslar ve katlar tablosu (özellik paneli): ad, konum, kot; elemanlar akslara bağlı taşınır." },
-      "duzlem-yukari": { calistir: function () { katGec(1); }, etkin: function () { return D.kat < ustKat(); }, ipucu: "Bir üst kata (Z düzlemi) geçer." },
-      "duzlem-asagi": { calistir: function () { katGec(-1); }, etkin: function () { return D.kat > 0; }, ipucu: "Bir alt kata (Z düzlemi) geçer; temel katında temel planı." },
+      "duzlem-yukari": { calistir: function () { duzlemGec(1); }, etkin: function () { return duzlemKomsuVar(1); } },
+      "duzlem-asagi": { calistir: function () { duzlemGec(-1); }, etkin: function () { return duzlemKomsuVar(-1); } },
       // Düzenleme
       "geri-al": { calistir: function () { geriAl(); }, etkin: function () { return gecmis.geri.length > 0; } },
       yinele: { calistir: function () { ileriAl(); }, etkin: function () { return gecmis.ileri.length > 0; } },
@@ -4834,7 +5416,7 @@
       gizle: function () { gizle([{ tur: tur, no: no }]); },
       yalit: function () { yalit([{ tur: tur, no: no }]); },
     };
-    if (["kolon", "kiris", "doseme"].indexOf(tur) >= 0 && nesneBul(tur, no)) k.sil = function () { D.secim = [{ tur: tur, no: no }]; secimiSil(); };
+    if (["kolon", "kiris", "doseme", "cubuk", "panel", "dugum", "mesnet"].indexOf(tur) >= 0 && nesneBul(tur, no)) k.sil = function () { D.secim = [{ tur: tur, no: no }]; secimiSil(); };
     void cubukMu;
     BAGLAM_KANCALARI.forEach(function (f) { try { k = f(hedef, k) || k; } catch (e) { /* yoksay */ } });
     return k;
@@ -4901,7 +5483,7 @@
     const M = modul("MatrisArac"), k = M && M.komut(id);
     if (!k) return false;
     if (!M.bagliMi(k)) { A.toast("“" + k.ad + "” bu sayfada henüz bağlı değil."); return true; }
-    if (!M.etkinMi(k)) { A.toast("“" + k.ad + "” şu an kullanılamıyor" + (/sonraki aşamada/.test(k.ipucu || "") ? " (sonraki aşamada bağlanacak)." : ".")); return true; }
+    if (!M.etkinMi(k)) { A.toast("“" + k.ad + "” şu an kullanılamıyor" + (/bina_cizim\.js/.test(k.ipucu || "") ? " (aks tabanlı çizim modülü yüklenmedi)." : ".")); return true; }
     M.calistir(id);
     return true;
   }
@@ -4959,7 +5541,7 @@
       case "arac-iceri": if (!aracYon || !aracYon.iceAktar) return false; aracYon.iceAktar(); return true;
       case "yakalama": case "aks-yapisik": case "aks-balon": case "aks-olcu":      // aks araç seti: 2. aşama (MatrisBina.komutBagla ile)
         if (aracCalistir(k)) return true;
-        A.toast("Bu komut aks tabanlı modelleme araçlarıyla sonraki aşamada bağlanacak."); return true;
+        A.toast("Bu komut aks tabanlı çizim modülüyle (bina_cizim.js) gelir; modül yüklenmedi, uygulamayı yenileyin."); return true;
       default:
         if (MASAUSTU_ARAC[k]) { if (!B) return false; binaSayfasinaGec(); return aracCalistir(MASAUSTU_ARAC[k]); }
         return false;
@@ -5005,7 +5587,7 @@
   // =====================================================================================================================
   let hazirMiB = false;
   window.MatrisBina = Object.freeze({
-    surum: 1,
+    surum: 2,
     hazir: function () { return hazirMiB; },
     bina: function () { return B; },                                  // canlı nesne: salt okunur kabul edin; değiştirmek için binaAyarla
     binaAyarla: function (yeni, sec) { return binaAyarla(yeni, sec); },
@@ -5036,6 +5618,28 @@
     // çıktılar
     raporAc: raporAc, tablolarAc: tablolarAc, isiAc: isiAc, ifcAc: ifcAc, ifcUret: ifcUret,
     projeNesnesi: function () { return B ? projeNesnesi() : null; }, projeYukle: projeYukle, projeKaydet: projeKaydet,
+    // §19 aks tabanlı modelleme (2. aşama; docs/bina_cizim.js kullanır)
+    s3Var: function () { return s3Var(); },                           // surum 3 içeriği (çubuk, panel, düğüm, mesnet, üreteç) var mı
+    aksKatModu: function () { return aksKatModu(); },                 // aks–kat modeli ve etkin kat düzlemi: Kolon/Kiriş/Döşeme aks–kat elemanı ekler
+    duzlem: function () { return B ? aksGorunumu() : null; },         // {tur: "plan"|"cephe"|"3b", z?, x?, y?} (MatrisAks görünümü)
+    duzlemSec: function (tur, ad) { if (B) duzlemSec(tur, ad); },     // tur: "z" | "x" | "y"
+    duzlemGec: function (adim) { if (B) duzlemGec(adim); },
+    duzlemKomsuVar: function (adim) { return !!B && duzlemKomsuVar(adim); },
+    zAkslari: function () { return B ? zAkslari() : []; },
+    refKoordinat: function (ref) { return refP(ref); },              // REF → [X, Y, Z] | null (önbellekli)
+    geometri: function () { return olcumGeo(); },                      // MatrisOlcum.geometri (önbellekli; yakalama)
+    kesitBoyut: function (ad) { return B ? kesitBoyut(ad) : null; },
+    kutuphane: function () { return KUT; },
+    tumKatlar: function () { return !!D.tumKatlar; },
+    pano: function () { return PANO ? kopya(PANO) : null; },
+    ayar: function () { return { aksOlcu: D.aksOlcu, aksBalon: D.aksBalon, izgara: D.izgara, etiketler: D.etiketler, balonR: aksBalonR() }; },
+    ayarla: function (o) { o = o || {}; ["aksOlcu", "aksBalon"].forEach(function (k) { if (o[k] != null) D[k] = !!o[k]; }); if (B) sahneYenile(); },
+    ipucuYenile: function () { ipucuYaz(); },
+    aracYenile: function () { aracYenile(); },
+    sahneYenile: function () { if (B) sahneYenile(); },
+    motorS3: function () { return motorS3Yokla(); },                  // Promise<bool>: köprüde genel model ve bina_kesit_oner var mı
+    pxOlcek: function () { return pxOlcek(); },
+    firca: function () { if (B) firca(); },                          // kesit fırçası (aks–kat; seçili kolon/kirişin kesiti)
   });
 
   // ---------- Başlatma ----------
@@ -5102,6 +5706,7 @@
     let yuklendi = false;
     if (taslak) { try { B = binaYukle(taslak); yuklendi = true; } catch (e) { yuklendi = false; } }
     if (!yuklendi) B = YERLESIK_SABLON["betonarme-2kat-3x2"]();
+    zKatSenkron(B);
     sonAnlik = anlikGoruntu();
     D.kat = Math.min(Math.max(1, ustKat()), D.kat);
     olcumKur();
