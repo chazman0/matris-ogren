@@ -16,6 +16,7 @@ import glob
 import hashlib
 import http.server
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -260,20 +261,36 @@ def test_hazirla_cikti_yapisi(hazir_uygulama):
 
 
 # ---------------------------------------------------------------------------------------------- tarayıcı testleri
+def _chromium_adaylari() -> list[str]:
+    """Hazır Chromium yolları (öncelik sırasıyla): MATRIS_CHROMIUM ortam değişkeni, /opt/pw-browsers/chromium bağlantısı ve
+    tarayıcı paketlerinin klasörleri (eski düzende chrome-linux, yenisinde chrome-linux64)."""
+    adaylar = [os.environ.get("MATRIS_CHROMIUM") or "", "/opt/pw-browsers/chromium"]
+    adaylar += sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"), reverse=True)
+    gorulen, sonuc = set(), []
+    for y in adaylar:
+        if y and y not in gorulen and os.path.isfile(y) and os.access(y, os.X_OK):
+            gorulen.add(y)
+            sonuc.append(y)
+    return sonuc
+
+
 @pytest.fixture(scope="module")
 def tarayici():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as p:
+        b, hata = None, None
         try:
             b = p.chromium.launch()
-        except Exception:
-            yollar = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
-            if not yollar:
-                pytest.skip("Chromium yok")
-            try:
-                b = p.chromium.launch(executable_path=yollar[-1])
-            except Exception as e:  # pragma: no cover
-                pytest.skip(f"Chromium açılamadı: {e}")
+        except Exception as e:
+            hata = e
+            for yol in _chromium_adaylari():
+                try:
+                    b = p.chromium.launch(executable_path=yol)
+                    break
+                except Exception as e2:  # pragma: no cover
+                    hata = e2
+        if b is None:
+            pytest.skip("Chromium yok" if not _chromium_adaylari() else f"Chromium açılamadı: {hata}")
         yield b
         b.close()
 

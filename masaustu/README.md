@@ -38,13 +38,16 @@ Paketler GitHub'da **Releases** sayfasında (sürüm etiketleri, ör. `v1.0.0`) 
   bilgisayar beklenmedik biçimde kapanırsa bir sonraki açılışta "Kurtar" önerilir; pencere içeriği çökerse yeniden yüklemeden sonra
   son durum geri gelir. Klasör: Dosya → Kurtarma klasörünü göster.
 - **Dışa aktarma** (IFC, CSV, JSON, HTML rapor, resim) yerel "Kaydet" iletişim kutusuyla; **Rapor → PDF olarak kaydet** raporu
-  A4 PDF olarak doğrudan yazar.
+  A4 PDF olarak doğrudan yazar, **Rapor → Yazdır** (Bina sayfasında) statik raporu yazıcıya gönderir. **Tablolar (.csv)** bütün
+  tabloları tek bir CSV dosyasına yazar; tablo verisi dosyadan değil, **Analiz → Tablolar** penceresinde yapıştırarak girilir.
 - Bağlantılar (web sürümü, kaynak kodu) varsayılan tarayıcıda açılır; program kendisi hiçbir ağ isteği yapmaz.
 - Ayarlar, son dosyalar ve kurtarma kayıtları: Windows `%APPDATA%\Matris Öğren`, macOS `~/Library/Application Support/Matris Öğren`,
   Linux `~/.config/Matris Öğren`.
-- Klavye kısayollarının tamamı: **Yardım → Klavye kısayolları**. En çok kullanılanlar: Ctrl+N yeni, Ctrl+O aç, Ctrl+S kaydet,
-  Ctrl+Z / Ctrl+Y geri al / yinele, F5 çöz, F6 tasarım kontrolleri, F9 statik rapor, Ctrl+T tablolar, F11 tam ekran, Ctrl+1…4 sayfalar.
-  (macOS'ta Ctrl yerine ⌘.)
+- Menü kısayolları: **Yardım → Klavye kısayolları**. En çok kullanılanlar: Ctrl+N yeni, Ctrl+O aç, Ctrl+S kaydet,
+  Ctrl+Z / Ctrl+Y geri al / yinele, F5 çöz, F6 tasarım kontrolleri, F9 statik rapor, Ctrl+T tablolar, Ctrl+E IFC, Ctrl+G aks verisi,
+  F11 tam ekran, Ctrl+1…4 sayfalar (macOS'ta Ctrl yerine ⌘). Bina sayfasının araç kısayolları (S seç, L çubuk çiz, K kolon, R kiriş,
+  X çapraz, Ctrl+Enter çöz, 1–4 görünümler…) uygulamanın **Yardım** sayfasındaki "Klavye kısayolları" kartında ve Bina sayfasında
+  **?** tuşuyla açılan pencerededir; ikisi de araç kutusunun komut kaydından üretilir.
 
 ## Geliştiriciler için
 
@@ -78,7 +81,7 @@ Notlar:
 | `hazirla.js` | `../docs`'u `uygulama/`ya kopyalar; motorun Pyodide sürümünü (`docs/motor.worker.js` → `PYODIDE_SURUM`) ve yüklediği paketleri (`loadPackage([...])`) okur, bağımlılıkları `pyodide-lock.json`'dan çözer, çekirdek + tekerlekleri SHA-256 denetimiyle `uygulama/pyodide/` altına indirir; sayfalardaki CDN kütüphanelerini (formül dizgisi, markdown) `uygulama/kutuphane/`ye indirip adresleri yerelleştirir; kopyadaki worker'a `self.MATRIS_PYODIDE_URL = "./pyodide/"` ekler; `uygulama/masaustu.json` ve `build/icon.png` yazar. Çıkış kodu 3 = ağ hatası. |
 | `main.js` | Ana süreç: `app://matris/` protokolü, pencereler ve pencere durumu, Türkçe menü, IPC, dosya iletişim kutuları, son dosyalar, otomatik kayıt / kurtarma, tek örnek, dosya ilişkilendirmesi, sürükle-bırak, PDF. |
 | `preload.js` | Yalıtılmış ön yükleme betiği: sayfaya yalnız `window.masaustu` yüzeyini açar; sürükle-bırakı işler. |
-| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler) ve kısayol listesi. |
+| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler), komut listesi (`komutListesi`, aşağıdaki Komutlar tablosu) ve menü kısayolları penceresinin metni (`kisayolMetni`). |
 | `lib/sunucu.js` | `uygulama/` dosyalarının sunulması: yol denetimi, içerik türleri (`application/wasm` vb.), HTML'e İçerik Güvenliği Politikası. |
 | `lib/yardimci.js` | Saf yardımcılar: atomik yazma, proje okuma, ayar deposu, son dosyalar, komut satırı, pencere sınırı, kurtarma, süzgeçler, PDF bilgi sözlüğü. |
 | `../docs/masaustu_kopru.js` | Sayfa tarafı köprü: `window.MatrisDosya` ve `masaustu-*` olayları (web sürümünde de yüklenir). |
@@ -134,7 +137,8 @@ komutlarda köprünün yerleşik davranışı çalışır, işlenmeyen dosyalar 
   "Kaydet" seçilirse `{komut: "kaydet", kapatmak: true}` gönderir; sayfa `MatrisDosya.kaydet(ad, metin, "matris")` ile kaydedince
   pencere kendiliğinden kapanır (vazgeçilirse açık kalır).
   Yerleşik davranışlar (işlenmezse): `geri-al` / `yinele` odak bir metin kutusundaysa metni geri alır / yineler; `sayfa` alt gezinti
-  düğmesine tıklar; `ayarlar` Ayarlar penceresini açar; `yazdir` sayfayı yazdırır; `kaydet` / `farkli-kaydet`, sayfa
+  düğmesine tıklar; `ayarlar` Ayarlar penceresini açar; `yazdir` sayfayı yazdırır (Bina sayfası bu komutu kendisi işler ve statik
+  raporu yazdırır, bkz. Komutlar ³); `kaydet` / `farkli-kaydet`, sayfa
   `MatrisDosya.projeKaynagi(fn)` bildirmişse projeyi `fn()`'in verdiği metinle kaydeder (yani bina sayfasının yalnız
   `projeKaynagi`, `degisti` ve `masaustu-dosya-acildi`'yi bağlaması Kaydet / Farklı kaydet / kapatırken kaydet için yeter).
 - **`masaustu-dosya-acildi`** — `e.detail = {ad, icerik, yol?, kurtarma?}`: Dosya → Aç, son dosyalar, çift tıklama / komut satırı,
@@ -162,117 +166,135 @@ MatrisDosya.projeKaynagi(function () { return { ad: (bina.ad || "bina") + ".matr
 
 ### Komutlar
 
+Tablo menü şablonunun (`lib/menu.js` → `komutListesi()`) birebir dökümüdür: her menü öğesi bir satır (aynı komut birden çok
+menüde olabilir); `testler/js/masaustu.test.js` iki yönlü karşılaştırır, `testler/test_bina_kablolama.py` her komutun
+`docs/bina.js`'te (ya da köprünün yerleşik davranışında) işlendiğini denetler.
+
 ¹ Sayfaya ait tuş: menüde gösterilir, ama tuş sayfaya gider (sayfanın kendi klavye işleyicisi; metin kutularının doğal davranışı
 bozulmaz). Menüden tıklanınca yine komut gelir. macOS'ta Ctrl yerine ⌘; yinele ⇧⌘Z. Dosya → Aç (Ctrl+O), Yeni pencere,
-Son dosyalar, Tam ekran (F11), yakınlaştırma ve Hakkında ana süreçte işlenir, sayfaya komut gelmez.
+Son dosyalar, Tam ekran (F11), yakınlaştırma, Yardım → Klavye kısayolları, Web sürümü, Kaynak kodu ve Hakkında ana süreçte
+işlenir, sayfaya komut gelmez.
+
+² `csv`: Bina sayfasının bütün tablolarını (Tablolar penceresindeki her tablo, `Tablo: başlık;grup;ad` satırıyla başlayan bölümler)
+**tek bir CSV dosyasına** kaydeder: `;` ayırıcı, ondalık virgül, BOM (Türkçe yerel ayarlı tablo programları için). Pencere açılmaz.
+CSV dosyası içe aktarılmaz; tablo verisi Tablolar penceresinde hücreleri tablo programından **yapıştırarak** girilir (⁴).
+
+³ `yazdir`: Bina sayfasında statik raporu üretir (çözüm yoksa önce çözer) ve rapor penceresinde yazdırma iletişim kutusunu açar;
+başka sayfada sayfa komutu işlemez ve köprünün yerleşik davranışı (`window.print()`) sayfayı yazdırır.
+
+⁴ `tablolar`: Tablolar ve metraj penceresi (sarı hücreler düzenlenir; sekmeyle ayrılmış hücreler yapıştırılır, Ctrl+Z geri alır).
 
 | `komut` | ek alanlar | Menü | Kısayol |
 |---|---|---|---|
-| `yeni` |  | Dosya › Yeni proje | `Ctrl+N` |
-| `kaydet` |  | Dosya › Kaydet | `Ctrl+S` |
-| `farkli-kaydet` |  | Dosya › Farklı kaydet… | `Ctrl+Shift+S` |
-| `json-iceri` |  | Dosya › Bina verisi (.json)… |  |
-| `csv-iceri` |  | Dosya › Tablo (.csv)… |  |
-| `ifc` |  | Dosya › IFC yapı modeli (.ifc)… | `Ctrl+E` |
-| `csv` |  | Dosya › Tablolar (.csv)… |  |
-| `json-disari` |  | Dosya › Bina verisi (.json)… |  |
-| `rapor-html` |  | Dosya › Statik rapor (.html)… |  |
-| `resim` |  | Dosya › Görünüm resmi (.png)… |  |
-| `rapor-pdf` |  | Dosya › Raporu PDF olarak kaydet… | `Ctrl+P` |
-| `geri-al` |  | Düzen › Geri al | `Ctrl+Z` ¹ |
-| `yinele` |  | Düzen › Yinele | `Ctrl+Y` ¹ |
-| `eleman-kopyala` |  | Düzen › Elemanları kopyala |  |
-| `eleman-yapistir` |  | Düzen › Elemanları yapıştır |  |
-| `sil` |  | Düzen › Seçileni sil | `Delete` ¹ |
-| `secimi-birak` |  | Düzen › Seçimi bırak | `Esc` ¹ |
-| `tasi` |  | Düzen › Taşı… |  |
-| `dondur` |  | Düzen › Döndür… |  |
-| `ayna` |  | Düzen › Ayna… |  |
-| `dizi` |  | Düzen › Doğrusal dizi… |  |
-| `ozellik-ata` |  | Düzen › Özellik ata… |  |
-| `mafsal` |  | Düzen › Uç serbestlikleri (mafsal)… |  |
-| `yalniz-cekme` |  | Düzen › Yalnız çekme |  |
-| `bol` |  | Düzen › Böl… |  |
-| `kesisimde-bol` |  | Düzen › Kesişimlerde böl |  |
-| `birlestir` |  | Düzen › Birleştir |  |
-| `dugum-birlestir` |  | Düzen › Düğümleri birleştir |  |
-| `ayarlar` |  | Düzen › Ayarlar… | `Ctrl+,` |
+| `yeni` | | Dosya › Yeni proje | `Ctrl+N` |
+| `kaydet` | | Dosya › Kaydet | `Ctrl+S` |
+| `farkli-kaydet` | | Dosya › Farklı kaydet… | `Ctrl+Shift+S` |
+| `json-iceri` | | Dosya › Bina verisi (.json)… | |
+| `ifc` | | Dosya › IFC yapı modeli (.ifc)… | `Ctrl+E` |
+| `csv` | | Dosya › Tablolar (.csv)… ² | |
+| `json-disari` | | Dosya › Bina verisi (.json)… | |
+| `rapor-html` | | Dosya › Statik rapor (.html)… | |
+| `resim` | | Dosya › Görünüm resmi (.png)… | |
+| `rapor-pdf` | | Dosya › Raporu PDF olarak kaydet… | `Ctrl+P` |
+| `geri-al` | | Düzen › Geri al | `Ctrl+Z` ¹ |
+| `yinele` | | Düzen › Yinele | `Ctrl+Y` ¹ |
+| `eleman-kopyala` | | Düzen › Elemanları kopyala | |
+| `eleman-yapistir` | | Düzen › Elemanları yapıştır | |
+| `sil` | | Düzen › Seçileni sil | `Delete` ¹ |
+| `secimi-birak` | | Düzen › Seçimi bırak | `Esc` ¹ |
+| `tasi` | | Düzen › Taşı… | |
+| `dondur` | | Düzen › Döndür… | |
+| `ayna` | | Düzen › Ayna… | |
+| `dizi` | | Düzen › Doğrusal dizi… | |
+| `ozellik-ata` | | Düzen › Özellik ata… | |
+| `mafsal` | | Düzen › Uç serbestlikleri (mafsal)… | |
+| `yalniz-cekme` | | Düzen › Yalnız çekme | |
+| `bol` | | Düzen › Böl… | |
+| `kesisimde-bol` | | Düzen › Kesişimlerde böl | |
+| `birlestir` | | Düzen › Birleştir | |
+| `dugum-birlestir` | | Düzen › Düğümleri birleştir | |
+| `ayarlar` | | Düzen › Ayarlar… | `Ctrl+,` |
 | `sayfa` | `sayfa: "hesap"` | Görünüm › Hesapla | `Ctrl+1` |
 | `sayfa` | `sayfa: "dersler"` | Görünüm › Dersler | `Ctrl+2` |
 | `sayfa` | `sayfa: "se"` | Görünüm › Sonlu eleman | `Ctrl+3` |
 | `sayfa` | `sayfa: "bina"` | Görünüm › Bina | `Ctrl+4` |
-| `gorunum-3b` |  | Görünüm › 3B görünüm |  |
-| `gorunum-plan` |  | Görünüm › Plan (seçili Z aksında) |  |
-| `gorunum-on` |  | Görünüm › Önden (seçili Y aksında) |  |
-| `gorunum-yan` |  | Görünüm › Yandan (seçili X aksında) |  |
-| `sigdir` |  | Görünüm › Modeli sığdır | `Ctrl+Shift+F` |
-| `kat-suzgeci` |  | Görünüm › Kat süzgeci… |  |
-| `yalit` |  | Görünüm › Seçileni yalıt |  |
-| `tumunu-goster` |  | Görünüm › Tümünü göster |  |
-| `tel-kafes` |  | Görünüm › Tel kafes / katı |  |
-| `etiketler` |  | Görünüm › Etiketler |  |
-| `arac-kutulari` |  | Görünüm › Araç kutularını göster / gizle | `Ctrl+Shift+T` |
-| `arac-ozellestir` |  | Görünüm › Özelleştir… |  |
-| `arac-varsayilan` |  | Görünüm › Varsayılan yerleşime dön |  |
-| `arac-disari` |  | Görünüm › Yerleşimi dışa aktar… |  |
-| `arac-iceri` |  | Görünüm › Yerleşimi içe aktar… |  |
-| `secim-kipi` |  | Çizim › Seç |  |
-| `cubuk-ciz` |  | Çizim › Çubuk çiz (iki kesişim) |  |
-| `hizli-cubuk` |  | Çizim › Hızlı çubuk (aks parçası) |  |
-| `kolon-ekle` |  | Çizim › Hızlı kolon |  |
-| `kiris-ekle` |  | Çizim › Hızlı kiriş |  |
-| `capraz-ekle` |  | Çizim › Hızlı çapraz… |  |
-| `doseme-ekle` |  | Çizim › Hızlı panel / döşeme |  |
-| `egik-cubuk` |  | Çizim › Eğik çubuk |  |
-| `uretec-makas` |  | Çizim › Makas… |  |
-| `uretec-cerceve` |  | Çizim › Beşik çerçeve… |  |
-| `uretec-asik` |  | Çizim › Aşıklar… |  |
-| `uretec-kren` |  | Çizim › Kren yolu… |  |
-| `sablon` |  | Çizim › Şablondan bina… |  |
-| `mesnet-ata` |  | Çizim › Mesnet ata… |  |
-| `yuk-ata` |  | Çizim › Yük ata… |  |
-| `olc-uzaklik` |  | Çizim › Uzaklık |  |
-| `olc-aci` |  | Çizim › Açı |  |
-| `olc-alan` |  | Çizim › Alan |  |
-| `olc-kot` |  | Çizim › Kot farkı |  |
-| `olc-koordinat` |  | Çizim › Koordinat sorgula |  |
-| `olc-temizle` |  | Çizim › Ölçüleri temizle |  |
-| `yakalama` |  | Çizim › Kesişimlere yakalama |  |
-| `aks-hizli` |  | Aks › Hızlı aks (yeni model)… |  |
-| `aks-duzenle` |  | Aks › Aks verisini düzenle… | `Ctrl+G` |
-| `kat-duzenle` |  | Aks › Katları düzenle… |  |
-| `aks-ekle` |  | Aks › Aks ekle… |  |
-| `aks-sil` |  | Aks › Aks sil… |  |
-| `aks-yapisik` |  | Aks › Elemanlar akslara yapışık |  |
-| `aks-sistemi-ekle` |  | Aks › Ek aks sistemi ekle… |  |
-| `aks-sistemleri` |  | Aks › Aks sistemlerini düzenle… |  |
-| `aks-sistemi-sec` |  | Aks › Görünür aks sistemi… |  |
-| `aks-yukari` |  | Aks › Bir üst aks | `PageUp` ¹ |
-| `aks-asagi` |  | Aks › Bir alt aks | `PageDown` ¹ |
-| `izgara` |  | Aks › Aks ızgarasını göster / gizle |  |
-| `aks-balon` |  | Aks › Aks balonları |  |
-| `aks-olcu` |  | Aks › Ölçü zinciri |  |
-| `coz` |  | Analiz › Çöz | `F5` |
-| `yuk-durumlari` |  | Analiz › Yük durumları… |  |
-| `kombinasyonlar` |  | Analiz › Yük birleşimleri… |  |
-| `deprem` |  | Analiz › Deprem parametreleri… |  |
-| `kar-ruzgar` |  | Analiz › Kar ve rüzgâr… |  |
-| `tablolar` |  | Analiz › Tablolar | `Ctrl+T` |
-| `isi-haritasi` |  | Analiz › Isı haritası | `Ctrl+Shift+H` |
-| `yuk-akisi` |  | Analiz › Yük akışı |  |
-| `sekil-degistirme` |  | Analiz › Şekil değiştirmiş biçim |  |
-| `sonuclari-temizle` |  | Analiz › Sonuçları temizle |  |
-| `tasarim-kontrol` |  | Tasarım › Tüm kontroller | `F6` |
-| `betonarme` |  | Tasarım › Betonarme kiriş ve kolonlar |  |
-| `celik` |  | Tasarım › Çelik elemanlar |  |
-| `temel` |  | Tasarım › Temeller |  |
-| `kesit-oner` |  | Tasarım › Kesit öner ve uygula |  |
-| `metraj` |  | Tasarım › Metraj |  |
-| `rapor` |  | Rapor › Statik hesap raporu | `F9` |
-| `proje-bilgileri` |  | Rapor › Proje bilgileri… |  |
-| `rapor-icerik` |  | Rapor › Rapor içeriği… |  |
-| `yazdir` |  | Rapor › Yazdır… | `Ctrl+Shift+P` |
-| `sayfa` | `sayfa: "yardim"` | Yardım › Kullanım kılavuzu |  |
+| `gorunum-3b` | | Görünüm › 3B görünüm | |
+| `gorunum-plan` | | Görünüm › Plan (seçili Z aksında) | |
+| `gorunum-on` | | Görünüm › Önden (seçili Y aksında) | |
+| `gorunum-yan` | | Görünüm › Yandan (seçili X aksında) | |
+| `sigdir` | | Görünüm › Modeli sığdır | `Ctrl+Shift+F` |
+| `kat-suzgeci` | | Görünüm › Kat süzgeci… | |
+| `yalit` | | Görünüm › Seçileni yalıt | |
+| `tumunu-goster` | | Görünüm › Tümünü göster | |
+| `tel-kafes` | | Görünüm › Tel kafes / katı | |
+| `etiketler` | | Görünüm › Etiketler | |
+| `arac-kutulari` | | Görünüm › Araç kutularını göster / gizle | `Ctrl+Shift+T` |
+| `arac-ozellestir` | | Görünüm › Özelleştir… | |
+| `arac-varsayilan` | | Görünüm › Varsayılan yerleşime dön | |
+| `arac-disari` | | Görünüm › Yerleşimi dışa aktar… | |
+| `arac-iceri` | | Görünüm › Yerleşimi içe aktar… | |
+| `secim-kipi` | | Çizim › Seç | |
+| `cubuk-ciz` | | Çizim › Çubuk çiz (iki kesişim) | |
+| `hizli-cubuk` | | Çizim › Hızlı çubuk (aks parçası) | |
+| `kolon-ekle` | | Çizim › Hızlı kolon | |
+| `kiris-ekle` | | Çizim › Hızlı kiriş | |
+| `capraz-ekle` | | Çizim › Hızlı çapraz… | |
+| `doseme-ekle` | | Çizim › Hızlı panel / döşeme | |
+| `egik-cubuk` | | Çizim › Eğik çubuk | |
+| `uretec-makas` | | Çizim › Makas… | |
+| `uretec-cerceve` | | Çizim › Beşik çerçeve… | |
+| `uretec-asik` | | Çizim › Aşıklar… | |
+| `uretec-kren` | | Çizim › Kren yolu… | |
+| `sablon` | | Çizim › Şablondan bina… | |
+| `mesnet-ata` | | Çizim › Mesnet ata… | |
+| `yuk-ata` | | Çizim › Yük ata… | |
+| `olc-uzaklik` | | Çizim › Uzaklık | |
+| `olc-aci` | | Çizim › Açı | |
+| `olc-alan` | | Çizim › Alan | |
+| `olc-kot` | | Çizim › Kot farkı | |
+| `olc-koordinat` | | Çizim › Koordinat sorgula | |
+| `olc-temizle` | | Çizim › Ölçüleri temizle | |
+| `yakalama` | | Çizim › Kesişimlere yakalama | |
+| `aks-hizli` | | Aks › Hızlı aks (yeni model)… | |
+| `aks-duzenle` | | Aks › Aks verisini düzenle… | `Ctrl+G` |
+| `kat-duzenle` | | Aks › Katları düzenle… | |
+| `aks-ekle` | | Aks › Aks ekle… | |
+| `aks-sil` | | Aks › Aks sil… | |
+| `aks-yapisik` | | Aks › Elemanlar akslara yapışık | |
+| `aks-sistemi-ekle` | | Aks › Ek aks sistemi ekle… | |
+| `aks-sistemleri` | | Aks › Aks sistemlerini düzenle… | |
+| `aks-sistemi-sec` | | Aks › Görünür aks sistemi… | |
+| `aks-yukari` | | Aks › Bir üst aks | `PageUp` ¹ |
+| `aks-asagi` | | Aks › Bir alt aks | `PageDown` ¹ |
+| `izgara` | | Aks › Aks ızgarasını göster / gizle | |
+| `aks-balon` | | Aks › Aks balonları | |
+| `aks-olcu` | | Aks › Ölçü zinciri | |
+| `coz` | | Analiz › Çöz | `F5` |
+| `yuk-durumlari` | | Analiz › Yük durumları… | |
+| `kombinasyonlar` | | Analiz › Yük birleşimleri… | |
+| `deprem` | | Analiz › Deprem parametreleri… | |
+| `kar-ruzgar` | | Analiz › Kar ve rüzgâr… | |
+| `tablolar` | | Analiz › Tablolar (düzenle, yapıştır)… ⁴ | `Ctrl+T` |
+| `isi-haritasi` | | Analiz › Isı haritası | `Ctrl+Shift+H` |
+| `yuk-akisi` | | Analiz › Yük akışı | |
+| `sekil-degistirme` | | Analiz › Şekil değiştirmiş biçim | |
+| `sonuclari-temizle` | | Analiz › Sonuçları temizle | |
+| `tasarim-kontrol` | | Tasarım › Tüm kontroller | `F6` |
+| `betonarme` | | Tasarım › Betonarme kiriş ve kolonlar | |
+| `celik` | | Tasarım › Çelik elemanlar | |
+| `temel` | | Tasarım › Temeller | |
+| `kesit-oner` | | Tasarım › Kesit öner ve uygula | |
+| `metraj` | | Tasarım › Metraj | |
+| `rapor` | | Rapor › Statik hesap raporu | `F9` |
+| `proje-bilgileri` | | Rapor › Proje bilgileri… | |
+| `rapor-icerik` | | Rapor › Rapor içeriği… | |
+| `rapor-pdf` | | Rapor › PDF olarak kaydet… | |
+| `rapor-html` | | Rapor › HTML olarak kaydet… | |
+| `yazdir` | | Rapor › Yazdır… ³ | `Ctrl+Shift+P` |
+| `ifc` | | Rapor › IFC dışa aktar… | |
+| `csv` | | Rapor › Tabloları CSV kaydet… ² | |
+| `sayfa` | `sayfa: "dersler"` | Yardım › Dersler | `F1` |
+| `sayfa` | `sayfa: "yardim"` | Yardım › Kullanım kılavuzu | |
 
 ### `window.masaustu` (ön yükleme betiği — doğrudan kullanmayın, `MatrisDosya` üzerinden)
 
@@ -300,7 +322,7 @@ sürümüne eklenir. İş akışının yetkisi yalnız okuma; sürüm işi yaln�
 ## Testler
 
 - `testler/js/masaustu.test.js` (`node --test`): `hazirla.js` yardımcıları, worker'ın yerel Pyodide adresi, ön yükleme yüzeyi (sahte
-  çatı modülüyle), menü şablonu, ana süreç yardımcıları, protokol sunucusu.
+  çatı modülüyle), menü şablonu, Komutlar tablosu ↔ `komutListesi()` (iki yönlü), ana süreç yardımcıları, protokol sunucusu.
 - `testler/test_masaustu.py` (pytest): sözdizimi, `package.json` / kilit dosyası / iş akışı alanları, git'e girmemesi gerekenler,
   `hazirla.js` çıktı yapısı (ağ yoksa atlanır), `MatrisDosya` web yolu ve masaüstü köprüsü (tarayıcıda, sahte `window.masaustu` ile),
   hazırlanan uygulamanın CDN'siz (çevrimdışı) motor yüklemesi ve bir bina şablonunun çözümü.

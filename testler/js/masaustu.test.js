@@ -285,6 +285,45 @@ test("menü: tıklama komutu pencereyle iletir; yerel işler çağrılır", func
   assert.match(metin, /Ctrl\+S {2}— {2}Kaydet/);
   assert.match(metin, /F11 {2}— {2}Tam ekran/);
   assert.match(MENU.kisayolMetni("darwin"), /⌘S/);
+  // menü kısayolları penceresi Bina sayfasının araç kısayollarına (komut kaydından üretilen listeler) yönlendirir
+  assert.match(metin, /\n\nBina sayfasındaki araç kısayolları .*Klavye kısayolları kartı ya da Bina sayfasında \? tuşu\.$/);
+});
+
+// README "Komutlar" tablosu: | `komut` | ek alanlar | Menü | Kısayol | (dipnot işaretleri ¹ ² ³ ⁴ sayılmaz)
+function readmeKomutlari() {
+  const metin = fs.readFileSync(path.join(MASAUSTU, "README.md"), "utf8");
+  const bas = metin.indexOf("### Komutlar\n");
+  assert.ok(bas >= 0, "masaustu/README.md: ### Komutlar bölümü yok");
+  const bolum = metin.slice(bas, metin.indexOf("\n### ", bas + 10));
+  const satirlar = [];
+  bolum.split("\n").forEach(function (s) {
+    const m = /^\| `([a-z0-9-]+)` \|([^|]*)\|([^|]*)\|([^|]*)\|$/.exec(s);
+    if (!m || m[1] === "komut") return;
+    const ek = /sayfa: "([a-z]+)"/.exec(m[2]);
+    satirlar.push({ komut: m[1], sayfa: ek ? ek[1] : null, menu: m[3].replace(/[¹²³⁴⁵]/g, "").trim(),
+      kisayol: m[4].replace(/[`¹]/g, "").trim(), sayfaTusu: m[4].indexOf("¹") >= 0 });
+  });
+  return satirlar;
+}
+
+test("menü: README Komutlar tablosu komut listesiyle birebir (iki yönlü)", function () {
+  const tablo = readmeKomutlari();
+  const beklenen = MENU.komutListesi("linux").map(function (k) {
+    return { komut: k.komut, sayfa: k.ek ? k.ek.sayfa : null, menu: k.menu + " › " + k.etiket,
+      kisayol: String(k.kisayol || "").replace("CmdOrCtrl", "Ctrl"), sayfaTusu: !!k.sayfaTusu };
+  });
+  assert.ok(beklenen.length > 100, "komut listesi beklenenden kısa: " + beklenen.length);
+  // sıra da aynı: tablo menü sırasını izler; eksik ya da fazla satır, yanlış etiket / kısayol farkı burada görünür
+  assert.deepEqual(tablo, beklenen);
+  // kimlik kümeleri her platformda eşit (macOS uygulama menüsünde yalnız "ayarlar" yinelenir)
+  const kume = function (l) { return Array.from(new Set(l.map(function (k) { return k.komut; }))).sort(); };
+  ["linux", "win32", "darwin"].forEach(function (p) { assert.deepEqual(kume(MENU.komutListesi(p)), kume(tablo), p); });
+  // dosyadan CSV içe aktarma yok: İçe aktar menüsünde tablo öğesi yok, tablolar yapıştırmayla (Analiz › Tablolar)
+  assert.ok(!tablo.some(function (k) { return k.komut === "csv-iceri"; }));
+  const dosya = MENU.menuSablonu({ platform: "linux", komut: function () {}, yerel: {} })[0].submenu;
+  const iceri = dosya.find(function (o) { return o.label === "İçe aktar"; }).submenu;
+  assert.deepEqual(iceri.map(function (o) { return o.id; }), ["komut:json-iceri"]);
+  assert.ok(tablo.some(function (k) { return k.komut === "tablolar" && /yapıştır/.test(k.menu) && k.kisayol === "Ctrl+T"; }));
 });
 
 // ------------------------------------------------------------------ ana süreç yardımcıları
