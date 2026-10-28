@@ -318,7 +318,7 @@ def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
     o = y["oneriler"][0]
     assert _C4_ALANLARI <= set(o) and o["kaynak"] == {"aks_kat": "kolon", "no": 1} and o["sistem"] == "betonarme"
     assert o["dc_once"] == pytest.approx(tablo[("kolon", 1)]) and o["dc_once"] == pytest.approx(0.233, abs=0.001)
-    assert o["dc_oneri"] is not None and o["degisim"] in ("büyüt", "küçült", "aynı")
+    assert o["dc_oneri"] is not None and o["degisim"] in ("büyüt", "küçült", "aynı", "donatı")      # K1: "donatı" (yalnız ρ)
     if o["degisim"] != "aynı":
         u = o["uygula"]
         assert set(u) >= {"ad", "tanim", "yeni"} and u["tanim"]["tip"] == "dikdortgen"
@@ -355,6 +355,34 @@ def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
     assert z["hata"] is None
     k1 = next(k for k in z["veri"]["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
     assert k1["kesit"] == u["ad"] and k1["dc"] <= 1.0 and k1["durum"] == "yeterli"
+
+
+_S1_SABLONLAR = [s["ad"] for s in yapi.bina_sablonlar() if yapi.bina_sablon(s["ad"]).get("surum", 1) < 3]
+
+
+@pytest.mark.parametrize("ad", _S1_SABLONLAR)
+def test_kesit_oner_hepsini_uygula_aks_kat_yeterli(kopru, ad):
+    """K1 'Hepsini uygula' (yinele 3) + aks–kat motoruyla yeniden çözüm: en büyük D/C ≤ 1, ya da yanıt açık '… turda yakınsamadı'
+    uyarısı taşır. Eskiden (yinele 1, grup kartı b·h ile seçilip ρ düşerdi, ρ-only değişiklik hiç uygulanmazdı) 2kat 1,09,
+    radye 1,26 (16 kolon) çıkar ve arayüz 'uygulandı' derdi."""
+    b = yapi.bina_sablon(ad)
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "bina": b, "hedef": "hepsi", "yinele": 3})
+    assert y["hata"] is None and y["bina"] is not None and y["bina"].get("surum", 1) < 3
+    assert "mevcut iç kuvvetlerle tahmin" in y["aciklama"]
+    z = iste(kopru, "bina_coz", {"bina": y["bina"]})
+    assert z["hata"] is None
+    dc = z["veri"]["tasarim"]["en_buyuk_dc"]
+    assert dc <= 1.0 or any("turda yakınsamadı" in u for u in y["uyarilar"]), (ad, dc, y["turlar"])
+    assert y["dc_sonra"] == pytest.approx(dc, abs=0.01)           # genel motorun son çözümü ≈ aks–kat tablosu
+    for t in y["turlar"][1:]:                                     # onarım turları küçültmez
+        assert all(d["degisim"] in ("büyüt", "donatı") for d in t.get("degisen") or [])
+    # turlarda eklenip kullanılmayan kesit kartı kalmaz; yakınsayınca ρ yalnız azalır ve kart kullanılır
+    yb = y["bina"]
+    kullanilan = {e["kesit"] for a in ("kolonlar", "kirisler") for e in yb.get(a) or []}
+    assert set(yb["kesitler"]) <= kullanilan | set(b["kesitler"])
+    for d in y["donati_azaltma"]:
+        assert d["donati_orani"] < d["rho_once"] and d["yeni"] in kullanilan and d["kesit"] not in yb["kesitler"]
 
 
 def test_kesit_oner_genel_model_c4(kopru):

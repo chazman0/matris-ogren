@@ -426,6 +426,100 @@ def test_kesit_onerisi_kendi_tahkikinde_yeterli(ad, cubuklar):
             assert x["oneri"] != "IPE 100" and x["durum"].startswith("doğrulandı") and "IPE 100" in x["gerekce"][-1]
 
 
+def _rc_30(boy=0.30):
+    """betonarme-3kat-3x3 genel motorla (surum 3), bütün kolonlar boy × boy (ρ verilmez: 0,01)."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["surum"] = 3
+    b["kesitler"]["S45x45"].update({"b": boy, "h": boy})
+    return b
+
+
+def test_kesit_onerisi_yalniz_donati_degisimi():
+    """K1 'donatı': b × h yeterli ama gerekli ρ > mevcut ρ → uygula {ad 'B30x30-ρ%2.00', tanım = mevcut kart + donati_orani}
+    (null değil). Eskiden degisim 'aynı', uygula None: 'Mevcut 300 × 300 mm: ρ = 0.02 ile yeterli' denip uygulanamazdı."""
+    b = _rc_30()
+    o = YS.kesit_oner(b, hedef=[{"tur": "cubuk", "no": 1}])
+    x = o["oneriler"][0]
+    assert x["kesit"] == "S45x45" and x["oneri"] == "30x30" and x["degisim"] == "donatı"
+    assert x["dc_once"] > 1.0 and x["dc_oneri"] <= 1.0 and x["rho_once"] == pytest.approx(0.01)
+    assert x["donati_orani"] >= 0.02 - 1e-9 and any("yalnız boyuna donatıda" in g for g in x["gerekce"])
+    u = x["uygula"]
+    assert u is not None and u["yeni"] and u["ad"] == f"B30x30-ρ%{x['donati_orani'] * 100:.2f}"
+    eski = b["kesitler"]["S45x45"]
+    assert u["tanim"] == dict(eski, donati_orani=x["donati_orani"])          # mevcut kart + donati_orani
+    assert "mevcut iç kuvvetlerle tahmin" in o["aciklama"]
+    # uygulanınca aynı kolon için yeniden öneri: ρ zaten yeterli → değişiklik yok (sonsuz döngü yok)
+    b2 = copy.deepcopy(b)
+    b2["kesitler"][u["ad"]] = u["tanim"]
+    next(k for k in b2["kolonlar"] if k["no"] == 1)["kesit"] = u["ad"]
+    x2 = YS.kesit_oner(b2, hedef=[{"tur": "cubuk", "no": 1}])["oneriler"][0]
+    assert x2["kesit"] == u["ad"] and x2["rho_once"] == pytest.approx(x["donati_orani"])
+    if x2["dc_once"] <= 1.0:
+        assert x2["degisim"] in ("aynı", "küçült") and (x2["degisim"] != "aynı" or x2["uygula"] is None)
+    # As verilmiş kart: donatı değişiminde As düşer (ρ yeni toplam donatıyı tanımlar)
+    b3 = _rc_30()
+    b3["kesitler"]["S45x45"]["As"] = 9.0                          # ρ = 0,01
+    x3 = YS.kesit_oner(b3, hedef=[{"tur": "cubuk", "no": 1}])["oneriler"][0]
+    assert x3["degisim"] == "donatı" and "As" not in x3["uygula"]["tanim"] and x3["uygula"]["tanim"]["donati_orani"] >= 0.02 - 1e-9
+
+
+def test_kesit_onerisi_yinele_yakinsar_ve_rho_grubu():
+    """K1 'Hepsini uygula' (yinele 3): ρ-only değişiklik de uygulanır, onarım turunda grup küçülmez, son çözüm D/C ≤ 1. Eskiden
+    bütün kolonlar 'aynı' (uygula yok) kalır, kirişler küçülür ve D/C 1,65 → 1,85 olurdu."""
+    o = YS.kesit_oner(_rc_30(), yinele=3)
+    assert o["dc_once"] > 1.6 and o["dc_sonra"] <= 1.0
+    assert not any("yakınsamadı" in u for u in o["uyarilar"])
+    t0 = o["turlar"][0]
+    kolon = next(d for d in t0["degisen"] if d["kesit"] == "S45x45")
+    assert kolon["yeni"].startswith("B30x30-ρ%") and kolon["donati_orani"] >= 0.02 - 1e-9 and len(kolon["cubuklar"]) == 27
+    for t in o["turlar"][1:]:                                     # onarım turları: yalnız büyüt / donatı, küçültme yok
+        assert all(d["degisim"] in ("büyüt", "donatı") for d in t.get("degisen") or [])
+    assert o["turlar"][-1]["asan"] == 0
+    son = coz(o["bina"]).veri
+    assert son["tasarim"]["en_buyuk_dc"] == pytest.approx(o["dc_sonra"], abs=1e-4)
+
+
+def test_kesit_onerisi_yakinsamazsa_uyari():
+    """yinele turları yetmezse (son çözümde D/C > 1) yanıt açık bir uyarı taşır: '… 1 turda yakınsamadı: Ç12 (1,07), …'."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["surum"] = 3
+    b["kesitler"]["S40x40"].update({"b": 0.25, "h": 0.25})
+    o = YS.kesit_oner(b, yinele=1)
+    assert o["dc_sonra"] > 1.0
+    u = [x for x in o["uyarilar"] if "turda yakınsamadı" in x]
+    assert len(u) == 1 and u[0].startswith("Kesit önerileri 1 turda yakınsamadı: ") and "D/C > 1" in u[0]
+    asan = [k for k in coz(o["bina"]).veri["tasarim"]["elemanlar"] if k["dc"] > 1.0]
+    # aks–kat kaynaklı çubuk kullanıcının gördüğü adla (kolon 7), öteki çubuklar Ç{no}
+    ad = lambda k: f"kolon {k['kaynak']['no']} (" if (k.get("kaynak") or {}).get("aks_kat") == "kolon" else f"Ç{k['cubuk']} ("  # noqa: E731
+    assert asan and all(ad(k) in u[0] for k in asan[:8]) and "(1,1" in u[0]
+    el = [{"cubuk": 12, "dc": 1.0712, "kaynak": None}, {"cubuk": 3, "dc": 0.5}, {"cubuk": 9, "dc": 1.2, "kaynak": {"aks_kat": "kiris", "no": 4}}]
+    assert YS._yakinsamadi_uyarisi(el, 2).startswith("Kesit önerileri 2 turda yakınsamadı: kiriş 4 (1,2), Ç12 (1,07) — ")
+    o3 = YS.kesit_oner(b, yinele=3)                                # üç turla yakınsar
+    assert o3["dc_sonra"] <= 1.0 and not any("yakınsamadı" in x for x in o3["uyarilar"])
+
+
+def test_oneri_uygula_onarim_turunda_kucultmez():
+    """_oneri_uygula(kucultme=False): çelikte 'küçült' grubu atlanır; betonarme kolon grubunda b × h mevcut boyuttan küçülmez,
+    ρ azalmaz (atlama yalnız b, h ve ρ aynıysa)."""
+    bina = {"kesitler": {"P": {"tip": "profil", "profil": "IPE 300", "malzeme": "S275"},
+                         "K": {"tip": "dikdortgen", "b": 0.4, "h": 0.4, "malzeme": "C30", "donati_orani": 0.02}},
+            "cubuklar": [{"no": 1, "kesit": "P"}, {"no": 2, "kesit": "K"}, {"no": 3, "kesit": "K"}]}
+    B = type("B", (), {"cubuklar": []})()
+    celik = {"cubuk": 1, "kesit": "P", "tur": "kiris", "sistem": "celik", "oneri": "IPE 270", "malzeme": "S275", "degisim": "küçült",
+             "agirlik_kg_m": 36.1}
+    ba = [{"cubuk": n, "kesit": "K", "tur": "kolon", "sistem": "betonarme", "oneri": "30x30", "b": 0.3, "h": 0.3, "b_once": 0.4,
+           "h_once": 0.4, "malzeme": "C30", "degisim": "küçült", "donati_orani": 0.015} for n in (2, 3)]
+    yeni, degisen = YS._oneri_uygula(bina, [celik] + ba, B, kucultme=False)
+    assert degisen == [] and yeni["cubuklar"] == bina["cubuklar"]
+    yeni, degisen = YS._oneri_uygula(bina, [celik] + ba, B, kucultme=True)      # 0. tur: ekonomi (küçültme serbest)
+    assert {d["kesit"]: d["yeni"] for d in degisen} == {"P": "IPE270", "K": "B30x30-ρ%1.50"}
+    # aynı b × h, daha çok ρ isteyen üye: onarım turunda 'donatı' değişimi, mevcut kart + donati_orani
+    ba2 = [dict(ba[0], b=0.4, h=0.4, oneri="40x40", degisim="aynı", donati_orani=0.025)]
+    yeni, degisen = YS._oneri_uygula(bina, ba2, B, kucultme=False)
+    assert degisen[0]["degisim"] == "donatı" and degisen[0]["yeni"] == "B40x40-ρ%2.50"
+    assert yeni["kesitler"]["B40x40-ρ%2.50"] == dict(bina["kesitler"]["K"], donati_orani=0.025)
+
+
 # ---------------------------------------------------------------------------
 # şablonlar
 # ---------------------------------------------------------------------------

@@ -3443,13 +3443,21 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
                 A0, A1 = kt["b"] * kt["h"], on["b"] * on["h"]
                 degisim = "aynı" if ayni else ("büyüt" if A1 > A0 + 1e-12 else ("küçült" if A1 < A0 - 1e-12 else
                                                                                    ("büyüt" if on["h"] > kt["h"] else "küçült")))
+                rho_on = on.get("rho") or Y._RHO_VARSAYILAN
+                if ayni and tur == "kolon" and rho_on > rho0 + 1e-9:
+                    # b × h yeterli ama mevcut boyuna donatıyla değil (K1 "donatı"): kesit tanımına gerekli ρ yazılır (uygula null değil)
+                    degisim = "donatı"
+                    gerekce.append(f"Değişiklik yalnız boyuna donatıda: ρ = {_f(rho0, 4)} → {_f(rho_on, 4)} (b × h aynı); kesit "
+                                   f"tanımına donati_orani = {_f(rho_on, 4)} yazılır.")
         out.update({"oneri": (f"{_f(on['b'] * 100, 0)}x{_f(on['h'] * 100, 0)}" if on.get("b") else None), "b": on.get("b"), "h": on.get("h"),
                     "b_once": kt["b"], "h_once": kt["h"], "dc_oneri": _r5(min(dc_oneri, 99.0)) if dc_oneri is not None else None,
                     "degisim": degisim, "gerekce": gerekce, "durum": durum,
                     "donati": kt.get("donati"), "pas": kt.get("pas")})
         if tur == "kolon" and on.get("b"):
-            # gerekli boyuna donatı oranı (ρ > 0,01 ise uygula tanımına yazılır: aks–kat motoru verilmeyen ρ'yu 0,01 alır)
+            # gerekli boyuna donatı oranı (ρ > 0,01 ise — "donatı" değişiminde her zaman — uygula tanımına yazılır: aks–kat motoru
+            # verilmeyen ρ'yu 0,01 alır); rho_once: mevcut kesitin oranı (verilmemişse 0,01)
             out["donati_orani"] = round(float(on.get("rho") or Y._RHO_VARSAYILAN), 6)
+            out["rho_once"] = round(float(rho0), 6)
         return out
     out.update({"gerekce": ["Bu çubuk için öneri yok."]})
     return out
@@ -3487,12 +3495,21 @@ def _oneri_kesit(kes, kesit, en):
         return ad, kes[ad], yeni, ek
     ad = f"B{_f(en['b'] * 100, 0)}x{_f(en['h'] * 100, 0)}"
     rho = en.get("donati_orani")
-    rho = rho if rho is not None and rho > Y._RHO_VARSAYILAN + 1e-9 else None      # kolon: gerekli ρ > 0,01 kesitte yazılır
+    donati_degisimi = en.get("degisim") == "donatı"
+    # kolon: gerekli ρ > 0,01 kesitte yazılır; yalnız donatı değişiminde (b × h aynı) her zaman
+    rho = rho if rho is not None and (rho > Y._RHO_VARSAYILAN + 1e-9 or donati_degisimi) else None
     if rho is not None:
         ad += f"-ρ%{rho * 100:.2f}"
-    tanim = {"tip": "dikdortgen", "b": en["b"], "h": en["h"], "malzeme": en["malzeme"],
-             **({"donati": en["donati"]} if en.get("donati") else {}), **({"pas": en["pas"]} if en.get("pas") else {}),
-             **({"donati_orani": rho} if rho is not None else {})}
+    if donati_degisimi and rho is not None and eski and str(eski.get("tip", "dikdortgen")).strip().lower() == "dikdortgen":
+        # K1 "donatı": mevcut kart + donati_orani (As verilmişse düşer: ρ yeni toplam donatıyı tanımlar)
+        tanim = {a: v for a, v in eski.items() if a not in ("As", "donati_orani")}
+        tanim.update({"tip": "dikdortgen", "donati_orani": rho})
+        for a in ("b", "h", "malzeme"):
+            tanim.setdefault(a, en[a])
+    else:
+        tanim = {"tip": "dikdortgen", "b": en["b"], "h": en["h"], "malzeme": en["malzeme"],
+                 **({"donati": en["donati"]} if en.get("donati") else {}), **({"pas": en["pas"]} if en.get("pas") else {}),
+                 **({"donati_orani": rho} if rho is not None else {})}
     if ad in kes and any(kes[ad].get(a) != tanim.get(a) for a in ("tip", "b", "h", "malzeme", "donati_orani", "As")):
         ad = f"{ad}-{en['malzeme']}"
     yeni = ad not in kes
@@ -3515,9 +3532,103 @@ def _uygula_bilgisi(kesitler, o):
     return r
 
 
-def _oneri_uygula(bina, oneriler, B):
-    """Önerileri bina JSON'una uygular (kopya). Aynı (kesit, tür) grubundaki çubuklara grubun en ağır önerisi verilir (kesit
-    sayısı az kalsın). Vute çubuğunda temel profili değişen yeni bir vute kesiti yazılır. Dönüş (yeni bina, değişiklikler)."""
+_RHO_ADIM, _RHO_EN_COK = 0.0025, 0.04        # grup boyuna donatı oranı taraması (TBDY 2018 md. 7.3.2.1: ρ ≤ 0,04)
+
+
+def _rho_kart(k):
+    """Kesit kartının (bina JSON kesitler girdisi) boyuna donatı oranı: donati_orani, ya da As/(b·h); verilmemişse 0,01."""
+    try:
+        if k.get("donati_orani") is not None:
+            return float(k["donati_orani"])
+        if k.get("As") is not None:
+            return float(k["As"]) / (float(k["b"]) * float(k["h"]) * 1e4)
+    except (TypeError, ValueError, ZeroDivisionError, AttributeError):
+        pass
+    return Y._RHO_VARSAYILAN
+
+
+def _grup_rho(tt, lst, b, h, rho):
+    """Betonarme kolon grubu kartının (b × h) boyuna donatı oranı: her üye bu kartla, KENDİ iç kuvvetleriyle §11 kaydının bütün
+    kurallarıyla yeniden doğrulanır; D/C > 1 olan üye için ρ 0,0025 adımla artırılır (en çok 0,04). Dönüş (ρ, yetmeyen çubuklar):
+    0,04 ile de yetmeyen (boyut / eksenel sınırı, N–M) üyeler ayrıca döner. T.sonuclar korunur."""
+    ts, T = tt
+    B = T.B
+    rho = min(max(float(rho), Y._RHO_VARSAYILAN), _RHO_EN_COK)
+    yetmeyen = []
+    for o in lst:
+        c = B.cubuk_no.get(o["cubuk"])
+        if c is None:
+            continue
+        ks = B.kesitler[c["kesit"]]
+        kt = B.kesitler[ks["temel"]] if ks["tip"] == "vute" else ks
+        eski = T.sonuclar.get(c["no"])
+        try:
+            while True:
+                try:
+                    k2, _, _ = _cubuk_tasarla(ts, T, c, kt_yerine=dict(kt, b=b, h=h, donati_orani=rho, As=None))
+                    dc = k2["dc"]
+                except MatrisHatasi:
+                    dc = None
+                if dc is not None and dc <= 1.0 + 1e-9:
+                    break
+                if rho >= _RHO_EN_COK - 1e-12:
+                    yetmeyen.append(o["cubuk"])
+                    break
+                rho = min(round(rho + _RHO_ADIM, 6), _RHO_EN_COK)
+        finally:
+            if eski is not None:
+                T.sonuclar[c["no"]] = eski
+            else:
+                T.sonuclar.pop(c["no"], None)
+    return rho, yetmeyen
+
+
+def _ba_grup_karti(lst, kesit_karti, tt, kucultme):
+    """Betonarme (kesit, tür) grubunun ortak kartı → (en, atla). en: grubun en büyük b × h önerisi (eşitlikte büyük ρ); onarım
+    turunda (``kucultme`` False) mevcut b × h'den küçük olamaz. Kolon grubunda ρ ``_grup_rho`` ile seçilir (``tt`` yoksa üyelerin
+    aynı b × h önerilerinin en büyük ρ'su); 0,04 ile de yetmeyen üye varsa üyelerin önerilerini (ve onarımda mevcut boyutu) saran
+    b × h denenir. Atlama: b, h VE ρ aynıysa."""
+    yakin = lambda x, y: x is not None and y is not None and abs(x - y) < 1e-9      # noqa: E731
+    en = dict(max(lst, key=lambda o: (_agirlik(o), o.get("donati_orani") or 0.0)))
+    b0, h0 = en.get("b_once"), en.get("h_once")
+    if not kucultme and b0 and h0 and en["b"] * en["h"] < b0 * h0 - 1e-12:
+        en.update({"b": b0, "h": h0})
+    kolon = any(o.get("donati_orani") is not None for o in lst)
+    rho_eski = _rho_kart(kesit_karti) if kolon else None
+    if kolon:
+        rho = max([o.get("donati_orani") or Y._RHO_VARSAYILAN for o in lst if yakin(o.get("b"), en["b"]) and yakin(o.get("h"), en["h"])]
+                  or [Y._RHO_VARSAYILAN])
+        if not kucultme and yakin(en["b"], b0) and yakin(en["h"], h0):
+            rho = max(rho, rho_eski)                    # onarım turunda mevcut donatı da azalmaz
+        if tt is not None:
+            rho1, yet = _grup_rho(tt, lst, en["b"], en["h"], rho)
+            if yet:
+                bz = max([o["b"] for o in lst if o.get("b")] + ([b0] if (not kucultme and b0) else []))
+                hz = max([o["h"] for o in lst if o.get("h")] + ([h0] if (not kucultme and h0) else []))
+                if not (yakin(bz, en["b"]) and yakin(hz, en["h"])):
+                    rho2, yet2 = _grup_rho(tt, lst, bz, hz, Y._RHO_VARSAYILAN)
+                    if len(yet2) < len(yet):
+                        en.update({"b": bz, "h": hz})
+                        rho1 = rho2
+            rho = rho1
+        en["donati_orani"] = round(rho, 6)
+    ayni_bh = yakin(en["b"], b0) and yakin(en["h"], h0)
+    if ayni_bh and (not kolon or abs(en["donati_orani"] - rho_eski) < 1e-9):
+        return en, True
+    if ayni_bh:
+        en["degisim"] = "donatı"
+    elif b0 and h0:
+        A0, A1 = b0 * h0, en["b"] * en["h"]
+        en["degisim"] = "büyüt" if A1 > A0 + 1e-12 else ("küçült" if A1 < A0 - 1e-12 else ("büyüt" if en["h"] > h0 else "küçült"))
+    en["oneri"] = f"{_f(en['b'] * 100, 0)}x{_f(en['h'] * 100, 0)}"
+    return en, False
+
+
+def _oneri_uygula(bina, oneriler, B, tur_tasarim=None, kucultme=True):
+    """Önerileri bina JSON'una uygular (kopya). Aynı (kesit, tür) grubundaki çubuklara grubun ortak kartı verilir (kesit sayısı az
+    kalsın): çelikte en ağır öneri; betonarmede en büyük b × h ve kolonda üyeler yeniden doğrulanarak seçilen grup ρ'su
+    (``_ba_grup_karti``; ``tur_tasarim`` = (tasarim modülü, tasarım bağlamı)). ``kucultme`` False (onarım turu): hiçbir grup
+    küçültülmez. Vute çubuğunda temel profili değişen yeni bir vute kesiti yazılır. Dönüş (yeni bina, değişiklikler)."""
     b = copy.deepcopy(bina)
     kes = b.setdefault("kesitler", {})
     gruplar = {}
@@ -3528,16 +3639,26 @@ def _oneri_uygula(bina, oneriler, B):
     degisen = []
     cubuk_kesit = {}
     for (kesit, tur), lst in gruplar.items():
-        en = max(lst, key=_agirlik)
         eski = kes.get(kesit) or {}
-        if en.get("degisim") == "aynı" or (en["sistem"] == "betonarme" and eski.get("b") == en.get("b") and eski.get("h") == en.get("h")):
-            continue
+        if lst[0].get("sistem") == "betonarme":
+            kart_eski = (kes.get(str(eski.get("temel"))) or {}) if str(eski.get("tip", "")).strip().lower() == "vute" else eski
+            en, atla = _ba_grup_karti(lst, kart_eski, tur_tasarim, kucultme)
+            if atla:
+                continue
+        else:
+            en = max(lst, key=_agirlik)
+            if en.get("degisim") == "aynı" or (not kucultme and en.get("degisim") == "küçült"):
+                continue
         ad, _, _, _ = _oneri_kesit(kes, kesit, en)
         if ad == kesit:
             continue
         for o in lst:
             cubuk_kesit[o["cubuk"]] = ad
-        degisen.append({"kesit": kesit, "tur": tur, "yeni": ad, "oneri": en["oneri"], "cubuklar": sorted(o["cubuk"] for o in lst)})
+        d = {"kesit": kesit, "tur": tur, "yeni": ad, "oneri": en["oneri"], "degisim": en.get("degisim"),
+             "cubuklar": sorted(o["cubuk"] for o in lst)}
+        if en.get("donati_orani") is not None and lst[0].get("sistem") == "betonarme":
+            d["donati_orani"] = en["donati_orani"]
+        degisen.append(d)
     # çubuklara (ya da aks–kat elemanlarına) yaz
     for c in b.get("cubuklar") or []:
         if c.get("no") in cubuk_kesit:
@@ -4056,6 +4177,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     uyarilar = list(ic.get("oner_uyarilari") or [])
     gorunen_dc = _gorunen_dc(gorunen)
     bina_ham = copy.deepcopy(ic["bina"])
+    ic0_kesitler = copy.deepcopy(bina_ham.get("kesitler") or {})
     turlar = []
     sonuc_oneriler = None
     for tur_no in range(yinele + 1):
@@ -4070,6 +4192,20 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
                 raise MatrisHatasi('hedef "hepsi" ya da [{"tur", "no"}] listesi olmalı.')
             hedefler = [_cubuk_bul(B, h.get("tur"), h.get("no")) for h in hedef]
         dc_once = {k["cubuk"]: k["dc"] for k in (ic.get("tas") or _tasarim(ts, T))["elemanlar"] if k.get("dc") is not None}
+        dc_maks = max(dc_once.values(), default=0.0)
+        if tur_no == 0 and gorunen_dc:
+            dc_maks = max(gorunen_dc.values(), default=dc_maks)
+        kayit = {"tur": tur_no, "dc_maks": _r5(dc_maks)}
+        if tur_no > 0:
+            # onarım turu (0. turdan sonra): yalnız D/C > 1 üyesi olan (kesit, tür) grupları büyütülür (kolonda ρ da artırılabilir);
+            # hiçbir grup küçültülmez. Aşan yoksa yakınsadı; son turda (yinele) yalnız durum kaydedilir.
+            asan_grup = {(c["kesit"], c["tur"]) for c in hedefler if (dc_once.get(c["no"]) or 0.0) > 1.0 + 1e-9}
+            kayit["asan"] = sum(1 for c in hedefler if (dc_once.get(c["no"]) or 0.0) > 1.0 + 1e-9)
+            if not asan_grup or tur_no == yinele:
+                kayit["oneri_sayisi"] = 0
+                turlar.append(kayit)
+                break
+            hedefler = [c for c in hedefler if (c["kesit"], c["tur"]) in asan_grup]
         oneriler = []
         for c in hedefler:
             dc0 = dc_once.get(c["no"])
@@ -4085,16 +4221,13 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
             if tur_no == 0:
                 o["uygula"] = _uygula_bilgisi(bina_ham.get("kesitler"), o)
             oneriler.append(o)
-        dc_maks = max(dc_once.values(), default=0.0)
-        if tur_no == 0 and gorunen_dc:
-            dc_maks = max(gorunen_dc.values(), default=dc_maks)
-        kayit = {"tur": tur_no, "dc_maks": _r5(dc_maks), "oneri_sayisi": sum(1 for o in oneriler if o.get("oneri"))}
+        kayit["oneri_sayisi"] = sum(1 for o in oneriler if o.get("oneri"))
         if sonuc_oneriler is None:
             sonuc_oneriler = oneriler
         if tur_no == yinele:
             turlar.append(kayit)
             break
-        yeni, degisen = _oneri_uygula(bina_ham, oneriler, B)
+        yeni, degisen = _oneri_uygula(bina_ham, oneriler, B, tur_tasarim=(ts, T), kucultme=tur_no == 0)
         kayit["degisen"] = degisen
         turlar.append(kayit)
         if not degisen:
@@ -4105,17 +4238,120 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         ic["tas"] = r.veri.get("tasarim")
     son = ic.get("tas") or (ic["tasarim"] and _tasarim(ts, ic["tasarim"]))
     dc_son = {k["cubuk"]: k["dc"] for k in son["elemanlar"] if k.get("dc") is not None}
+    donati_azaltma = []
+    if yinele and any(t.get("degisen") for t in turlar):
+        if max(dc_son.values(), default=0.0) <= 1.0 + 1e-9 and ic.get("tasarim") is not None:
+            bina_ham, donati_azaltma = _rho_azalt(bina_ham, ic["tasarim"], ts, set((ic0_kesitler or {})), dc_son)
+        bina_ham = _kullanilmayan_kesitleri_sil(bina_ham, set(ic0_kesitler or {}))
     for o in sonuc_oneriler:
         o["dc_sonra"] = _r5(dc_son[o["cubuk"]]) if (yinele and o["cubuk"] in dc_son) else o.get("dc_oneri")
     if gorunen_dc:
         uyarilar.append("D/C önce, aks–kat motorunun tasarım tablosundan (görünen çözüm); öneri ve D/C sonra genel model motoruyla.")
-    return {"oneriler": sonuc_oneriler, "turlar": turlar, "dc_once": turlar[0]["dc_maks"],
-            "dc_sonra": _r5(max(dc_son.values(), default=0.0)) if yinele else None,
+    dc_sonra = _r5(max(dc_son.values(), default=0.0)) if yinele else None
+    if yinele and dc_sonra > 1.0 + 1e-9:
+        uyarilar.append(_yakinsamadi_uyarisi(son["elemanlar"], sum(1 for t in turlar if t.get("degisen"))))
+    return {"oneriler": sonuc_oneriler, "turlar": turlar, "dc_once": turlar[0]["dc_maks"], "dc_sonra": dc_sonra,
             "bina": bina_ham if yinele else None, "cozum_kimligi": (gorunen or {}).get("kimlik") or ic.get("kimlik"),
-            "uyarilar": uyarilar,
-            "aciklama": "Öneri aynı iç kuvvetlerle yapılır (rijitlik değişmeden); 'yinele' ile öneri uygulanıp model yeniden çözülür, "
-                        "çünkü kesit değişince çerçevenin rijitliği ve iç kuvvet dağılımı da değişir. Aynı (kesit, tür) grubundaki "
-                        "çubuklara grubun en ağır önerisi verilir."}
+            "donati_azaltma": donati_azaltma, "uyarilar": uyarilar, "aciklama": ONER_ACIKLAMA}
+
+
+def _rho_azalt(bina, T, ts, ilk_kesitler, dc_son):
+    """Yakınsamış 'yinele' sonunda (son çözümde bütün D/C ≤ 1): bu çalıştırmada eklenen betonarme kolon kartlarının boyuna donatı
+    oranı, SON çözümün iç kuvvetleriyle en küçük yeterli değere indirilir (0,01'den 0,0025 adımla, her üye yeniden doğrulanır).
+    ρ rijitliği değiştirmez (sonlu eleman kesiti b × h): iç kuvvetler aynı kalır, yeni D/C'ler kesindir (``dc_son`` yerinde
+    güncellenir). Önerinin ρ'su eski (daha rijit) çözümün kuvvetleriyle seçildiğinden çoğu kez fazladır. Dönüş (bina, değişiklikler)."""
+    B = T.B
+    b = copy.deepcopy(bina)
+    kes = b.get("kesitler") or {}
+    degisen = []
+    for ad in [a for a in kes if a not in ilk_kesitler]:
+        kart = kes[ad]
+        if not isinstance(kart, dict) or str(kart.get("tip", "dikdortgen")).strip().lower() != "dikdortgen":
+            continue
+        rho0 = _rho_kart(kart)
+        if rho0 <= Y._RHO_VARSAYILAN + 1e-9 or B.kesitler.get(ad, {}).get("tip") != "dikdortgen":
+            continue
+        uyeler = [c for c in B.cubuklar if c["kesit"] == ad]
+        if not uyeler or any(c["tur"] != "kolon" for c in uyeler):
+            continue
+        lst = [{"cubuk": c["no"]} for c in uyeler]
+        rho, yet = _grup_rho((ts, T), lst, float(kart["b"]), float(kart["h"]), Y._RHO_VARSAYILAN)
+        if yet or rho >= rho0 - 1e-9:
+            continue
+        en = {"sistem": "betonarme", "b": float(kart["b"]), "h": float(kart["h"]), "malzeme": kart.get("malzeme"),
+              "donati": kart.get("donati"), "pas": kart.get("pas"), "donati_orani": rho,
+              "degisim": "donatı" if rho > Y._RHO_VARSAYILAN + 1e-9 else "küçült"}
+        yeni_ad, _, _, _ = _oneri_kesit(kes, ad, en)
+        if yeni_ad == ad:
+            continue
+        dcs = _uyeler_dc(ts, T, uyeler, dict(B.kesitler[ad], donati_orani=rho, As=None))
+        if any(d is None or d > 1.0 + 1e-9 for d in dcs.values()):
+            continue
+        for liste in ("cubuklar", "kolonlar", "kirisler"):
+            for e in b.get(liste) or []:
+                if isinstance(e, dict) and e.get("kesit") == ad:
+                    e["kesit"] = yeni_ad
+        dc_son.update(dcs)
+        degisen.append({"kesit": ad, "yeni": yeni_ad, "donati_orani": round(rho, 6), "rho_once": round(rho0, 6),
+                        "cubuklar": sorted(dcs)})
+    return b, degisen
+
+
+def _uyeler_dc(ts, T, uyeler, kart):
+    """Çubukların verilen kartla (aynı iç kuvvetler) §11 D/C'leri {no: dc}; T.sonuclar korunur."""
+    out = {}
+    for c in uyeler:
+        eski = T.sonuclar.get(c["no"])
+        try:
+            k2, _, _ = _cubuk_tasarla(ts, T, c, kt_yerine=kart)
+            out[c["no"]] = k2["dc"]
+        except MatrisHatasi:
+            out[c["no"]] = None
+        finally:
+            if eski is not None:
+                T.sonuclar[c["no"]] = eski
+            else:
+                T.sonuclar.pop(c["no"], None)
+    return out
+
+
+def _kullanilmayan_kesitleri_sil(bina, ilk_kesitler):
+    """Kesit önerisinin turlarda eklediği ama son binada hiçbir çubuğun / aks–kat elemanının (ya da kullanılan vute kartının temel
+    profili olarak) kullanmadığı kesit kartları silinir; kullanıcının kendi kartlarına dokunulmaz."""
+    kes = bina.get("kesitler") or {}
+    kullanilan = {e.get("kesit") for a in ("cubuklar", "kolonlar", "kirisler") for e in (bina.get(a) or []) if isinstance(e, dict)}
+    for ad in list(kullanilan):
+        k = kes.get(ad)
+        if isinstance(k, dict) and str(k.get("tip", "")).strip().lower() == "vute":
+            kullanilan.add(k.get("temel"))
+    for ad in [a for a in kes if a not in ilk_kesitler and a not in kullanilan]:
+        del kes[ad]
+    return bina
+
+
+ONER_ACIKLAMA = ("D/C (öneri) mevcut iç kuvvetlerle tahmindir: öneri, modelin şimdiki çözümünün iç kuvvetleriyle (rijitlik "
+                 "değişmeden) yapılır. Kesit değişince çerçevenin rijitliği ve iç kuvvet dağılımı da değişir; gerçek D/C ancak model "
+                 "yeniden çözülünce görülür ('yinele': öneriler uygulanıp model en çok 3 tur yeniden çözülür, 0. turdan sonra yalnız "
+                 "D/C > 1 kalan gruplar büyütülür, hiçbir grup küçültülmez). Aynı (kesit, tür) grubundaki çubuklara grubun ortak "
+                 "kartı verilir: çelikte en ağır öneri, betonarmede en büyük b × h; kolon grubunda boyuna donatı oranı her üye "
+                 "yeniden doğrulanarak seçilir. Yakınsayınca (son çözümde bütün D/C ≤ 1) eklenen kolon kartlarının ρ'su son "
+                 "çözümün iç kuvvetleriyle en küçük yeterli değere indirilir (ρ rijitliği değiştirmez; 'donati_azaltma').")
+
+
+def _yakinsamadi_uyarisi(elemanlar, tur_sayisi, en_cok=8):
+    """Son çözümde D/C > 1 kalan çubuklar: "Kesit önerileri 2 turda yakınsamadı: Ç12 (1,07), kolon 7 (1,05) …" (K1)."""
+    asan = sorted((k for k in elemanlar if k.get("dc") is not None and k["dc"] > 1.0 + 1e-9), key=lambda k: -k["dc"])
+
+    def ad(k):
+        kay = k.get("kaynak") or {}
+        if isinstance(kay, dict) and kay.get("aks_kat") in ("kolon", "kiris"):
+            return f"{'kolon' if kay['aks_kat'] == 'kolon' else 'kiriş'} {kay.get('no')}"
+        return f"Ç{k.get('cubuk', k.get('no'))}"
+
+    liste = ", ".join(f"{ad(k)} ({_f(k['dc'], 2).replace('.', ',')})" for k in asan[:en_cok]) + (
+        f" … +{len(asan) - en_cok} çubuk" if len(asan) > en_cok else "")
+    return (f"Kesit önerileri {tur_sayisi} turda yakınsamadı: {liste} — son çözümde D/C > 1. Bu çubukların kesitini elle büyütün "
+            "ya da önerileri yeniden çalıştırın.")
 
 
 def deprem_onizleme(bina):
