@@ -161,7 +161,7 @@ Ek B çubuklar, Ek C seçilen tablolar. Veri olmayan bölüm "Bu modelde uygulan
 ### 14.2 IFC
 
 `docs/ifc_disari.js` (`window.MatrisIFC`): IFC4 STEP; proje → yapı → katlar, aks ızgaraları (ek sistemler dahil), fiziksel model
-(kolon, kiriş, üye, döşeme, kaplama, temel), malzeme ve profil setleri, isteğe bağlı yapısal analiz modeli, G / Q yükleri ve D/C
+(kolon, kiriş, üye, döşeme, kaplama, temel), malzeme ve profil setleri, isteğe bağlı yapısal analiz modeli, yükler (aks–kat modelinde G / Q, genel modelde G / Q / S) ve D/C
 özellikleri. GlobalId'ler belirlenimci (aynı modelden aynı kimlik).
 
 ## §15 Tablolar ve metraj
