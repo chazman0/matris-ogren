@@ -11,7 +11,7 @@ Yaptıkları:
   4. docs\\ dosyalarının içeriğinden bir sürüm damgası hesaplar, sw.js içindeki SURUM satırına ve surum.json'a yazar
      (damga değişince servis çalışanı eski önbelleği atar; uygulama güncellenir). git'e girmeyen üretilmiş dosyalar
      (__pycache__, *.pyc, işletim sistemi artıkları) sayılmaz: aynı kaynaktan her makinede aynı damga çıkar
-     (masaustu/hazirla.js dosya listesiyle aynı kural).
+     (masaustu/hazirla.js dosya listesiyle aynı kural; ek olarak .gitignore'daki *.bak da sayılmaz).
 
 Çalıştırma (proje klasöründen, yalnız standart kütüphane gerekir):
   python web_yap.py
@@ -139,7 +139,8 @@ def ikonlar() -> str:
     return f"{len(isler)} PNG ikon üretildi"
 
 
-# Sürüm damgasına girmeyen adlar (git'e girmeyen üretilmiş dosyalar ve işletim sistemi artıkları; masaustu/hazirla.js ATLANAN ile aynı)
+# Sürüm damgasına girmeyen adlar (git'e girmeyen üretilmiş dosyalar ve işletim sistemi artıkları; masaustu/hazirla.js ATLANAN ile aynı;
+# hazirla.js *.pyc'yi de atlar, *.bak'ı atlamaz: .gitignore'da olduğu için burada sayılmaz)
 DAMGA_ATLANAN = {".DS_Store", "Thumbs.db", "desktop.ini", "__pycache__", ".ipynb_checkpoints"}
 
 

@@ -460,8 +460,8 @@ dışı düğüm gereken yapılar için **genel düğüm–çubuk–panel modeli
   (`{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`) ve boş listeler binayı aks–kat bırakır.
 - Aks–kat elemanları varsa önce aynı kurallarla genel listeye çevrilir (`docs/model_ops.js` `genellestir` ile birebir); aynı bina iki
   yoldan aynı tepkileri ve iç kuvvetleri verir.
-- Anlatımın kendi ardışık adımları vardır (aks sistemi ve elemanlar, panel yük dağıtımı, ağ ve mesnetler, yük durumları, deprem,
-  varsa yalnız çekme ve kren, kombinasyonlar, denge, kesit tahkikleri); bağımsız Python betiği adımı yoktur.
+- Anlatımın kendi ardışık adımları vardır (aks sistemi ve elemanlar, panel yük dağıtımı, ağ ve mesnetler, yük durumları (rüzgâr
+  ve kren dahil), deprem, varsa yalnız çekme, kombinasyonlar, denge, kesit tahkikleri); bağımsız Python betiği adımı yoktur.
 
 **Düğüm başvurusu (REF):** her düğüm bir aks kesişimi ya da bir çubuğun bölme / kesişim noktasıdır; konumlar her çözümde akslardan
 hesaplanır, aks taşınınca bağlı düğümler de taşınır. Aynı konuma (1 mm) düşen başvurular tek düğümdür.
@@ -640,8 +640,9 @@ Bina işlemleri:
   “Motor ayrıntısı” olarak eklenir), Özellikler, Isı haritasında incele, Yük akışı, Tasarım ayrıntısı, Kesit öner ve uygula, Gizle, Yalıt, Sil.
   Klavyede sahneyi seçip Shift+F10. Denetçi açıkken model yeniden çözülürse içeriği tazelenir.
 - **Kesit önerisi:** “Kesit öner ve uygula” komutu sağ tıkta tek eleman için; araç kutusunda (Özelleştir ile eklenir) ve masaüstünde
-  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir öneriyi, “Hepsini uygula” hepsini binaya
-  yazar ve modeli yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi verilir).
+  Tasarım menüsünde seçili elemanlar ya da seçim yoksa bütün model için önerileri D/C önce → sonra ile listeler. “Uygula” bir
+  öneriyi, “Hepsini uygula” hepsini binaya yazar ve modeli yeniden çözer (aynı kesit ve türdeki çubuklara grubun en ağır önerisi
+  verilir).
 - **📄 Statik Rapor:** çözüm yoksa önce çözer; önizleme, “Yazdır / PDF”, “HTML indir”. Proje künyesi (ad, yer, ada/parsel, hazırlayan…)
   bu tarayıcıda hatırlanır. Tablolar penceresinde onay kutusuyla seçilen tablolar raporun ekine girer. Masaüstünde Rapor › Yazdır…
   (Ctrl+Shift+P) Bina sayfasında statik raporu yazdırır.
