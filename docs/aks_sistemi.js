@@ -1156,16 +1156,22 @@
     for (let tur = 0; tur < 50; tur++) {
       const K = new Konumcu(m), es = new Map();
       const nokta = function (l) { if (!Array.isArray(l) || l.length !== 2) return false; const P = K.P(l[0]), Q = K.P(l[1]); return !!(P && Q && uzaklik(P, Q) <= TOL); };
+      // kesişim düğümünün iki doğrusu paralel (ör. X çaprazının gözü tek doğruya indi): kesişim tanımsız → a doğrusunun ilk ucu
+      const paralel = function (d) {
+        if (!Array.isArray(d.a) || !Array.isArray(d.b) || d.a.length !== 2 || d.b.length !== 2) return false;
+        const P = d.a.concat(d.b).map(function (r) { return K.P(r); });
+        return P.every(Boolean) && !dogruKesisimi(P[0], P[1], P[2], P[3]);
+      };
       (m.dugumler || []).forEach(function (d) {
         if (!d || d.no == null) return;
         if (d.tur === "bolme" && nokta([d.cubuk_i, d.cubuk_j])) es.set(+d.no, kopya(d.cubuk_i));
-        else if (d.tur === "kesisim") { if (nokta(d.a)) es.set(+d.no, kopya(d.a[0])); else if (nokta(d.b)) es.set(+d.no, kopya(d.b[0])); }
+        else if (d.tur === "kesisim") { if (nokta(d.a) || paralel(d)) es.set(+d.no, kopya(d.a[0])); else if (nokta(d.b)) es.set(+d.no, kopya(d.b[0])); }
       });
       if (!es.size) break;
       es.forEach(function (v, no) { coken.push(no); });
       yaz(es);
     }
-    if (coken.length) uy.push("Dayanakları aynı noktaya düşen " + coken.length + " bölme/kesişim düğümü o noktaya birleştirildi (" + coken.join(", ") + ").");
+    if (coken.length) uy.push("Dayanakları çöken (aynı noktaya düşen ya da doğruları paralel kalan) " + coken.length + " bölme/kesişim düğümü o noktaya birleştirildi (" + coken.join(", ") + ").");
     // aynı konumdaki kayıtlı düğümler: aks kesişimi (ya da kayıtsız aks–kat numarası) varsa ona, yoksa başkasına dayanmayan düğüme
     const K = new Konumcu(m);
     const kayit = new Map();
@@ -1578,6 +1584,14 @@
     }
     else if (b.toplam > 0 && p.secenek === "tasi") {
       if (!komsu) throw new AksHatasi("Taşınacak komşu aks yok.");
+      // kata bağlı Z aksı: o katın {aks, kat} REF'leri (Z aksı adı yazılmamış) önce {aks, z} olur, böylece komşu aksa taşınır
+      if (p.yon === "z" && a.kat != null) {
+        const Sl = sistemler(bina);
+        refleriGez(m, function (r) {
+          if (!aksRefMi(r) || r.z != null || r.kat == null || +r.kat !== +a.kat || !refAksiKullanir(bina, r, p.sistem || GLOBAL, "z", a.ad, Sl)) return r;
+          const n = Object.assign({}, r, { z: a.ad }); delete n.kat; return n;
+        });
+      }
       adlariUygula(m, bina, p.sistem || GLOBAL, p.yon, new Map([[a.ad, komsu.ad]]));
       uy.push(b.ozet + " " + komsu.ad + " aksına taşındı.");
       bozuklariAyikla(m, uy);

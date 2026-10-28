@@ -539,6 +539,32 @@ test("aks sil 'taşı' (ui-s3-13): bölme düğümü (V tepesi) silinen gözdeys
   assert.ok(!(e.model.uretecler || []).length, "elemanları silinen üreteç kaydı kalmaz");
   assert.ok(!e.model.dugumler.length);
 });
+test("aks sil 'taşı': doğruları paralel kalan kesişim düğümü (X çaprazı gözü tek doğruya iner) çöker; kata bağlı Z aksında {aks, kat} REF'leri de taşınır", function () {
+  const b = ornek();      // Y: 1 0, 2 5, 3 10; Z: ±0.00 (kat 0), +4.50 (kat 1), +8.00 (kat 2)
+  const z0 = "±0.00", z1 = "+4.50";
+  b.cubuklar = [{ no: 1, i: G("A", "1", z0), j: G("A", "1", z1), tur: "kolon" }, { no: 2, i: G("A", "2", z0), j: G("A", "2", z1), tur: "kolon" },
+    { no: 3, i: G("A", "1", z1), j: G("A", "2", z1), tur: "kiris" },
+    { no: 4, i: G("A", "1", z0), j: { dugum: 100001 }, tur: "capraz" }, { no: 5, i: { dugum: 100001 }, j: G("A", "2", z1), tur: "capraz" },
+    { no: 6, i: G("A", "2", z0), j: { dugum: 100001 }, tur: "capraz" }, { no: 7, i: { dugum: 100001 }, j: G("A", "1", z1), tur: "capraz" }];
+  b.dugumler = [{ no: 100001, tur: "kesisim", a: [G("A", "1", z0), G("A", "2", z1)], b: [G("A", "2", z0), G("A", "1", z1)] }];
+  b.mesnetler = [{ dugum: G("A", "1", z0), ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }, { dugum: G("A", "2", z0), ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }];
+  const t = A.aksSil(b, { yon: "y", ad: "1", secenek: "tasi" });
+  assert.equal(t.silindi, true);
+  const d = M.denetle(t.model);          // fırlatmamalı (eskiden: "Kesişim düğümü 100001: doğrular paralel")
+  assert.deepEqual(d.uyarilar.filter(function (u) { return ["sifir-boy", "cakisan-cubuk", "eksik-dugum"].indexOf(u.kod) >= 0; }), [], t.uyarilar.join(" "));
+  assert.ok(!t.model.dugumler.some(function (x) { return x.no === 100001; }));
+  assert.deepEqual(t.model.cubuklar.map(function (c) { return c.no; }), [1], "kolon 2 kolon 1 ile çakıştı; çaprazlar kolonun üstüne düştü; kiriş sıfır boylu");
+  assert.ok(t.uyarilar.some(function (u) { return /paralel/.test(u); }), t.uyarilar.join(" "));
+  // {aks, kat} REF'li (Z aksı adı yazılmamış) genel model: kat 1'in Z aksı silinince REF'ler komşu Z aksına (adla) taşınır
+  const k = ornek();
+  k.cubuklar = [{ no: 1, i: { aks: ["A", "1"], kat: 0 }, j: { aks: ["A", "1"], kat: 1 }, tur: "kolon" }, { no: 2, i: { aks: ["A", "1"], kat: 1 }, j: { aks: ["A", "1"], kat: 2 }, tur: "kolon" },
+    { no: 3, i: { aks: ["A", "1"], kat: 1 }, j: { aks: ["B", "1"], kat: 1 }, tur: "kiris" }];
+  const u = A.aksSil(k, { yon: "z", ad: "+4.50", secenek: "tasi" });
+  assert.equal(u.silindi, true);
+  assert.deepEqual(M.denetle(u.model).uyarilar.filter(function (x) { return x.kod === "eksik-dugum" || x.kod === "sifir-boy"; }), [], u.uyarilar.join(" "));
+  assert.ok(u.model.cubuklar.every(function (c) { return [c.i, c.j].every(function (r) { return r.kat !== 1; }); }), "silinen katın REF'i kalmaz");
+  assert.ok(!u.model.katlar.some(function (x) { return x.no === 1; }));
+});
 test("aks sil 'taşı': ters yönlü kopyanın yükü aynalanarak aktarılır; üreteç REF'leri (makas bas/son) de taşınır", function () {
   const b = ornek();      // X: A 0, B 6, C 12, D 19.5
   b.cubuklar = [{ no: 1, i: G("A", "1", "+4.50"), j: G("B", "1", "+4.50"), tur: "kiris" }, { no: 2, i: G("C", "1", "+4.50"), j: G("A", "1", "+4.50"), tur: "kiris" },

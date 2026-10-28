@@ -38,6 +38,8 @@
   const CAPRAZ_TIPLERI = Object.freeze(["X", "tek-/", "tek-\\", "V", "ters-V", "K", "dismerkez-tek", "dismerkez-ters-V", "diz"]);
   const MAKAS_TIPLERI = Object.freeze(["pratt", "howe", "warren", "warren-dikmeli", "k", "fink", "besik-pratt", "besik-howe"]);
   const LISTELER = ["dugumler", "cubuklar", "paneller", "mesnetler", "kren", "ek_yukler", "uretecler"];
+  /** Üreteç kayıtlarında düğüm REF'i taşıyan parametreler (taşıma / döndürme / aynada dönüştürülür). */
+  const URETEC_REF_ALANLARI = Object.freeze({ capraz: ["goz"], makas: ["bas", "son"], "besik-cerceve": ["taban1", "taban2"] });
   const D2R = Math.PI / 180;
   const ILK_AKS_DUGUM = 800001;          // §19 aks kesişimi düğümleri (kat dışı Z aksları, ek sistemler): işlem içi numara, REF'i adla yazılır
 
@@ -1248,7 +1250,8 @@
     for (const c of cs) this.uclar(c).forEach(function (n) { dg.add(n); });
     for (const p of ps) p.kose.forEach(function (r) { dg.add(self.refNo(r, false)); });
     for (const v of esle.values()) dg.delete(v);
-    if (!dg.size) { this.uretecIzle(secC, secP, acikEsle, f, R, []); return esle; }
+    if (!dg.size) { this.uretecIzle(secC, secP, acikEsle, f, R, [], this.uretecRefleri(), new Map()); return esle; }
+    const uretecOnce = this.uretecRefleri();      // taşımadan önce: kayıt REF'lerinin düğümü ve konumu (taşınan uç düğümleri silinebilir)
     // paylaşılan düğümler: seçilmeyen çubuk / panel uçları, aks–kat elemanları, bölme / kesişim dayanakları
     const paylasilan = this.dayanakDugumler();
     for (const c of this.m.cubuklar) if (!secC.has(+c.no)) { try { this.uclar(c).forEach(function (n) { paylasilan.add(n); }); } catch (e) { /* yoksay */ } }
@@ -1349,8 +1352,20 @@
     this.yetimSil([...kendi].filter(function (n) { return hedef.get(n) !== n; }));
     // yeni uç düğümü seçilmeyen bir çubuğun iç noktasına düştüyse o çubuk orada bölünür (bağlantısız düğüm mekanizma olurdu)
     this.uclardaBol(yeniDg, secC);
-    this.uretecIzle(secC, secP, acikEsle, f, R, tasinanMesnet);
+    this.uretecIzle(secC, secP, acikEsle, f, R, tasinanMesnet, uretecOnce, hedef);
     return esle;
+  };
+  /** Üreteç kayıtlarının REF parametrelerinin (çapraz goz; makas bas/son; beşik taban1/taban2) düğümü ve konumu: Map("no|alan|sıra" → {n, P}). */
+  P_.uretecRefleri = function () {
+    const out = new Map(), self = this;
+    for (const u of this.m.uretecler) {
+      if (!u) continue;
+      for (const a of URETEC_REF_ALANLARI[u.tur] || []) {
+        const l = Array.isArray(u[a]) ? u[a] : (u[a] != null ? [u[a]] : []);
+        l.forEach(function (r, i) { try { const n = self.refNo(r, false); if (n != null) out.set(u.no + "|" + a + "|" + i, { n: n, P: self.kon(n) }); } catch (e) { /* çözülemeyen REF: kayıt izleyemez */ } });
+      }
+    }
+    return out;
   };
   /** Üretecin (kaynak.uretec === no) çubuk ve panel geometrisinin imzası (1 mm; uç sırası ve eleman numarası önemsiz). */
   P_.uretecImzasi = function (no) {
@@ -1372,7 +1387,7 @@
    *    cephe kayıtları) taşınan ya da şekli değişen elemanlar üreteçten ayrılır (kaynak.uretec silinir) ve not düşülür; üretecin çubuğu /
    *    paneli kalmadıysa kayıt silinir, kalan düğüm / mesnet / kren kayıtları da ayrılır.
    */
-  P_.uretecIzle = function (secC, secP, acikEsle, f, R, tasinanMesnet) {
+  P_.uretecIzle = function (secC, secP, acikEsle, f, R, tasinanMesnet, once, hedef) {
     const self = this;
     if (!this.m.uretecler.length && !this.m.cubuklar.some(function (c) { return c && c.kaynak && c.kaynak.uretec != null; })) return;
     const acikHedef = new Set([...acikEsle].filter(function (e) { return e[0] !== e[1]; }).map(function (e) { return e[1]; }));
@@ -1384,7 +1399,7 @@
     const nolar = new Set();
     for (const c of this.m.cubuklar) if (etkC.has(+c.no) && c.kaynak && c.kaynak.uretec != null) nolar.add(+c.kaynak.uretec);
     for (const p of this.m.paneller) if (etkP.has(+p.no) && p.kaynak && p.kaynak.uretec != null) nolar.add(+p.kaynak.uretec);
-    const ALAN = { capraz: ["goz"], makas: ["bas", "son"], "besik-cerceve": ["taban1", "taban2"] };
+    const ALAN = URETEC_REF_ALANLARI;
     const kaynakSil = function (x) { if (!x || !x.kaynak) return; delete x.kaynak.uretec; if (!Object.keys(x.kaynak).length) delete x.kaynak; };
     for (const no of [...nolar].sort(function (a, b) { return a - b; })) {
       const ait = function (x) { return !!(x && x.kaynak && x.kaynak.uretec != null && +x.kaynak.uretec === no); };
@@ -1396,20 +1411,28 @@
         const yedek = kopya(kayit);
         let degisti = false;
         try {
-          const yeniRef = function (r) {
-            const n = self.refNo(r, false);
-            if (n == null) throw new ModelHatasi("REF");
-            let t = n;
+          // REF'in taşımadan önceki düğümü: taşınan uç düğümü → hedefi; katı harekette öteki köşeler dönüşümle (hedefte düğüm olmalı)
+          const yeniRef = function (a) { return function (r, i) {
+            const o = once.get(no + "|" + a + "|" + (i || 0));
+            if (!o) throw new ModelHatasi("REF");
+            const n = o.n;
             if (acikHedef.has(n)) { degisti = true; return r; }        // düğüm taşıması (refDegistir) REF'i zaten yeni düğüme yazdı
+            let t = n;
             if (acikEsle.has(n)) t = acikEsle.get(n);
-            else if (kati) { t = self.bul(f(self.kon(n))); if (t == null) throw new ModelHatasi("hedef"); }
+            else if (kati) { t = hedef.has(n) ? hedef.get(n) : self.bul(f(o.P)); if (t == null) throw new ModelHatasi("hedef"); }
             if (t === n) return r;
             degisti = true;
             return self.refYaz(t);
-          };
-          for (const a of ALAN[kayit.tur]) if (kayit[a] != null) kayit[a] = Array.isArray(kayit[a]) ? kayit[a].map(yeniRef) : yeniRef(kayit[a]);
+          }; };
+          for (const a of ALAN[kayit.tur]) if (kayit[a] != null) kayit[a] = Array.isArray(kayit[a]) ? kayit[a].map(yeniRef(a)) : yeniRef(a)(kayit[a], 0);
           if (kati && R && kayit.tur === "makas") kayit.yukari = R(nokta3(kayit.yukari || [0, 0, 1], "yukari")).map(r9);
-          if (kati && R && kayit.tur === "besik-cerceve" && kayit.yon) kayit.yon = R(nokta3(kayit.yon, "yon")).map(r9);
+          if (kati && R && kayit.tur === "besik-cerceve") {
+            // çerçeve çoğaltma doğrultusu: verilmemişse besikIc'in varsayılanı (açıklığa yatay dik) dönüşümden önce yazılır
+            let v = kayit.yon ? nokta3(kayit.yon, "yon") : null;
+            const t1 = once.get(no + "|taban1|0"), t2 = once.get(no + "|taban2|0");
+            if (!v && t1 && t2) { const u = birim([t2.P[0] - t1.P[0], t2.P[1] - t1.P[1], 0]); v = [-u[1], u[0], 0]; }
+            if (v) kayit.yon = R(v).map(r9);
+          }
           if (kati) for (const t of tasinanMesnet) if (t.uretec === no) t.r.kaynak = { uretec: no };
           if (degisti) {
             const once = this.uretecImzasi(no);

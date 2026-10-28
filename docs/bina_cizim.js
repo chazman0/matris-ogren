@@ -593,10 +593,16 @@
 
   /**
    * Aks silme sonucunda (MatrisAks.aksSil) motorun her zaman reddettiği YENİ bozukluklar — uygula() kapısıyla aynı kural: sıfır boy,
-   * bozuk panel, çakışan çubuk ve panelin taşıyan kenarında eksik çubuk zinciri. Boşsa silme uygulanabilir.
+   * bozuk panel, çakışan çubuk ve panelin taşıyan kenarında eksik çubuk zinciri; ayrıca olmayan düğüme başvuru (eksik-dugum) ve
+   * denetimin hiç çözümleyemediği model (ör. doğruları paralel kesişim düğümü). Boşsa silme uygulanabilir.
    */
   function aksSilEngelleri(once, sonra) {
-    return yeniEngeller(once, sonra, ENGEL_KODLARI.concat(["panel-kenari"])).filter(function (u) { return ENGEL_KODLARI.indexOf(u.kod) >= 0 || tasiyanKenarMi(sonra, u); });
+    try { MO().denetle(sonra); } catch (e) {
+      let onceBozuk = false;
+      try { MO().denetle(once); } catch (x) { onceBozuk = true; }
+      return onceBozuk ? [] : [{ kod: "cozulemez", mesaj: "Model çözümlenemiyor: " + ((e && e.message) || String(e)) }];
+    }
+    return yeniEngeller(once, sonra, ENGEL_KODLARI.concat(["panel-kenari", "eksik-dugum"])).filter(function (u) { return ENGEL_KODLARI.indexOf(u.kod) >= 0 || u.kod === "eksik-dugum" || tasiyanKenarMi(sonra, u); });
   }
 
   // ================================================================= kesit önerisi (bina_kesit_oner, sözleşme C4)
@@ -1719,7 +1725,9 @@
           if (engel.length) {
             S.sonUyari = "Aks " + h.ad + " silinmedi (motor bu modeli çözmez): " + engel.slice(0, 3).map(function (u) { return cubukAdlari(q.model, u.mesaj); }).join(" ") +
               (engel.length > 3 ? " … (+" + (engel.length - 3) + ")" : "") +
-              (s === "tasi" ? " — “Elemanlarla birlikte sil” seçeneğini kullanın ya da çakışan elemanları önce düzenleyin." : " — çakışan elemanları önce düzenleyin.");
+              (s === "tasi" ? " — “Elemanlarla birlikte sil” seçeneğini kullanın ya da çakışan elemanları önce düzenleyin."
+                : engel.some(function (u) { return u.kod === "panel-kenari"; }) ? " — taşıyan kenarının çubukları silinen paneller kalıyordu: önce o panelleri silin ya da “en yakın aksa taşı”yı kullanın."
+                  : " — “en yakın aksa taşı”yı kullanın ya da elemanları önce düzenleyin.");
             toast(S.sonUyari); MB.ipucuYenile(); return;
           }
           MB.binaAyarla(q.model, { etiket: "Aks " + h.ad + " silindi: " + (q.uyarilar || []).join(" ") });
@@ -2510,8 +2518,8 @@
         const satir = function (o, i, l) {
           const r = oneriSatiri(o, false);
           return '<div class="bc-oneri"><p><b>' + kacis(oneriEtiketi(o)) + "</b>: " + kacis(o.kesit || "?") + " → <b>" + kacis(r.ad) + "</b>" + (r.oneri ? " (" + kacis(r.oneri) + ")" : "") +
-            " (D/C " + kacis(r.dc) + ' <span class="not">' + kacis(r.dcEtiket) + "</span>)" +
-            (o.degisim ? ' <span class="not">' + kacis(o.degisim) + "</span>" : "") + "</p>" +
+            (o.degisim ? ' <span class="not">' + kacis(o.degisim) + "</span>" : "") +
+            " · D/C " + kacis(r.dc) + ' <span class="not">' + kacis(r.dcEtiket) + "</span></p>" +
             "<ul>" + (o.gerekce || []).map(function (g) { return "<li>" + kacis(g) + "</li>"; }).join("") + "</ul>" +
             (oneriUygulanir(o) ? '<button type="button" class="dugme kucuk ana" data-oneri="' + l.indexOf(o) + '">Uygula</button>' : "") + "</div>";
         };

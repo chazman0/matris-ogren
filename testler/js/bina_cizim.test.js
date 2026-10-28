@@ -524,6 +524,23 @@ test("yeni engeller: işlemin ürettiği sıfır boylu / çakışan çubuk ve bo
   assert.deepEqual(BC.yeniEngeller(u1, u2), []);
 });
 
+test("aks sil kapısı (ui-s3-13): yeni sıfır boy / çakışan çubuk / eksik düğüm ve çözümlenemeyen model engeldir; önceden bozuk olan sayılmaz", function () {
+  const m = BC.genellestirHazirla(aksKatModel()).model;
+  assert.deepEqual(BC.aksSilEngelleri(m, m), []);
+  const s = JSON.parse(JSON.stringify(m));
+  s.cubuklar[0].j = JSON.parse(JSON.stringify(s.cubuklar[0].i));                                   // sıfır boylu
+  assert.deepEqual(BC.aksSilEngelleri(m, s).map(function (u) { return u.kod; }), ["sifir-boy"]);
+  const e = JSON.parse(JSON.stringify(m));
+  e.cubuklar[0].j = { dugum: 199999 };                                                           // olmayan düğüm
+  const ee = BC.aksSilEngelleri(m, e);
+  assert.ok(ee.length && ee.every(function (u) { return u.kod === "eksik-dugum"; }), JSON.stringify(ee));
+  const k = JSON.parse(JSON.stringify(m)), r = k.cubuklar[0].i, q = k.cubuklar[0].j;
+  k.dugumler = [{ no: 100001, tur: "kesisim", a: [r, q], b: [r, q] }];                           // paralel doğrular: denetim çözümleyemez
+  k.cubuklar.push({ no: 999, i: r, j: { dugum: 100001 }, tur: "capraz" });
+  assert.deepEqual(BC.aksSilEngelleri(m, k).map(function (u) { return u.kod; }), ["cozulemez"]);
+  assert.deepEqual(BC.aksSilEngelleri(k, k), [], "önceden de çözümlenemiyorsa aks silmeyi engellemez");
+});
+
 test("taşıyan kenar: panel kenarı bulgusu dağıtıma göre motorun reddettiği kenarda mı (iki, tek-13, tek-24, yok, otomatik)", function () {
   // A1–B1–B2–A2 gözü (6 × 5) +3.00'te; 1. kenar A1–B1 çubuksuz
   let m = bos();

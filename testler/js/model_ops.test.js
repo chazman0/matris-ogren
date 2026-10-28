@@ -989,7 +989,29 @@ test("taşı / döndür / ayna (kopyasız) üreteç elemanları: hepsi taşını
   const ng = M.uretecGuncelle(n.model, no, {});
   assert.deepEqual(sahip(ng.model).map(function (c) { return uclar(ng.model, c).map(function (P) { return P.join(","); }).sort().join(" "); }).sort(),
     ciz.map(function (c) { return uclar(n.model, c).map(function (P) { return P.join(","); }).sort().join(" "); }).sort());
-  // 6) kopyalar (doğrusal dizi) üretece bağlanmaz; kaynağı değişmez
+  // 6) serbest düğümlü beşik çerçeve ve makas: taşınan uç düğümleri yeniden açılır (eski numara silinir) — kayıt REF'leri taşımadan
+  //    önceki düğümlerinden hedefe yazılır; çoğaltma doğrultusu (yon) ve makas "yukari" da dönüşür; mesnetler üreteçte kalır
+  const imza = function (mm, u) {
+    return mm.cubuklar.filter(function (c) { return c.kaynak && c.kaynak.uretec === u; })
+      .map(function (c) { return uclar(mm, c.no).map(function (P) { return P.map(function (v) { return Math.round(v * 1000); }).join(","); }).sort().join("|"); }).sort().join(";");
+  };
+  const bs = M.besikCerceveUret({}, { taban1: [0, 0, 0], taban2: [20, 0, 0], sacak: 6, mahya: 8, kesitler: { kolon: "HEA300", mertek: "IPE360" }, adet: 2, aralik: 6 });
+  const bno = bs.model.uretecler[0].no;
+  const bc = bs.model.cubuklar.filter(function (c) { return c.kaynak && c.kaynak.uretec === bno; }).map(function (c) { return c.no; });
+  for (const [ad, f] of [["taşı", function (mm) { return M.tasi(mm, { cubuklar: bc }, 0, 12, 0); }], ["ayna", function (mm) { return M.ayna(mm, { cubuklar: bc }, { Y: 10 }, { kopya: false }); }]]) {
+    const r = f(bs.model);
+    assert.ok(r.uyarilar.some(function (u) { return /kaydı elemanlarıyla birlikte taşındı/.test(u); }), ad + ": " + JSON.stringify(r.uyarilar));
+    assert.ok(r.model.mesnetler.every(function (sk) { return sk.kaynak && sk.kaynak.uretec === bno; }), ad + ": taşınan mesnetler üreteçte");
+    const rg = M.uretecGuncelle(r.model, bno, {});
+    assert.equal(imza(rg.model, bno), imza(r.model, bno), ad + ": yeniden üretim taşınan çerçeveyle aynı");
+    assert.equal(rg.model.mesnetler.length, r.model.mesnetler.length, ad + ": mesnet çoğalmaz");
+  }
+  const mk = M.makasUret({}, { tip: "pratt", bas: [0, 0, 5], son: [12, 0, 5], yukseklik: 1.5, goz: 6 });
+  const mno = mk.model.uretecler[0].no, mc = mk.model.cubuklar.map(function (c) { return c.no; });
+  const ma = M.ayna(mk.model, { cubuklar: mc }, { Z: 10 }, { kopya: false });
+  assert.deepEqual(ma.model.uretecler[0].yukari, [0, 0, -1], "makas ters çevrilince 'yukari' de döner");
+  assert.equal(imza(M.uretecGuncelle(ma.model, mno, {}).model, mno), imza(ma.model, mno));
+  // 7) kopyalar (doğrusal dizi) üretece bağlanmaz; kaynağı değişmez
   const dz = M.dogrusalDizi(b, { cubuklar: ciz }, 0, 5, 0, 1);
   assert.deepEqual(dz.model.uretecler[0].goz, goz);
   assert.deepEqual(sahip(dz.model), ciz);
