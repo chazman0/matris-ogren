@@ -139,6 +139,13 @@ def test_bina_sablon_baglantilari_gecerli():
     for ad, ders in (("betonarme-3kat-surekli-temel", "20"), ("betonarme-4kat-radye", "20"), ("celik-cbf-3kat", "25"),
                      ("celik-sanayi-4hol", "25"), ("celik-cbf-3kat", "26")):
         assert ders in bulunan.get(ad, []), f"{ders}. ders {ad} şablonuna bağlanmıyor"
+    # bağlantı Bina sayfası hiç açılmamışken de çalışır: app.js #bina/… adresinde sayfayı gösterir (bina.js görünür olunca
+    # kurulur ve adresi kendisi okur); yoksa ders sayfasındaki tıklama hiçbir şey yapmaz
+    app = (DOCS / "app.js").read_text(encoding="utf-8")
+    govde = app[app.index("function hashYonlendir()"):app.index("function sayfaGoster(")]
+    assert re.search(r'h\.indexOf\("bina/"\) === 0\) \{[^}]*sayfaGoster\("bina", true\)', govde, re.S)
+    bina = (DOCS / "bina.js").read_text(encoding="utf-8")
+    assert "bina\\/sablon\\/(.+)" in bina and "hashKontrol();" in bina
 
 
 KATALOG = [(ad, ad) for ad in dd.ETKILESIMLER] + [(ad, "alistirma:" + ad) for ad in dd.ALISTIRMALAR]

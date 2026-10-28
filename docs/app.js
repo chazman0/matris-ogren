@@ -1228,6 +1228,10 @@
     } else if (h === "dersler") {
       sayfaGoster("dersler", true);
       dersListeGoster();
+    } else if (h.indexOf("bina/") === 0) {
+      // #bina/sablon/<ad> (derslerdeki "Bina sayfasında aç"): sayfa görünür olur; bina.js henüz kurulmadıysa kurulurken
+      // adresi okur (hashKontrol), kurulduysa kendi hashchange dinleyicisi şablonu yükler.
+      sayfaGoster("bina", true);
     } else if (h && $("sayfa-" + h)) {
       sayfaGoster(h, true);
     }
