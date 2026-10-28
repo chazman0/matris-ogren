@@ -357,6 +357,27 @@ def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
     assert k1["kesit"] == u["ad"] and k1["dc"] <= 1.0 and k1["durum"] == "yeterli"
 
 
+def test_kesit_oner_yalniz_donati_uygula_kesin(kopru):
+    """K1 'donatı' (aks–kat çözüm kimliğiyle): b × h yeterli, ρ yetmiyor → uygula {ad 'B30x30-ρ%2.00', tanım = mevcut kart +
+    donati_orani}. ρ rijitliği değiştirmediğinden uygulanınca aks–kat tablosunun D/C'si öneridekiyle aynıdır. Eskiden degisim
+    'aynı', uygula null: arayüzde Uygula düğmesi yoktu ve Hepsini uygula kolonu atlardı (KO-1)."""
+    kopru._BINA_ONBELLEK.clear()
+    kopru._GENEL_ONBELLEK.clear()
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["kesitler"]["S45x45"].update({"b": 0.3, "h": 0.3})
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 1}]})
+    o = y["oneriler"][0]
+    assert y["hata"] is None and o["degisim"] == "donatı" and o["dc_once"] > 1.5 and o["dc_oneri"] <= 1.0
+    u = o["uygula"]
+    assert u == {"ad": "B30x30-ρ%2.00", "tanim": dict(b["kesitler"]["S45x45"], donati_orani=0.02), "yeni": True}
+    b["kesitler"][u["ad"]] = u["tanim"]
+    next(k for k in b["kolonlar"] if k["no"] == 1)["kesit"] = u["ad"]
+    z = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    k1 = next(k for k in z["tasarim"]["elemanlar"] if k["tur"] == "kolon" and k["no"] == 1)
+    assert k1["kesit"] == u["ad"] and k1["dc"] == pytest.approx(o["dc_oneri"], rel=1e-4) and k1["durum"] == "yeterli"
+
+
 _S1_SABLONLAR = [s["ad"] for s in yapi.bina_sablonlar() if yapi.bina_sablon(s["ad"]).get("surum", 1) < 3]
 
 

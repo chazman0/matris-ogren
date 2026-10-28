@@ -4307,9 +4307,10 @@ def _surum_sayi(s):
 
 def _serbest_mi(bina):
     """Genel (surum 3) model mi — tek yönlendirme kuralı (arayüzdeki ``s3Var`` ile aynı; ``yapi_serbest.serbest_mi`` bunu çağırır):
-    ``surum`` ≥ 3 (``_surum_sayi``: sayı ya da tamsayı/ondalık dizesi, tam kısmı), ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da
-    bir ek yükün ``dugum`` değeri REF sözlüğü (``{"aks": [..], "z": ..}``) ya da türü ``cubuk`` / ``panel``. Aks–kat düğüm yükü
-    ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
+    ``surum`` ≥ 3 (``_surum_sayi``: sayı ya da tamsayı/ondalık dizesi, tam kısmı), ya da ``cubuklar`` / ``paneller`` /
+    ``dugumler`` / ``mesnetler`` / ``uretecler`` listelerinden biri dolu, ya da bir ek yükün ``dugum`` değeri REF sözlüğü
+    (``{"aks": [..], "z": ..}``) ya da türü (büyük/küçük harf ve baş/son boşluk duyarsız) ``cubuk`` / ``panel``. Aks–kat düğüm
+    yükü ``{"tur": "dugum", "aks": ["B", "2"], "kat": 1}`` genel model sayılmaz."""
     if isinstance(bina, str):
         try:
             bina = json.loads(bina)
