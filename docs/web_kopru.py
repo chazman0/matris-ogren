@@ -64,7 +64,8 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     panelinin "Motor ayrıntısı" (docs/eleman_bilgi.js paketBirlestir): alan.eleman_bilgi_alani'ndan parça başına
                     istasyon iç kuvvetleri, en büyük değerler, uç yer değiştirmeleri (bina ve yerel eksen) ve eğri yer
                     değiştirmenin en büyüğü. bölüm: {baslik, tablo: {basliklar, satirlar}, satirlar, not, notlar, acilir}.
-                    Önbellek bina_kombinasyon ile aynı.
+                    "kolon"/"kiris" + no genel modelde bina_eleman_tasarim ile aynı kuralla çözülür (çubuk numarası; yalnız
+                    aks–kat girdisinin genel motorla çözümünde aks–kat no'su). Önbellek bina_kombinasyon ile aynı.
 
 Genel model (yapi._serbest_mi: bina "surum" ≥ 3 ya da cubuklar / paneller / dugumler / mesnetler / uretecler dolu ya da REF
 düğüm / çubuk / panel ek yükü; yapi_serbest.py): bina_coz veri'sine ek alanlar — ag.cubuklar, ag.paneller (kenarlar, taşıyan

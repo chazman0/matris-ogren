@@ -1037,9 +1037,12 @@ def radye_alani(ic, durum, *, katsayilar=None):
 def fe_elemanlari(ic, tur, no):
     """Bina elemanı → FE eleman kayıtları (ağ sırasıyla). tur 'fe' / 'eleman': tek FE eleman (no = FE no); 'cubuk' (genel
     model): çubuğun bütün FE parçaları (vute parçaları; ``e["cubuk"] == no``); 'kolon' / 'kiris': aks–kat elemanının parçaları
-    (``kaynak_no``) — genel modelde aynı türden çubuk numarası."""
+    (``kaynak_no``). Genel modelde 'kolon' / 'kiris' köprünün ``bina_eleman_tasarim`` kuralıyla (yapi_serbest._cubuk_bul):
+    girdi yalnız aks–kat elemanlarındansa (``cubuklar`` yok) aks–kat no'su (çubuğun ``kaynak``ı, bütün parçaları), değilse aynı
+    türden çubuk numarası."""
     _ic_kontrol(ic)
     ag = ic["alan"]["ag"]
+    B = ic["alan"].get("B")
     tur = str(tur or "").lower()
     try:
         no_i = int(no)
@@ -1049,6 +1052,17 @@ def fe_elemanlari(ic, tur, no):
         sec = [e for e in ag["elemanlar"] if e["no"] == no_i]
     elif tur == "cubuk":
         sec = [e for e in ag["elemanlar"] if e.get("cubuk") == no_i]
+    elif getattr(B, "serbest", False) and tur in ("kolon", "kiris"):
+        ham = getattr(B, "ham", None)
+        if isinstance(ham, dict) and not ham.get("cubuklar"):
+            cub = set()
+            for c in getattr(B, "cubuklar", None) or []:
+                kay = c.get("kaynak") or {}
+                if isinstance(kay, dict) and kay.get("aks_kat") == tur and int(kay.get("no", -1)) == no_i:
+                    cub.add(c["no"])
+            sec = [e for e in ag["elemanlar"] if e.get("cubuk") in cub]
+        else:
+            sec = [e for e in ag["elemanlar"] if e.get("tur") == tur and e.get("cubuk") == no_i]
     else:
         sec = [e for e in ag["elemanlar"] if e.get("tur") == tur and e.get("kaynak_no") == no_i]
     if not sec:

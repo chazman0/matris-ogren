@@ -757,17 +757,16 @@ def _kesit_kart(ad, kayit, B):
             "dogrulandi": True, "kaynak": p.get("kaynak")}
 
 
-def _mm_deger(v, ad, alan):
-    """Basit kesit boyutu: < 5 ise metre (×1000), değilse mm kabul edilir (0,1143 m ile 114,3 mm aynı)."""
-    x = Y._sayi(v, f"Kesit {ad!r}: {alan}", pozitif=True, sifir_olur=False)
-    return x * 1000.0 if x < 5.0 else x
-
-
 def _boyutlar_ust(ad, tip, kayit):
     """Üst düzey alanlı basit kesit lehçesi (IFC/arayüz örnekleri): {"tip": "boru", "D": 0.1143, "t": 0.004} (m) ya da
-    {"tip": "2L", "h": 60, "b": 60, "t": 6, "ara": 10} (mm) → tasarim.kesit_ozellik boyutları (mm). Değer < 5 metre sayılır."""
+    {"tip": "2L", "h": 60, "b": 60, "t": 6, "ara": 10} (mm) → tasarim.kesit_ozellik boyutları (mm). Birim kesit başına dış
+    boyuttan (D / h / b) seçilir: dış boyut < 5 ise bütün değerler metre (×1000), değilse mm — böylece mm verilen ince et
+    kalınlığı (t = 4 mm) metre sanılmaz."""
     t = str(tip).strip().lower()
     al = lambda *anahtar: next((kayit.get(a) for a in anahtar if kayit.get(a) not in (None, "")), None)  # noqa: E731
+    dis = [Y._sayi(al(a), f"Kesit {ad!r}: {a}", pozitif=True, sifir_olur=False) for a in ("D", "d", "h", "H", "b", "B")
+           if al(a) is not None]
+    metre = bool(dis) and max(dis) < 5.0
 
     def mm(*anahtar, zorunlu=True):
         v = al(*anahtar)
@@ -775,7 +774,8 @@ def _boyutlar_ust(ad, tip, kayit):
             if zorunlu:
                 raise MatrisHatasi(f"Kesit {ad!r} ({tip}): {'/'.join(anahtar)} boyutu eksik.")
             return None
-        return _mm_deger(v, ad, anahtar[0])
+        x = Y._sayi(v, f"Kesit {ad!r}: {anahtar[0]}", pozitif=True, sifir_olur=False)
+        return x * 1000.0 if metre else x
     if t == "kutu":
         H = mm("h", "H")
         B_ = mm("b", "B", zorunlu=False) or H
@@ -792,7 +792,7 @@ def _boyutlar_ust(ad, tip, kayit):
             s_ = al("ara", "s")
             if s_ is not None:
                 s_ = Y._sayi(s_, f"Kesit {ad!r}: ara (sırt aralığı)", pozitif=True)
-                out["s"] = s_ * 1000.0 if 0.0 < s_ < 5.0 else s_
+                out["s"] = s_ * 1000.0 if metre else s_
         return out
     if t == "u":
         return {"h": mm("h"), "b": mm("b"), "tw": mm("tw"), "tf": mm("tf")}
@@ -3209,6 +3209,9 @@ def _tasarim(ts, T):
 # ============================================================================
 # 13) Kesit önerisi
 # ============================================================================
+_ONER_DOGRULAMA = 12      # öneri kaydın bütün kurallarıyla yetmezse denenen en çok üst profil / büyük kesit sayısı
+
+
 def _oner_cubuk(ts, T, c, dc_kayit=None):
     """Tek çubuk için öneri (C4): çelikte aynı aileden D/C ≤ 1 en hafif profil (tasarim.celik_kesit_oner, aynı iç kuvvetlerle),
     betonarmede tasarim.betonarme_kesit_oner. ``dc_once``: §11 kaydının D/C'si (``dc_kayit``; tasarım tablosundaki değer),
@@ -3276,38 +3279,105 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
         elif oneri is not None and degisim is None:
             g0 = kt.get("g_kg")
             degisim = "aynı" if not g0 or agr is None or abs(agr - g0) < 1e-9 else ("büyüt" if agr > g0 else "küçült")
+        def profil_dc(ad_p):
+            try:
+                kart = _kesit_kart("__oneri__", {"tip": "profil", "profil": ad_p, "malzeme": kt["malzeme"]}, B)
+            except MatrisHatasi:
+                return None
+            return kayit_dc(kart)
+
         dc_oneri = None
+        durum = o["durum"] if oneri == o["oneri"] else "aile değişti"
         if oneri is not None:
-            dc_oneri = dc_kayit if ayni else None
-            if dc_oneri is None:
+            dc_oneri = dc_kayit if ayni else profil_dc(oneri)
+            if dc_oneri is not None and dc_oneri > 1.0 + 1e-9 and not ayni:
+                # tarama tek parametre takımıyla yapılır (ör. döşemeli kirişte belirleyen moment bölgesinin L_b'si); kaydın bütün
+                # kurallarıyla (iki moment bölgesi, kren, TBDY) yetmeyen öneri verilmez: aynı ailede bir sonraki ağır profiller denenir
+                ilk, ilk_dc = oneri, dc_oneri
+                bulundu = None
                 try:
-                    kart = _kesit_kart("__oneri__", {"tip": "profil", "profil": oneri, "malzeme": kt["malzeme"]}, B)
-                    dc_oneri = kayit_dc(kart)
-                except MatrisHatasi:
-                    dc_oneri = None
-            if dc_oneri is None:          # kart kurulamadı: tasarim'ın ham D/C'si (koşul satırları dahil, güvenli yanda)
+                    aile_o = ts._aile_coz(oneri)[0]
+                    liste = ts._aile_listesi(aile_o)
+                except (AttributeError, KeyError, MatrisHatasi):
+                    liste = []
+                adlar = [a for a, _ in liste]
+                n_ilk = next((i for i, a in enumerate(adlar) if a.replace(" ", "").upper() == ilk.replace(" ", "").upper()), None)
+                for ad_p, g_p in (liste[n_ilk + 1:n_ilk + 1 + _ONER_DOGRULAMA] if n_ilk is not None else []):
+                    ayni_p = ad_p.replace(" ", "").upper() == str(kt["profil"]).replace(" ", "").upper()
+                    d_p = dc_kayit if ayni_p else profil_dc(ad_p)
+                    if d_p is not None and d_p <= 1.0 + 1e-9:
+                        bulundu = (ad_p, g_p, d_p, ayni_p)
+                        break
+                if bulundu is not None:
+                    oneri, agr, dc_oneri, ayni = bulundu
+                    g0 = (o.get("mevcut") or {}).get("agirlik_kg_m") or kt.get("g_kg")
+                    degisim = "aynı" if ayni else (("büyüt" if agr > g0 else "küçült") if g0 else None)
+                    durum = "doğrulandı (bir üst profil)"
+                    gerekce.append(f"{ilk} kaydın bütün kurallarıyla yetersiz (D/C = {_f(ilk_dc, 3)} > 1: ör. döşemeli kirişte negatif "
+                                   f"moment bölgesi L_b = boy); aynı iç kuvvetlerle D/C ≤ 1 sağlayan ilk profil {oneri} "
+                                   f"(D/C = {_f(dc_oneri, 3)}).")
+                else:
+                    gerekce.append(f"{ilk} kaydın bütün kurallarıyla yetersiz (D/C = {_f(ilk_dc, 3)} > 1) ve ailede sonraki "
+                                   f"{_ONER_DOGRULAMA} profil de yetmedi: öneri yok.")
+                    oneri = agr = dc_oneri = degisim = None
+                    durum = "ailede yeterli profil yok"
+            elif dc_oneri is None:          # kart kurulamadı: tasarim'ın ham D/C'si (koşul satırları dahil, güvenli yanda)
                 dc_oneri = dc_o
         out.update({"oneri": oneri, "profil": kt["profil"], "dc_oneri": _r5(min(dc_oneri, 99.0)) if dc_oneri is not None else None,
-                    "agirlik_kg_m": agr, "gerekce": gerekce, "degisim": degisim,
-                    "durum": o["durum"] if oneri == o["oneri"] else "aile değişti", "aile": aile})
+                    "agirlik_kg_m": agr, "gerekce": gerekce, "degisim": degisim, "durum": durum, "aile": aile})
         if ayni:
             out["gerekce"].append("Mevcut kesit en hafif yeterli kesit (değişiklik yok).")
         return out
     if bilgi.get("kontrol") == "betonarme":
         tur = bilgi["tur"]
         kuv = [{k_: v for k_, v in k.items() if k_ in ("ad", "N", "Mx", "My", "V", "deprem")} for k in bilgi["kuvvetler"]]
-        o = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"])
+        # öneri, tahkikle aynı donatı ağırlık merkezi derinliğiyle (paspayı + etriye + çubuk yarıçapı = pas + 20 mm; tasarim'ın
+        # kiriş varsayılanı 40 mm, kolon 50 mm) — yoksa önerilen kesit kendi tahkikinde yetmeyebilir
+        kis = {"paspayi": float(bilgi.get("pas", 0.03)) + Y._PAS_EK}
+        o = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis)
         on = o.get("oneri") or {}
+        gerekce = list(o.get("gerekce", []))
+        durum = o.get("durum")
         dc_oneri = degisim = None
         if on.get("b"):
-            A0, A1 = kt["b"] * kt["h"], on["b"] * on["h"]
             ayni = abs(on["b"] - kt["b"]) < 1e-9 and abs(on["h"] - kt["h"]) < 1e-9
-            degisim = "aynı" if ayni else ("büyüt" if A1 > A0 + 1e-12 else ("küçült" if A1 < A0 - 1e-12 else
-                                                                               ("büyüt" if on["h"] > kt["h"] else "küçült")))
             dc_oneri = dc_kayit if ayni else kayit_dc(dict(kt, b=on["b"], h=on["h"]))
+            ilk = (on["b"], on["h"], dc_oneri)
+            for _ in range(_ONER_DOGRULAMA):
+                # kaydın bütün kurallarıyla (koşul satırları, kesme, TBDY) yetmiyor: bir adım büyük kesit (kiriş h, kolon en küçük boyut)
+                if ayni or dc_oneri is None or dc_oneri <= 1.0 + 1e-9:
+                    break
+                if tur == "kiris":
+                    kis["h_min"] = on["h"] + 0.05
+                else:
+                    kis["b_min"] = min(on["b"], on["h"]) + 0.05
+                try:
+                    o2 = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis)
+                except MatrisHatasi:
+                    break
+                on2 = o2.get("oneri") or {}
+                if not on2.get("b"):
+                    break
+                on = on2
+                ayni = abs(on["b"] - kt["b"]) < 1e-9 and abs(on["h"] - kt["h"]) < 1e-9
+                dc_oneri = dc_kayit if ayni else kayit_dc(dict(kt, b=on["b"], h=on["h"]))
+            if (on["b"], on["h"]) != ilk[:2]:
+                if dc_oneri is not None and dc_oneri <= 1.0 + 1e-9:
+                    gerekce.append(f"{_f(ilk[0] * 1000, 0)} × {_f(ilk[1] * 1000, 0)} mm kaydın bütün kurallarıyla yetersiz (D/C = "
+                                   f"{_f(ilk[2], 3)} > 1); D/C ≤ 1 sağlayan ilk büyük kesit {_f(on['b'] * 1000, 0)} × "
+                                   f"{_f(on['h'] * 1000, 0)} mm (D/C = {_f(dc_oneri, 3)}).")
+                    durum = "doğrulandı (bir üst kesit)"
+            if dc_oneri is not None and dc_oneri > 1.0 + 1e-9 and not ayni:
+                gerekce.append(f"Önerilen {_f(on['b'] * 1000, 0)} × {_f(on['h'] * 1000, 0)} mm kaydın bütün kurallarıyla yetersiz "
+                               f"(D/C = {_f(dc_oneri, 3)} > 1): öneri yok.")
+                on, dc_oneri, durum = {}, None, "yeterli kesit bulunamadı"
+            else:
+                A0, A1 = kt["b"] * kt["h"], on["b"] * on["h"]
+                degisim = "aynı" if ayni else ("büyüt" if A1 > A0 + 1e-12 else ("küçült" if A1 < A0 - 1e-12 else
+                                                                                   ("büyüt" if on["h"] > kt["h"] else "küçült")))
         out.update({"oneri": (f"{_f(on['b'] * 100, 0)}x{_f(on['h'] * 100, 0)}" if on.get("b") else None), "b": on.get("b"), "h": on.get("h"),
                     "b_once": kt["b"], "h_once": kt["h"], "dc_oneri": _r5(min(dc_oneri, 99.0)) if dc_oneri is not None else None,
-                    "degisim": degisim, "gerekce": o.get("gerekce", []), "durum": o.get("durum"),
+                    "degisim": degisim, "gerekce": gerekce, "durum": durum,
                     "donati": kt.get("donati"), "pas": kt.get("pas")})
         return out
     out.update({"gerekce": ["Bu çubuk için öneri yok."]})
@@ -3767,8 +3837,8 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T,
                 "serbest": True, "bina": B.ham, "B": B, "tas": tas, "temel": None,
                 # alan.py (ısı haritası, eleman bilgisi): yapi.bina_coz ile aynı paket — normalize bina, ağ, motor modeli, yükler,
-                # tasarım sonucu, kombinasyon türleri
-                "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas,
+                # tasarım sonucu (yanıtta kısaltıldıysa tam satırlar: betonarme kullanımı kapasite satırlarını arar), kombinasyon türleri
+                "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas_tam if tas_tam is not None else tas,
                          "komb_tur": {k["ad"]: k["tur"] for k in kombinasyonlar if k["uygulandi"]}}}
     if tas_tam is not None:      # yanıtta kontrol satırları kısaltıldı: rapor bütün satırları bundan yazar (köprü bina_rapor)
         sonuc.ic["tas_tam"] = tas_tam

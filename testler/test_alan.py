@@ -695,3 +695,9 @@ def test_genel_model_betonarme_kullanim():
             assert e["ekstremum"]["kullanim"]["deger"] == pytest.approx(e["tasarim"]["dc"], rel=1e-3)
     assert all(e["kullanim"] is not None for e in a["elemanlar"] if e["tur"] == "kolon")
     assert len([p for p in a["paneller"] if p["izgara"]]) == 4          # aks–kat döşemeleri panel olarak da plak alanı verir
+    # kolon / kiriş adresi bina_eleman_tasarim ile aynı kural: aks–kat girdisi → aks–kat no'su (kiriş 1 = çubuk 13)
+    import yapi_serbest
+    for tur, no in (("kiris", 1), ("kolon", 5)):
+        c = yapi_serbest._cubuk_bul(r.ic["B"], tur, no)
+        assert {e["cubuk"] for e in alan.fe_elemanlari(r.ic, tur, no)} == {c["no"]} and c["kaynak"]["no"] == no
+    assert alan.fe_elemanlari(r.ic, "kiris", 1)[0]["cubuk"] != 1

@@ -410,6 +410,22 @@ def test_kesit_onerisi_dc_azaltir():
     assert coz(yeni).veri["tasarim"]["en_buyuk_dc"] <= 1.0
 
 
+@pytest.mark.parametrize("ad, cubuklar", [("celik-cbf-3kat", [55, 94]), ("betonarme-4kat-radye", None)])
+def test_kesit_onerisi_kendi_tahkikinde_yeterli(ad, cubuklar):
+    """Önerilen kesit, kaydın bütün kurallarıyla (aynı iç kuvvetler) D/C ≤ 1 vermeli. Eskiden: cbf döşemeli çaprazlı kirişe
+    IPE 100 (tarama yalnız pozitif moment bölgesinin L_b = 0'ıyla; negatif bölgede D/C 1,80) ve radye kirişine 30x30 (öneri
+    40 mm, tahkik pas + 20 = 50 mm donatı derinliğiyle: D/C 99) önerilirdi."""
+    b = yapi.bina_sablon(ad)
+    hedef = "hepsi" if cubuklar is None else [{"tur": "cubuk", "no": n} for n in cubuklar]
+    o = YS.kesit_oner(b, hedef=hedef)
+    for x in o["oneriler"]:
+        if x.get("oneri"):
+            assert x["dc_oneri"] is not None and x["dc_oneri"] <= 1.0 + 1e-9, (x["cubuk"], x["oneri"], x["dc_oneri"])
+    if cubuklar:
+        for x in o["oneriler"]:
+            assert x["oneri"] != "IPE 100" and x["durum"].startswith("doğrulandı") and "IPE 100" in x["gerekce"][-1]
+
+
 # ---------------------------------------------------------------------------
 # şablonlar
 # ---------------------------------------------------------------------------
@@ -757,6 +773,9 @@ def test_basit_kesit_ust_duzey_lehcesi():
     assert kart({"tip": "U", "h": 0.16, "b": 0.065, "tw": 0.0075, "tf": 0.0105})["aile"] == "UPN"
     k2 = kart({"tip": "2L", "h": 60, "b": 60, "t": 6, "ara": 10})
     assert k2["aile"] == "2L" and k2["b"] == pytest.approx(0.06)
+    # birim kesit başına dış boyuttan: mm verilen ince et kalınlığı (t = 4 mm) metre sanılmaz
+    assert kart({"tip": "boru", "D": 114.3, "t": 4})["A"] == pytest.approx(a["A"])
+    assert kart({"tip": "kutu", "h": 100, "b": 100, "t": 5})["A"] == pytest.approx(kart({"tip": "kutu", "h": 0.1, "b": 0.1, "t": 0.005})["A"])
     with pytest.raises(mo.MatrisHatasi, match="eşit kollu"):
         kart({"tip": "L", "h": 0.08, "b": 0.06, "t": 0.006})
 
