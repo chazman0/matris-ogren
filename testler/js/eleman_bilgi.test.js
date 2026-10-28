@@ -416,6 +416,14 @@ test("yük yolu (genel): kenarlar durumlarına göre okunur; Q/S bantları varsa
   const ky = sekme(k, "yol");
   assert.ok(ky, "kolonun yük yolu sekmesi");
   assert.match(metin(k, "yol"), /panel → çubuk paylarını gösterir; bu çubuğa panelden yük gelmiyor/);
+  // panel yalnız kaynak: "Σ gelen 0" satırı yazılmaz (çubukta "Σ giden 0" gibi), panel notu verilir; aks–kat döşemesi değişmez
+  d.bina.paneller = [{ no: 1, dugumler: [], kalinlik: 0.12 }];
+  const pn = B.bilgi({ tur: "panel", no: 1 }, d.bina, d.veri);
+  const pt = sekme(pn, "yol").bolumler.find(function (b) { return b.tablo; }).tablo;
+  assert.ok(!pt.satirlar.some(function (r) { return r[0] === "Σ gelen"; }), "panelde Σ gelen 0 yazılmaz");
+  assert.match(metin(pn, "yol"), /Σ giden\t\t30,00\t12,00\t3,00/);
+  assert.match(metin(pn, "yol"), /Panel yükü \(alan × yük yoğunluğu\) çubuklarına dağıtılır/);
+  assert.doesNotMatch(metin(m, "yol"), /Panel yükü \(alan/);       // çubukta yok
 });
 
 test("tasarım kontrolleri: kapasiteye göre sayısal gürültü olan talep (3·10⁻¹⁷) 0 yazılır", function () {

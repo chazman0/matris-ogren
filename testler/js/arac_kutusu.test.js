@@ -350,6 +350,18 @@ test("kenar payları: boydan boya dikey sütun yan kenarın payıdır (yüksekli
   assert.deepEqual(D.kenarPaylari([{ x: 8, y: 60, w: 884, h: 40 }], W, H), { sol: 0, ust: 100, sag: 0, alt: 0 });
 });
 
+test("kenar payları: yalnız üst kenara değen sütun (tam ekranda uzayan kapsayıcı) yan kenarın payıdır", function () {
+  // 1280×720 tam ekran: Çizim sütunu yönetici düğmesinin yanında (x = 48), artık alta değmiyor; Görünüm + Analiz altta
+  const W = 956, H = 475;
+  const l = [{ x: 8, y: 433, w: 34, h: 34 }, { x: 48, y: 8, w: 70, h: 361 }, { x: 124, y: 8, w: 574, h: 42 }, { x: 124, y: 56, w: 153, h: 35 },
+    { x: 124, y: 425, w: 563, h: 42 }, { x: 124, y: 377, w: 330, h: 42 }, { x: 878, y: 8, w: 70, h: 325 }];
+  assert.deepEqual(D.kenarPaylari(l, W, H), { sol: 118, ust: 91, sag: 78, alt: 98 });
+  // ortadaki sütun üst kenara değiyorsa yan payı daha büyükse üst pay kalır
+  assert.deepEqual(D.kenarPaylari([{ x: 400, y: 8, w: 60, h: 150 }], 1000, 600), { sol: 0, ust: 158, sag: 0, alt: 0 });
+  // yalnız sol kenara değen şerit: yakın olduğu üst/alt kenarın payı daha küçükse o
+  assert.deepEqual(D.kenarPaylari([{ x: 8, y: 500, w: 500, h: 40 }], 1000, 600), { sol: 0, ust: 0, sag: 0, alt: 100 });
+});
+
 test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katlanmış başlığıyla yerleşir", function () {
   const W = 800, H = 400;
   const uc = ["a", "b", "c"].map(function (id) { return { id: id, w: 700, h: 42, kenar: "ust", kw: 120, kh: 30 }; });

@@ -361,6 +361,40 @@ def test_arac_kutulari_birbirine_binmez(tarayici, sunucu, en, boy):
         ctx.close()
 
 
+# modelin aks kesişimlerinden (her kat kotunda) bir araç kutusunun altında kalanlar
+KESISIM_ORTULU_JS = """() => {
+  const b = MatrisBina.bina(), iz = MatrisBina.izdusum(), svg = document.getElementById('bn-svg'), out = [];
+  for (const k of b.katlar) for (const ax of b.akslar.x) for (const ay of b.akslar.y) {
+    const p = iz.P(+ax.konum, +ay.konum, +k.kot), pt = svg.createSVGPoint(); pt.x = p[0]; pt.y = p[1];
+    const r = pt.matrixTransform(svg.getScreenCTM()), t = document.elementFromPoint(r.x, r.y), kk = t && t.closest && t.closest('.arac-kutu');
+    if (kk) out.push(ax.ad + ay.ad + '@' + k.kot + ':' + kk.dataset.kutu);
+  }
+  return out;
+}"""
+
+
+@pytest.mark.parametrize("en,boy", [(1500, 950), (1280, 720)])
+def test_tam_ekranda_model_kutularin_altinda_kalmaz(tarayici, sunucu, en, boy):
+    """Tam ekranda kapsayıcı uzayınca yönetici düğmesinin yanındaki Çizim sütunu alta değmez; Sığdır'ın kenar payları onu yine sol pay
+    saymalı (üst pay sayılırsa model ince bir şeride, Analiz kutusunun altına sıkışıyordu)."""
+    ctx, pg, hatalar = _sayfa_ac(tarayici, sunucu, en, boy)
+    try:
+        _sablon(pg, "betonarme-4kat-4x3")
+        pg.click("#bn-tam")
+        pg.wait_for_timeout(900)
+        assert pg.evaluate("document.body.classList.contains('bn-tam-ekran')")
+        assert pg.evaluate(KUTU_KESISIM_JS) == [], f"tam ekran {en}×{boy}"
+        assert pg.evaluate(KESISIM_ORTULU_JS) == [], f"tam ekran {en}×{boy}"
+        pay = pg.evaluate("MatrisArac.kenarPaylari()")
+        katman = pg.evaluate("[document.querySelector('.arac-kok').clientWidth, document.querySelector('.arac-kok').clientHeight]")
+        assert katman[1] - pay["ust"] - pay["alt"] > 0.4 * katman[1], (pay, katman)
+        pg.click("#bn-tam")
+        pg.wait_for_timeout(400)
+        _hatasiz(hatalar, f"tam ekran {en}×{boy}")
+    finally:
+        ctx.close()
+
+
 # ---- surum 1 şablonları (NEW-9): tarayıcı modeli şablon alanlarını korur; çözüm köprüyle aynı
 
 @pytest.mark.parametrize("ad", SURUM1_SABLONLAR)

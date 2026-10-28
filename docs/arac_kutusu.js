@@ -647,6 +647,11 @@
       // kutusu) yakın olduğu yan kenarın payıdır; boydan boya yatay şerit için tersi (yoksa bütün yüksekliği / genişliği pay sayılırdı)
       if (d.indexOf("ust") >= 0 && d.indexOf("alt") >= 0 && d.indexOf("sol") < 0 && d.indexOf("sag") < 0) d.push(q.p.sol <= q.p.sag ? "sol" : "sag");
       if (d.indexOf("sol") >= 0 && d.indexOf("sag") >= 0 && d.indexOf("ust") < 0 && d.indexOf("alt") < 0) d.push(q.p.ust <= q.p.alt ? "ust" : "alt");
+      // sütun biçimli kutu (boyu eninin iki katından çok) yalnız üst ya da alt kenara değiyorsa yakın yan kenarın payı da adaydır: tam
+      // ekranda kapsayıcı uzayınca yönetici düğmesinin yanındaki Çizim sütunu alta değmez olur, bütün boyu üst pay sayılırsa Sığdır
+      // modeli ince bir şeride (öteki kutuların altına) sıkıştırır. Şerit biçimli kutu yalnız bir yan kenara değiyorsa tersi.
+      if (d.length && k.h > 2 * k.w && d.indexOf("sol") < 0 && d.indexOf("sag") < 0) d.push(q.p.sol <= q.p.sag ? "sol" : "sag");
+      if (d.length && k.w > 2 * k.h && d.indexOf("ust") < 0 && d.indexOf("alt") < 0) d.push(q.p.ust <= q.p.alt ? "ust" : "alt");
       if (d.length) ata(q, d);
     });
     // kenara yaslı kutuya bitişik (ikinci sıra / sütun) kutular aynı kenara

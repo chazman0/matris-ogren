@@ -808,9 +808,11 @@
     const deger = function (r_) { return goster.map(function (d) { return f(r_.d[d] || 0, 2); }); };
     const sat = gelen.map(function (r_) { return ["← gelen", sankeyAdi(r_.ad)].concat(deger(r_)); })
       .concat(giden.map(function (r_) { return ["→ giden", sankeyAdi(r_.ad)].concat(deger(r_)); }));
-    sat.push(["Σ gelen", ""].concat(goster.map(function (d) { return f(top(gelen, d), 2); })));
+    // genel modelde panel yalnız kaynak, çubuk yalnız hedeftir: karşı yönün toplamı her zaman 0 olur ("Σ gelen 0" / "Σ giden 0"), yazılmaz
+    if (gelen.length || !genel) sat.push(["Σ gelen", ""].concat(goster.map(function (d) { return f(top(gelen, d), 2); })));
     if (giden.length || !genel) sat.push(["Σ giden", ""].concat(goster.map(function (d) { return f(top(giden, d), 2); })));
     out.push({ baslik: "Aktarılan yükler (kN)", tablo: { basliklar: ["Yön", "Eleman"].concat(goster), satirlar: sat } });
+    if (!gelen.length && genel && /^P\d/.test(String(id))) out.push({ not: "Panel yükü (alan × yük yoğunluğu) çubuklarına dağıtılır; panelin kendi yükleri Yükler sekmesinde." });
     if (!qVar && genel) out.push({ not: "Bu çözümün akış şemasında yalnız G bantları var; Q ve S payları Yükler sekmesinde." });
     if (!giden.length && genel) out.push({ not: "Genel model akış şeması çubuktan sonraki aktarımı (çubuk → çubuk / mesnet) göstermez; uç kuvvetleri İç kuvvetler sekmesinde." });
     const fark = ham.yol.gidenG - ham.yol.gelenG;
