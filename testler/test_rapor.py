@@ -388,3 +388,151 @@ def test_tablolar_modulu(cozumler, monkeypatch):
     sahte.bina_tablolari = bozuk
     h = rapor.statik_rapor(b, v, secenek={"tablolar": ["dugumler"]})
     assert "Seçilen tablolar üretilemedi: ValueError: deneme" in h
+
+
+# ---------------------------------------------------------------------------
+# genel model (surum 3, yapi_serbest): kesitler, panel yükleri, panel rüzgârı, korunum, çelik ayrıntısı, temel
+# ---------------------------------------------------------------------------
+GENEL = ["celik-cbf-3kat", "celik-sanayi-4hol"]
+
+
+@pytest.fixture(scope="module")
+def genel_raporlar(cozumler):
+    return {ad: rapor.statik_rapor(*cozumler[ad]) for ad in GENEL}
+
+
+def bolum(h: str, no) -> str:
+    """Bölüm HTML'i (b<no> … sonraki bölüm)."""
+    i = h.index(f'id="b{no}"')
+    return h[i:h.index("</section>", i)]
+
+
+@pytest.mark.parametrize("ad", GENEL)
+def test_genel_kesitler_betonarme_tablosunda_celik_yok(cozumler, genel_raporlar, ad):
+    _, v = cozumler[ad]
+    h = genel_raporlar[ad]
+    dengeli(h)
+    b5 = bolum(h, 5)
+    kes = v["kutuphane_ozeti"]["kesitler"]
+    celik = [a for a, k in kes.items() if k["tip"] in ("profil", "basit", "vute")]
+    assert celik and {"CAPRAZ-V", "CAPRAZ-X"} & set(celik) or {"VUTE", "CATI-CAPRAZ"} <= set(celik)
+    i = b5.find("Dikdörtgen (betonarme) kesitler")
+    if i >= 0:
+        rc = b5[i:b5.index("</table>", i)]
+        for a in celik:
+            assert f"<b>{a}</b>" not in rc, a
+    assert "Çelik basit kesitler (kutu/boru/korniyer/U)" in b5
+    i = b5.index("Çelik basit kesitler")
+    m = metin(b5[i:b5.index("</table>", i)])
+    assert "BORU 168.3x6.3" in m and "| 125.2 |" in m and "| 5.73 |" in m          # W_el = I/(D/2), i = √(I/A) (b·h²/6 değil)
+    assert "794.5" not in m
+    if ad == "celik-sanayi-4hol":
+        assert "+ vute: ek yükseklik 400 mm" in b5 and "temel MERTEK" in b5
+    b3 = metin(bolum(h, 3))
+    assert "Kolon / kiriş / döşeme sayısı" not in b3 and "Çubuk sayısı (türe göre)" in b3
+    n = len(v["ag"]["cubuklar"])
+    assert f"| {n}: kolon " in b3
+    if ad == "celik-cbf-3kat":
+        assert "Toplam döşeme alanı (döşeme panelleri) | 648 m²" in b3 and "Panel sayısı (türe göre) | 18: döşeme 18" in b3
+
+
+@pytest.mark.parametrize("ad", GENEL)
+def test_genel_panel_ve_cubuk_yukleri(cozumler, genel_raporlar, ad):
+    _, v = cozumler[ad]
+    b6 = bolum(genel_raporlar[ad], 6)
+    m = metin(b6)
+    assert "6.2 Panel yükleri ve çubuklara dağıtım" in b6 and "6.3 Çubuk yük dökümü" in b6
+    assert "Modelde aks–kat döşemesi yok" not in b6 and "Aks–kat kirişi yok" not in b6 and "Paneller (surum 3)" not in b6
+    p = v["yukler"]["paneller"][0]
+    assert f"Panel yükleri ({len(v['yukler']['paneller'])} panel)" in b6 and rapor._f(p["G_toplam"], 2) in m
+    assert "Kenar payları (panel → çubuk)" in b6
+    k = next(k for k in p["kenarlar"] if k["pay"] > 0)
+    assert f"Ç{k['cubuklar'][0]}" in b6
+    if len(v["yukler"]["cubuklar"]) > 60:
+        assert f"{len(v['yukler']['cubuklar'])} çubuktan G + Q + S toplamı en büyük 30 çubuk gösterildi" in m
+    rz = b6[b6.index("6.5 Rüzgâr"):b6.index("6.6 Kren")]
+    assert "Kayıt yok" not in rz and "C = –" not in metin(rz)
+    if v["ruzgar"]["yontem"] == "panel":
+        assert "Panel basınç katsayıları" in rz and "Yön başına toplam rüzgâr kuvveti" in rz
+        assert metin(rz).count("| çatı |") + metin(rz).count("| cephe |") == len(v["ruzgar"]["paneller"])
+        assert "Şekil 1" in rz
+    if v.get("kren"):
+        kr = metin(b6[b6.index("Kren çözüm özeti"):b6.index("6.7 Ek yükler")])
+        assert ", ".join(v["kren"]["durumlar"][:3]) in kr and "durumlarK1" not in kr.replace(" ", "")
+
+
+@pytest.mark.parametrize("ad", GENEL)
+def test_genel_korunum_ruzgar_tepkisi_ve_cubuk_ayrintisi(cozumler, genel_raporlar, ad):
+    _, v = cozumler[ad]
+    h = genel_raporlar[ad]
+    b10 = bolum(h, 10)
+    i = b10.index("Korunum denetimi")
+    tablo = b10[i:b10.index("</table>", i)]
+    for s in re.findall(r"<tr>(.*?)</tr>", tablo)[1:]:
+        assert "✔" in s and "– | – | –" not in metin(s), metin(s)
+    i = b10.index("Yük akışı korunumu")
+    kor = metin(b10[i:b10.index("</table>", i)])
+    assert "| paneller |" in kor and "| çubuk öz ağırlığı |" in kor and "döşemeler" not in kor and "kiriş öz" not in kor
+    assert rapor._f(v["akis"]["korunum"]["G"]["paneller"], 3) in kor
+    if v["ruzgar"]["yontem"] == "panel":
+        assert "panel rüzgârı" in metin(b10).lower() and "kat kesmesi uygulanmaz" in b10
+        assert "Rüzgâr taban kesmesi" in b10
+    b12 = bolum(h, 12)
+    assert "Denk. 9.8b" in b12                                     # I profil kolon/kiriş ayrıntılı ÇYTHYE hesabı
+    assert "(güçlü / zayıf eksen)" in b12
+    b14 = metin(bolum(h, 14))
+    assert f"Modelde {len(v['tasarim']['elemanlar'])} çubuk kesit tahkikinden" in b14 and "(kiriş ve kolon)" not in b14
+
+
+def test_genel_beklenen_tepki_panel_ruzgari(cozumler):
+    _, v = cozumler["celik-sanayi-4hol"]
+    r = rapor._Rapor({}, v, {})
+    for ad in ("W+X", "W-X", "W+Y", "W-Y"):
+        F = v["ruzgar"]["toplam"][ad]
+        R, metin_ = r.beklenen_tepki(ad)
+        assert (R["FX"], R["FY"], R["FZ"]) == pytest.approx((-F[0], -F[1], -F[2]))
+        assert "panel basınçları" in metin_
+        S = r.tepki_toplami(v["durumlar"][ad])
+        assert (S["FX"], S["FY"], S["FZ"]) == pytest.approx((R["FX"], R["FY"], R["FZ"]), abs=1e-2)
+
+
+def test_genel_temel_bolumu(cozumler):
+    b, v = cozumler["celik-cbf-3kat"]
+    b13 = bolum(rapor.statik_rapor(b, v), 13)
+    m = metin(b13)
+    assert "Ntemel –" not in m and " + – = " not in m
+    t = max(v["akis"]["temeller"], key=lambda x: x["DC"])
+    assert f"+ {rapor._f(yapi.GAMMA_BA * t['B'] * t['L'] * t['h'], 2)} = {rapor._f(t['N_servis'], 2)} kN" in m
+    # açık (temelsiz) mesnet: tekil temel tablosuna girmez, ayrı tabloda; N_temel yoksa γ·B·L·h
+    v2 = copy.deepcopy(v)
+    for x in v2["akis"]["temeller"]:
+        x.pop("N_temel", None)
+    v2["akis"]["mesnetler"] = [{"dugum": 1001, "adres": "A1/+3.50", "tip": "mafsal", "N_G": 12.5, "N_Q": 3.0, "MX": 0.0, "MY": 0.0}]
+    h2 = rapor.statik_rapor(b, v2)
+    dengeli(h2)
+    b13 = bolum(h2, 13)
+    assert "Açık mesnet tepkileri" in b13 and "A1/+3.50" in b13 and "12.5" in metin(b13)
+    assert rapor._f(yapi.GAMMA_BA * t["B"] * t["L"] * t["h"], 1) in metin(b13)
+    # eski çözüm: B'siz akis.temeller satırı açık mesnet sayılır
+    v3 = copy.deepcopy(v)
+    v3["akis"]["temeller"].append({"dugum": 1001, "kolon_no": None, "aks": None, "tip": "mafsal", "N_G": 7.0, "N_Q": 1.0, "MX": 0, "MY": 0})
+    b13 = bolum(rapor.statik_rapor(b, v3), 13)
+    i = b13.index("13.1 Tekil temeller")
+    j = b13.index("Açık mesnet tepkileri")
+    assert j > i and "| 1001 |" in metin(b13[j:]) and "| 7 |" in metin(b13[j:])
+    assert b13[i:b13.index("</table>", i)].count("<tr>") - 1 == len(v["akis"]["temeller"])       # başlık satırı + temeller
+    # genel modelde mütemadi/radye analizi yok: geometri yerine açık not
+    b4 = copy.deepcopy(b)
+    b4["temeller"]["tip"] = "radye"
+    b13 = bolum(rapor.statik_rapor(b4, v), 13)
+    assert "Mütemadi/radye temel analizi bu çözümde yapılmadı (genel model: kolon tabanları tekil mesnet)." in b13
+    assert "Radye temel boyutları" not in b13
+
+
+def test_genel_eski_veri_ile_aks_kat_raporu_degismez(cozumler):
+    """Aks–kat (surum 1/2) çözümüyle rapor eski bölümleri korur: 'Kolon / kiriş / döşeme sayısı', döşeme ve kiriş yük dökümü."""
+    b, v = cozumler["betonarme-2kat-3x2"]
+    h = rapor.statik_rapor(b, v)
+    assert "Kolon / kiriş / döşeme sayısı" in h and "6.2 Döşeme yükleri (G, Q) ve kirişlere aktarım" in h and "6.3 Kiriş yük dökümü" in h
+    assert "Panel yükleri ve çubuklara dağıtım" not in h and "Çelik basit kesitler" not in h
+    assert "Yük akışı korunumu (döşeme → kiriş → kolon → temel)" in h and "(kiriş ve kolon)" in h
