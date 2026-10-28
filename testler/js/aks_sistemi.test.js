@@ -416,6 +416,55 @@ test("aks sil: bağlı eleman raporu, onay, elemanlarla, en yakın aksa taşı, 
   assert.equal(kz.silindi, true);
   assert.ok(!kz.model.katlar.some(function (x) { return x.no === 2; }));
 });
+test("aks sil 'en yakın aksa taşı': iki aksta da eleman varsa çakışan çubuk / panel / kiriş / döşeme kalmaz; yükler kalana aktarılır", function () {
+  const b = ornek();      // X: A 0, B 6, C 12, D 19.5; Y: 1 0, 2 5, 3 10; Z: ±0.00, +4.50, +8.00 …
+  b.cubuklar = [];
+  let n = 0;
+  const cb = function (i, j, tur) { b.cubuklar.push({ no: ++n, i: i, j: j, tur: tur }); return n; };
+  for (const x of ["B", "C"]) { cb(G(x, "1", "±0.00"), G(x, "1", "+4.50"), "kolon"); cb(G(x, "2", "±0.00"), G(x, "2", "+4.50"), "kolon"); cb(G(x, "1", "+4.50"), G(x, "2", "+4.50"), "kiris"); }
+  const ab = cb(G("A", "1", "+4.50"), G("B", "1", "+4.50"), "kiris"), bc = cb(G("B", "1", "+4.50"), G("C", "1", "+4.50"), "kiris");
+  b.paneller = [{ no: 1, kose: [G("A", "1", "+4.50"), G("B", "1", "+4.50"), G("B", "2", "+4.50"), G("A", "2", "+4.50")], tur: "doseme" },
+    { no: 2, kose: [G("A", "1", "+4.50"), G("C", "1", "+4.50"), G("C", "2", "+4.50"), G("A", "2", "+4.50")], tur: "doseme" }];
+  b.mesnetler = [{ dugum: G("B", "1", "±0.00"), ux: true, uy: true, uz: true, rx: false, ry: false, rz: false },
+    { dugum: G("C", "1", "±0.00"), ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }];
+  b.ek_yukler = [{ tur: "cubuk", cubuk: 6, durum: "G", q1: -3 }, { tur: "cubuk", cubuk: bc, durum: "Q", q1: -1 }, { tur: "panel", panel: 2, durum: "G", p: 1 }];
+  b.kren = [{ no: 1, yol: [3, 6] }];
+  b.kolonlar = [{ no: 1, aks: ["B", "2"], kat: 1 }, { no: 2, aks: ["C", "2"], kat: 1 }];
+  b.kirisler = [{ no: 1, kat: 1, bas: ["B", "1"], son: ["B", "3"] }, { no: 2, kat: 1, bas: ["C", "1"], son: ["C", "3"] }];
+  b.dosemeler = [{ no: 1, kat: 1, kose: [["A", "1"], ["B", "2"]] }, { no: 2, kat: 1, kose: [["A", "1"], ["C", "2"]] }];
+  b.ek_yukler.push({ tur: "kiris", kiris: 2, durum: "G", q: 2 }, { tur: "doseme", doseme: 2, g: 1, q: 0 });
+  const t = A.aksSil(b, { yon: "x", ad: "C", secenek: "tasi" });
+  assert.equal(t.silindi, true);
+  const m = t.model;
+  const anahtar = function (r) { return A.refAnahtar(m, r); };
+  const cift = new Set(), kose = new Set();
+  for (const c of m.cubuklar) {
+    const k = [anahtar(c.i), anahtar(c.j)].sort().join("#");
+    assert.ok(!cift.has(k), "çakışan çubuk: " + k);
+    assert.notEqual(anahtar(c.i), anahtar(c.j), "sıfır boylu çubuk " + c.no);
+    cift.add(k);
+  }
+  for (const p of m.paneller) { const k = p.kose.map(anahtar).sort().join("#"); assert.ok(!kose.has(k), "çakışan panel"); kose.add(k); }
+  assert.equal(m.cubuklar.length, 4, "B kolonları + B kirişi + AB kirişi kalır");
+  assert.ok(!m.cubuklar.some(function (c) { return c.no === bc; }), "B–C kirişi sıfır boylu oldu: silindi");
+  assert.deepEqual(m.paneller.map(function (p) { return p.no; }), [1]);
+  // yükler: çakışan kopyanınki kalana aktarıldı, silinenlerinki atıldı; kren yolu yeniden yazıldı
+  assert.deepEqual(m.ek_yukler.filter(function (y) { return y.tur === "cubuk"; }).map(function (y) { return y.cubuk; }), [3]);
+  assert.deepEqual(m.ek_yukler.filter(function (y) { return y.tur === "panel"; }).map(function (y) { return y.panel; }), [1]);
+  assert.deepEqual(m.kren[0].yol, [3]);
+  // mesnetler aynı düğümde birleşti (serbestlikler VEYA)
+  assert.equal(m.mesnetler.length, 1);
+  assert.deepEqual([m.mesnetler[0].rx, m.mesnetler[0].ry, m.mesnetler[0].rz], [true, true, true]);
+  // aks–kat: aynı kesişime düşen kolon, aynı aralığı tekrarlayan kiriş ve döşeme silinir; yükleri kalana
+  assert.deepEqual(m.kolonlar.map(function (c) { return c.no; }), [1]);
+  assert.deepEqual(m.kirisler.map(function (c) { return c.no; }), [1]);
+  assert.deepEqual(m.dosemeler.map(function (c) { return c.no; }), [1]);
+  assert.deepEqual(m.ek_yukler.filter(function (y) { return y.tur === "kiris"; }).map(function (y) { return y.kiris; }), [1]);
+  assert.deepEqual(m.ek_yukler.filter(function (y) { return y.tur === "doseme"; }).map(function (y) { return y.doseme; }), [1]);
+  assert.ok(t.uyarilar.some(function (u) { return /Aynı iki kesişimi bağlayan/.test(u); }), t.uyarilar.join(" "));
+  // ModelOps denetimi: çakışan çubuk yok
+  assert.deepEqual(M.denetle(m).uyarilar.filter(function (u) { return u.kod === "cakisan-cubuk" || u.kod === "sifir-boy"; }), []);
+});
 test("görsel özellikler ve sıralama", function () {
   const b = ornek();
   const r = A.aksOzellik(b, { yon: "x", ad: "B", ozellik: { tur: "ikincil", gorunur: false, balon: "iki" } });

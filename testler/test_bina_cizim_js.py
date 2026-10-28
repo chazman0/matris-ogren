@@ -8,6 +8,10 @@
   aksaBaglaHepsi'nden geçer); bütün model değişiklikleri MatrisBina.binaAyarla ile tek geri al yığınından geçer;
   araç kutusunun aks / çizim / düzenleme / değiştirme komutlarını bağlar ve bina.js'teki "sonraki aşama" listesindeki
   her komut burada karşılanır.
+- Uçtan uca: SAF yük (C10: düğüm, kiriş, döşeme) ve mesnet kayıtları aks–kat şablonunda köprüden (web_kopru bina_coz) çözülür;
+  G/Q toplamları yükle birlikte değişir; mesnet modeli genelleştirir (surum 3).
+- Masaüstü menüsünün her araç hedefi kayıtlı bir komuttur (katalog, bina.js aracKomutlari ya da burada komutBagla); kesit
+  önerisinin Uygula'sı tanımsız kesit adı atamaz; genel model kapısı (onay, iptal, rette not yok) kablolanmıştır.
 node yoksa node gerektiren testler atlanır.
 """
 from __future__ import annotations
@@ -73,7 +77,7 @@ def test_araclar_bagli_ve_sonraki_asama_karsilaniyor():
     for k in ("aks-sihirbaz", "aks-ekle", "aks-sil", "aks-tasi", "aks-sistemi", "aks-gorunurluk", "cubuk-ciz", "hizli-kolon", "hizli-kiris",
               "hizli-capraz", "hizli-panel", "egik-cubuk", "makas", "besik-cerceve", "asik", "kren-yolu", "mesnet", "yuk-ata",
               "tasi", "dondur", "ayna", "dogrusal-dizi", "ozellik-ata", "mafsal", "yalniz-cekme", "bol", "kesisimde-bol",
-              "duzlemle-bol", "birlestir", "dugum-birlestir", "kesit-degistir", "aci"):
+              "duzlemle-bol", "birlestir", "dugum-birlestir", "kesit-degistir", "aci", "kesit-oner", "uretec-duzenle"):
         assert k in bagli, k
 
 
@@ -95,3 +99,185 @@ def test_bina_js_surum3_kablolamasi():
     assert "S3_MOTOR_YOK" in BINA and 'veri.model !== "genel"' in BINA
     # aks–kat şablonları eskisi gibi: aks–kat kipleri aksKatModu'nda
     assert "eskiMi" in BINA
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Uçtan uca: SAF yük / mesnet kayıtları aks–kat şablonunda köprüden çözülür (ui-akskat-3, ui-akskat-1, ui-akskat-16)
+_YUK_BETIGI = r"""
+const BC = require(process.argv[1]);
+let veri = "";
+process.stdin.on("data", d => veri += d);
+process.stdin.on("end", () => {
+  const t = JSON.parse(veri);
+  const k1 = t.kirisler.find(k => k.no === 1), d1 = t.dosemeler.find(d => d.no === 1);
+  let m = BC.yukEkle(t, { tur: "dugum", ref: { aks: ["C", "2"], kat: 2 } }, { durum: "G", FZ: -50 }).model;
+  const dugum = m;
+  m = BC.yukEkle(m, { tur: "kiris", no: 1 }, { durum: "Q", q1: -3 }).model;
+  const kiris = m;
+  m = BC.yukEkle(m, { tur: "doseme", no: 1 }, { g: 1, q: 2 }).model;
+  const mesnet = BC.mesnetAta(t, { aks: ["C", "2"], kat: 1 }, "mafsal");
+  process.stdout.write(JSON.stringify({ dugum, kiris, doseme: m, mesnet: mesnet.model, genelMi: [BC.genelMi(t), BC.genelMi(m), BC.genelMi(mesnet.model)],
+    kiris1: k1, doseme1: d1 }));
+});
+"""
+
+
+@pytest.fixture(scope="module")
+def kopru():
+    import importlib.util
+    oz = importlib.util.spec_from_file_location("web_kopru_bina_cizim_testi", PROJE / "docs" / "web_kopru.py")
+    modul = importlib.util.module_from_spec(oz)
+    oz.loader.exec_module(modul)
+    return modul
+
+
+def _coz(kopru, bina):
+    y = json.loads(kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": bina}})))
+    assert y.get("hata") in (None, ""), y.get("hata")
+    return y["veri"]
+
+
+@node_gerekli
+def test_aks_kat_yuk_ve_mesnet_kopruden_cozulur(kopru):
+    import yapi
+    t = yapi.bina_sablon("betonarme-2kat-3x2")
+    r = subprocess.run([NODE, "-e", _YUK_BETIGI, str(MODUL)], input=json.dumps(t), capture_output=True, text=True, timeout=120, cwd=PROJE)
+    assert r.returncode == 0, r.stderr
+    o = json.loads(r.stdout)
+    assert o["genelMi"] == [False, False, True], "aks–kat yükleri (C10) modeli genel yapmaz; mesnet genelleştirir"
+    assert o["doseme"]["surum"] == t.get("surum", 1)
+    assert o["doseme"]["ek_yukler"][-3:] == [
+        {"tur": "dugum", "aks": ["C", "2"], "kat": 2, "durum": "G", "FZ": -50},
+        {"tur": "kiris", "kiris": 1, "durum": "Q", "q": 3},
+        {"tur": "doseme", "doseme": 1, "g": 1, "q": 2}]
+    v0 = _coz(kopru, t)["ozet"]
+    B = yapi._bina_oku(t)
+    L1 = next(k["L"] for k in B.kirisler if k["no"] == 1)
+    d1 = next(d for d in B.dosemeler if d["no"] == 1)
+    alan = d1["dx"] * d1["dy"]
+    v1 = _coz(kopru, o["dugum"])["ozet"]
+    assert v1["toplam_G"] == pytest.approx(v0["toplam_G"] + 50, abs=1e-6)
+    assert v1["toplam_Q"] == pytest.approx(v0["toplam_Q"], abs=1e-6)
+    v2 = _coz(kopru, o["kiris"])["ozet"]
+    assert v2["toplam_Q"] == pytest.approx(v0["toplam_Q"] + 3 * L1, abs=1e-6)
+    v3 = _coz(kopru, o["doseme"])["ozet"]
+    dG, dQ = v3["toplam_G"] - v2["toplam_G"], v3["toplam_Q"] - v2["toplam_Q"]
+    assert dG == pytest.approx(1 * alan, rel=1e-6) and dQ == pytest.approx(2 * alan, rel=1e-6), (dG, dQ, alan)
+    vm = _coz(kopru, o["mesnet"])
+    assert vm["ozet"]["toplam_G"] == pytest.approx(v0["toplam_G"], rel=1e-3)
+    assert o["mesnet"]["surum"] == 3 and o["mesnet"]["mesnetler"]
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Masaüstü menüsü → araç kutusu komutu: her hedef bir katalog kimliği, bina.js aracKomutlari anahtarı ya da bina_cizim.js
+# komutBagla anahtarı olmalı (kablolama-statik-1, belge-masaustu-1: "kesit-oner" hiçbir yerde kayıtlı değildi)
+def _komut_anahtarlari(blok: str) -> set[str]:
+    return set(re.findall(r'^\s{6}"?([a-z][a-z0-9-]*)"?\s*:', blok, re.M))
+
+
+@node_gerekli
+def test_masaustu_arac_hedefleri_kayitli():
+    cikti = _node("-e", "process.stdout.write(JSON.stringify(require('./docs/arac_kutusu.js').KATALOG.map(k => k.id)))").stdout
+    katalog = set(json.loads(cikti))
+    harita = re.search(r"const MASAUSTU_ARAC = \{(.*?)\n  \};", BINA, re.S).group(1)
+    hedefler = set(re.findall(r':\s*"([a-z0-9-]+)"', harita))
+    assert "kesit-oner" in hedefler
+    ak = BINA[BINA.index("function aracKomutlari() {"):]
+    ak = ak[:ak.index("\n    return h;")]
+    bina_k = _komut_anahtarlari(ak) | set(re.findall(r'"(olc-[a-z]+)"\s*:', BINA))
+    bagla = KAYNAK[KAYNAK.index("MB.komutBagla({"):]
+    bagla = bagla[:bagla.index("\n    });")]
+    cizim_k = _komut_anahtarlari(bagla)
+    assert {"kesit-oner", "uretec-duzenle", "aks-sistemi", "mafsal"} <= cizim_k
+    eksik = sorted(h for h in hedefler if h not in katalog and h not in bina_k and h not in cizim_k)
+    assert not eksik, f"masaüstü menüsünün kayıtsız araç hedefleri: {eksik}"
+
+
+def test_kesit_onerisi_tanimsiz_kesit_atamaz():
+    # Uygula: öneri SAF oneriUygula'dan geçer (kesit tanımı eklenir, yoksa hata); ozellikAta ile doğrudan ad atanmaz
+    i = KAYNAK.index("function kesitOner(hedef)")
+    govde = KAYNAK[i:KAYNAK.index("\n    }\n", i)]
+    assert "oneriUygula(" in govde and "ozellikAta" not in govde
+    assert "oneriUygulanir" in govde, "Uygula yalnız değişiklik varken (degisim ≠ 'aynı')"
+    assert "yinele: 1" in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
+    saf = KAYNAK[KAYNAK.index("function oneriUygula("):]
+    saf = saf[:saf.index("\n  }\n")]
+    assert 'if (!m.kesitler[k.ad]) throw' in saf
+    assert "oneriEtiketi(o)" in govde and "dc_sonra" in govde and "uyarilar" in govde
+
+
+def test_genel_model_kapisi_kablolamasi():
+    # Çeviren her yol önce sorar (window.confirm); iptal → model değişmez; rette "genelleştirildi" notu yazılmaz
+    assert "function genelModeleGec(" in KAYNAK and "window.confirm(genelGecisMetni(" in KAYNAK
+    assert '"İşlem iptal edildi."' in KAYNAK
+    secimli = KAYNAK[KAYNAK.index("function secimli("):]
+    secimli = secimli[:secimli.index("\n    }\n")]
+    assert "genelModeleGec(" in secimli and "MOp.genellestir(" not in secimli
+    for etiket in ('genel: tur !== "kaldir" ? "Mesnet" : false', 'genel: "Hızlı çapraz"', 'genel: "Hızlı panel"', "{ genel: baslik }"):
+        assert etiket in KAYNAK, etiket
+    # rapor reddedildiyse notlar bildirilmez (uygula: reddedildi dalı notları eklemez)
+    uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
+    uyg = uyg[:uyg.index("\n    }\n")]
+    red = uyg[uyg.index("if (r.reddedildi)"):]
+    assert "notlar" not in red[:red.index("\n")]
+    assert "yeniEngeller(" in uyg and "Değişiklik yok." in uyg
+    # aks–kat kolonuna yük: öğretici ret; kur(): eksik modül adı
+    assert "Aks–kat kolonuna ek yük verilemez; kolonun üst düğümüne düğüm yükü verin." in KAYNAK
+    assert "aks_sistemi.js (MatrisAks)" in KAYNAK and "model_ops.js (ModelOps)" in KAYNAK
+    # C8 neden alanları
+    assert KAYNAK.count("neden: secimNedeni") >= 7 and "Yalnız çapraz/bağ çubuklarında kullanılır" in KAYNAK
+    assert 'SECIM_NEDENI = "Önce bir çubuk, kolon ya da kiriş seçin."' in KAYNAK
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Taşıyan kenar (uygula'nın engeli): SAF tasiyanKenarMi motorla aynı karar verir — taşıyan kenarı boşalan panel motorca
+# reddedilir, kenar taşımayan dağıtımda çözülür; şablonda zaten var olan (taşımayan) kenar bulguları engel sayılmaz.
+_KENAR_BETIGI = r"""
+const BC = require(process.argv[1]);
+const O = require(process.argv[2]);
+let veri = "";
+process.stdin.on("data", d => veri += d);
+process.stdin.on("end", () => {
+  const t = JSON.parse(veri);
+  const g = (t.kolonlar || []).length ? O.genellestir(t).model : t;
+  const kenar = m => O.denetle(m).uyarilar.filter(u => u.kod === "panel-kenari");
+  const once = kenar(g);
+  const out = { once: once.length, onceTasiyan: once.filter(u => BC.tasiyanKenarMi(g, u)).length };
+  if ((t.kolonlar || []).length) {
+    // 1. kattaki ilk kiriş çubuğu kendi ucu çevresinde 180° döndürülür (koparak): komşu panellerin kenarı boşalır
+    const k = g.cubuklar.find(c => c.tur === "kiris" && c.kat === 1);
+    const P = O.dugumKonumu(g, k.i);
+    const r = O.dondur(g, { cubuklar: [k.no] }, { nokta: P, yon: [0, 0, 1] }, 180);
+    const yeni = BC.yeniEngeller(g, r.model, ["panel-kenari"]);
+    out.reddedildi = !!r.reddedildi;
+    out.yeni = yeni.map(u => ({ panel: u.panel, kenar: u.kenar, tasiyan: BC.tasiyanKenarMi(r.model, u) }));
+    out.model = r.model;
+    // aynı modelde boşalan kenarları taşımayan dağıtım (tek-13 ↔ tek-24)
+    const m2 = JSON.parse(JSON.stringify(r.model));
+    for (const u of yeni) { const p = m2.paneller.find(x => x.no === u.panel); p.dagitim = (u.kenar % 2) ? "tek-24" : "tek-13"; }
+    out.model2 = m2;
+    out.yeni2 = BC.yeniEngeller(g, m2, ["panel-kenari"]).map(u => BC.tasiyanKenarMi(m2, u));
+  }
+  process.stdout.write(JSON.stringify(out));
+});
+"""
+
+
+@node_gerekli
+@pytest.mark.parametrize("ad", ["betonarme-2kat-3x2", "celik-sanayi-4hol"])
+def test_tasiyan_kenar_motorla_ayni(ad, kopru):
+    import yapi
+    r = subprocess.run([NODE, "-e", _KENAR_BETIGI, str(MODUL), str(PROJE / "docs" / "model_ops.js")],
+                       input=json.dumps(yapi.bina_sablon(ad)), capture_output=True, text=True, timeout=300, cwd=PROJE)
+    assert r.returncode == 0, r.stderr
+    o = json.loads(r.stdout)
+    assert o["onceTasiyan"] == 0, "çözülen şablonda taşıyan kenar bulgusu olmamalı"
+    if ad == "celik-sanayi-4hol":
+        assert o["once"] > 0      # cephe / çatı panellerinin taşımayan kenarları: engel sayılmaz
+        return
+    assert not o["reddedildi"] and o["yeni"] and all(u["tasiyan"] for u in o["yeni"]), o["yeni"]
+    y = json.loads(kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": o["model"]}})))
+    assert y.get("hata") and "kenarında" in y["hata"], "motor taşıyan kenarı boş paneli reddeder"
+    assert o["yeni2"] and not any(o["yeni2"])
+    _coz(kopru, o["model2"])

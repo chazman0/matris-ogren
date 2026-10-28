@@ -1112,40 +1112,98 @@
   /** "En yakın aksa taşı" sonrası bozulan elemanları ayıklar (sıfır boylu çubuk, çakışan kolon, < 3 köşeli panel...). */
   function bozuklariAyikla(m, uy) {
     const anahtar = function (r) { return refAnahtar(m, r); };
-    const silC = [];
+    // silinen elemanların yükleri kaldırılır; aynı yere düşen (çakışan) kopyaların yükleri kalan elemana aktarılır
+    const yukDuzelt = function (tur, alan, sil, esle) {
+      if (!sil.size && !esle.size) return;
+      m.ek_yukler = (m.ek_yukler || []).filter(function (y) {
+        if (!y || y.tur !== tur) return true;
+        const n = +y[alan];
+        if (esle.has(n)) { y[alan] = esle.get(n); return true; }
+        return !sil.has(n);
+      });
+    };
+    // çubuklar: sıfır boylu (iki ucu aynı kesişim) ve aynı iki kesişimi bağlayan ikinciler
+    const silC = [], ciftC = [], esleC = new Map(), gorC = new Map();
     m.cubuklar = (m.cubuklar || []).filter(function (c) {
-      if (anahtar(c.i) === anahtar(c.j)) { silC.push(c.no); return false; }
+      const a = anahtar(c.i), b = anahtar(c.j);
+      if (a === b) { silC.push(c.no); return false; }
+      const k = a < b ? a + "#" + b : b + "#" + a;
+      if (gorC.has(k)) { ciftC.push(c.no); esleC.set(+c.no, gorC.get(k)); return false; }
+      gorC.set(k, +c.no);
       return true;
     });
     if (silC.length) uy.push("Uçları aynı kesişime düşen " + silC.length + " çubuk silindi (" + silC.join(", ") + ").");
-    const silP = [];
+    if (ciftC.length) uy.push("Aynı iki kesişimi bağlayan " + ciftC.length + " çubuk silindi (" + ciftC.map(function (n) { return n + " → " + esleC.get(+n); }).join(", ") + "; yükleri kalan çubuğa aktarıldı).");
+    yukDuzelt("cubuk", "cubuk", new Set(silC.map(Number)), esleC);
+    (m.kren || []).forEach(function (k) {
+      if (!k || !Array.isArray(k.yol)) return;
+      const yol = [];
+      k.yol.forEach(function (x) { const n = esleC.has(+x) ? esleC.get(+x) : +x; if (silC.indexOf(n) < 0 && yol.indexOf(n) < 0) yol.push(n); });
+      k.yol = yol;
+    });
+    // paneller: < 3 farklı köşe ve aynı köşe kümesindeki ikinciler
+    const silP = [], ciftP = [], esleP = new Map(), gorP = new Map();
     m.paneller = (m.paneller || []).filter(function (p) {
       if (!Array.isArray(p.kose)) return true;
       const g = [], gor = new Set();
       p.kose.forEach(function (r) { const k = anahtar(r); if (!gor.has(k)) { gor.add(k); g.push(r); } });
       p.kose = g;
       if (g.length < 3) { silP.push(p.no); return false; }
+      const k = Array.from(gor).sort().join("#");
+      if (gorP.has(k)) { ciftP.push(p.no); esleP.set(+p.no, gorP.get(k)); return false; }
+      gorP.set(k, +p.no);
       return true;
     });
     if (silP.length) uy.push("Köşeleri çakışan " + silP.length + " panel silindi (" + silP.join(", ") + ").");
-    const silK = [];
+    if (ciftP.length) uy.push("Aynı köşelere düşen " + ciftP.length + " panel silindi (" + ciftP.map(function (n) { return n + " → " + esleP.get(+n); }).join(", ") + ").");
+    yukDuzelt("panel", "panel", new Set(silP.map(Number)), esleP);
+    // mesnetler: aynı düğümdeki kayıtlar birleşir (serbestlikler VEYA)
+    if (Array.isArray(m.mesnetler) && m.mesnetler.length > 1) {
+      const gorM = new Map(), once = m.mesnetler.length;
+      m.mesnetler = m.mesnetler.filter(function (s) {
+        if (!s || s.dugum == null) return true;
+        const k = anahtar(s.dugum);
+        if (!gorM.has(k)) { gorM.set(k, s); return true; }
+        const a = gorM.get(k);
+        ["ux", "uy", "uz", "rx", "ry", "rz"].forEach(function (x) { a[x] = !!(a[x] || s[x]); });
+        return false;
+      });
+      if (m.mesnetler.length < once) uy.push("Aynı düğüme düşen " + (once - m.mesnetler.length) + " mesnet kaydı birleştirildi.");
+    }
+    // aks–kat kirişleri: başı sonu aynı aksa düşen ve aynı kattaki aynı aralığı tekrarlayanlar
+    const silK = [], ciftK = [], esleK = new Map(), gorK = new Map();
     if (m.kirisler) m.kirisler = m.kirisler.filter(function (k) {
       if (Array.isArray(k.bas) && Array.isArray(k.son) && String(k.bas) === String(k.son)) { silK.push(k.no); return false; }
+      if (Array.isArray(k.bas) && Array.isArray(k.son)) {
+        const a = String(k.bas), b = String(k.son), ah = (k.kat == null ? 1 : +k.kat) + "|" + (a < b ? a + "#" + b : b + "#" + a);
+        if (gorK.has(ah)) { ciftK.push(k.no); esleK.set(+k.no, gorK.get(ah)); return false; }
+        gorK.set(ah, +k.no);
+      }
       return true;
     });
     if (silK.length) uy.push("Başı ve sonu aynı aksa düşen " + silK.length + " kiriş silindi.");
+    if (ciftK.length) uy.push("Aynı aralığa düşen " + ciftK.length + " kiriş silindi (" + ciftK.join(", ") + ").");
+    yukDuzelt("kiris", "kiris", new Set(silK.map(Number)), esleK);
     if (m.kolonlar) {
       const gor = new Set(), sil = [];
       m.kolonlar = m.kolonlar.filter(function (c) { const k = String(c.aks) + "|" + c.kat; if (gor.has(k)) { sil.push(c.no); return false; } gor.add(k); return true; });
       if (sil.length) uy.push("Aynı kesişime düşen " + sil.length + " kolon silindi.");
     }
     if (m.dosemeler) {
-      const sil = [];
+      const sil = [], cift = [], esleD = new Map(), gorD = new Map();
       m.dosemeler = m.dosemeler.filter(function (d) {
         if (Array.isArray(d.kose) && d.kose.length === 2 && (String(d.kose[0][0]) === String(d.kose[1][0]) || String(d.kose[0][1]) === String(d.kose[1][1]))) { sil.push(d.no); return false; }
+        if (Array.isArray(d.kose) && d.kose.length === 2) {
+          const xs = [String(d.kose[0][0]), String(d.kose[1][0])].sort(), ys = [String(d.kose[0][1]), String(d.kose[1][1])].sort();
+          const k = (d.kat == null ? 1 : +d.kat) + "|" + xs.join("#") + "|" + ys.join("#");
+          if (gorD.has(k)) { cift.push(d.no); esleD.set(+d.no, gorD.get(k)); return false; }
+          gorD.set(k, +d.no);
+        }
         return true;
       });
       if (sil.length) uy.push("Alanı sıfıra inen " + sil.length + " döşeme silindi.");
+      if (cift.length) uy.push("Aynı gözü tekrarlayan " + cift.length + " döşeme silindi (" + cift.join(", ") + ").");
+      yukDuzelt("doseme", "doseme", new Set(sil.map(Number)), esleD);
     }
   }
   /**

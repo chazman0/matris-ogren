@@ -47,8 +47,11 @@ process.stdin.on("end", () => {
   const r = M.genellestir(JSON.parse(veri));
   const m = r.model;
   const kon = {};
-  for (const d of m.dugumler) kon[d.no] = [d.X, d.Y, d.Z];
   const no = ref => M.dugumNo(m, ref);
+  // düğüm konumları başvurulardan (aks–kat düğümleri için kayıt yazılmaz; konum akslardan çözülür)
+  const gez = ref => { kon[no(ref)] = M.dugumKonumu(m, ref); };
+  for (const c of m.cubuklar) { gez(c.i); gez(c.j); }
+  for (const p of m.paneller) p.kose.forEach(gez);
   const out = {
     cubuklar: m.cubuklar.map(c => ({tur: c.tur, i: no(c.i), j: no(c.j), kesit: c.kesit, aci: c.aci, kaynak: c.kaynak})),
     paneller: m.paneller.map(p => ({no: p.no, kose: p.kose.map(no), dagitim: p.dagitim})),
@@ -96,3 +99,66 @@ def test_genellestir_motor_agiyla_ayni(ad):
         assert len(p["kose"]) == 4 and set(p["kose"]) <= tum
         assert p["dagitim"] in ("iki", "tek-13", "tek-24")
     assert js["denetle"] == []
+
+
+# Koparak taşıma (ui-akskat-2, ui-s3-3): genelleştirilmiş her aks–kat şablonunda kiriş ve kolonların taşı / döndür / ayna
+# (kopyasız) sonucu ya ret (model aynı) ya da sıfır boylu / çakışan çubuk ve bozuk panel içermeyen, öteki elemanları yerinde model.
+_TASI_BETIGI = """
+const M = require(process.argv[1]);
+let veri = "";
+process.stdin.on("data", d => veri += d);
+process.stdin.on("end", () => {
+  const g = M.genellestir(JSON.parse(veri)).model;
+  const ENGEL = ["sifir-boy", "cakisan-cubuk", "panel-geometri"];
+  const engel = m => M.denetle(m).uyarilar.filter(u => ENGEL.includes(u.kod)).map(u => u.mesaj);
+  const once = engel(g);
+  const kon = (m, no) => { const c = m.cubuklar.find(x => x.no === no); return [M.dugumKonumu(m, c.i), M.dugumKonumu(m, c.j)]; };
+  const sonuc = { once, red: 0, gecerli: 0, hatalar: [] };
+  const secilen = [g.cubuklar.find(c => c.tur === "kiris"), g.cubuklar.find(c => c.tur === "kolon")];
+  for (const c of secilen) {
+    const [P, Q] = kon(g, c.no);
+    const ops = [
+      ["tasi x", m => M.tasi(m, { cubuklar: [c.no] }, Q[0] - P[0] || 3, 0, 0)],
+      ["tasi y", m => M.tasi(m, { cubuklar: [c.no] }, 0, 4, 0)],
+      ["tasi z", m => M.tasi(m, { cubuklar: [c.no] }, 0, 0, 3)],
+      ["dondur", m => M.dondur(m, { cubuklar: [c.no] }, { nokta: P, yon: [0, 0, 1] }, 90)],
+      ["dondur180", m => M.dondur(m, { cubuklar: [c.no] }, { nokta: P, yon: [0, 0, 1] }, 180)],
+      ["ayna", m => M.ayna(m, { cubuklar: [c.no] }, { X: P[0] + 2 }, { kopya: false })],
+    ];
+    for (const [ad, f] of ops) {
+      const r = f(g);
+      if (r.reddedildi) { sonuc.red++; if (JSON.stringify(r.model) !== JSON.stringify(g)) sonuc.hatalar.push(ad + ": ret modeli değiştirdi"); continue; }
+      sonuc.gecerli++;
+      const yeni = engel(r.model).filter(e => !once.includes(e));
+      if (yeni.length) sonuc.hatalar.push(c.tur + " " + ad + ": " + yeni.join(" "));
+      // yeni uç düğümü iç noktasına düşen seçilmeyen çubuk orada bölünür (i ucu aynı, j ucu eski doğru parçasında)
+      const bolunen = new Set(r.uyarilar.map(u => { const x = /^Çubuk (\d+), yeni uç düğümü \d+ üzerine düştüğü için orada bölündü/.exec(u); return x ? +x[1] : null; }).filter(Boolean));
+      const uz = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      for (const d of g.cubuklar) {
+        if (d.no === c.no) continue;
+        const a = kon(g, d.no), b = kon(r.model, d.no);
+        const tamam = bolunen.has(d.no) ? uz(a[0], b[0]) < 1e-9 && Math.abs(uz(b[1], a[0]) + uz(a[1], b[1]) - uz(a[0], a[1])) < 1e-9
+          : uz(a[0], b[0]) + uz(a[1], b[1]) < 1e-9;
+        if (!tamam) { sonuc.hatalar.push(c.tur + " " + ad + ": seçilmeyen çubuk " + d.no + " yer değiştirdi"); break; }
+      }
+      if (r.model.cubuklar.length !== g.cubuklar.length + bolunen.size) sonuc.hatalar.push(c.tur + " " + ad + ": çubuk sayısı");
+      if (ad === "dondur180") {
+        const t = r.model.cubuklar.find(x => x.no === c.no);
+        if (JSON.stringify(t.i) !== JSON.stringify(c.i)) sonuc.hatalar.push(c.tur + " dondur180: dönme merkezindeki uç değişti");
+      }
+    }
+  }
+  process.stdout.write(JSON.stringify(sonuc));
+});
+"""
+
+
+@pytest.mark.parametrize("ad", _sablonlar())
+def test_koparak_tasima_sablonlarda(ad):
+    import yapi
+    r = _node("-e", _TASI_BETIGI, str(MODUL), girdi=json.dumps(yapi.bina_sablon(ad)))
+    assert r.returncode == 0, r.stderr
+    s = json.loads(r.stdout)
+    assert s["hatalar"] == [], s["hatalar"]
+    assert s["red"] + s["gecerli"] == 12
+    assert s["red"] >= 1, "bir aks aralığı ötede kiriş/kolon var: en az bir taşıma reddedilmeli"
