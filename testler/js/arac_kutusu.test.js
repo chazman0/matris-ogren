@@ -350,6 +350,18 @@ test("kenar payları: boydan boya dikey sütun yan kenarın payıdır (yüksekli
   assert.deepEqual(D.kenarPaylari([{ x: 8, y: 60, w: 884, h: 40 }], W, H), { sol: 0, ust: 100, sag: 0, alt: 0 });
 });
 
+test("kenar payları: yalnız üst kenara değen sütun (tam ekranda uzayan kapsayıcı) yan kenarın payıdır", function () {
+  // 1280×720 tam ekran: Çizim sütunu yönetici düğmesinin yanında (x = 48), artık alta değmiyor; Görünüm + Analiz altta
+  const W = 956, H = 475;
+  const l = [{ x: 8, y: 433, w: 34, h: 34 }, { x: 48, y: 8, w: 70, h: 361 }, { x: 124, y: 8, w: 574, h: 42 }, { x: 124, y: 56, w: 153, h: 35 },
+    { x: 124, y: 425, w: 563, h: 42 }, { x: 124, y: 377, w: 330, h: 42 }, { x: 878, y: 8, w: 70, h: 325 }];
+  assert.deepEqual(D.kenarPaylari(l, W, H), { sol: 118, ust: 91, sag: 78, alt: 98 });
+  // ortadaki sütun üst kenara değiyorsa yan payı daha büyükse üst pay kalır
+  assert.deepEqual(D.kenarPaylari([{ x: 400, y: 8, w: 60, h: 150 }], 1000, 600), { sol: 0, ust: 158, sag: 0, alt: 0 });
+  // yalnız sol kenara değen şerit: yakın olduğu üst/alt kenarın payı daha küçükse o
+  assert.deepEqual(D.kenarPaylari([{ x: 8, y: 500, w: 500, h: 40 }], 1000, 600), { sol: 0, ust: 0, sag: 0, alt: 100 });
+});
+
 test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katlanmış başlığıyla yerleşir", function () {
   const W = 800, H = 400;
   const uc = ["a", "b", "c"].map(function (id) { return { id: id, w: 700, h: 42, kenar: "ust", kw: 120, kh: 30 }; });
@@ -369,6 +381,24 @@ test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katla
   assert.ok(eski.get("c").y > r.get("b").y);
 });
 
+test("otomatik yerleşim (serbest): az önce açılan kutu şeritte yer yoksa açık boyuyla sahnede boş yer arar; hiç yoksa katlanır", function () {
+  const W = 800, H = 400;
+  const sabit = [{ x: 8, y: 8, w: 700, h: 42 }, { x: 8, y: 56, w: 700, h: 42 }];   // üst şerit dolu
+  const it = { id: "x", w: 600, h: 42, kenar: "ust", kw: 120, kh: 30 };
+  // şerit sınırlı arama: üst şeritte (iki kutu kalınlığı) 600 px yer yok → katlanır
+  assert.equal(D.otomatikYerlestir([it], W, H, sabit).get("x").katla, true);
+  // serbest: açık boyuyla sahnenin içinde (şeridin altında) yer bulunur, katlanmaz, sabitlerle çakışmaz
+  const q = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, sabit).get("x");
+  assert.equal(q.katla, undefined);
+  assert.ok(q.y > 56 + 42, "şeridin altında: " + q.y);
+  sabit.forEach(function (s) { assert.ok(!D.cakisir({ x: q.x, y: q.y, w: 600, h: 42 }, s, 0)); });
+  // hiç yer yoksa serbest kutu da katlanmış başlığıyla yerleşir
+  const dolu = [{ x: 0, y: 0, w: W, h: 330 }, { x: 0, y: 336, w: 300, h: 64 }];   // yalnız sağ altta başlık kadar yer
+  const r = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, dolu).get("x");
+  assert.equal(r.katla, true);
+  assert.ok(!D.cakisir({ x: r.x, y: r.y, w: 120, h: 30 }, dolu[0], 0));
+});
+
 test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanını korur", function () {
   const y0 = D.varsayilan();
   const id = y0.kutular[0].id;
@@ -380,4 +410,18 @@ test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanın�
   assert.equal(D.kutuBul(y2, id).katli, true);
   assert.equal(D.kutuBul(D.dogrula({ kutular: [{ id: "x", komutlar: ["sec"] }] }), "x").katli, false);
   assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { katli: false }), id).katli, false);
+});
+
+test("kendiliğinden katlanan kutu (otoKatli): doğrula yalnız katlı kutuda korur; kullanıcı katlayınca / açınca işaret düşer", function () {
+  const y0 = D.varsayilan();
+  const id = y0.kutular[0].id;
+  const y1 = D.kutuGuncelle(y0, id, { katli: true });
+  D.kutuBul(y1, id).otoKatli = true;                               // _konumla yer kalmayınca koyar
+  assert.equal(D.kutuBul(D.dogrula(JSON.parse(JSON.stringify(y1))), id).otoKatli, true);
+  const acik = JSON.parse(JSON.stringify(y1));
+  D.kutuBul(acik, id).katli = false;
+  assert.equal("otoKatli" in D.kutuBul(D.dogrula(acik), id), false);   // açık kutuda anlamsız: atılır
+  assert.equal("otoKatli" in D.kutuBul(D.dogrula(y0), id), false);     // başka kutulara alan eklenmez
+  assert.equal("otoKatli" in D.kutuBul(D.kutuGuncelle(y1, id, { katli: true }), id), false);   // kullanıcının kararı
+  assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { kucuk: false }), id).otoKatli, true);       // başka alan işareti bozmaz
 });

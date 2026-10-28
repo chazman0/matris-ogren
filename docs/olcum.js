@@ -4,8 +4,8 @@
      kip "cizim" — yalnız aks kesişimleri, düğümler (bölme/kesişim düğümleri dahil) ve çubuk kesişimleri (serbest nokta YOK, §19);
      kip "olcum" — bunlara ek olarak orta nokta, dik iz düşüm ve çubuk üzerindeki nokta.
    SVG: ölçü çizgileri ve yakalama işaretleri — ekran dönüşümü `cevir(P) -> [x, y]` ile (Cizim3B izdüşümü için `cevirici(T, bakis)`).
-   DOM'lu küçük denetleyici `Arac` / `bagla(svg, sec)`: imleçte yakalama önizlemesi, dokunuşla nokta, Enter (alanı bitir), Esc (temizle),
-   Geri (son noktayı al) — tarayıcıda kullanılır; node testleri yalnız saf kısmı çalıştırır.
+   DOM'lu küçük denetleyici `Arac` / `bagla(svg, sec)`: imleçte yakalama önizlemesi, dokunuşla nokta, Enter (alanı bitir), Esc (temizle;
+   sec.escSonuclariKorur ile yalnız yarım ölçüm), Geri (son noktayı al) — tarayıcıda kullanılır; node testleri yalnız saf kısmı çalıştırır.
 
    Koordinat: bina sistemi (X sağa, Y derinlik, Z yukarı; m). Açılar derece. Yakalama ekran kipinde (sec.cevir verilirse)
    tolerans piksel, aksi hâlde metre. Sayı biçimi uygulamayla aynı: ondalık virgül, eksi işareti "−". */
@@ -757,7 +757,10 @@
    * Ölçme aracı denetleyicisi. Sahne kendi işaretçi olaylarını yönetiyorsa yalnız `hareket(p)`, `dokun(p)`, `tus(ad)` çağrılır.
    *  sec: { geo: geometri ya da () => geometri, cevir: fn ya da () => fn (bina → svg koordinatı), katman?: SVG <g> (içine çizer),
    *         kip?: "uzaklik" | "aci" | "alan" | "kot" | "koordinat" | "boy", tol?: px (14), duzlem?: yakalama düzlemi,
-   *         degisti?(arac, sonuc|null): her değişiklikte, ipucu?(metin): durum satırı için }
+   *         degisti?(arac, sonuc|null): her değişiklikte, ipucu?(metin): durum satırı için,
+   *         escSonuclariKorur?: true ise Esc yalnız yarım ölçümü siler; bekleyen nokta yoksa tus("Escape") false döner (sayfa Esc'i
+   *         kendisi işler, ör. kipten çıkar) ve tamamlanan ölçüler kalır — hepsini silmek temizle() ile ("Ölçüleri temizle").
+   *         Verilmezse (bağımsız bagla() kullanımı) ikinci Esc bütün sonuçları siler. }
    *  Yöntemler: kipSec(kip), hareket([x, y]), dokun([x, y]) -> sonuç | null, tus("Escape" | "Enter" | "Backspace") -> işlendi mi,
    *  temizle(hepsi), geriAl(), ciz(), svg() -> metin, tsv(), yakalanan (son yakalama).
    */
@@ -791,7 +794,10 @@
     return s;
   };
   Arac.prototype.tus = function (ad) {
-    if (ad === "Escape") { const v = this.olcer.temizle(false); this.ciz(); this._bildir(null); return v; }
+    if (ad === "Escape") {
+      if (this.sec.escSonuclariKorur && !this.olcer.bekleyen.length) return false;     // tamamlanan ölçüler Esc ile silinmez
+      const v = this.olcer.temizle(false); this.ciz(); this._bildir(null); return v;
+    }
     if (ad === "Enter") { const s = this.olcer.bitir(); this.ciz(); this._bildir(s); return !!s; }
     if (ad === "Backspace") { const v = this.olcer.bekleyen.length > 0 || this.olcer.sonuclar.length > 0; this.olcer.geriAl(); this.ciz(); this._bildir(null); return v; }
     return false;
