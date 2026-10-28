@@ -159,6 +159,77 @@ function aksSistemiBina() {
   return b;
 }
 
+// surum 3, motorun (yapi_serbest) kesit dilinde: IPE/HEA adları, basit kesit adları ("BORU 114.3x4", "KUTU 150x8", "L 100x10",
+// "2L 70x7 s=10", "UPN 200"), {tip: "kutu", boyutlar (mm)} ve iki uçta vute (temel MERTEK). 10 m açıklıklı iki çerçeveli beşik çatı:
+// mertek kenarı iki çubuklu zincir (vute + mertek; B tarafında vute ters yönde), dağıtımı "yok" olan cephe paneli, ek yükler.
+// Motorla çözülebilir (testler/test_ifc_disari.py yapi.bina_coz ile çözüp yükleri karşılaştırır).
+function genelKesitBina() {
+  const z = function (aks, zad) { return { aks: aks, z: zad }; };
+  const b = {
+    tur: "bina", surum: 3, baslik: "Genel model kesit dili (beşik çatılı çelik çerçeve)", sistem: "celik", birim: { kuvvet: "kN", uzunluk: "m" },
+    akslar: {
+      x: [{ ad: "A", konum: 0 }, { ad: "M", konum: 5 }, { ad: "B", konum: 10 }],
+      y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 6 }],
+      z: [{ ad: "±0.00", konum: 0, kat: 0 }, { ad: "Saçak", konum: 5.0, kat: 1 }, { ad: "Mahya", konum: 6.0 }],
+    },
+    katlar: [{ no: 0, ad: "±0.00", kot: 0 }, { no: 1, ad: "Saçak", kot: 5.0 }],
+    malzemeler: { S275: { kutuphane: "S275" } },
+    kesitler: {
+      KOLON: { tip: "profil", profil: "HEA 240", malzeme: "S275" },
+      MERTEK: { tip: "profil", profil: "IPE 300", malzeme: "S275" },
+      VUTE: { tip: "vute", temel: "MERTEK", ek_yukseklik: 0.3, boy: 1.5 },
+      ASIK: { tip: "profil", profil: "UPN 200", malzeme: "S275" },
+      CAPRAZ: { tip: "profil", profil: "BORU 114.3x4", malzeme: "S275" },
+      CEPHE_CAPRAZ: { tip: "profil", profil: "KUTU 150x8", malzeme: "S275" },
+      GERGI: { tip: "profil", profil: "L 100x10", malzeme: "S275" },
+      GERGI2: { tip: "profil", profil: "2L 70x7 s=10", malzeme: "S275" },
+      SACAK: { tip: "kutu", boyutlar: { H: 200, B: 100, t: 6 }, malzeme: "S275" },
+    },
+    // vute uçları: mertek boyunca saçaktan 1,5 m (L_mertek = √26 m)
+    dugumler: [],
+    cubuklar: [],
+    paneller: [],
+    mesnetler: [],
+    ek_yukler: [],
+    temeller: { tip: "tekil", varsayilan: { B: 1.5, L: 1.5, h: 0.6 }, zemin: { q_em: 200, k0: 20000 }, mesnet: "mafsal", ozel: [] },
+    yuk_durumlari: { G: { acik: true }, Q: { acik: true }, S: { acik: true, bolge: 2, rakim: 500 }, W: { acik: false }, E: { acik: false } },
+    deprem: { etkin: false },
+    kombinasyon_kumesi: "cythye_ydkt",
+    analiz: { diyagram_nokta: 9 },
+  };
+  const oran = 1.5 / Math.sqrt(26);
+  let n = 0;
+  const cb = function (i, j, tur, kesit, ek) { b.cubuklar.push(Object.assign({ no: ++n, i: i, j: j, tur: tur, kesit: kesit }, ek || {})); return n; };
+  ["1", "2"].forEach(function (y, k) {
+    const va = 100001 + 2 * k, vb = 100002 + 2 * k;
+    b.dugumler.push({ no: va, tur: "bolme", cubuk_i: z(["A", y], "Saçak"), cubuk_j: z(["M", y], "Mahya"), oran: oran, ad: "Vute ucu A" + y },
+      { no: vb, tur: "bolme", cubuk_i: z(["B", y], "Saçak"), cubuk_j: z(["M", y], "Mahya"), oran: oran, ad: "Vute ucu B" + y });
+    cb(z(["A", y], "±0.00"), z(["A", y], "Saçak"), "kolon", "KOLON", { kat: 1 });
+    cb(z(["B", y], "±0.00"), z(["B", y], "Saçak"), "kolon", "KOLON", { kat: 1 });
+    cb(z(["A", y], "Saçak"), { dugum: va }, "kiris", "VUTE");
+    cb({ dugum: va }, z(["M", y], "Mahya"), "kiris", "MERTEK");
+    cb(z(["M", y], "Mahya"), { dugum: vb }, "kiris", "MERTEK");
+    cb(z(["B", y], "Saçak"), { dugum: vb }, "kiris", "VUTE");       // derin uç (i) saçakta; panel kenarı M → B yönünde: ters
+  });
+  cb(z(["A", "1"], "Saçak"), z(["A", "2"], "Saçak"), "asik", "ASIK");
+  cb(z(["M", "1"], "Mahya"), z(["M", "2"], "Mahya"), "asik", "ASIK");
+  cb(z(["B", "1"], "Saçak"), z(["B", "2"], "Saçak"), "asik", "SACAK");
+  cb(z(["A", "1"], "±0.00"), z(["A", "2"], "Saçak"), "capraz", "CAPRAZ", { yalniz_cekme: true });
+  cb(z(["A", "2"], "±0.00"), z(["A", "1"], "Saçak"), "capraz", "CAPRAZ", { yalniz_cekme: true });
+  cb(z(["B", "1"], "±0.00"), z(["B", "2"], "Saçak"), "capraz", "CEPHE_CAPRAZ");
+  cb(z(["A", "1"], "Saçak"), z(["B", "1"], "Saçak"), "bag", "GERGI");
+  const gergi2 = cb(z(["A", "2"], "Saçak"), z(["B", "2"], "Saçak"), "bag", "GERGI2");
+  b.paneller.push(
+    { no: 1, kose: [z(["A", "1"], "Saçak"), z(["M", "1"], "Mahya"), z(["M", "2"], "Mahya"), z(["A", "2"], "Saçak")], tur: "cati", kalinlik: 0, g: 0.3, q: 0.5, kar: true, dagitim: "tek-13" },
+    { no: 2, kose: [z(["M", "1"], "Mahya"), z(["B", "1"], "Saçak"), z(["B", "2"], "Saçak"), z(["M", "2"], "Mahya")], tur: "cati", kalinlik: 0, g: 0.3, q: 0.5, kar: true, dagitim: "tek-13" },
+    { no: 3, kose: [z(["A", "1"], "±0.00"), z(["B", "1"], "±0.00"), z(["B", "1"], "Saçak"), z(["A", "1"], "Saçak")], tur: "cephe", kalinlik: 0, g: 0.2, q: 0, kar: false, dagitim: "yok" });
+  b.ek_yukler.push(
+    { tur: "cubuk", cubuk: 4, durum: "Q", q1: -1.0, q2: -3.0, x1: 0.5, x2: 3.0 },
+    { tur: "cubuk", cubuk: gergi2, durum: "G", x: 0.5, P: -6.0, oransal: true },
+    { tur: "dugum", dugum: z(["M", "1"], "Mahya"), durum: "Q", FZ: -4.0 });
+  return b;
+}
+
 // model_ops.genellestir ile aks–kat modelinden üretilmiş surum 3 modeli (kolon/kiriş → çubuk, döşeme → panel; kaynak.aks_kat)
 function genelBina() {
   const MO = require(path.join(__dirname, "..", "..", "docs", "model_ops.js"));
@@ -169,4 +240,5 @@ function genelBina() {
   return m;
 }
 
-module.exports = { temel: temelBina, serbest: serbestBina, radye: radyeBina, surekli: surekliBina, aks: aksSistemiBina, genel: genelBina };
+module.exports = { temel: temelBina, serbest: serbestBina, radye: radyeBina, surekli: surekliBina, aks: aksSistemiBina, genel: genelBina,
+  genel_kesit: genelKesitBina };

@@ -412,3 +412,270 @@ test("indir: tarayıcı dışında hata; tarayıcıda (sahte belge) Blob bağlan
     delete globalThis.document;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Genel model (surum 3): motorun kesit dili (basitProfil, C9), vute, kesit uyarıları, G/Q/S yükleri
+// ---------------------------------------------------------------------------
+test("basitProfil: motorun ad dilbilgisi (BORU/KUTU/L/2L/UPN; x, X, ×; büyük/küçük harf; virgül), mm → m", function () {
+  const B = MatrisIFC.basitProfil;
+  const boru = B("BORU 168.3x6.3");
+  assert.equal(boru.tur, "boru");
+  assert.equal(boru.ad, "BORU 168.3x6.3");
+  const d = 0.1683 - 2 * 0.0063;
+  assert.ok(Math.abs(boru.A - Math.PI / 4 * (0.1683 * 0.1683 - d * d)) < 1e-15);
+  assert.ok(Math.abs(boru.Iy - Math.PI / 64 * (Math.pow(0.1683, 4) - Math.pow(d, 4))) < 1e-18);
+  assert.equal(boru.Iy, boru.Iz);
+  assert.ok(Math.abs(boru.J - 2 * boru.Iy) < 1e-18);
+  assert.deepEqual(boru.boyutlar, { D: 0.1683, t: 0.0063 });
+  assert.equal(boru.h, 0.1683);
+  // yazım çeşitleri aynı sonuç
+  ["boru 168,3 × 6,3", "BORU168.3X6.3", "  Boru  168.3x6.3 ", "CHS 168.3*6.3"].forEach(function (a) { assert.deepEqual(B(a), boru, a); });
+  const kare = B("KUTU 150x8");
+  assert.equal(kare.ad, "KUTU 150x150x8");
+  assert.equal(kare.tur, "kutu");
+  assert.ok(Math.abs(kare.Iy - kare.Iz) < 1e-18);
+  assert.deepEqual(kare.boyutlar, { h: 0.15, b: 0.15, t: 0.008, r_o: 0.012, r_i: 0.008 });   // sıcak: r_o = 1,5t, r_i = t
+  assert.deepEqual(B("kutu 150×150×8"), kare);
+  const rhs = B("KUTU 200x100x6");
+  assert.ok(rhs.Iy > rhs.Iz, "Iy güçlü eksen (H doğrultusunda)");
+  assert.equal(rhs.h, 0.2);
+  assert.equal(rhs.b, 0.1);
+  const L = B("L 100x10");
+  assert.equal(L.ad, "L 100x100x10");
+  assert.deepEqual(B("L 100x100x10"), L);
+  assert.equal(L.boyutlar.r1, 0.012);           // EN 10056-1 kök yarıçapı, uç r1/2
+  assert.equal(L.boyutlar.r2, 0.006);
+  const Le = B("L 100x50x8");                    // farklı kollu (keskin köşe)
+  assert.equal(Le.tur, "L");
+  assert.equal(Le.h, 0.1);
+  assert.equal(Le.b, 0.05);
+  assert.ok(Le.Iy > Le.Iz);
+  const L2 = B("2L 70x7 s=10");
+  assert.equal(L2.tur, "2L");
+  assert.equal(L2.ad, "2L 70x70x7 s=10");
+  assert.ok(Math.abs(L2.b - 0.15) < 1e-12, "dış genişlik 2b + s");
+  assert.deepEqual(B("2l 70X7"), L2, "s varsayılanı 10 mm");
+  assert.deepEqual(B("2L 70x70x7 (s=10)"), L2);
+  assert.ok(B("2L 70x7 s=20").Iz > L2.Iz, "aralık büyüyünce Iz büyür");
+  const U = B("UPN 200");
+  assert.equal(U.tur, "U");
+  assert.deepEqual([U.h, U.b, U.boyutlar.tw, U.boyutlar.tf], [0.2, 0.075, 0.0085, 0.0115]);
+  assert.deepEqual(B("upn200"), U);
+  // tanınmayanlar → null
+  [null, undefined, "", {}, 12, "IPE 300", "HEA 200", "UPN 210", "UPN 200.5", "BORU 100", "BORU 100x60", "KUTU 10x6", "L 20x12",
+    "2L 100x50x8 s=10", "XYZ 1x2", "BORU 168.3.1x6", "KUTU 100x50x5x3", "L 100x0"].forEach(function (a) {
+    assert.equal(B(a), null, String(a));
+  });
+});
+
+// Küçük surum 3 modeli: tek çubuk (0,0,3) → (2,0,3), kesit verilen sözlük
+function tekCubuk(kesitler, kesit, ek) {
+  return Object.assign({
+    tur: "bina", surum: 3, baslik: "Tek çubuk", sistem: "celik",
+    akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 2 }], y: [{ ad: "1", konum: 0 }], z: [{ ad: "±0.00", konum: 0, kat: 0 }, { ad: "+3", konum: 3, kat: 1 }] },
+    katlar: [{ no: 0, ad: "±0.00", kot: 0 }, { no: 1, ad: "+3", kot: 3 }],
+    malzemeler: { S275: { kutuphane: "S275" } }, kesitler: kesitler,
+    cubuklar: [{ no: 1, i: { X: 0, Y: 0, Z: 3 }, j: { X: 2, Y: 0, Z: 3 }, tur: "kiris", kesit: kesit }],
+    mesnetler: [{ dugum: { X: 0, Y: 0, Z: 3 }, ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }],
+    temeller: { tip: "tekil", varsayilan: { B: 1, L: 1, h: 0.5 } },
+  }, ek || {});
+}
+
+test("vute: temel I profil + derin uç profili (h + ek, üst yüz hizalı) ile IfcExtrudedAreaSolidTapered, kalan boy sabit; Pset_MatrisVute", function () {
+  const kes = { MERTEK: { tip: "profil", profil: "IPE 300", malzeme: "S275" }, VUTE: { tip: "vute", temel: "MERTEK", ek_yukseklik: 0.3, boy: 1.0 } };
+  const r = uret(tekCubuk(kes, "VUTE"));
+  const t = r.tipler;
+  assert.deepEqual(r.uyarilar, []);
+  assert.doesNotMatch(r.metin, /IFCRECTANGLEPROFILEDEF\(\.AREA\.,'VUTE'/);
+  assert.equal(t.IFCEXTRUDEDAREASOLIDTAPERED, 1);
+  // temel profil ve derin uç (OverallDepth 0,6; −ek/2 = −0,15 kaydırılmış → üst yüz +0,15'te kalır)
+  assert.match(r.metin, /IFCISHAPEPROFILEDEF\(\.AREA\.,'IPE 300',\$,0\.15,0\.3,0\.0071,0\.0107,0\.015,\$,\$\)/);
+  const derin = /#(\d+)=IFCISHAPEPROFILEDEF\(\.AREA\.,'IPE 300 \(vute derin u\\X2\\00E7\\X0\\, h = 0\.6 m\)',(#\d+),0\.15,0\.6,/.exec(r.metin);
+  assert.ok(derin, "derin uç profili");
+  const yer = r.varlik[derin[2].slice(1)].govde;
+  assert.equal(nokta(r.varlik, /^(#\d+)/.exec(yer)[1]).join(","), "0,-0.15");
+  // derin uç i: sivri katı 0 → 1 m (derin → temel), kalan 1 m sabit kesitli katı z = 1'de
+  const sivri = /IFCEXTRUDEDAREASOLIDTAPERED\((#\d+),\$,#\d+,1\.,(#\d+)\)/.exec(r.metin);
+  assert.ok(sivri);
+  assert.equal(sivri[1], "#" + derin[1]);
+  assert.match(r.metin, /IFCSHAPEREPRESENTATION\(#\d+,'Body','AdvancedSweptSolid',\(#\d+,#\d+\)\)/);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('TemelProfil',\$,IFCLABEL\('IPE 300'\),\$\)/);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('EkYukseklik',\$,IFCLENGTHMEASURE\(0\.3\),\$\)/);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('DerinUcYuksekligi',\$,IFCPOSITIVELENGTHMEASURE\(0\.6\),\$\)/);
+  // derin uç j: önce sabit kesit (0 → 1), sonra sivri katı z = 1'de (temel → derin)
+  const kj = JSON.parse(JSON.stringify(kes));
+  kj.VUTE.derin_uc = "j";
+  const rj = uret(tekCubuk(kj, "VUTE"));
+  const sj = /IFCEXTRUDEDAREASOLIDTAPERED\((#\d+),(#\d+),#\d+,1\.,(#\d+)\)/.exec(rj.metin);
+  assert.ok(sj);
+  assert.match(rj.varlik[sj[3].slice(1)].govde, /vute derin/);
+  assert.equal(nokta(rj.varlik, /^(#\d+)/.exec(rj.varlik[sj[2].slice(1)].govde)[1]).join(","), "0,0,1");
+  // boy verilmezse çubuk boyunca; temel kesit tanımsızsa tek uyarı ve 0,30 × 0,30
+  const kb = JSON.parse(JSON.stringify(kes));
+  delete kb.VUTE.boy;
+  assert.match(uret(tekCubuk(kb, "VUTE")).metin, /IFCEXTRUDEDAREASOLIDTAPERED\(#\d+,\$,#\d+,2\.,#\d+\)/);
+  const ky = { VUTE: { tip: "vute", temel: "YOK", ek_yukseklik: 0.3 } };
+  const ry = uret(tekCubuk(ky, "VUTE"));
+  assert.equal(ry.uyarilar.length, 1);
+  assert.match(ry.uyarilar[0], /Vute kesiti 'VUTE': temel kesit 'YOK' tanımsız/);
+});
+
+test("kesit dili: basit kesit adları, {tip, boyutlar (mm)}, 2L → IfcCompositeProfileDef; tanınmayan profil uyarısı ad başına bir kez (adetle)", function () {
+  const kes = {
+    BORU: { tip: "profil", profil: "BORU 114.3x4", malzeme: "S275" }, KARE: { tip: "profil", profil: "KUTU 150x8", malzeme: "S275" },
+    RHS: { tip: "kutu", boyutlar: { H: 200, B: 100, t: 6 }, malzeme: "S275" }, KORNIYER: { tip: "profil", profil: "L 100x10", malzeme: "S275" },
+    CIFT: { tip: "profil", profil: "2L 70x7 s=10", malzeme: "S275" }, UPN: { tip: "profil", profil: "UPN 200", malzeme: "S275" },
+    CIFT2: { tip: "2L", boyutlar: { b: 60, t: 6 }, malzeme: "S275" }, BILINMEYEN: { tip: "profil", profil: "XYZ 99", malzeme: "S275" },
+    EKSIK: { tip: "boru", malzeme: "S275" },
+  };
+  const m = tekCubuk(kes, "BORU");
+  const adlar = Object.keys(kes);
+  m.cubuklar = adlar.map(function (k, i) { return { no: i + 1, i: { X: 0, Y: i, Z: 3 }, j: { X: 2, Y: i, Z: 3 }, tur: "kiris", kesit: k }; });
+  [1, 2, 3].forEach(function (n) { m.cubuklar.push({ no: 20 + n, i: { X: 0, Y: 20 + n, Z: 3 }, j: { X: 2, Y: 20 + n, Z: 3 }, tur: "bag", kesit: "BILINMEYEN" }); });
+  const r = uret(m);
+  assert.match(r.metin, /IFCCIRCLEHOLLOWPROFILEDEF\(\.AREA\.,'BORU 114\.3x4',\$,0\.05715,0\.004\)/);
+  assert.match(r.metin, /IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 150x8',\$,0\.15,0\.15,0\.008,0\.008,0\.012\)/);
+  assert.match(r.metin, /IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 200x100x6',\$,0\.1,0\.2,0\.006,0\.006,0\.009\)/);
+  assert.match(r.metin, /IFCLSHAPEPROFILEDEF\(\.AREA\.,'L 100x10',\$,0\.1,0\.1,0\.01,0\.012,0\.006,\$\)/);
+  assert.match(r.metin, /IFCUSHAPEPROFILEDEF\(\.AREA\.,'UPN 200',\$,0\.2,0\.075,0\.0085,0\.0115,0\.0115,0\.00575,0\.0798/);
+  // 2L: iki L (ikincisi +90° döndürülmüş, Depth/Width yer değiştirmiş = birincinin aynası) tek bileşik profilde; malzeme profili onu gösterir
+  const c = /#(\d+)=IFCCOMPOSITEPROFILEDEF\(\.AREA\.,'2L 70x7 s=10',\((#\d+),(#\d+)\),'2L'\)/.exec(r.metin);
+  assert.ok(c);
+  assert.match(r.varlik[c[2].slice(1)].govde, /^\.AREA\.,'2L 70x7 s=10 \(1\)',#\d+,0\.07,0\.07,0\.007,0\.009,0\.0045,\$$/);
+  const p2 = /^\.AREA\.,'2L 70x7 s=10 \(2\)',(#\d+),/.exec(r.varlik[c[3].slice(1)].govde);
+  assert.match(r.varlik[p2[1].slice(1)].govde, /^#\d+,(#\d+)$/);
+  assert.equal(r.varlik[/,(#\d+)$/.exec(r.varlik[p2[1].slice(1)].govde)[1].slice(1)].govde, "(0.,1.)");
+  assert.match(r.metin, new RegExp("IFCMATERIALPROFILE\\('CIFT',\\$,#\\d+,#" + c[1] + ",\\$,\\$\\)"));
+  assert.match(r.metin, /IFCCOMPOSITEPROFILEDEF\(\.AREA\.,'2L 60x60x6 s=10',/);      // boyutlar biçimi: s varsayılanı
+  // uyarılar: tanınmayan ad 4 çubukta → tek satır; ölçüsü eksik boru → tek satır
+  assert.deepEqual(r.uyarilar, ["Profil 'XYZ 99' tabloda yok; b × h dikdörtgen katı ile gösterildi (4 eleman).",
+    "Kesit 'EKSIK' (tip boru): ölçüler eksik ya da tutarsız; b × h dikdörtgen katı ile gösterildi."]);
+});
+
+// Sentetik genel model çözümü (yapi_serbest veri şeması): z = 3 m'de 6 × 4 m tek doğrultulu (tek-13) panel. 1. kenar (0,0)→(6,0)
+// iki çubuklu zincir: Ç1 (0→3) ve Ç2 (6→3, kenara ters; FE parçası E2 çubuğa da ters). 3. kenar (6,4)→(0,4): Ç3 (0→6, kenara ters,
+// iki FE parçası E3, E4); birim yük kenar boyunca 1 → 3 (Ç3'ün i ucunda 3). g = 2, q = 3 kN/m². Öz ağırlık 0,2 kN/m.
+function genelSentetik() {
+  const lam = function (x) { return [x, [0, 0, 1], [x[1], -x[0], 0]]; };
+  const bina = {
+    tur: "bina", surum: 3, baslik: "Sentetik genel model", sistem: "celik",
+    akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 4 }],
+      z: [{ ad: "±0.00", konum: 0, kat: 0 }, { ad: "+3", konum: 3, kat: 1 }] },
+    katlar: [{ no: 0, ad: "±0.00", kot: 0 }, { no: 1, ad: "+3", kot: 3 }],
+    malzemeler: { S275: { kutuphane: "S275" } }, kesitler: { K: { tip: "profil", profil: "IPE 200", malzeme: "S275" } },
+    cubuklar: [
+      { no: 1, i: { X: 0, Y: 0, Z: 3 }, j: { X: 3, Y: 0, Z: 3 }, tur: "kiris", kesit: "K" },
+      { no: 2, i: { X: 6, Y: 0, Z: 3 }, j: { X: 3, Y: 0, Z: 3 }, tur: "kiris", kesit: "K" },
+      { no: 3, i: { X: 0, Y: 4, Z: 3 }, j: { X: 6, Y: 4, Z: 3 }, tur: "kiris", kesit: "K" },
+    ],
+    paneller: [{ no: 1, kose: [{ X: 0, Y: 0, Z: 3 }, { X: 6, Y: 0, Z: 3 }, { X: 6, Y: 4, Z: 3 }, { X: 0, Y: 4, Z: 3 }], tur: "doseme", kalinlik: 0, dagitim: "tek-13" }],
+    ek_yukler: [{ tur: "cubuk", cubuk: 3, durum: "Q", q: -2, x1: 1, x2: 2 }, { tur: "cubuk", cubuk: 2, durum: "G", x: 1, P: -5 },
+      { tur: "cubuk", cubuk: 1, durum: "G", yon: "X", q: 1.5 }],
+    temeller: { tip: "tekil", varsayilan: { B: 1, L: 1, h: 0.5 } },
+  };
+  const d = [[1, 0, 0], [2, 3, 0], [3, 6, 0], [4, 0, 4], [5, 3, 4], [6, 6, 4]];
+  const veri = {
+    ag: {
+      dugumler: d.map(function (x) { return { no: x[0], X: x[1], Y: x[2], Z: 3, adres: "N" + x[0] }; }),
+      elemanlar: [{ no: 1, dugumler: [1, 2], cubuk: 1, kaynak_no: 1, tur: "kiris", kesit: "K", lam: lam([1, 0, 0]) },
+        { no: 2, dugumler: [2, 3], cubuk: 2, kaynak_no: 2, tur: "kiris", kesit: "K", lam: lam([1, 0, 0]) },
+        { no: 3, dugumler: [4, 5], cubuk: 3, kaynak_no: 3, parca: 1, tur: "kiris", kesit: "K", lam: lam([1, 0, 0]) },
+        { no: 4, dugumler: [5, 6], cubuk: 3, kaynak_no: 3, parca: 2, tur: "kiris", kesit: "K", lam: lam([1, 0, 0]) }],
+      cubuklar: [{ no: 1, i: 1, j: 2, fe: [1] }, { no: 2, i: 3, j: 2, fe: [2] }, { no: 3, i: 4, j: 6, fe: [3, 4] }],
+      paneller: [{ no: 1, kose: [1, 3, 6, 4], dagitim: "tek-13", kenarlar: [{ kenar: 1, dugumler: [1, 3], cubuklar: [1, 2] },
+        { kenar: 2, dugumler: [3, 6], cubuklar: [] }, { kenar: 3, dugumler: [6, 4], cubuklar: [3] }, { kenar: 4, dugumler: [4, 1], cubuklar: [] }]}],
+      mesnetler: [{ dugum: 1, ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }],
+    },
+    yukler: {
+      dosemeler: [], kirisler: [], kolonlar: [],
+      paneller: [{ no: 1, alan: 24, dagitim: "tek-13", G_toplam: 48, Q_toplam: 72, S_toplam: 0, kenarlar: [
+        { kenar: 1, cubuklar: [1, 2], pay: 12, sekil: "duzgun", parcalar_birim: [[0, 6, 2, 2]] }, { kenar: 2, cubuklar: [], pay: 0, sekil: "yok" },
+        { kenar: 3, cubuklar: [3], pay: 12, sekil: "dogrusal", parcalar_birim: [[0, 6, 1, 3]] }, { kenar: 4, cubuklar: [], pay: 0, sekil: "yok" }] }],
+      cubuklar: [{ no: 1, L: 3, G: { oz: 0.6, panel: 12, toplam_kN: 12.6 }, Q: { panel: 18, toplam_kN: 18 } },
+        { no: 2, L: 3, G: { oz: 0.6, panel: 12, ek: 5, toplam_kN: 17.6 }, Q: { panel: 18, toplam_kN: 18 } },
+        { no: 3, L: 6, G: { oz: 1.2, panel: 24, toplam_kN: 25.2 }, Q: { panel: 36, ek: 2, toplam_kN: 38 } }],
+      toplam: { G: 55.4, Q: 74 },
+    },
+    durumlar: { G: {}, Q: {} }, kombinasyonlar: [],
+  };
+  return { bina: bina, veri: veri };
+}
+// Eylemlerin yük durumu başına düşey toplamı (kN, aşağı +); üye boyları sentetik modelden (E1, E2, E3, E4: 3 m)
+function dusey(r) {
+  const v = r.varlik, top = {};
+  const alan = function (g) { return g.replace(/'(?:[^']|'')*'/g, "''").split(","); };
+  Object.keys(v).forEach(function (n) {
+    const e = v[n];
+    if (e.tip !== "IFCRELASSIGNSTOGROUP") return;
+    const m = /,\(([^)]*)\),\$,(#\d+)$/.exec(e.govde);
+    if (v[m[2].slice(1)].tip !== "IFCSTRUCTURALLOADCASE") return;          // analiz modeli üyeleri vb.
+    const durum = /^'[^']+',#\d+,'([^']+)'/.exec(v[m[2].slice(1)].govde)[1];
+    m[1].split(",").forEach(function (a) {
+      const x = v[a.slice(1)], yk = v[/(#\d+),\.GLOBAL_COORDS\./.exec(x.govde)[1].slice(1)];
+      let s;
+      if (x.tip === "IFCSTRUCTURALPOINTACTION") s = -Number(alan(yk.govde)[3]);
+      else if (x.tip === "IFCSTRUCTURALLINEARACTION") s = -Number(alan(yk.govde)[3] === "$" ? 0 : alan(yk.govde)[3]) * 3;
+      else {
+        const k = /^'[^']*',\(([^)]*)\),\((.*)\)$/.exec(yk.govde);
+        const f = k[1].split(",").map(function (q) { const z = alan(v[q.slice(1)].govde)[3]; return z === "$" ? 0 : -Number(z); });
+        const xs = k[2].replace(/[()]/g, "").split(",").map(Number);
+        s = 0;
+        for (let i = 0; i + 1 < xs.length; i++) s += (xs[i + 1] - xs[i]) * (f[i] + f[i + 1]) / 2;
+      }
+      top[durum] = (top[durum] || 0) + s;
+    });
+  });
+  return top;
+}
+function konfig(r, ad) {     // yayılı yük eylemi → [[x, FZ], ...] (CONST ise [[0, FZ], [3, FZ]])
+  const v = r.varlik;
+  const e = Object.keys(v).map(function (n) { return v[n]; }).filter(function (x) {
+    return /^IFCSTRUCTURAL(CURVE|LINEAR)ACTION$/.test(x.tip) && x.govde.indexOf(",'" + ad + "',") > 0;
+  })[0];
+  if (!e) return null;
+  const yk = v[/(#\d+),\.GLOBAL_COORDS\./.exec(e.govde)[1].slice(1)];
+  const z = function (g) { return Number(g.replace(/'(?:[^']|'')*'/g, "''").split(",")[3]); };
+  if (yk.tip === "IFCSTRUCTURALLOADLINEARFORCE") return [[0, z(yk.govde)], [3, z(yk.govde)]];
+  const k = /^'[^']*',\(([^)]*)\),\((.*)\)$/.exec(yk.govde);
+  const xs = k[2].replace(/[()]/g, "").split(",").map(Number);
+  return k[1].split(",").map(function (q, i) { return [xs[i], z(v[q.slice(1)].govde)]; });
+}
+
+test("genel model yükleri: kenar → çubuk zinciri (ters çubuk, iki FE parçası), öz ağırlık, kısmi ve tekil ek yük, toplamlar", function () {
+  const s = genelSentetik();
+  const r = MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  const top = dusey(r);
+  assert.ok(Math.abs(top.G - 55.4) < 1e-9, "G " + top.G);
+  assert.ok(Math.abs(top.Q - 74) < 1e-9, "Q " + top.Q);
+  // Ç3 (kenar 3'e ters): çubuk boyunca G = 2·(3 − x/3) + 0,2 → E3: 6,2 → 4,2; E4: 4,2 → 2,2 (kN/m aşağı)
+  assert.deepEqual(konfig(r, "G / E3").map(function (p) { return [p[0], +p[1].toFixed(9)]; }), [[0, -6.2], [3, -4.2]]);
+  assert.deepEqual(konfig(r, "G / E4").map(function (p) { return [p[0], +p[1].toFixed(9)]; }), [[0, -4.2], [3, -2.2]]);
+  // Q / E3: panel 3·(3 − x/3) + [1, 2] aralığında 2 kN/m ek yük → sıçramalar x = 1 ve 2'de (± 0,5 mm)
+  const q3 = konfig(r, "Q / E3");
+  assert.deepEqual(q3.map(function (p) { return p[0]; }), [0, 0.9995, 1.0005, 1.9995, 2.0005, 3]);
+  assert.ok(Math.abs(q3[0][1] + 9) < 1e-9 && Math.abs(q3[2][1] + (9 - 1.0005 + 2)) < 1e-9 && Math.abs(q3[5][1] + 6) < 1e-9);
+  // Ç2 (6 → 3) tekil ek yükü i ucundan 1 m → (5, 0, 3); E2 üyesi (3 → 6) çubuğa ters: üyenin i ucundan 2 m
+  const pa = /#(\d+)=IFCSTRUCTURALPOINTACTION\('[^']{22}',#\d+,'G \/ E2 @2\.',[^\n]*,#\d+,(#\d+),(#\d+),\.GLOBAL_COORDS\.,\$\);/.exec(r.metin);
+  assert.ok(pa, "çubuk üzerinde tekil yük");
+  assert.equal(r.varlik[pa[3].slice(1)].govde, "'G / E2 @2.',0.,0.,-5.,0.,0.,0.");
+  // konum: IfcProductDefinitionShape → IfcTopologyRepresentation (Reference, Vertex) → IfcVertexPoint → (5, 0, 3)
+  const tek = function (ref) { return r.varlik[ref.slice(1)]; };
+  const temsil = tek(/\((#\d+)\)$/.exec(tek(pa[2]).govde)[1]);
+  assert.equal(temsil.tip, "IFCTOPOLOGYREPRESENTATION");
+  assert.match(temsil.govde, /,'Reference','Vertex',\(#\d+\)$/);
+  const tepe = tek(/\((#\d+)\)$/.exec(temsil.govde)[1]);
+  assert.equal(tepe.tip, "IFCVERTEXPOINT");
+  assert.equal(nokta(r.varlik, tepe.govde).join(","), "5,0,3");
+  // yatay (X) ek yük ayrı doğrultu grubunda
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('G \/ E1 \(\+X\)',1\.5,\$,\$,\$,\$,\$\)/);
+  // eski çözüm (veri.ag.paneller yok): panel payı çubuk toplamından düzgün eşdeğer, toplam aynı, bilgi uyarısı
+  const e = genelSentetik();
+  delete e.veri.ag.paneller;
+  const re_ = MatrisIFC.uretAyrintili(e.bina, e.veri, ZAMAN);
+  Object.assign(re_, stepDenetle(re_.metin));
+  assert.ok(Math.abs(dusey(re_).G - 55.4) < 1e-9);
+  assert.equal(re_.uyarilar.length, 1);
+  assert.match(re_.uyarilar[0], /düzgün yayılı eşdeğer/);
+});
