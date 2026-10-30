@@ -121,7 +121,7 @@ Yerel (Linux) denetim: MinGW-w64 ile derlenip Wine 9 + vkd3d + lavapipe (Xvfb) a
 `--test-acilis` ve `--test-pencere --motorsuz` çalışır. Wine'da numpy içe aktarımı Wine'ın eksik bir işlevine
 (0x80000100) takıldığı için `--test-motor` yalnız gerçek Windows'ta sınanır.
 
-## CI ölçümleri (windows-latest, Visual Studio 18 2026 / MSVC 14.51, Python 3.13.16)
+## CI ölçümleri (windows-2025, Visual Studio 18 2026 / MSVC 14.51, Python 3.13.16)
 
 | Ölçü | Değer |
 |---|---|
@@ -135,7 +135,10 @@ Yerel (Linux) denetim: MinGW-w64 ile derlenip Wine 9 + vkd3d + lavapipe (Xvfb) a
 | op4-setup-<sürüm>.exe (LZMA2) | 27,3 MB |
 | Motor açılışı (DLL + Py_InitializeEx + import web_kopru + bina_sablonlar) | ≈ 350–410 ms (import web_kopru ≈ 320–380 ms) |
 | WARP ekran dışı kare (640×360, MSAA 4×, arayüz dahil) | ≈ 7–11 ms |
-| Gerçek pencere (Basic Render Driver, ekranı kaplayan) | ≈ 37 ms/kare; kaydırmada imleç altı kayma 0,0001 px |
+| Gerçek pencere (Basic Render Driver, ekranı kaplayan) | ≈ 35–39 ms/kare; kaydırmada imleç altı kayma 0,0001 px |
+| D3D12 hata ayıklama katmanı (Faz 0 kapanışı, run 41073083474) | imajda **var** (Graphics Tools kurulu); ekran ve pencere testinde 0 hata, 0 uyarı |
+| Inno Setup | 6.7.1; kurulu `license.txt` ticari kullanım dahil serbest ("including commercial applications"; atıf ve değiştirilmiş sürüm koşulları) |
+| Kurulum yolu `C:\op4 dene ŞĞİı` | sessiz kurulum ≈ 5 s, kurulu programla motor testi geçer, kaldırmada klasör tamamen silinir |
 
 ## Karşılaşılan tuzaklar
 
@@ -151,5 +154,8 @@ Yerel (Linux) denetim: MinGW-w64 ile derlenip Wine 9 + vkd3d + lavapipe (Xvfb) a
 * CI'da yapıtlar ve ham günlük adresi (blob depolama) indirilemez: PNG'ler 256 renge indirgenip günlüğe base64 yazılır
   ve günlük GitHub API'siyle okunur.
 * GPU'suz makinede "Microsoft Basic Render Driver" donanım bağdaştırıcısı gibi listelenir (WARP'tır).
+* Varsayılan yığındaki tamponlar COPY_DEST başlangıç durumuyla oluşturulursa hata ayıklama katmanı uyarı #1328 verir
+  (tamponlar her zaman COMMON başlar); COMMON ile oluşturulup kopyalamada örtük yükseltmeye bırakılır.
+* `ISCC.exe`'nin dosya sürüm bilgisi 0.0.0.0'dır; Inno Setup sürümü kaldırma kaydındaki `DisplayVersion`'dan okunur.
 * Wine 9 (yerel denetim): `EnumWarpAdapter` E_NOTIMPL, numpy içe aktarımı Wine taslak işlevine (0x80000100) takılır,
   dosya yönlendirmeli stdin ile Python başlamaz — bunlar Wine'a özgüdür, gerçek Windows'ta yoktur.
