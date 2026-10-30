@@ -759,6 +759,17 @@
     const n = Array.isArray(uyeler) ? uyeler.length : 0;
     return n >= 2 ? "Kesit grubuna uygula (" + n + " çubuk)" : "";
   }
+  /**
+   * Grup önerisi uygulanamıyorsa (oneriUygulanir false) iletisi (K-32): önerilen kesit mevcutla aynıysa "Kesit grubu değişmedi: …";
+   * motor öneri vermediyse ya da uygulamayı reddettiyse (uygula null) "Kesit grubu uygulanamadı: …" ve gerekçenin son satırı.
+   */
+  function grupUygulanmazMetni(o, n) {
+    const dc = o && o.dc_oneri != null ? "; D/C maks " + dcFmt(+o.dc_oneri) + " tahmini" : "";
+    const ayni = !!o && (o.degisim === "aynı" || (!!o.oneri && o.uygula !== null && boslukSiz(oneriAdi(o)) === boslukSiz(o.kesit)));
+    if (ayni) return "Kesit grubu değişmedi: önerilen kesit mevcut kesitle aynı (" + n + " çubuk" + dc + ").";
+    const g = o && Array.isArray(o.gerekce) && o.gerekce.length ? String(o.gerekce[o.gerekce.length - 1]) : "";
+    return "Kesit grubu uygulanamadı: motor grup için uygulanabilir bir kesit vermedi (" + n + " çubuk" + dc + ")." + (g ? " " + g : "");
+  }
   /** Çözümde grup üyelerinin en büyük D/C'si (elemanDc; parçalı aks–kat elemanında parçaların en büyüğü); hiçbiri yoksa null. */
   function grupDcMaks(veri, uyeler) {
     const l = (uyeler || []).map(function (u) { return elemanDc(veri, u); }).filter(function (v) { return v != null; });
@@ -1337,7 +1348,7 @@
     TUR_ADI: TUR_ADI, oneriEtiketi: oneriEtiketi, tasarimEtiketi: tasarimEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri,
     hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, hepsiAciklamaEki: hepsiAciklamaEki, dcFmt: dcFmt, elemanDc: elemanDc, oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
     // kesit önerisi ekleri (C19): parçalı eleman, kesit grubu, süre, öteleme
-    sureTahmini: sureTahmini, sureMetni: sureMetni, otelemeSatiri: otelemeSatiri, grupUyeleri: grupUyeleri, grupDugmeMetni: grupDugmeMetni,
+    sureTahmini: sureTahmini, sureMetni: sureMetni, otelemeSatiri: otelemeSatiri, grupUyeleri: grupUyeleri, grupDugmeMetni: grupDugmeMetni, grupUygulanmazMetni: grupUygulanmazMetni,
     grupDcMaks: grupDcMaks, grupUygula: grupUygula, oneriVurgusu: oneriVurgusu,
     // üreteç düzenleme
     uretecKaydi: uretecKaydi, uretecFormu: uretecFormu,
@@ -2910,7 +2921,7 @@
             const o3 = (y3.oneriler || [])[0] || null, gk = !!(o3 && o3.grup && typeof o3.grup === "object");
             let model = null, ad = null, n = uyeler.length;
             if (gk) {
-              if (!oneriUygulanir(o3)) { toast("Kesit grubu değişmedi: önerilen kesit mevcut kesitle aynı (" + n + " çubuk; D/C maks " + dcFmt(+o3.dc_oneri) + " tahmini)." + (sureMetni(y3.sure_ms) ? " " + sureMetni(y3.sure_ms) + "." : "")); return; }
+              if (!oneriUygulanir(o3)) { toast(grupUygulanmazMetni(o3, n) + (sureMetni(y3.sure_ms) ? " " + sureMetni(y3.sure_ms) + "." : "")); return; }
               let r;
               try { r = grupUygula(B(), o3, uyeler); } catch (x) { hata(x); return; }
               model = r.model; ad = r.ad; n = r.hedefler.length;

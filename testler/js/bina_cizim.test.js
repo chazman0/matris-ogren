@@ -925,6 +925,12 @@ test("K-32 kesit grubu: aynı (kesit, tür) ya da aynı grup adı; düğme metni
   const v = { tasarim: { elemanlar: [{ tur: "kolon", no: 1, dc: 0.71 }, { tur: "kolon", no: 7, dc: 0.93 }, { tur: "kiris", no: 1, dc: 1.4 }] } };
   assert.equal(BC.grupDcMaks(v, u), 0.93);
   assert.equal(BC.grupDcMaks(v, [{ tur: "kolon", no: 99 }]), null);
+  // uygulanamayan grup önerisi: "aynı" ile motorun reddi (uygula null / öneri yok) ayrı söylenir
+  assert.equal(BC.grupUygulanmazMetni({ kesit: "S40x40", oneri: "S40x40", degisim: "aynı", dc_oneri: 0.6, grup: { uye: 12 } }, 12),
+    "Kesit grubu değişmedi: önerilen kesit mevcut kesitle aynı (12 çubuk; D/C maks 0,60 tahmini).");
+  assert.equal(BC.grupUygulanmazMetni({ kesit: "IPE200", oneri: null, uygula: null, dc_oneri: null, gerekce: ["IPE ailesinde 18 profil denendi.", "Ailede D/C ≤ 1 sağlayan profil yok."] }, 4),
+    "Kesit grubu uygulanamadı: motor grup için uygulanabilir bir kesit vermedi (4 çubuk). Ailede D/C ≤ 1 sağlayan profil yok.");
+  assert.match(BC.grupUygulanmazMetni({ kesit: "IPE200", oneri: "IPE300", uygula: null, dc_oneri: 0.8 }, 4), /^Kesit grubu uygulanamadı: .*\(4 çubuk; D\/C maks 0,80 tahmini\)\.$/);
 });
 
 test("K-31 süre notu ve K-27 öteleme satırı", function () {
