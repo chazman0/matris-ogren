@@ -396,6 +396,21 @@ def test_akis_dugum_yuku_kenarlari():
     assert all(e["kN"] == pytest.approx(10.0) for e in sk)
 
 
+def test_akis_ters_dugum_yuku_mesnede_fazla_yazmaz():
+    """Mesnet düğümünde yukarı (ters) düğüm yükü: kenar türleriyle gösterilemez; paylaşım paydası girenler ile çıkanların büyüğü
+    olduğundan mesnede giden kenar tepkiyi aşmaz (eskiden çubuğun bütün 10 kN'u mesnede yazılırdı, tepki 6 kN)."""
+    b = _yayli_konsol()
+    b["ek_yukler"].append({"tur": "dugum", "dugum": _R("A", "1", "Üst"), "durum": "G", "FZ": 4.0})
+    v = coz(b).veri
+    sk = [e for e in v["akis"]["sankey"] if e["durum"] == "G"]
+    mes = v["akis"]["mesnetler"][0]["dugum"]
+    R = sum(y["kuvvet"] for y in v["durumlar"]["G"]["yaylar"] if y.get("bilesen") == "Fy")
+    assert R == pytest.approx(6.0)
+    M = [e for e in sk if e["hedef"] == f"M{mes}"]
+    assert len(M) == 1 and M[0]["kaynak"] == "Ç1" and M[0]["kN"] == pytest.approx(R)
+    assert next(e["kN"] for e in sk if e["hedef"] == "Ç1") == pytest.approx(10.0)
+
+
 # ---------------------------------------------------------------------------
 # K-37: rüzgâr, deprem ve kren eylemleri (C16)
 # ---------------------------------------------------------------------------
@@ -464,6 +479,24 @@ def test_eylemler_dugum_yukleri_3x3(surum):
     assert _eylem_toplami(e["EY+"])[1] == pytest.approx(v["deprem"]["Y"]["VtE"], rel=1e-5)
     assert any(abs(d["F"][5]) > 0 for d in e["EX+"]["dugumler"])          # dışmerkezlik: efendi düğümde burulma momenti
     assert any(d["dugum"] in {n["no"] for n in v["ag"]["dugumler"] if n["efendi"]} for d in e["EX+"]["dugumler"])
+
+
+@pytest.mark.parametrize("surum", [1, 3])
+def test_eylemler_sonuc_butcesini_degistirmez(surum, monkeypatch):
+    """Eylemler sonuçlar bütçe denetiminden (YANIT_BUTCESI) sonra eklenir: bütçeye eylemsiz sığan yanıtta varsayılan kombinasyon
+    sonuçları tembel olmaz (aks–kat verisi eylemler dışında değişmez; eskiden eylemler bütçeyi aşırıp sonuclar_tembel yapabilirdi)."""
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["yuk_durumlari"]["W"]["acik"] = True
+    if surum == 3:
+        b["surum"] = 3
+    v = coz(copy.deepcopy(b)).veri
+    e = v["yukler"].pop("eylemler")
+    assert e and v["sonuclar"] and not v["ozet"].get("sonuclar_tembel")
+    n = len(json.dumps(v, ensure_ascii=False))
+    assert len(json.dumps(e, ensure_ascii=False)) > 1000
+    monkeypatch.setattr(yapi, "YANIT_BUTCESI", n + 200)            # eylemsiz yanıt sığar, eylemlerle sığmaz
+    v2 = coz(copy.deepcopy(b)).veri
+    assert v2["yukler"]["eylemler"] and v2["sonuclar"] and not v2["ozet"].get("sonuclar_tembel")
 
 
 def test_eylemler_boyut_korumasi():
@@ -559,6 +592,12 @@ def test_oteleme_yardimcilari():
     assert [(o["kesit"], o["oneri"], o["donati_orani"]) for o in on] == [("S45x45", "50x50", 0.015)]
     on2 = YS._oteleme_onerileri(None, B, {}, [2], {2: 1})
     assert {(o["tur"], o["oneri"]) for o in on2} == {("kolon", "50x50"), ("kiris", "25x60")}
+    assert on[0]["gerekce"] == ["göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) kat 2'de aşıldı: b ve h +5 cm."]
+    # bulunma eki son sayının okunuşuna göre (eskiden hep 'de: "kat 1, 2, 3'de")
+    assert [YS._bulunma_eki(n) for n in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 50001)] == \
+        ["de", "de", "te", "te", "te", "da", "de", "de", "da", "da", "de", "da", "ta", "de", "ta", "te", "de", "da", "de", "de"]
+    assert YS._katlarda([1, 2, 3]) == "kat 1, 2, 3'te" and YS._katlarda([1, 2, 3, 4]) == "kat 1, 2, 3, 4'te"
+    assert YS._katlarda([2]) == "kat 2'de" and YS._katlarda([6]) == "kat 6'da"
     import tasarim
     Bc = YS.bina_coz(yapi.bina_sablon("celik-cbf-3kat"), anlat=False, hafif=True).ic["B"]
     oc = YS._oteleme_onerileri(tasarim, Bc, {}, [1], {})

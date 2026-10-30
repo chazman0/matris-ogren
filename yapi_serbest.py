@@ -3183,8 +3183,11 @@ def _akis(B, YK, ag, durumlar_kisa):
                     bantlar.append({"kaynak": f"P{p['no']}", "hedef": f"Ç{cno}", "durum": d, "kN": kN, "tur": "panel-cubuk"})
         kenar = {}
         for n, (gir, cik) in _dugum_akimlari(B, YK, ag, durumlar_kisa[d], d).items():
-            top = sum(x for _, x in cik)
-            if top <= 1e-12:
+            # oransal paylaşım; payda girenler ile çıkanların büyüğü: dengede (Σ giren = Σ çıkan) ikisi aynı. Şemada yönü
+            # gösterilemeyen ters terim (yukarı düğüm yükü, çeken mesnet tepkisi) varsa hiçbir çıkan taşıdığından, hiçbir giren
+            # verdiğinden fazlasını almaz (fark o ters terimdir)
+            top = max(sum(x for _, x in cik), sum(x for _, x in gir))
+            if top <= 1e-12 or not cik:
                 continue
             for a_, x in gir:
                 for b_, y in cik:
@@ -3214,7 +3217,9 @@ def _dugum_akimlari(B, YK, ag, kisa, d):
     (kimlik, kN > 0). f_b: b çubuğunun ucunun düğüme uyguladığı düşey kuvvet (bina Z, aşağı +; eleman uç kuvvetinin λᵀ ile bina
     eksenine izdüşümü). P_n: düğüm yükü (aşağı +), R_n: mesnet tepkisi + yay kuvveti (yukarı +). Girenler: f_b > 0 çubuklar
     ('Ç{b}') ve P_n > 0 ise 'D{n}'; çıkanlar: f_b < 0 çubuklar (−f_b) ve R_n > 0 ise 'M{n}'. Mütemadi / radye ağı düğümünde tek
-    çıkan 'M{n}' gelen her şeyi alır (temel elemanları çubuk değildir). Çubuk içi FE düğümleri (vute ara düğümü) atlanır."""
+    çıkan 'M{n}' gelen her şeyi alır (temel elemanları çubuk değildir). Çubuk içi FE düğümleri (vute ara düğümü) atlanır.
+    P_n < 0 (yukarı düğüm yükü) ve R_n < 0 (çeken mesnet) kenar türleriyle gösterilemez: listeye girmez, _akis'teki paylaşım
+    paydası (girenler ile çıkanların büyüğü) farkı bu terime bırakır."""
     el = {e["no"]: e for e in kisa["elemanlar"]}
     agel = {e["no"]: e for e in ag["elemanlar"]}
     net = set(ag["temel"].dno) if ag.get("temel") is not None else set()
@@ -4586,7 +4591,7 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
                   + (" ve temel düzlemi içindeki hareketler (X, Y ötelemeleri, düşey eksen etrafında dönme) tutuludur; eğilme "
                      "dönmeleri serbesttir." if ti.yatay == "tutulu" else " ve yatay yaylar vardır.")
                   + f" Temel kirişleri GLOBAL X/Y aksları boyunca (radye: GLOBAL aks zarfı + taşma) kurulur; aks kesişimi dışındaki "
-                  f"temel düğümleri {ti.ilk_no}'den numaralanır."
+                  f"temel düğümleri {ti.ilk_no}'{_bulunma_eki(ti.ilk_no)}n numaralanır."
                   + (f" Ek aks sistemindeki taban düğümleri için ızgaraya {ti.BT.sanal} sanal çizgi (x=…, y=…) eklendi." if ti.BT.sanal else "")
                   + " Ayrıntı: 'Temel ve zemin' adımı.")
     se._basla(anl, adim(), "Yük durumları",
@@ -4772,7 +4777,6 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
         temel_veri, temel_ic = _temel_sonuclari(B, ag, paket, kombinasyonlar, YK)
     veri = _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, deprem=deprem, ruzgar=ruzgar,
                  kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik, kren=kren, yalniz=yalniz, temel_veri=temel_veri)
-    veri["yukler"]["eylemler"] = _eylemler(durumlar, eylem_kaynak, dep)
     ts = _tasarim_mod()
     T = tas = None
     if ts is not None:
@@ -4784,6 +4788,8 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
         veri["sonuclar"], veri["gosterilecek"] = {}, []
         veri["ozet"]["gosterilen_sayisi"] = 0
         veri["ozet"]["sonuclar_tembel"] = True
+    # C16 eylemleri sonuçlar bütçesinden sonra (eklenmeleri sonuclar_tembel'i değiştirmez); boyut sınırı _boyut_sinirla'da
+    veri["yukler"]["eylemler"] = _eylemler(durumlar, eylem_kaynak, dep)
     tas_tam = _boyut_sinirla(veri, durumlar_kisa, temel=ag.get("temel"))
     anl = mo.Anlatim()
     if anlat:
@@ -5141,7 +5147,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None, gru
             uyarilar.append(u)
     oz = _oteleme_ozeti(ot0, ic.get("oteleme")) if yinele else None
     kisit = next((t_["oteleme_kisiti"] for t_ in turlar if t_.get("oteleme_kisiti")), None)
-    kisit_metni = (f" 0. turda göreli kat ötelemesi kat {', '.join(map(str, kisit['katlar']))}'de sınırın %90'ını aşacağından şu "
+    kisit_metni = (f" 0. turda göreli kat ötelemesi {_katlarda(kisit['katlar'])} sınırın %90'ını aşacağından şu "
                    f"gruplar küçültülmedi: {', '.join(kisit['gruplar'])}." if (oz and kisit) else "")
     return {"oneriler": sonuc_oneriler, "turlar": turlar, "dc_once": turlar[0]["dc_maks"], "dc_sonra": dc_sonra,
             "bina": bina_ham if yinele else None, "cozum_kimligi": (gorunen or {}).get("kimlik") or ic.get("kimlik"),
@@ -5214,7 +5220,7 @@ def _oteleme_onerileri(ts, B, kesitler, katlar, adim, hedef_no=None):
         if not uy:
             continue
         mal = B.malzemeler.get(str(ks.get("malzeme"))) or {}
-        ne = f"göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) kat {', '.join(map(str, sorted(kat_)))}'de aşıldı"
+        ne = f"göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) {_katlarda(sorted(kat_))} aşıldı"
         o = {"cubuk": uy[0]["no"], "cubuklar": [c["no"] for c in uy], "tur": tur, "kesit": kesit, "kaynak": None,
              "malzeme": ks.get("malzeme"), "degisim": "büyüt", "oteleme": True}
         if mal.get("tur") == "beton" and ks.get("tip") == "dikdortgen":
@@ -5241,6 +5247,27 @@ def _oteleme_onerileri(ts, B, kesitler, katlar, adim, hedef_no=None):
             continue
         out.append(o)
     return out
+
+
+_EK_BIRLER = {1: "de", 2: "de", 3: "te", 4: "te", 5: "te", 6: "da", 7: "de", 8: "de", 9: "da"}     # bir, iki, üç, … dokuz
+_EK_ONLAR = {1: "da", 2: "de", 3: "da", 4: "ta", 5: "de", 6: "ta", 7: "te", 8: "de", 9: "da"}      # on, yirmi, otuz, … doksan
+
+
+def _bulunma_eki(n):
+    """Sayıdan sonra bulunma eki (ses uyumu, sayının okunuşunun son sözcüğüne göre): 1'de, 3'te, 6'da, 40'ta, 100'de, 50001'de.
+    Ayrılma eki bunun sonuna 'n' eklenerek yazılır (50001'den, 3'ten)."""
+    n = abs(int(n))
+    if n % 10:
+        return _EK_BIRLER[n % 10]
+    if n % 100:
+        return _EK_ONLAR[(n // 10) % 10]
+    return "da" if n == 0 else "de"           # sıfır; yüz, bin
+
+
+def _katlarda(katlar):
+    """'kat 1, 2, 3'te' (son kat numarasının ekiyle)."""
+    katlar = list(katlar)
+    return f"kat {', '.join(map(str, katlar))}'{_bulunma_eki(katlar[-1])}" if katlar else "kat"
 
 
 def _oteleme_ozeti(ot0, ot):

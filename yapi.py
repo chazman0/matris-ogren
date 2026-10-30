@@ -4654,11 +4654,6 @@ def bina_coz(bina, *, goster=None, anlat=True):
     veri = _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol,
                          deprem=deprem, ruzgar=ruzgar, kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik,
                          temel_veri=temel_veri)
-    eyl = _eylemler(durumlar, dep)
-    if len(json.dumps(eyl, ensure_ascii=False)) <= _EYLEM_SINIRI:
-        veri["yukler"]["eylemler"] = eyl
-    else:
-        veri["yukler"]["eylemler_not"] = EYLEMLER_NOTU
     ts = _tasarim_modulu()
     T = tas = None
     if ts is not None:      # Dilim 3: kesit tahkikleri (tasarim.py yoksa alan yazılmaz)
@@ -4672,6 +4667,12 @@ def bina_coz(bina, *, goster=None, anlat=True):
         veri["ozet"]["gosterilen_sayisi"] = 0
         veri["ozet"]["sonuclar_tembel"] = True
         gosterilecek = []
+    # C16 eylemleri bütçe denetiminden sonra: eklenmeleri öteki alanları (ör. sonuclar_tembel) değiştirmez
+    eyl = _eylemler(durumlar, dep)
+    if len(json.dumps(eyl, ensure_ascii=False)) <= _EYLEM_SINIRI:
+        veri["yukler"]["eylemler"] = eyl
+    else:
+        veri["yukler"]["eylemler_not"] = EYLEMLER_NOTU
     ozet = {"gosterilecek": gosterilecek}
     anl = mo.Anlatim()
     kod = cikti = ""
