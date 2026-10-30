@@ -736,7 +736,9 @@ Bina işlemleri:
 - **Rapor ve tablo ayrıntıları:** rapor §5'te basit çelik kesitlerin (boru, kutu, korniyer, U) sınıfı da yazılır (ör. “BORU 168.3x6.3:
   basınçta narin olmayan, eğilmede kompakt”, parça oranlarıyla). §10.1 mesnet tablolarında yaylı mesnet (“yaylı mesnet”, k_z = …
   kN/m), diyafram bağlı mesnet (“mesnet (diyafram bağıyla)”) ve elastik temel yayları ayrı türle satırdır; Σ tepki yay kuvvetlerini ve
-  mütemadi / radye zemin yaylarını içerir. Genel modelde Duvar Yükleri tablosu duvar taşıyabilen her çubuğu (kiriş, bağ, diğer) listeler:
+  mütemadi / radye zemin yaylarını (tek “temel ağı (Σ)” satırı; ağ düğümlerinin yatay tutulması “temel ağı (yatay tutulu)”) içerir.
+  Mesnet Tepkileri tablosunun “Yay rijitliği” sütunu yalnız yaylı satır varsa görünür. §12.3 eleman başlıkları ve Ek B'nin Tür sütunu
+  da Türkçe tür adıyladır (“çapraz”, “aşık”, “temel kirişi”). Genel modelde Duvar Yükleri tablosu duvar taşıyabilen her çubuğu (kiriş, bağ, diğer) listeler:
   duvarsız satırlar “(duvar yok)” ile gelir, Duvar hücresinden seçim o çubuğa duvar atar. Genel metrajın döşeme kalıbı kiriş yüzleri
   arasındaki net alandır (aks–kat ile aynı). Kat ağırlıkları tablosu iki modelde aynı kuralla: her kolonun ağırlığı üst ucundaki kata.
   Genel modelde çubuk adresleri Türkçe tür adıyla yazılır (“Ç13 (kiriş)”).
@@ -931,7 +933,7 @@ Klasör: `$env:USERPROFILE\Desktop\matris_ogren`
 |---|---|
 | `matris_ogren.py` | Modül (sympy tabanlı; anlatım + Python kodu üretimi). Sürüm: `mo.__version__` |
 | `sonlu_eleman.py`, `yapi.py`, `yapi_serbest.py`, `yapi_veri.py`, `tasarim.py`, `temel.py`, `rapor.py`, `tablolar.py`, `alan.py` | Sonlu eleman ve bina modülleri (3.8, 3.9) |
-| `defter_yap.py` | `Matris_Ogren.ipynb` defterini üreten betik (on modülü zlib + base64 ve SHA-256 özetiyle gömer; ek paket gerekmez, nbformat kuruluysa şemaya göre doğrular) |
+| `defter_yap.py` | `Matris_Ogren.ipynb` defterini üreten betik (on modülü zlib + base64 ve SHA-256 özetiyle gömer; şablon listesi için `yapi`'yi içe aktardığından sympy ve numpy gerekir, nbformat gerekmez — kuruluysa şemaya göre doğrular) |
 | `Matris_Ogren.ipynb` | Colab defteri (üretilmiş dosya; elle düzenlenmez, `defter_yap.py` ile yeniden üretilir; `testler/test_defter.py` gömülü her modülün özetini ve baytlarını dosyasıyla karşılaştırır, iki üretimin aynı çıktığını denetler) |
 | `web_yap.py` | `docs/` klasörünü üretir: kökteki modülleri `docs/`'a kopyalar, dersleri derler (`docs/dersler.json`), `docs/sw.js` ve `docs/surum.json`'a sürüm damgası basar (yalnız izlenen dosyalardan; `__pycache__` sayılmaz) |
 | `ders_derle.py` | `dersler/*.md` derslerini `dersler/BICIM.md` kurallarına göre denetler (`--denetle`) ve derler |
@@ -952,7 +954,7 @@ $uv = "$env:USERPROFILE\.local\bin\uv.exe"
 & $uv run --python 3.13 --with sympy --with numpy python -c "import matris_ogren as mo; mo.ayarla(goster='sonuc'); print(mo.carp('1 2; 3 4','5 6; 7 8').deger)"
 
 # Gömülü on modülden biri değişince defteri yeniden üret
-& $uv run --python 3.13 python defter_yap.py
+& $uv run --python 3.13 --with sympy --with numpy python defter_yap.py
 
 # Testleri çalıştır
 & $uv run --python 3.13 --with sympy --with numpy --with ipython --with nbformat --with nbconvert --with ipykernel --with pytest python -m pytest testler -q

@@ -96,7 +96,7 @@ Ayrıntılar: [`KULLANIM.md`](KULLANIM.md) §3.9 (Python: `yapi`, genel model, r
 | `masaustu/` | Masaüstü sürümü: `docs/`'u çevrimdışı çalışan bir bilgisayar programı olarak paketler (bkz. `masaustu/README.md`). |
 | `testler/` | pytest testleri; `testler/js/` node testleri. |
 | `web_yap.py` | `docs/` klasörünü üretir: modülleri kopyalar, dersleri derler, sürüm damgası basar. |
-| `defter_yap.py` | Colab defterini üretir (on modülü zlib + base64 ve SHA-256 özetiyle gömer; ek paket gerekmez). |
+| `defter_yap.py` | Colab defterini üretir (on modülü zlib + base64 ve SHA-256 özetiyle gömer; sympy ve numpy yeter, nbformat gerekmez). |
 | `.github/workflows/` | `testler.yml` (her itmede testler), `masaustu.yml` (masaüstü paketleri). |
 
 Geliştirme: kökteki bir modül ya da ders değişince `python3 web_yap.py` docs klasörünü günceller (modülleri kopyalar, dersleri

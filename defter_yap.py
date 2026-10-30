@@ -9,9 +9,11 @@ Colab FORM hücreleriyle (#@title / #@param) Matris_Ogren.ipynb dosyasını baş
 şablonu çözer (ΣG, en büyük D/C, belirleyen), statik hesap raporunu (rapor.statik_rapor) defterde gösterir ve kesit önerisi
 (yapi_serbest.kesit_oner) tablosunu verir.
 
-Çalıştırma (proje klasöründen; ek paket gerekmez — nbformat kuruluysa defter ayrıca şemaya göre doğrulanır):
+Çalıştırma (proje klasöründen; programın kendi bağımlılıkları sympy ve numpy yeter — şablon listesi için yapi içe aktarılır;
+nbformat gerekmez, kuruluysa defter ayrıca şemaya göre doğrulanır):
   python3 defter_yap.py
-  (Windows PowerShell: Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"; py defter_yap.py)
+  (Windows PowerShell: Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"
+   & "$env:USERPROFILE\\.local\\bin\\uv.exe" run --python 3.13 --with sympy --with numpy python defter_yap.py)
 
 Modüllerden biri değişince bu betiği yeniden çalıştırmak yeterlidir; defter her seferinde sıfırdan üretilir. Hücre kimlikleri
 sıra numarasından gelir ve JSON nbformat biçimiyle (1 boşluk girinti, sıralı anahtarlar) yazılır: modüller değişmediyse defter bayt

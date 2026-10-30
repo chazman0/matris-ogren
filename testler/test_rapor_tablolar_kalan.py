@@ -76,6 +76,12 @@ def tek():
     return b, coz(b)
 
 
+@pytest.fixture(scope="module")
+def cbf():
+    b = yapi.bina_sablon("celik-cbf-3kat")
+    return b, coz(b)
+
+
 # ---------------------------------------------------------------------------- K-26 / C18: Türkçe tür adları
 def test_tur_adi_sozlesme_c18():
     assert rapor.TUR_ADI == C18 and tb.TUR_ADI == C18
@@ -96,6 +102,19 @@ def test_genel_tablolarda_adres_turkce():
     adresler = [r["degerler"]["adres"] for ad in ("eleman_yukleri", "metraj_celik") for r in tb.tablo(T, ad)["satirlar"]]
     assert adresler and not [a for a in adresler if "(kiris)" in a or "(capraz)" in a]
     assert any(a.endswith("(kiriş)") for a in adresler) and any(a.endswith("(çapraz)") for a in adresler)
+
+
+def test_rapor_eleman_basligi_ve_ek_b_turkce(cbf):
+    """§12.3 eleman başlıkları ("Ç41 (çapraz) — çapraz 41, …") ve Ek B Tür sütunu ham tür kimliği (capraz, asik, makas-ust …)
+    yazmaz; aks–kat motorunda da Ek B "kiriş"."""
+    b, v = cbf
+    h = rapor.statik_rapor(b, v)
+    basliklar = re.findall(r"<h4>(Ç\d+ \([^)]*\) — [^,]*),", bolum(h, 12))
+    assert any(x.endswith(" — çapraz " + x.split("Ç")[1].split(" ")[0]) for x in basliklar), basliklar[:5]
+    assert basliklar and not [x for x in basliklar if re.search(r"— (capraz|asik|kiris|makas-|diger|bag|kren) ", x)], basliklar
+    ekb = metin(h[h.index('id="ekB"'):])
+    assert "| çapraz |" in ekb and "| kiriş |" in ekb and "| capraz |" not in ekb and "| kiris |" not in ekb
+    assert rapor._ELEMAN_TURU["temel-kirisi"] == "temel kirişi" and rapor._ELEMAN_TURU["makas-ust"] == "makas üst başlık"
 
 
 # ---------------------------------------------------------------------------- C12: tepki toplamı (yay kuvvetleri, yay_ozet)
@@ -139,6 +158,15 @@ def test_elastik_temel_yaylari_korunumu_saglar():
     oz = next(r["degerler"] for r in mt["satirlar"] if r.get("ozet") and r["degerler"]["durum"] == "G")
     assert oz["FZ"] == pytest.approx(G, rel=1e-6)
     assert {r["degerler"]["tip"] for r in mt["satirlar"] if not r.get("ozet")} == {"elastik mesnet (zemin yayı)"}
+    assert "yay" in {s["ad"] for s in mt["sutunlar"]} and "k_z = " in mt["satirlar"][0]["degerler"]["yay"]
+
+
+def test_yaysiz_modelde_yay_sutunu_yok(tek):
+    """Yay yoksa Mesnet Tepkileri tablosu eskisi gibidir (boş 'Yay rijitliği' sütunu eklenmez)."""
+    b, v = tek
+    mt = tb.tablo(tb.bina_tablolari(b, v), "mesnet_tepkileri")
+    assert [s["ad"] for s in mt["sutunlar"]] == ["durum", "dugum", "adres", "tip", "FX", "FY", "FZ", "MX", "MY", "MZ"]
+    assert not [r for r in mt["satirlar"] if "yay" in r["degerler"]]
 
 
 def _yayli_veri(v):
@@ -238,13 +266,25 @@ def test_korunum_temel_oz_agirligi():
     b1 = yapi.bina_sablon("betonarme-tek-aciklik")
     kor1 = tb.tablo(tb.bina_tablolari(b1, coz(b1)), "korunum")
     assert "temel_oz" not in {s["ad"] for s in kor1["sutunlar"]}
+    # §13: mütemadi / radyede tekil temelin mesnet modeli (ankastre …) yazılmaz
+    assert "| Mesnet modeli (üst yapı analizi) | temel ağı (Winkler zemin yayları; sabit mesnet yok) |" in metin(bolum(h, 13))
+    # §10.1: temel ağı düğümlerinin (yatayda tutulu) tepki satırları ayrı türle; yanıta yazılmayan zemin yayları tek satırda (Σ)
+    v2 = copy.deepcopy(v)
+    ag = {d["no"] for d in v2["temel"]["dugumler"]}
+    tep = v2["durumlar"]["G"]["tepkiler"]
+    v2["durumlar"]["G"]["yay_ozet"] = {"FX": 0.0, "FY": 0.0, "FZ": v2["yukler"]["toplam"]["G"] - sum(t["FZ"] for t in tep), "MX": 0.0,
+                                       "MY": 0.0, "MZ": 0.0}
+    h2 = rapor.statik_rapor(b, v2)
+    i = h2.index("Durum G (sabit yük)")
+    t = metin(h2[i:h2.index("</table>", i)])
+    assert any(x["dugum"] in ag for x in tep) and "| temel ağı (yatay tutulu) | – |" in t and "| temel ağı (Σ) | zemin yayları (Winkler) |" in t
+    assert "✔" in korunum_satirlari(h2)["G"]
 
 
 # ---------------------------------------------------------------------------- K-34 (rapor tarafı): basit kesit sınıfı satırı
-def test_basit_kesit_sinifi_satiri(monkeypatch):
+def test_basit_kesit_sinifi_satiri(monkeypatch, cbf):
     """tasarim.kesit_sinifi basit kesit adını çözdüğünde (C20) §5: '<kesit> — <ad>: basınçta …, eğilmede …' ve parça oranları."""
-    b = yapi.bina_sablon("celik-cbf-3kat")
-    v = coz(b)
+    b, v = cbf
     r = rapor._Rapor(b, v, {})
     if r.ts is None:
         pytest.skip("tasarim.py yok")
@@ -350,6 +390,11 @@ class TestMotorSonrasi:
             assert "yapılmadı" not in b13 and rapor.ESKI_TEMEL_NOTU not in b13
             sat = korunum_satirlari(h)
             assert "✔" in sat["G"] and "✔" in sat["Q"], (anahtar, metin(sat["G"]), metin(sat["Q"]))
+            assert "Winkler zemin yayları; sabit mesnet yok" in b13
+            ekb = metin(h[h.index('id="ekB"'):])
+            assert ("| temel kirişi |" if hat > 1 else "| radye şeridi |") in ekb and "| temel-kirisi |" not in ekb
+            i = h.index("Durum G (sabit yük)")
+            assert "| temel ağı (Σ) | zemin yayları (Winkler) |" in metin(h[i:h.index("</table>", i)])
             for T in (tb.bina_tablolari(b, v, kati=True), tb.bina_tablolari(b, kati=True)):
                 tem = tb.tablo(T, "temeller")["satirlar"]
                 assert len(tem) == hat and (hat > 1 or tem[0]["degerler"].get("ad") == "Radye plağı")

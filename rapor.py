@@ -67,6 +67,8 @@ TUR_ADI = {"kolon": "kolon", "kiris": "kiriş", "capraz": "çapraz", "makas-ust"
            "makas-dikme": "makas dikmesi", "makas-diyagonal": "makas diyagonali", "asik": "aşık", "kren": "kren kirişi", "bag": "bağ",
            "diger": "diğer"}
 _CUBUK_TURU = TUR_ADI
+# FE eleman türleri (Ek B, §12.3 başlıkları, temel elemanları): çubuk türleri + temel ağı elemanları (temel.py)
+_ELEMAN_TURU = {**TUR_ADI, "temel-kirisi": "temel kirişi", "radye-serit": "radye şeridi"}
 # yay kayıtları (yaylar[]: motor eksenleri) → bina eksenleri (sözleşme C12): Fx→FX, Fz→−FY, Fy→FZ, Mx→MX, Mz→−MY, My→MZ
 _YAY_BINA = {"Fx": ("FX", 1.0), "Fz": ("FY", -1.0), "Fy": ("FZ", 1.0), "Mx": ("MX", 1.0), "Mz": ("MY", -1.0), "My": ("MZ", 1.0)}
 # yay bileşeninin bina eksenli rijitlik adı (C13: kx → kx, ky → kz, kz → ky, krx → krx, kry → krz, krz → kry)
@@ -1933,12 +1935,16 @@ class _Rapor:
         S = self.tepki_toplami(kisa)
         turlu = oz is not None or any(t["tip"] != "mesnet" for t in kayit)
         akis_yay = {m.get("dugum"): _sozluk(m.get("yay")) for m in _liste(_g(self.v, "akis", "mesnetler")) if isinstance(m, dict)}
+        # mütemadi / radye temel ağının düğümleri: sabit tepkileri yalnız yatay tutulmadır (düşey kuvvet zemin yaylarında, yay_ozet)
+        ag = {d.get("no") for d in _liste(_g(self.v, "temel", "dugumler")) if isinstance(d, dict)} \
+            if _g(self.v, "temel", "tip") in ("surekli", "radye") else set()
         rows = []
         for t in kayit:
             r = [_e(t["dugum"]), _e(_g(dadr, t["dugum"], "adres", vars=""))]
             if turlu:
                 yay = akis_yay.get(t["dugum"]) if t["tip"] == "yaylı mesnet" and akis_yay.get(t["dugum"]) else t["yay"]
-                r += [_e(t["tip"]), _e(_yay_metni(yay) if t["tip"] != "mesnet" else "") or "–"]
+                tip = "temel ağı (yatay tutulu)" if t["tip"] == "mesnet" and t["dugum"] in ag else t["tip"]
+                r += [_e(tip), _e(_yay_metni(yay) if t["tip"] != "mesnet" else "") or "–"]
             rows.append(r + [_f(t[a], 3) for a in alan])
         if oz:
             rows.append(["–", "temel ağı (Σ)", "zemin yayları (Winkler)", "k<sub>z</sub> = k<sub>0</sub>·A<sub>etki</sub> (§13)"]
@@ -2150,7 +2156,7 @@ class _Rapor:
         return f"<p>{genel}</p>" + self._kontrol_tablosu(satir)
 
     def _eleman_basligi(self, e):
-        tur = {"kiris": "kiriş", "kolon": "kolon"}.get(e.get("tur"), e.get("tur"))
+        tur = _ELEMAN_TURU.get(e.get("tur"), e.get("tur"))
         bel = _sozluk(e.get("belirleyen"))
         return (f"<h4>{_e(e.get('adres'))} — {_e(tur)} {_e(e.get('no'))}, {_e(e.get('kesit'))} ({_e(e.get('malzeme'))}) "
                 f"· D/C {_dc_hucre(e.get('dc'))}</h4><p class=kaynak>Belirleyen: {_e(bel.get('kontrol') or '–')} — "
@@ -2445,7 +2451,7 @@ class _Rapor:
             for e in el[:300]:
                 enb = _sozluk(e.get("enb"))
                 kay = e.get("kaynak")
-                rows.append([_e(e.get("no")), _e({"temel-kirisi": "temel kirişi", "radye-serit": "radye şeridi"}.get(e.get("tur"), e.get("tur") or "")),
+                rows.append([_e(e.get("no")), _e(_ELEMAN_TURU.get(e.get("tur"), e.get("tur") or "")),
                              _e(json.dumps(kay, ensure_ascii=False) if isinstance(kay, (dict, list)) else (kay or "")),
                              _f(enb.get("N"), 2), _f(enb.get("V"), 2), _f(enb.get("M"), 2), _f(enb.get("T"), 2)])
             h += _h4_tablo("Temel elemanları — en büyük mutlak iç kuvvetler", ["Eleman", "Tür", "Kaynak", "|N| [kN]", "|V| [kN]",
@@ -2479,7 +2485,8 @@ class _Rapor:
         zemin = _sozluk(tm.get("zemin"))
         h = _anahtar_deger([
             ("Temel tipi", _e({"tekil": "tekil (münferit)", "surekli": "mütemadi (sürekli)", "radye": "radye"}.get(tm.get("tip"), tm.get("tip") or "–"))),
-            ("Mesnet modeli (üst yapı analizi)", _e(tm.get("mesnet") or "–")),
+            ("Mesnet modeli (üst yapı analizi)", "temel ağı (Winkler zemin yayları; sabit mesnet yok)" if tm.get("tip") in ("surekli", "radye")
+             else _e(tm.get("mesnet") or "–")),
             ("Zemin emniyet gerilmesi " + _v("q", "em"), _b(zemin.get("q_em"), "kN/m²")),
             ("Yatak katsayısı " + _v("k", "0"), _b(zemin.get("k0"), "kN/m³", 0)),
             ("Zemin birim hacim ağırlığı", _b(zemin.get("gamma"), "kN/m³") if zemin.get("gamma") is not None else "–"),
@@ -2675,7 +2682,8 @@ class _Rapor:
             if self.genel and ser is None and e.get("cubuk") in cub:          # genel model: FE parçası → çubuk uç serbestlikleri
                 ser = cub[e.get("cubuk")].get("serbest") or None
             ser_m = ("i: " + ",".join(_liste(_g(ser, "i"))) + " / j: " + ",".join(_liste(_g(ser, "j")))) if isinstance(ser, dict) else "rijit"
-            rows.append([_e(e.get("no")), _e(e.get("tur", "")), _e(d[0] if d else ""), _e(d[1] if len(d) > 1 else ""), _e(e.get("adres", "")),
+            rows.append([_e(e.get("no")), _e(_ELEMAN_TURU.get(e.get("tur"), e.get("tur") or "")), _e(d[0] if d else ""),
+                         _e(d[1] if len(d) > 1 else ""), _e(e.get("adres", "")),
                          _e(e.get("kesit", "")), _e(_g(kes, e.get("kesit"), "malzeme", vars="")), _f(e.get("L"), 3),
                          _f(e.get("rijitlik_carpani"), 2) if e.get("rijitlik_carpani") is not None else "1", _e(ser_m)])
         return _tablo(["Eleman", "Tür", "<i>i</i>", "<i>j</i>", "Adres", "Kesit", "Malzeme", "<i>L</i> [m]", "Rijitlik çarpanı", "Uç serbestliği"],

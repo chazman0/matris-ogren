@@ -218,7 +218,8 @@ kaynak yok. Bölüm sırası sabit: 1 kapak/künye, 2 yönetmelikler, 3 genel bi
 Ek B çubuklar, Ek C seçilen tablolar. Veri olmayan bölüm "Bu modelde uygulanmadı" notuyla kalır.
 
 - §10.1 korunum: Σ tepki = Σ mesnet tepkisi + Σ yazılan yay kuvveti + `yay_ozet` (§4); düğüm tablolarında yaylı mesnet, diyafram bağlı
-  mesnet ve elastik temel yayı ayrı türle (rijitlikleriyle), mütemadi / radye ağı tek "zemin yayları" satırıyla. Korunum tablosunda
+  mesnet ve elastik temel yayı ayrı türle (rijitlikleriyle), mütemadi / radye ağı tek "zemin yayları" satırıyla (ağ düğümlerinin yatay
+  tutulma tepkileri "temel ağı (yatay tutulu)" satırlarıdır). Korunum tablosunda
   "temel öz ağırlığı" satırı.
 - §5: basit çelik kesitlerin sınıfı (`tasarim.kesit_sinifi`, "<ad>: basınçta …, eğilmede …" ve parça oranları).
 - §13: iki modelde de temel analizi ve tasarımı `veri.temel`'den; model mütemadi / radye ama çözümde o sonuç yoksa "Bu çözümde
@@ -267,7 +268,7 @@ yükseklik hücreleri o çubuğun kaydına yazar (genelleştirilmiş modelde `ka
 yarı genişliği kadar içeri ötelenmiş net alandır (dikdörtgende (dx − b₁/2 − b₃/2)·(dy − b₂/2 − b₄/2), aks–kat ile aynı); kat
 ağırlıkları `veri.yukler.katlar`'dan (iki motorda her kolonun ağırlığı üst seviyesine); Mesnetler tablosunda açık mesnetin `k_x … k_rz`
 hücreleri düzenlenir, Mesnet Tepkileri satır türleri "mesnet", "yaylı mesnet", "mesnet (diyafram bağıyla)", "elastik mesnet (zemin
-yayı)", "zemin yayı".
+yayı)", "zemin yayı" ("Yay rijitliği" sütunu yalnız yaylı satır varsa).
 
 ## §16 Isı haritaları
 

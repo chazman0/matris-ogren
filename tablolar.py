@@ -2441,6 +2441,11 @@ def _t_tepkiler(c):
             satirlar.append(_R({"durum": ad, "dugum": None, "adres": "Σ (toplam)", "tip": "", "yay": "",
                                 **{a: sum(t.get(a) or 0.0 for t in kayit) for a in alanlar}}, ozet=True))
     aciklama = "Bina koordinatında mesnet tepkileri; her durumun Σ satırı toplam yükü dengeler (korunum: ΣF_Z = durumun düşey yükü)."
+    # yay rijitliği sütunu yalnız yaylı / elastik / diyafram bağlı satır varsa (yaysız modelde tablo eskisi gibi)
+    yay_sutun = any(r["degerler"].get("yay") for r in satirlar)
+    if not yay_sutun:
+        for r in satirlar:
+            r["degerler"].pop("yay", None)
     if any(r["degerler"]["tip"] not in ("mesnet", "zemin yayı", "") for r in satirlar):
         aciklama += (" Yaylı mesnet (k_x, k_y, k_z kN/m; k_rx, k_ry, k_rz kN·m/rad; bina eksenleri) ve elastik temel satırlarında yay "
                      "kuvveti (F = −k·u, yayın yapıya uyguladığı) tepkiye eklenir; 'mesnet (diyafram bağıyla)': rijit diyaframlı "
@@ -2453,8 +2458,8 @@ def _t_tepkiler(c):
               [_S("durum", "Durum / birleşim", tur="metin"), _S("dugum", "Düğüm", ondalik=0), _S("adres", "Adres", tur="metin"),
                _S("tip", "Tür", tur="metin"),
                _S("FX", "F_X", "kN", ondalik=2), _S("FY", "F_Y", "kN", ondalik=2), _S("FZ", "F_Z", "kN", ondalik=2),
-               _S("MX", "M_X", "kN·m", ondalik=2), _S("MY", "M_Y", "kN·m", ondalik=2), _S("MZ", "M_Z", "kN·m", ondalik=2),
-               _S("yay", "Yay rijitliği", tur="metin")],
+               _S("MX", "M_X", "kN·m", ondalik=2), _S("MY", "M_Y", "kN·m", ondalik=2), _S("MZ", "M_Z", "kN·m", ondalik=2)]
+              + ([_S("yay", "Yay rijitliği", tur="metin")] if yay_sutun else []),
               satirlar, aciklama, "Sonlu eleman çözümü" + ("; Winkler zemin modeli (TS 500 md. 10.4.2)" if wk else ""))
 
 

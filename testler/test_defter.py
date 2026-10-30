@@ -4,7 +4,7 @@
 Defter ``defter_yap.py`` ile üretilir ve kurulum hücresine programın 10 modülünü (matris_ogren, sonlu_eleman, yapi_veri, yapi,
 yapi_serbest, temel, tasarim, rapor, tablolar, alan) ``{ad: (_SHA256, _PAKET)}`` sözlüğü olarak zlib + base64 ile gömer. Bir modül
 değişip defter yeniden üretilmezse Colab'daki öğrenci eski modülü çalıştırır; bu test bunu yakalar. Düzeltme:
-``python3 defter_yap.py`` (ek paket gerekmez). Ayrıca: modül kümesi tam bu 10 modül, iki üretim bayt bayt aynı, defter nbformat
+``python3 defter_yap.py`` (sympy ve numpy yeter; nbformat gerekmez). Ayrıca: modül kümesi tam bu 10 modül, iki üretim bayt bayt aynı, defter nbformat
 şemasına uygun (kuruluysa) ve "Bina modeli" bölümü şablon listesini üretim anındaki ``yapi.bina_sablonlar()`` ile taşır.
 """
 from __future__ import annotations
