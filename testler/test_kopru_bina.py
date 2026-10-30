@@ -583,3 +583,17 @@ def test_genellestirilmis_mutemadi_temel_kopru_islemleri(kopru):
     assert tb["hata"] is None and tb["cozumlu"]
     ko = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": k, "hedef": [{"tur": "cubuk", "no": kolon}]})
     assert ko["hata"] is None and ko["oneriler"] and not any("tekil temel" in u for u in ko["uyarilar"])
+
+
+def test_karma_model_panel_kaynagi(kopru):
+    """K-20 (C17): aks–kat döşemeleri genel modelde panel olur; veri.yukler.paneller[i].kaynak = {aks_kat: 'doseme', no} (öteki
+    paneller null) — eleman bilgisi döşemeyi panele bağlar."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["mesnetler"] = [{"dugum": {"aks": ["B", "2"], "z": "Temel"}, "ux": True, "uy": True, "uz": True}]
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    assert v["model"] == "genel"
+    pan = v["yukler"]["paneller"]
+    assert pan and all("kaynak" in p for p in pan)
+    assert any(p["kaynak"] == {"aks_kat": "doseme", "no": 1} for p in pan)
+    assert {p["kaynak"]["no"] for p in pan if p["kaynak"]} == {d["no"] for d in b["dosemeler"]}

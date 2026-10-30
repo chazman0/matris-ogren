@@ -346,6 +346,14 @@ ILK_SERBEST = 100001
 _IC_DUGUM = 800001               # vute ara düğümleri (yalnız motor)
 _EFENDI = 900000                 # rijit diyafram efendi düğümü = 900000 + kat
 _TURLER = ("kolon", "kiris", "capraz", "makas-ust", "makas-alt", "makas-dikme", "makas-diyagonal", "asik", "kren", "bag", "diger")
+# çubuk türlerinin Türkçe adları (bina.js CUBUK_TURLERI küçük harfle; adres metinleri 'Ç13 (kiriş)'; makine alanı tur değişmez)
+TUR_ADI = {"kolon": "kolon", "kiris": "kiriş", "capraz": "çapraz", "makas-ust": "makas üst başlık", "makas-alt": "makas alt başlık",
+           "makas-dikme": "makas dikmesi", "makas-diyagonal": "makas diyagonali", "asik": "aşık", "kren": "kren kirişi", "bag": "bağ",
+           "diger": "diğer"}
+
+
+def _tur_adi(tur):
+    return TUR_ADI.get(tur, tur)
 _CUBUK_TURLERI = ("capraz", "makas-ust", "makas-alt", "makas-dikme", "makas-diyagonal")   # eksenel (çubuk) tahkiki
 _SERBEST_ADLAR = ("N", "Vy", "Vz", "T", "My", "Mz")
 _PANEL_TURLERI = ("doseme", "cati", "cephe")
@@ -1893,15 +1901,25 @@ def _toplamlar(B, YK):
                 h = YK.dugum_agirlik.setdefault(n, {"G": 0.0, "Q": 0.0, "S": 0.0})
                 h[d] += -F[2]
     YK.toplam = {d: sum(h[d] for h in YK.dugum_agirlik.values()) for d in ("G", "Q", "S")}
-    katlar = []
-    for kt in B.katlar:
-        s = {"G": 0.0, "Q": 0.0, "S": 0.0}
-        for n, h in YK.dugum_agirlik.items():
-            if B.coz.dugum[n]["kat"] == kt["no"]:
-                for d in s:
-                    s[d] += h[d]
-        katlar.append({"kat": kt["no"], "ad": kt["ad"], "kot": kt["kot"], "h": kt["h"], **s, "w": s["G"] + s["Q"]})
-    YK.katlar = katlar
+    # kat ağırlık tablosu (veri.yukler.katlar; aks–kat kuralı): iki ucu farklı seviyedeki çubuğun (kolon, eğik çubuk) bütün yükü
+    # (öz ağırlık, duvar) üst ucunun katına; düğüm yükleri düğümün katına. Deprem kütlesi (dugum_agirlik, _kutleler) değişmez.
+    D = B.coz.dugum
+    kat_yuk = {kt["no"]: {"G": 0.0, "Q": 0.0, "S": 0.0} for kt in B.katlar}
+    for c in B.cubuklar:
+        di, dj = D[c["i"]], D[c["j"]]
+        ust = dj if dj["Z"] > di["Z"] + 1e-9 else di
+        h = kat_yuk.setdefault(ust["kat"], {"G": 0.0, "Q": 0.0, "S": 0.0})
+        for d, kay in YK.cubuk[c["no"]].items():
+            if d in h:
+                Ri, Rj = _cubuk_tepkileri(c, kay)
+                h[d] += -(Ri[2] + Rj[2])
+    for n, dd in YK.dugum.items():
+        h = kat_yuk.setdefault(D[n]["kat"], {"G": 0.0, "Q": 0.0, "S": 0.0})
+        for d, F in dd.items():
+            if d in h:
+                h[d] += -F[2]
+    YK.katlar = [{"kat": kt["no"], "ad": kt["ad"], "kot": kt["kot"], "h": kt["h"], **kat_yuk[kt["no"]],
+                  "w": kat_yuk[kt["no"]]["G"] + kat_yuk[kt["no"]]["Q"]} for kt in B.katlar]
 
 
 def _ruzgar_panel(B, YK):
@@ -2117,6 +2135,22 @@ def _kolon_boyutlari(B, c, lam):
     h = kt.get("h") or kok
     y, z = lam[1], lam[2]
     return abs(y[0]) * h + abs(z[0]) * b, abs(y[1]) * h + abs(z[1]) * b
+
+
+def _kolon_yonu(B, c):
+    """Kolonun güçlü ekseninin çalıştığı doğrultu (aks–kat 'yon'): aks–kat kaynağı varsa o kolonun yon'u; yoksa yerel eksen
+    açısından (aci 0 → 'x', 90 → 'y', başka → '<aci>°')."""
+    kay = c.get("kaynak") or {}
+    if kay.get("aks_kat") == "kolon":
+        for k in (B.ham.get("kolonlar") or []) if isinstance(B.ham, dict) else []:
+            if isinstance(k, dict) and str(k.get("no")) == str(kay.get("no")) and k.get("yon") is not None:
+                return str(k["yon"]).strip().lower()
+    a = float(c.get("aci") or 0.0)
+    if abs(a % 180.0) < 1e-9 or abs(a % 180.0 - 180.0) < 1e-9:
+        return "x"
+    if abs(a % 180.0 - 90.0) < 1e-9:
+        return "y"
+    return f"{a:g}°"
 
 
 def _adres_kisa(d, seviye=True):
@@ -2456,7 +2490,7 @@ def _ag_kur(B, kutle=None):
             carp = (ck if c["tur"] == "kolon" else cb) if beton else 1.0
             e = {"no": eno, "dugumler": [uclar[k], uclar[k + 1]], "tur": c["tur"], "kaynak_no": c["no"], "cubuk": c["no"], "parca": k + 1,
                  "kat": c["kat"], "L": p["x1"] - p["x0"], "kesit": c["kesit"], "lam": c["lam"],
-                 "adres": f"Ç{c['no']} ({c['tur']}) {dno[c['i']]['adres']}→{dno[c['j']]['adres']}" + (f" [{k + 1}/{len(prc)}]" if len(prc) > 1 else ""),
+                 "adres": f"Ç{c['no']} ({_tur_adi(c['tur'])}) {dno[c['i']]['adres']}→{dno[c['j']]['adres']}" + (f" [{k + 1}/{len(prc)}]" if len(prc) > 1 else ""),
                  "rijitlik_carpani": carp, "kaynak": {"tur": "cubuk", "no": c["no"], "parca": k + 1}}
             elemanlar.append(e)
             me = {"no": eno, "dugumler": [uclar[k], uclar[k + 1]], "E": mal["E"], "G": mal["G"], "A": p["A"], "Iy": p["Iy"], "Iz": p["Iz"],
@@ -3180,6 +3214,28 @@ def _kolon_on_ele(ts, kuv, kt, d_ust, beton, donati, n=10, en_cok=16, As=None):
     return [k for k in kuv if id(k) in sec]
 
 
+def _celik_satirlari(r, on=""):
+    """celik_eleman_kontrol satırları → §11 satırları (yapi._celik satirlar ile aynı): belirleyen kombinasyon adı satırdan ayrılır;
+    döşemeli kirişte ``on`` bölge metni ('pozitif M, L_b = 0' | 'negatif M, L_b = …, C_b = …') satır adına ' — …', etikete
+    ' (pozitif M)' / ' (negatif M)' olarak eklenir (narinlik koşulu hariç)."""
+    en = max(r["kombinasyonlar"], key=lambda x: x["dc"]) if r["kombinasyonlar"] else None
+    out = []
+    for x in r["kontroller"]:
+        ad_, komb = x["ad"], None
+        if en and ad_.startswith(en["ad"] + ": "):
+            komb, ad_ = en["ad"], ad_[len(en["ad"]) + 2:]
+        narin = ad_.startswith("Narinlik")
+        et = Y._celik_etiket(ad_, en["dal"] if en else None)
+        if on and not narin:
+            ad_, et = f"{ad_} — {on}", f"{et} ({on.split(',')[0]})"
+        out.append(Y._kontrol_kaydi(x, komb, ad_, et, kosul=narin))
+    return out, en
+
+
+def _en_buyuk_dayanim(sat):
+    return [max((x for x in sat if not x["kosul"]), key=lambda x: x["dc"])] if any(not x["kosul"] for x in sat) else []
+
+
 def _celik_kuvvet(T, bl, i, ad):
     Nv = np.concatenate([-b[i, _I_N, :] for b, _, _, _ in bl])
     return {"ad": ad, "N": float(Nv[int(np.argmax(np.abs(Nv)))]),
@@ -3210,7 +3266,7 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
     mal = B.malzemeler[kt["malzeme"]]
     bl = _bloklar(T, c)
     L = c["L"]
-    kayit = {"no": c["no"], "kat": c["kat"], "adres": f"Ç{c['no']} ({c['tur']})", "kesit": c["kesit"]}
+    kayit = {"no": c["no"], "kat": c["kat"], "adres": f"Ç{c['no']} ({_tur_adi(c['tur'])})", "kesit": c["kesit"]}
     fe = list(c["fe"])
     uy = []
     yontem = "GKT" if B.kombinasyon_kumesi == "cythye_gkt" else "YDKT"
@@ -3307,25 +3363,27 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
                     Cb_n = min(cb_aday) if cb_aday else 1.0       # güvenli taraf: en küçük C_b
                 kp, kn = _on_ele(kp, ["N", "Mx", "My", "V"]), _on_ele(kn, ["N", "Mx", "My", "V"])
                 rp, rn = kontrol(0.0, kp, None), kontrol(Lb, kn, None, Cb_n)
-                if Y._dc_dayanim(rn) > Y._dc_dayanim(rp):      # dayanım D/C'si (sağlanan narinlik koşulu hariç), yapi._celik gibi
-                    r, kuv_k, Lb_k, Cb_k = rn, kn, Lb, Cb_n
+                negatif = Mn_max > 1e-6
+                sp_, en_p = _celik_satirlari(rp, "pozitif M, L_b = 0")
+                sn_, en_n = _celik_satirlari(rn, f"negatif M, L_b = {_f(Lb)} m, C_b = {_f(Cb_n, 2)}") if negatif else ([], None)
+                if negatif and Y._dc_dayanim(rn) > Y._dc_dayanim(rp):      # dayanım D/C'si (sağlanan narinlik hariç), yapi._celik gibi
+                    r, kuv_k, Lb_k, Cb_k, en, bolge = rn, kn, Lb, Cb_n, en_n, "negatif"
+                    kont = sn_ + _en_buyuk_dayanim(sp_)          # öteki bölgenin özeti: en büyük D/C'li dayanım satırı
                 else:
-                    r, kuv_k, Lb_k = rp, kp, 0.0
+                    r, kuv_k, Lb_k, en, bolge = rp, kp, 0.0, en_p, "pozitif"
+                    kont = sp_ + (_en_buyuk_dayanim(sn_) if negatif else [])
+                bolge_ozet = {"bolge": bolge, "Lb_neg_m": Lb if negatif else None, "Cb_neg": Cb_n if negatif else None,
+                              "Mc_neg_kNm": rn["egilme"]["Mc_kNm"] if negatif else None, "dc_pozitif": Y._dc_dayanim(rp),
+                              "dc_negatif": Y._dc_dayanim(rn) if negatif else None}
                 if anl is not None:
                     r = kontrol(Lb_k, kuv_k, anl, Cb_k)
             else:
                 r = kontrol(Lb, kuv, anl)
                 kuv_k, Lb_k = kuv, Lb
+                kont, en = _celik_satirlari(r)
+                bolge_ozet = {}
             bilgi.update({"kontrol": "eleman", "L": L, "Lb": Lb_k, "K": tuple(K), "kuvvetler": kuv_k, "kren": kren, "yontem": yontem,
                           "Cb": Cb_k})
-            en = max(r["kombinasyonlar"], key=lambda x: x["dc"]) if r["kombinasyonlar"] else None
-            kont = []
-            for x in r["kontroller"]:
-                ad_, komb = x["ad"], None
-                if en and ad_.startswith(en["ad"] + ": "):
-                    komb, ad_ = en["ad"], ad_[len(en["ad"]) + 2:]
-                narin = ad_.startswith("Narinlik")
-                kont.append(Y._kontrol_kaydi(x, komb, ad_, Y._celik_etiket(ad_, en["dal"] if en else None), kosul=narin))
             eg, bs, kk = r["egilme"], r["basinc"], r["kesme"]
             sinif = r["sinif"]
             ozet = {"kontrol": "eleman (ÇYTHYE 11.1)", "profil": profil, "sinif": f"eğilme: {sinif.get('egilme', '?')}; basınç: "
@@ -3333,7 +3391,7 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
                     "Mc_kNm": eg["Mc_kNm"], "Mcy_kNm": eg["Mcy_kNm"], "Pc_kN": bs["Pc_kN"], "Vc_kN": kk["Vc_kN"], "L_m": L, "Lb_m": Lb_k,
                     "Cb": Cb_k,
                     "K": list(K), "yontem": r["yontem"], "N_kN": en["N"] if en else 0.0, "Mx_kNm": en["Mx"] if en else 0.0,
-                    "My_kNm": en["My"] if en else 0.0, "V_kN": en["V"] if en else 0.0}
+                    "My_kNm": en["My"] if en else 0.0, "V_kN": en["V"] if en else 0.0, **bolge_ozet}
             if ks["tip"] == "vute":
                 ozet["vute"] = f"temel {profil}, derin uçta +{_f(ks['ek_yukseklik'] * 1000, 0)} mm; M·h₀/h ile ölçeklendi"
             uy += list(r["uyarilar"])
@@ -3428,11 +3486,17 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
         if r.get("egilme_ust"):
             ozet["As_ust_cm2"] = r["egilme_ust"].get("As_gerekli_cm2")
         if tur_ba == "kolon":
-            # yapi._kolon_ba özet alanları (rapor §11.3 / §11.5): N maks/min (bütün birleşimler, iki uç), N_dm ve sınırları, b_X × b_Y
+            # yapi._kolon_ba özet alanları (rapor §11.3 / §11.5): N maks/min (birleşim başına alt uç: aks–kat kuralı; iki uç
+            # tahkik noktalarında kalır), N_dm ve sınırları, b_X × b_Y (kesitin bina X/Y izdüşümü), yön
             fcd = ts.beton_malzeme(mal["kutuphane"])["fcd"]
-            ozet.update({"N_max_kN": max(k["N"] for k in kuv_tum), "N_min_kN": min(k["N"] for k in kuv_tum),
+            D_ = B.coz.dugum
+            alt = "i" if D_[c["i"]]["Z"] <= D_[c["j"]]["Z"] + 1e-9 else "j"
+            N_alt = [k["N"] for k in kuv_tum if k["ad"].endswith(f" ({alt})")] or [k["N"] for k in kuv_tum]
+            y_, z_ = c["lam"][1], c["lam"][2]
+            bX, bY = abs(y_[0]) * kt["h"] + abs(z_[0]) * kt["b"], abs(y_[1]) * kt["h"] + abs(z_[1]) * kt["b"]
+            ozet.update({"N_max_kN": max(N_alt), "N_min_kN": min(N_alt),
                          "Ndm_kN": ndm.get("Ndm"), "N_sinir_TBDY_kN": ndm.get("N040"),
-                         "N_sinir_TS500_kN": 0.9 * fcd * kt["b"] * kt["h"] * 1000.0, "bX": kt["b"], "bY": kt["h"]})
+                         "N_sinir_TS500_kN": 0.9 * fcd * kt["b"] * kt["h"] * 1000.0, "bX": bX, "bY": bY, "yon": _kolon_yonu(B, c)})
         else:
             # yapi._kiris_ba özet alanları (rapor §11.2 / §11.5): mesnet (üst) ve açıklık (alt) M_d, donatı önerisi, V_d, etriye
             eu, ea, kk = r.get("egilme_ust"), r.get("egilme_alt"), r.get("kesme")
@@ -3614,7 +3678,7 @@ def _tasarim(ts, T):
             try:
                 k, uy, _ = _cubuk_tasarla(ts, T, c)
             except MatrisHatasi as h:
-                k = {"no": c["no"], "cubuk": c["no"], "tur": c["tur"], "kat": c["kat"], "adres": f"Ç{c['no']} ({c['tur']})", "kesit": c["kesit"],
+                k = {"no": c["no"], "cubuk": c["no"], "tur": c["tur"], "kat": c["kat"], "adres": f"Ç{c['no']} ({_tur_adi(c['tur'])})", "kesit": c["kesit"],
                      "malzeme": None, "sistem": None, "fe_elemanlar": list(c["fe"]), "dc": None, "durum": "hesaplanamadı",
                      "belirleyen": None, "kontroller": [], "ozet": {}, "hata": str(h)}
                 uy = [f"tahkik yapılamadı — {h}"]
@@ -3993,8 +4057,7 @@ def _grup_rho(tt, lst, b, h, rho, dc_cikti=None):
     rho = min(max(float(rho), Y._RHO_VARSAYILAN), _RHO_EN_COK)
     yetmeyen = []
     son = {}
-    for o in lst:
-        c = B.cubuk_no.get(o["cubuk"])
+    for c in [B.cubuk_no.get(n) for o in lst for n in (o.get("cubuklar") or [o["cubuk"]])]:
         if c is None:
             continue
         ks = B.kesitler[c["kesit"]]
@@ -4011,7 +4074,7 @@ def _grup_rho(tt, lst, b, h, rho, dc_cikti=None):
                     son[c["no"]] = (rho, dc)
                     break
                 if rho >= _RHO_EN_COK - 1e-12:
-                    yetmeyen.append(o["cubuk"])
+                    yetmeyen.append(c["no"])
                     break
                 rho = min(round(rho + _RHO_ADIM, 6), _RHO_EN_COK)
         finally:
@@ -4094,9 +4157,10 @@ def _oneri_uygula(bina, oneriler, B, tur_tasarim=None, kucultme=True):
         if ad == kesit:
             continue
         for o in lst:
-            cubuk_kesit[o["cubuk"]] = ad
+            for n in o.get("cubuklar") or [o["cubuk"]]:
+                cubuk_kesit[n] = ad
         d = {"kesit": kesit, "tur": tur, "yeni": ad, "oneri": en["oneri"], "degisim": en.get("degisim"),
-             "cubuklar": sorted(o["cubuk"] for o in lst)}
+             "cubuklar": sorted(n for o in lst for n in (o.get("cubuklar") or [o["cubuk"]]))}
         if en.get("donati_orani") is not None and lst[0].get("sistem") == "betonarme":
             d["donati_orani"] = en["donati_orani"]
         degisen.append(d)
@@ -4190,7 +4254,7 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
         "paneller": [{"no": p["no"], "tur": p["tur"], "alan": _r(p["alan"]), "egim": _r(p["egim"]), "dagitim": p["dagitim"],
                       "g": _r(p["g_yuzey"]), "q": _r(p["q"] + p["ek_q"]), "s": _r(p["s"] + p["ek_s"]), "mu": _r(p["mu"]),
                       "G_toplam": _r(p["toplam"]["G"]), "Q_toplam": _r(p["toplam"]["Q"]), "S_toplam": _r(p["toplam"]["S"]),
-                      "q_kaynak": p["q_kaynak"], "g_kaynak": p["g_kaynak"],
+                      "q_kaynak": p["q_kaynak"], "g_kaynak": p["g_kaynak"], "kaynak": p.get("kaynak"),
                       "kenarlar": [{a: (_r(v) if isinstance(v, float) else v) for a, v in k.items()} for k in p["dag"]["kenarlar"]]}
                      for p in B.paneller],
         "cubuklar": cubuk_yuk,
@@ -4312,7 +4376,7 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
     for c in B.cubuklar:
         turler.setdefault(c["tur"], []).append(c)
     anl.metin("**Çubuk türleri:**\n\n" + _tablo(["Tür", "Adet", "Kesitler", "Uç serbestliği"],
-                                                [[t, len(lst), ", ".join(sorted({c['kesit'] for c in lst})),
+                                                [[_tur_adi(t), len(lst), ", ".join(sorted({c['kesit'] for c in lst})),
                                                   f"{sum(1 for c in lst if c['serbest']['i'] or c['serbest']['j'])} mafsallı"
                                                   + (f", {sum(1 for c in lst if c['yalniz_cekme'])} yalnız çekme" if any(c['yalniz_cekme'] for c in lst) else "")]
                                                  for t, lst in sorted(turler.items())]))
@@ -4569,7 +4633,7 @@ def eleman_tasarim(ic, tur, no, goster=None):
     B = T.B
     c = _cubuk_bul(B, tur, no)
     anl = mo.Anlatim()
-    anl.baslik(f"Çubuk {c['no']} ({c['tur']}, {c['kesit']}): kesit tahkiki", 2)
+    anl.baslik(f"Çubuk {c['no']} ({_tur_adi(c['tur'])}, {c['kesit']}): kesit tahkiki", 2)
     anl.metin(f"Tahkik kombinasyonları ({len(T.adlar)}): " + ", ".join(f"`{a}`" for a in T.adlar[:12]) + (" …" if len(T.adlar) > 12 else ""))
     k, uy, ek = _cubuk_tasarla(ts, T, c, anl)
     anl.sonuc(rf"\text{{D/C}}_{{max}} = {_f(k['dc'], 3)}", f"Durum: **{k['durum']}** — belirleyen: {k['belirleyen']['kontrol']}")
@@ -4580,27 +4644,32 @@ def eleman_tasarim(ic, tur, no, goster=None):
     return s
 
 
-def _cubuk_bul(B, tur, no):
+def _aks_kat_girdisi(B):
+    """Çözülen girdi yalnız aks–kat elemanlarından mı (``cubuklar`` listesi yok: köprünün aks–kat çözümü için genel motorla
+    yeniden çözüm)? O zaman 'kolon' / 'kiris' hedefleri ve öneriler aks–kat elemanına (çubuğun ``kaynak``ı) bağlanır."""
+    return not (B.ham.get("cubuklar") if isinstance(B.ham, dict) else None)
+
+
+def _cubuk_bul(B, tur, no, parcalar=False):
     """Tahkik / öneri hedefi → çubuk. ``tur`` "cubuk": çubuk numarası (tam eşleşme). "kolon" / "kiris": çözülen girdi yalnız aks–kat
-    elemanlarından oluşuyorsa (``cubuklar`` listesi yok: köprünün aks–kat çözümü için genel motorla yeniden çözüm) aks–kat no'su
-    (``kaynak``); genel modelde çubuk numarası (türü de eşleşmeli). Öteki türler (capraz, asik …): çubuk numarası."""
+    elemanlarından oluşuyorsa (``_aks_kat_girdisi``) aks–kat no'su (``kaynak``); genel modelde çubuk numarası (türü de
+    eşleşmeli). Öteki türler (capraz, asik …): çubuk numarası. ``parcalar``: aks–kat elemanının bütün parçaları (birden çok
+    açıklığa uzanan kiriş kolonlarda bölünür: kaynak.parca 1, 2, …) liste olarak; değilse ilk parça."""
     no = Y._tam(no, "eleman no")
     tur = str(tur or "cubuk").strip().lower()
-    if tur in ("kolon", "kiris") and not (B.ham.get("cubuklar") if isinstance(B.ham, dict) else None):
-        for c in B.cubuklar:
-            kay = c.get("kaynak") or {}
-            if isinstance(kay, dict) and kay.get("aks_kat") == tur and int(kay.get("no", -1)) == no:
-                return c
-        raise MatrisHatasi(f"{'Kolon' if tur == 'kolon' else 'Kiriş'} {no} bu modelde yok.")
+    if tur in ("kolon", "kiris") and _aks_kat_girdisi(B):
+        bulunan = [c for c in B.cubuklar if isinstance(c.get("kaynak"), dict) and c["kaynak"].get("aks_kat") == tur
+                   and int(c["kaynak"].get("no", -1)) == no]
+        if not bulunan:
+            raise MatrisHatasi(f"{'Kolon' if tur == 'kolon' else 'Kiriş'} {no} bu modelde yok.")
+        bulunan.sort(key=lambda c: (int(c["kaynak"].get("parca") or 1), c["no"]))
+        return bulunan if parcalar else bulunan[0]
     c = B.cubuk_no.get(no)
     if c is None:
         raise MatrisHatasi(f"Çubuk {no} bu modelde yok.")
     if tur in ("kolon", "kiris") and c["tur"] != tur:
-        raise MatrisHatasi(f"Çubuk {no} bir {c['tur']} ({tur} değil); çubuk numarasıyla isteyin (tur: \"cubuk\").")
-    return c
-
-
-ONER_TEKIL_UYARI = "Öneri genel model motoruyla (tekil temel mesnetleriyle) hesaplandı; mütemadi/radye temel etkisi yok."
+        raise MatrisHatasi(f"Çubuk {no} bir {_tur_adi(c['tur'])} ({_tur_adi(tur)} değil); çubuk numarasıyla isteyin (tur: \"cubuk\").")
+    return [c] if parcalar else c
 
 
 def genel_cozum(bina):
@@ -4666,12 +4735,8 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         if T is None:
             raise MatrisHatasi("Kesit tahkik modülü (tasarim.py) yüklenemedi.")
         B = T.B
-        if hedef == "hepsi" or hedef is None:
-            hedefler = list(B.cubuklar)
-        else:
-            if not isinstance(hedef, list):
-                raise MatrisHatasi('hedef "hepsi" ya da [{"tur", "no"}] listesi olmalı.')
-            hedefler = [_cubuk_bul(B, h.get("tur"), h.get("no")) for h in hedef]
+        gruplar = _hedef_gruplari(B, hedef)
+        hedefler = [c for g in gruplar for c in g]
         dc_once = {k["cubuk"]: k["dc"] for k in (ic.get("tas") or _tasarim(ts, T))["elemanlar"] if k.get("dc") is not None}
         dc_maks = max(dc_once.values(), default=0.0)
         if tur_no == 0 and gorunen_dc:
@@ -4686,19 +4751,29 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
                 kayit["oneri_sayisi"] = 0
                 turlar.append(kayit)
                 break
-            hedefler = [c for c in hedefler if (c["kesit"], c["tur"]) in asan_grup]
+            gruplar = [g for g in gruplar if any((c["kesit"], c["tur"]) in asan_grup for c in g)]
         oneriler = []
-        for c in hedefler:
-            dc0 = dc_once.get(c["no"])
-            kay = c.get("kaynak") or {}
-            if tur_no == 0 and gorunen_dc and isinstance(kay, dict) and (kay.get("aks_kat"), kay.get("no")) in gorunen_dc:
-                dc0 = gorunen_dc[(kay["aks_kat"], kay["no"])]        # kullanıcının gördüğü (aks–kat motoru) D/C
-            try:
-                o = _oner_cubuk(ts, T, c, dc_kayit=dc0)
-            except MatrisHatasi as h:
-                o = {"cubuk": c["no"], "tur": c["tur"], "kesit": c["kesit"], "oneri": None, "gerekce": [str(h)], "kaynak": c.get("kaynak"),
-                     "dc_once": _r5(dc0) if dc0 is not None else None, "dc_oneri": None, "degisim": None, "sistem": None,
-                     "malzeme": None, "b": None, "h": None}
+        for g in gruplar:
+            parca = []
+            kay = g[0].get("kaynak") or {}
+            gor = (gorunen_dc.get((kay.get("aks_kat"), kay.get("no"))) if (tur_no == 0 and gorunen_dc and isinstance(kay, dict))
+                   else None)
+            for c in g:
+                dc0 = gor if (gor is not None and len(g) == 1) else dc_once.get(c["no"])     # tek parça: görünen (aks–kat) D/C
+                try:
+                    parca.append(_oner_cubuk(ts, T, c, dc_kayit=dc0))
+                except MatrisHatasi as h:
+                    parca.append({"cubuk": c["no"], "tur": c["tur"], "kesit": c["kesit"], "oneri": None, "gerekce": [str(h)],
+                                  "kaynak": c.get("kaynak"), "dc_once": _r5(dc0) if dc0 is not None else None, "dc_oneri": None,
+                                  "degisim": None, "sistem": None, "malzeme": None, "b": None, "h": None})
+            if len(g) == 1:
+                o = parca[0]
+            else:                       # birden çok parçalı aks–kat elemanı: tek öneri (parçaların zarfı)
+                o = _zarf_onerisi(ts, T, g, parca, (bina_ham.get("kesitler") or {}).get(g[0]["kesit"]), kucultme=tur_no == 0)
+                o["gerekce"] = [f"Aks–kat elemanı {len(g)} parçalı ({', '.join(f'Ç{c['no']}' for c in g)}): öneri parçaların zarfı (en "
+                                "büyük gerekli kesit), D/C öneri parçaların en büyüğü."] + o["gerekce"]
+            if gor is not None:
+                o["dc_once"] = _r5(min(gor, 99.0))        # kullanıcının gördüğü (aks–kat motoru) D/C
             if tur_no == 0:
                 o["uygula"] = _uygula_bilgisi(bina_ham.get("kesitler"), o)
             oneriler.append(o)
@@ -4725,7 +4800,8 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
             bina_ham, donati_azaltma = _rho_azalt(bina_ham, ic["tasarim"], ts, set((ic0_kesitler or {})), dc_son)
         bina_ham = _kullanilmayan_kesitleri_sil(bina_ham, set(ic0_kesitler or {}))
     for o in sonuc_oneriler:
-        o["dc_sonra"] = _r5(dc_son[o["cubuk"]]) if (yinele and o["cubuk"] in dc_son) else o.get("dc_oneri")
+        son_ = [dc_son[n] for n in (o.get("cubuklar") or [o["cubuk"]]) if n in dc_son]
+        o["dc_sonra"] = _r5(max(son_)) if (yinele and son_) else o.get("dc_oneri")
     if gorunen_dc:
         uyarilar.append("D/C önce, aks–kat motorunun tasarım tablosundan (görünen çözüm); öneri ve D/C sonra genel model motoruyla.")
     dc_sonra = _r5(max(dc_son.values(), default=0.0)) if yinele else None
@@ -4782,6 +4858,89 @@ def _rho_azalt(bina, T, ts, ilk_kesitler, dc_son):
         degisen.append({"kesit": ad, "yeni": yeni_ad, "donati_orani": round(rho, 6), "rho_once": round(rho0, 6),
                         "cubuklar": sorted(dcs)})
     return b, degisen
+
+
+def _hedef_gruplari(B, hedef, grup=False):
+    """Öneri hedefleri → çubuk grupları (her grup tek öneri alır). Aks–kat girdisinde (``_aks_kat_girdisi``) bir aks–kat kolonu /
+    kirişinin bütün parçaları tek gruptur (hedef 'hepsi' de aks–kat elemanı başına bir öneri); ``grup`` (kesit grubu kipi): bütün
+    hedefler tek grup. Sıra korunur, tekrarlar atılır."""
+    if hedef == "hepsi" or hedef is None:
+        if grup:
+            raise MatrisHatasi('Grup kipi (grup: true) için hedef üye listesi verilmeli: [{"tur", "no"}, ...].')
+        gruplar, anahtar = [], {}
+        aks_kat = _aks_kat_girdisi(B)
+        for c in B.cubuklar:
+            kay = c.get("kaynak") if aks_kat else None
+            if isinstance(kay, dict) and kay.get("aks_kat") in ("kolon", "kiris"):
+                k = (kay["aks_kat"], int(kay.get("no", -1)))
+                if k in anahtar:
+                    anahtar[k].append(c)
+                    continue
+                anahtar[k] = [c]
+                gruplar.append(anahtar[k])
+            else:
+                gruplar.append([c])
+        return gruplar
+    if not isinstance(hedef, list):
+        raise MatrisHatasi('hedef "hepsi" ya da [{"tur", "no"}] listesi olmalı.')
+    gruplar, gorulen = [], set()
+    for h in hedef:
+        if not isinstance(h, dict):
+            raise MatrisHatasi('hedef öğeleri {"tur", "no"} sözlükleri olmalı.')
+        g = [c for c in _cubuk_bul(B, h.get("tur"), h.get("no"), parcalar=True) if c["no"] not in gorulen]
+        gorulen.update(c["no"] for c in g)
+        if g:
+            gruplar.append(g)
+    if grup and gruplar:
+        uyeler = [c for g in gruplar for c in g]
+        if len({(c["kesit"], c["tur"]) for c in uyeler}) > 1:
+            raise MatrisHatasi("Grup kipi: üyelerin kesiti ve türü aynı olmalı (" + ", ".join(sorted({f"{c['kesit']} / {_tur_adi(c['tur'])}"
+                                                                                                 for c in uyeler})) + ").")
+        gruplar = [uyeler]
+    return gruplar
+
+
+def _zarf_onerisi(ts, T, uyeler, lst, kesit_karti, kucultme=True):
+    """Birden çok çubuğa tek öneri (aks–kat elemanının parçaları ya da kesit grubu): betonarmede ``_ba_grup_karti`` (en büyük b × h;
+    kolonda üyeler doğrulanarak grup ρ'su), çelikte en ağır öneri. dc_oneri = üyelerin bu kartla, kendi iç kuvvetleriyle §11
+    D/C'lerinin en büyüğü; cubuk = ilk üye, cubuklar = bütün üyeler."""
+    B = T.B
+    gecerli = [o for o in lst if o.get("oneri") is not None]
+    no_lst = [c["no"] for c in uyeler]
+    ilk = dict(lst[0])
+    ilk.update({"cubuk": no_lst[0], "cubuklar": no_lst})
+    if not gecerli:
+        return ilk
+    c0 = uyeler[0]
+    ks = B.kesitler[c0["kesit"]]
+    kt = B.kesitler[ks["temel"]] if ks["tip"] == "vute" else ks
+    if gecerli[0].get("sistem") == "betonarme":
+        en, atla = _ba_grup_karti(gecerli, kesit_karti or {}, (ts, T), kucultme)
+        kart = None if atla else dict(kt, b=en["b"], h=en["h"])
+        if kart is not None and en.get("donati_orani") is not None:
+            kart.update({"donati_orani": en["donati_orani"], "As": None})
+        if atla:
+            en.update({"degisim": "aynı"})
+    else:
+        en = dict(max(gecerli, key=_agirlik))
+        kart = None
+        if en.get("degisim") != "aynı":
+            try:
+                kart = _kesit_kart("__oneri__", {"tip": "profil", "profil": en["oneri"], "malzeme": kt["malzeme"]}, B)
+            except MatrisHatasi:
+                kart = None
+    if kart is not None:
+        dcs = _uyeler_dc(ts, T, uyeler, kart)
+    else:
+        dcs = {o["cubuk"]: o.get("dc_once") for o in lst}
+    gecerli_dc = [d for d in dcs.values() if d is not None]
+    en.update({"cubuk": no_lst[0], "cubuklar": no_lst, "kaynak": c0.get("kaynak"),
+               "dc_oneri": _r5(min(max(gecerli_dc), 99.0)) if gecerli_dc else en.get("dc_oneri"),
+               "dc_once": max((o["dc_once"] for o in lst if o.get("dc_once") is not None), default=None),
+               "gerekce": list(en.get("gerekce") or [])})
+    if en["dc_oneri"] is not None and en["dc_oneri"] > 1.0 + 1e-9 and en.get("degisim") != "aynı":
+        en["gerekce"].append(f"Ortak kartla en büyük üye D/C = {_f(en['dc_oneri'], 3)} > 1 (üyelerin iç kuvvetleri farklı).")
+    return en
 
 
 def _uyeler_dc(ts, T, uyeler, kart):
