@@ -328,12 +328,14 @@ def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
     g = kopru._GENEL_ONBELLEK[kimlik]
     y2 = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": kimlik, "hedef": [{"tur": "kolon", "no": 1}]})
     assert y2["oneriler"][0] == y["oneriler"][0] and kopru._GENEL_ONBELLEK[kimlik] is g
-    # mütemadi temel: tekil temel mesnetleriyle, uyarıyla
+    # mütemadi temel: genel motor da gerçek temelle (Winkler ağı) çözer; eskiden tekil temel mesnetleriyle, uyarıyla
     v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("betonarme-3kat-surekli-temel")})["veri"]
     y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 5}]})
-    assert y["hata"] is None and any("tekil temel mesnetleriyle" in u for u in y["uyarilar"])
+    assert y["hata"] is None and not any("tekil temel mesnetleriyle" in u for u in y["uyarilar"])
     assert y["oneriler"][0]["dc_once"] == pytest.approx(next(k["dc"] for k in v["tasarim"]["elemanlar"]
                                                              if k["tur"] == "kolon" and k["no"] == 5))
+    g = kopru._GENEL_ONBELLEK[v["cozum_kimligi"]]
+    assert g["B"].temeller["tip"] == "surekli" and g["alan"]["ag"]["temel"] is not None
 
 
 def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
@@ -544,3 +546,40 @@ def test_eleman_tasarim_genellestirilmis_model_eslesmesi(kopru):
         for tur, no in (("cubuk", rec["cubuk"]), (rec["tur"], rec["no"])):
             z = iste(kopru, "bina_eleman_tasarim", {"cozum_kimligi": k, "tur": tur, "no": no})
             assert z["hata"] is None and z["sonuc"]["cubuk"] == rec["cubuk"] and z["sonuc"]["dc"] == rec["dc"], (tur, no, z.get("hata"))
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node kurulu değil")
+def test_genellestirilmis_mutemadi_temel_kopru_islemleri(kopru):
+    """K-1 (C11): genelleştirilmiş mütemadi temel modeli bütün köprü işlemlerinden geçer: çözüm (veri.temel), kombinasyon
+    (out.temel), ısı haritası radye katmanı, temel elemanında eleman bilgisi, tasarım, rapor, tablolar, kesit önerisi."""
+    b = yapi.bina_sablon("betonarme-3kat-surekli-temel")
+    r = subprocess.run([shutil.which("node"), "-e", _GENEL_BETIK, str(PROJE / "docs" / "model_ops.js")], input=json.dumps(b),
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    g = json.loads(r.stdout)
+    g["temeller"] = b["temeller"]
+    kopru._BINA_ONBELLEK.clear()
+    y = iste(kopru, "bina_coz", {"bina": g})
+    assert y["hata"] is None
+    v = y["veri"]
+    k = v["cozum_kimligi"]
+    assert v["model"] == "genel" and v["temel"]["tip"] == "surekli" and v["temel"]["tasarim"]
+    km = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": k, "ad": "G+Q"})
+    assert km["hata"] is None and km["sonuc"]["temel"]["p_maks"] == pytest.approx(v["temel"]["p_maks"], rel=1e-6)
+    for durum in ("G", "zarf+"):
+        a = iste(kopru, "bina_alan", {"cozum_kimligi": k, "durum": durum})
+        assert a["hata"] is None
+        rd = a["alan"]["radye"]
+        assert rd is not None and (len(rd["x"]), len(rd["y"])) == (25, 23)
+    tem = next(e["no"] for e in v["ag"]["elemanlar"] if e["tur"] == "temel-kirisi")
+    eb = iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "fe", "no": tem})
+    assert eb["hata"] is None and eb["paket"]["sekmeler"]["ic"]
+    kolon = next(c["no"] for c in v["ag"]["cubuklar"] if c["tur"] == "kolon")
+    assert iste(kopru, "bina_eleman_tasarim", {"cozum_kimligi": k, "tur": "cubuk", "no": kolon})["hata"] is None
+    assert iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "cubuk", "no": kolon})["hata"] is None
+    rp = iste(kopru, "bina_rapor", {"cozum_kimligi": k, "secenek": {"eleman_detay": "yok"}})
+    assert rp["hata"] is None and rp["html"]
+    tb = iste(kopru, "bina_tablolar", {"cozum_kimligi": k, "bina": g})
+    assert tb["hata"] is None and tb["cozumlu"]
+    ko = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": k, "hedef": [{"tur": "cubuk", "no": kolon}]})
+    assert ko["hata"] is None and ko["oneriler"] and not any("tekil temel" in u for u in ko["uyarilar"])

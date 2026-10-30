@@ -2720,16 +2720,35 @@ def _adim_13(B, ag, model, durumlar, Y, anl, deprem=None, no=13):
 # ============================================================================
 # Çıktı verisi (şema §4) ve ana işlev
 # ============================================================================
+_YAY_BINA = {"Fx": ("FX", 1.0), "Fz": ("FY", -1.0), "Fy": ("FZ", 1.0), "Mx": ("MX", 1.0), "Mz": ("MY", -1.0), "My": ("MZ", 1.0)}
+
+
+def _yay_ozet(yaylar, yaysiz):
+    """Yazılmayan (``yaysiz``) yay kayıtlarının kuvvet toplamı, bina eksenlerinde {FX, FY, FZ, MX, MY, MZ} (motor → bina: Fx→FX,
+    Fz→−FY, Fy→FZ, Mx→MX, Mz→−MY, My→MZ). Atılan yay yoksa None (kayda yay_ozet yazılmaz)."""
+    top, var = {a: 0.0 for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}, False
+    for y in yaylar:
+        if y["dugum"] in yaysiz:
+            var = True
+            a, s = _YAY_BINA.get(y.get("bilesen"), (None, 0.0))
+            if a is not None:
+                top[a] += s * y["kuvvet"]
+    return {a: _r(v) for a, v in top.items()} if var else None
+
+
 def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=None):
     """KISA → JSON. Kombinasyonlarda ``u`` yazılmaz (None; boyut), ``dugumler`` deforme şekil için kalır. ``diyagram=False``:
     eleman dizileri (x, N, V, M, …) yazılmaz, yalnız uç kuvvetleri ve enb (S, W, E durumları; tam dizi bina_kombinasyon ile).
     ``ince``: diyagramı her durumda yazılmayan eleman numaraları (radye şeritleri; elemanda ``"diyagram": false``);
     ``seyrek``: dizileri uç + orta (3 nokta) yazılan kısa elemanlar (temel kirişi parçaları, a ≈ 0,5 m); ``ince`` elemanlarda
     uç kuvvetleri de yazılmaz (tam kayıtta yalnız enb, ince kayıtta yalnız numara). ``yaysiz``: yay kayıtları yazılmayan düğümler (mütemadi/radye temel yayları: taban
-    basıncı ve oturma veri.temel'de, kombinasyonda bina_kombinasyon → temel)."""
+    basıncı ve oturma veri.temel'de, kombinasyonda bina_kombinasyon → temel); atılan yayların bina eksenlerindeki toplamı
+    ``yay_ozet`` alanına yazılır (korunum: Σ tepki + Σ yay + yay_ozet = toplam yük)."""
     ince = ince or ()
     seyrek = seyrek or ()
     yaysiz = yaysiz or ()
+    yoz = _yay_ozet(k["yaylar"], yaysiz) if yaysiz else None
+    ek = {"yay_ozet": yoz} if yoz is not None else {}
 
     def sec(e, dizi):
         return [dizi[0], dizi[len(dizi) // 2], dizi[-1]] if (e["no"] in seyrek and len(dizi) > 3) else dizi
@@ -2742,7 +2761,7 @@ def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=No
                                "enb": {a: _r5(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
                 "denge": {a: _r(v) for a, v in k["denge"].items()},
                 "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"])}
-                           for y in k["yaylar"] if y["dugum"] not in yaysiz]}
+                           for y in k["yaylar"] if y["dugum"] not in yaysiz], **ek}
     return {"u": [_r(x) for x in k["u"]] if u_dahil else None, "diyagram": True,
             "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
             "tepkiler": [{"dugum": t["dugum"], **{a: _r(t[a]) for a in ("FX", "FY", "FZ", "MX", "MY", "MZ")}} for t in k["tepkiler"]],
@@ -2752,7 +2771,7 @@ def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=No
                            "enb": {a: _r(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
             "denge": {a: _r(v) for a, v in k["denge"].items()},
             "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])}
-                       for y in k["yaylar"] if y["dugum"] not in yaysiz]}
+                       for y in k["yaylar"] if y["dugum"] not in yaysiz], **ek}
 
 
 def _kombinasyon_veri(kombinasyonlar):

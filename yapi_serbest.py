@@ -4,8 +4,9 @@
 ``yapi.bina_coz`` bina ``surum >= 3`` ise (ya da ``cubuklar`` / ``paneller`` / ``dugumler`` / ``mesnetler`` / ``uretecler``
 listesi doluysa ya da REF düğüm yükü, çubuk / panel ek yükü varsa: ``yapi._serbest_mi``, arayüzdeki ``s3Var`` ile aynı kural)
 buraya yönlendirir. Aks–kat elemanları (kolonlar, kirisler, dosemeler) varsa önce aynı kurallarla genel listeye çevrilir
-(``docs/model_ops.js`` ``genellestir`` ile birebir), böylece aynı bina iki yoldan aynı sonucu verir. Temel: yalnız tekil temel
-(kolon tabanı mesnetleri); mütemadi / radye temel genel modelde henüz çözülmez (öğretici hata).
+(``docs/model_ops.js`` ``genellestir`` ile birebir), böylece aynı bina iki yoldan aynı sonucu verir. Temel: tekil (en alt
+seviyedeki aks kesişimleri temel mesnetidir), mütemadi ya da radye (aynı düğümler temel.py'nin Winkler ağına bağlanır: temel
+kirişleri GLOBAL X/Y aksları boyunca, radye GLOBAL aks zarfı + taşma üzerinde; aks–kat motoruyla aynı işlevler, ``_temel_gorunum``).
 
 Modelleme ilkesi (tasarım belgesi §19): her düğüm bir **aks kesişimi** (X aksı × Y aksı × Z aksı; ek kartezyen ya da
 silindirik aks sistemleri) ya da bir çubuğun **bölme / kesişim** noktasıdır. Aks taşınınca ona bağlı düğümler (bölme
@@ -972,13 +973,9 @@ def _lam_bina(Pi, Pj, aci):
     return [list(Y._bina_vek(s)) for s in lam]
 
 
-TEMEL_TIP_HATASI = ("Mütemadi (sürekli) ve radye temel genel (surum 3) modelde henüz çözülmüyor; temeller.tip = \"tekil\" yapın ya da "
-                    "modeli aks–kat (kolon/kiriş/döşeme) olarak çözün. Genel modelde kolon tabanları tekil temel mesnetidir.")
-
-
-def _oku(bina, temel_tekil=False):
-    """Bina JSON → normalize model ``B``. ``temel_tekil`` (yalnız kesit önerisi): mütemadi/radye temel tekil temel mesnetleriyle
-    çözülür (uyarı yazılır); verilmezse bu temel tipleri öğretici hatadır."""
+def _oku(bina):
+    """Bina JSON → normalize model ``B``. Temel: tekil (en alt seviyedeki aks kesişimleri temel mesnetidir) ya da mütemadi /
+    radye (aynı düğümler temel.py Winkler ağına bağlanır; ``_temel_oku``, ``_temel_agi``)."""
     if isinstance(bina, str):
         try:
             bina = json.loads(bina)
@@ -1046,15 +1043,7 @@ def _oku(bina, temel_tekil=False):
     mesnet = str(t.get("mesnet") or "ankastre").strip().lower()
     if mesnet not in ("ankastre", "mafsal", "elastik"):
         raise MatrisHatasi(f"temeller.mesnet {mesnet!r}; 'ankastre', 'mafsal' ya da 'elastik' olmalı.")
-    tip = str(t.get("tip") or "tekil").strip().lower()
-    if tip not in ("tekil", "surekli", "radye"):
-        raise MatrisHatasi(f"temeller.tip {t.get('tip')!r} tanımsız; 'tekil', 'surekli' ya da 'radye' olmalı.")
-    if tip in ("surekli", "radye"):
-        if not temel_tekil:
-            raise MatrisHatasi(TEMEL_TIP_HATASI)
-        B.uyarilar.append(f"temeller.tip = {tip!r} genel modelde çözülmüyor: bu hesapta kolon tabanları tekil temel mesnetidir "
-                          "(mütemadi/radye temel kirişi, plak ve Winkler zemini yok sayıldı).")
-        tip = "tekil"
+    tip = _temel_tipi(t)
     B.temeller = {"tip": tip, "mesnet": mesnet,
                   "varsayilan": {"B": float(var.get("B", 1.5)), "L": float(var.get("L", 1.5)), "h": float(var.get("h", 0.6))},
                   "zemin": {"q_em": float(zem.get("q_em", 200.0)), "k0": float(zem.get("k0", 20000.0))}, "ozel": {}}
@@ -1083,6 +1072,7 @@ def _oku(bina, temel_tekil=False):
     B.kat = {kt["no"]: kt for kt in B.katlar}
     B.nk = len(B.katlar) - 1
     _panelleri_oku(B, ham_p, coz)
+    _temel_oku(B, t)
     _mesnetleri_oku(B, bina, coz)
     B.ek_yukler_ham = ham_ek
     _ek_yukleri_oku(B, ham_ek, coz)
@@ -1357,8 +1347,12 @@ def _mesnetleri_oku(B, bina, coz):
     z0 = B.katlar[0]["kot"] if B.katlar else None
     tip = B.temeller["mesnet"]
     k0 = B.temeller["zemin"]["k0"]
+    B.temel_dugumleri = []
     for d in coz.dugum.values():
         if d["no"] in B.mesnetler or d.get("tur") != "aks" or not d.get("aks") or z0 is None or abs(d["Z"] - z0) > 1e-6:
+            continue
+        if B.temeller["tip"] != "tekil":      # mütemadi / radye: aks kesişimi tabanı Winkler temel ağına bağlanır (sabit mesnet yok)
+            B.temel_dugumleri.append(d["no"])
             continue
         sistem = d.get("sistem") or "GLOBAL"
         r = tip != "mafsal"
@@ -1568,6 +1562,7 @@ def _yuzen_denetle(B, coz):
         if y["dugum"] not in kullanilan:
             raise MatrisHatasi(f"Düğüm yükü düğüm {y['dugum']}'e verilmiş ama bu düğüm hiçbir çubuğa bağlı değil (yüzen düğüm); yük ancak "
                                "çubuk uçlarına verilebilir.")
+    B.temel_dugumleri = [n for n in getattr(B, "temel_dugumleri", []) if n in kullanilan]
     sil = [n for n in coz.dugum if n not in kullanilan]
     if sil:
         acik = [n for n in sil if n in coz.kayit]
@@ -1576,7 +1571,10 @@ def _yuzen_denetle(B, coz):
                               + (" …" if len(acik) > 12 else "") + ".")
         for n in sil:
             del coz.dugum[n]
-    if not B.mesnetler:
+    if B.temeller["tip"] != "tekil" and not B.temel_dugumleri:
+        raise MatrisHatasi(f"temeller.tip = {B.temeller['tip']!r}: temele oturan aks kesişimi yok (en alt Z seviyesinde çubuk ucu olan aks "
+                           "kesişimi bulunmadı); kolon tabanlarını en alt seviyedeki aks kesişimlerine bağlayın.")
+    if not B.mesnetler and not B.temel_dugumleri:
         raise MatrisHatasi("Yapıda mesnet yok: kat 0 Z aksındaki aks kesişimleri temele oturur (temeller.mesnet) ya da 'mesnetler' "
                            "listesiyle mesnet verin.")
 
@@ -2062,6 +2060,345 @@ def _diyafram_modu(B, kat):
     return istek, "deprem.diyafram"
 
 
+# ============================================================================
+# 7b) Mütemadi / radye temel (temel.py): aks–kat görünümü (BT) üzerinden aynı ağ, yük, sonuç ve anlatım işlevleri
+# ============================================================================
+TEMEL_MAFSAL_NOTU = "Genel modelde mafsallı taban için kolon çubuğunun alt ucuna serbest: My, Mz verin."
+TEMEL_ILK_NO = 50001             # temel.py ara düğümleri (aks kesişimi dışındaki ağ noktaları) bu numaradan başlar
+_TEMEL_BLOK = 10000              # ara düğüm numara bloğu [ilk_no, ilk_no + 10000) modelde boş seçilir
+_TEMEL_TIPLERI = {"tekil": "tekil", "surekli": "surekli", "sürekli": "surekli", "mutemadi": "surekli", "mütemadi": "surekli",
+                  "radye": "radye"}
+
+
+def _tm():
+    """temel.py (mütemadi / radye temel); bulunamazsa None (yalnız tekil temel çalışır)."""
+    try:
+        return importlib.import_module("temel")
+    except ImportError:
+        return None
+
+
+def _temel_tipi(t):
+    """temeller.tip → 'tekil' | 'surekli' | 'radye' (temel.tip_oku: sürekli / mutemadi / mütemadi eş anlamlı)."""
+    tm = _tm()
+    if tm is not None:
+        tip = tm.tip_oku(t.get("tip"))
+    else:
+        tip = _TEMEL_TIPLERI.get(str(t.get("tip") or "tekil").strip().lower())
+        if tip is None:
+            raise MatrisHatasi(f"temeller.tip {t.get('tip')!r} tanımsız; 'tekil', 'surekli' ya da 'radye' olmalı.")
+    if tip != "tekil" and tm is None:
+        raise MatrisHatasi(f"temeller.tip = {tip!r} için temel.py modülü gerekli (bu kurulumda yok); tekil temel kullanın.")
+    return tip
+
+
+def _temel_oku(B, t):
+    """temel.oku ile aynı doğrulama ve varsayılanlar (yapi.py ile aynı): zemin ek alanları (gamma, q_k) her tipte; mütemadi /
+    radyede yapılandırma (surekli | radye), temel betonu, donatısı ve varsayımlar B.temeller'e."""
+    tm = _tm()
+    if tm is None:
+        return
+    ek = tm.oku(_temel_gorunum(B, ilk=True), t)
+    B.temeller["zemin"].update({a: v for a, v in ek["zemin_ek"].items() if v is not None})
+    if B.temeller["tip"] != "tekil":
+        for a in ("surekli", "radye", "beton", "donati", "varsayim"):
+            if a in ek:
+                B.temeller[a] = ek[a]
+        B.temeller["varsayim"] = list(B.temeller.get("varsayim") or []) + [TEMEL_MAFSAL_NOTU]
+
+
+def _kolon_boyutlari(B, c, lam):
+    """Kolon kesitinin bina X ve Y doğrultusundaki boyutları (bX, bY): kesit yüksekliği h yerel y′, genişliği b yerel z′ boyunca
+    (aks–kat: yon x → bX = h, bY = b; aci 90 → takas). Vute temel kesitiyle; b/h yoksa √A."""
+    ks = B.kesitler[c["kesit"]]
+    kt = (B.kesitler.get(ks.get("temel")) or ks) if ks.get("tip") == "vute" else ks
+    kok = math.sqrt(kt["A"]) if kt.get("A") else 0.3
+    b = kt.get("b") or kok
+    h = kt.get("h") or kok
+    y, z = lam[1], lam[2]
+    return abs(y[0]) * h + abs(z[0]) * b, abs(y[1]) * h + abs(z[1]) * b
+
+
+def _adres_kisa(d, seviye=True):
+    """Aks düğümü adresi: 'A1/±0.00' (ek sistemde 'R:PQ/±0.00'); seviye=False → 'A1' / 'R:PQ'."""
+    if d.get("tur") == "aks" and d.get("aks"):
+        on = "" if d.get("sistem") in (None, "GLOBAL") else f"{d['sistem']}:"
+        return f"{on}{d['aks'][0]}{d['aks'][1]}" + (f"/{d.get('z')}" if seviye else "")
+    return f"D{d['no']}"
+
+
+def _malzeme_adi(B, ks):
+    return ks.get("malzeme") or (B.kesitler.get(ks.get("temel")) or {}).get("malzeme")
+
+
+def _temel_gorunum(B, ilk=False, ag=None):
+    """temel.py'nin beklediği aks–kat arayüzü (BT; ``SimpleNamespace``): GLOBAL X/Y aksları konuma göre sıralı (xk, xad, yk, yad;
+    ax, ay = {ad: sıra}), kat {0: kot_0}, temeller / malzemeler / kesitler (B'ye başvuru), taban_ixy {temel düğümü: (ix, iy)},
+    kolonlar (taban kolonu olan her temel düğümü için kat 1 kaydı: no = çubuk no, ix, iy, aks, adres 'Ç5 (A1)', bX, bY, eleman =
+    tabandaki FE parçası — ``ag`` yoksa None —, uc 'i' | 'j', lam, malzeme, dugum, cubuk), kolon_key {(ix, iy, 1): kayıt},
+    kolon_no {çubuk no: kayıt}, sanal (eklenen sanal ızgara çizgisi sayısı).
+
+    GLOBAL ızgaranın 1 mm yakınındaki ek aks sistemi tabanları o aks kesişimi sayılır. Izgara dışındaki tabanlar: kirişsiz radyede
+    düğümden geçen sanal çizgiler (x=<X>, y=<Y>) eklenir; mütemadi temelde ve kirişli radyede öğretici hata. ``ilk=True``: okuma
+    aşaması (temel.oku için aks adları ve kolon malzemeleri). Çözülmemiş modelde de çalışır (tablolar)."""
+    S = B.sistemler["GLOBAL"]
+    xs = sorted(((S["a1"][a], a) for a in S["s1"]), key=lambda v: v[0])
+    ys = sorted(((S["a2"][a], a) for a in S["s2"]), key=lambda v: v[0])
+    BT = SimpleNamespace(malzemeler=B.malzemeler, temeller=B.temeller, kesitler=B.kesitler, serbest=True, sanal=0)
+    BT.kat = {0: {"kot": B.katlar[0]["kot"] if B.katlar else 0.0}}
+
+    def eksenler():
+        BT.xk, BT.xad = [v for v, _ in xs], [a for _, a in xs]
+        BT.yk, BT.yad = [v for v, _ in ys], [a for _, a in ys]
+        BT.ax = {a: i for i, a in enumerate(BT.xad)}
+        BT.ay = {a: i for i, a in enumerate(BT.yad)}
+
+    if ilk:          # okuma aşaması: akslar (temeller.surekli.akslar doğrulaması) ve temel betonu seçimi (kolon malzemeleri)
+        eksenler()
+        BT.kolonlar = []
+        for c in B.cubuklar:
+            if c["tur"] == "kolon":
+                mad = _malzeme_adi(B, B.kesitler.get(c["kesit"]) or {})
+                if mad in B.malzemeler:
+                    BT.kolonlar.append({"kat": c.get("kat") or 1, "malzeme": mad})
+        return BT
+    D = B.coz.dugum
+    tabanlar = [(n, D[n]["X"], D[n]["Y"]) for n in getattr(B, "temel_dugumleri", []) if n in D]
+
+    def ara(liste, v):
+        en = min(range(len(liste)), key=lambda i: abs(liste[i][0] - v), default=None)
+        return en if en is not None and abs(liste[en][0] - v) <= TOL else None
+    disarida = [(n, X, Y_) for n, X, Y_ in tabanlar if ara(xs, X) is None or ara(ys, Y_) is None]
+    tip = B.temeller["tip"]
+    if disarida:
+        kirisli = tip == "radye" and (B.temeller.get("radye") or {}).get("kiris")
+        if tip == "surekli" or kirisli:
+            liste = ", ".join(f"{n} ({_adres_kisa(D[n])})" for n, _, _ in disarida[:6]) + (" …" if len(disarida) > 6 else "")
+            raise MatrisHatasi(f"{'Mütemadi temel' if tip == 'surekli' else 'Kirişli radye'}: taban düğümü {liste} GLOBAL X/Y aks "
+                               "kesişiminde değil (ek aks sistemi). Temel kirişleri yalnız GLOBAL akslar boyunca kurulur: bu düğüme "
+                               "'mesnetler' listesiyle mesnet verin, kirişsiz radye ya da tekil temel seçin.")
+        for n, X, Y_ in disarida:        # kirişsiz radye: düğümden geçen sanal ızgara çizgileri
+            if ara(xs, X) is None:
+                xs.append((X, f"x={_f(X, 3)}"))
+                BT.sanal += 1
+            if ara(ys, Y_) is None:
+                ys.append((Y_, f"y={_f(Y_, 3)}"))
+                BT.sanal += 1
+        xs.sort(key=lambda v: v[0])
+        ys.sort(key=lambda v: v[0])
+    eksenler()
+    BT.taban_ixy = {n: (ara(xs, X), ara(ys, Y_)) for n, X, Y_ in tabanlar}
+    BT.kolonlar, BT.kolon_key, BT.kolon_no = [], {}, {}
+    gorulen = set()
+    for c in sorted(B.cubuklar, key=lambda c: c["no"]):
+        if c["tur"] != "kolon":
+            continue
+        for uc, n, m in (("i", c["i"], c["j"]), ("j", c["j"], c["i"])):
+            if n not in BT.taban_ixy or n in gorulen or D[m]["Z"] <= D[n]["Z"] + 1e-6:
+                continue
+            ix, iy = BT.taban_ixy[n]
+            if (ix, iy, 1) in BT.kolon_key:
+                continue
+            gorulen.add(n)
+            fe = ((c["fe"][0] if uc == "i" else c["fe"][-1]) if c.get("fe") else None) if ag is not None else None
+            e = ag["eno"].get(fe) if (ag is not None and fe is not None) else None
+            lam = e["lam"] if e else c["lam"]
+            bX, bY = _kolon_boyutlari(B, c, lam)
+            kol = {"no": c["no"], "ix": ix, "iy": iy, "kat": 1, "aks": [BT.xad[ix], BT.yad[iy]],
+                   "adres": f"Ç{c['no']} ({_adres_kisa(D[n], seviye=False)})", "bX": bX, "bY": bY, "eleman": fe, "uc": uc, "lam": lam,
+                   "malzeme": _malzeme_adi(B, B.kesitler[c["kesit"]]), "dugum": n, "cubuk": c["no"]}
+            BT.kolonlar.append(kol)
+            BT.kolon_key[(ix, iy, 1)] = kol
+            BT.kolon_no[c["no"]] = kol
+    return BT
+
+
+def _temel_kisa(info):
+    """Y._kisa_veri için temel ağı alanları (yapi._veri_olustur ile aynı): radye şeritleri diyagramsız (ince), temel kirişi
+    parçaları 3 noktalı (seyrek), temel düğümü yayları yazılmaz (yaysiz; taban basıncı veri.temel'de, yay_ozet'te toplamları)."""
+    if info is None:
+        return {"ince": set(), "seyrek": set(), "yaysiz": set()}
+    return {"ince": set(info.ince), "seyrek": set(info.seyrek), "yaysiz": set(info.dno)}
+
+
+def _temel_yuk(B, YK, info, g):
+    """Temel öz ağırlığı (temel.py info.yuk_G, motor ekseninde: yerel yayılı q ve düğüm yükleri) G durumuna; kat 0 satırına ve
+    toplam G'ye W (yapi._yuk_durumlari + temel.yuk_kaydet ile aynı). Temel kütlesi deprem kütlesi değildir (kat 0)."""
+    g["yayili"] += [dict(y) for y in info.yuk_G["yayili"]]
+    g["yayili_esdeger"] += [dict(y) for y in info.yuk_G["yayili"]]
+    for y in info.yuk_G["yukler"]:
+        var = next((x for x in g["yukler"] if x["dugum"] == y["dugum"]), None)
+        if var is None:
+            g["yukler"].append(dict(y))
+        else:
+            for a in ("Fx", "Fy", "Fz", "Mx", "My", "Mz"):
+                var[a] = var.get(a, 0.0) + y[a]
+    W = info.W
+    YK.toplam["G"] += W
+    for k in YK.katlar:
+        if k["kat"] == 0:
+            k["G"] += W
+            k["w"] += W
+    YK.temel_oz = W
+
+
+def _temel_sonuclari(B, ag, paket, kombinasyonlar, YK):
+    """temel.sonuclar (veri.temel; aks–kat ile aynı işlev, BT görünümüyle) + genel model yük akışı: temele inen düşey kuvvet
+    temel ağı düğümlerine bağlanan bütün çubuk uçlarından (kolon, çapraz, bağ…) ve bu düğümlere doğrudan verilen düğüm
+    yüklerinden toplanır (servis G + Q). kolon_N_kolonlar: yalnız taban kolonları (temel.py sayısı); aks–kat modelinde ikisi aynı."""
+    tm = _tm()
+    info = ag["temel"]
+    veri, ic = tm.sonuclar(info.BT, ag, paket, kombinasyonlar)
+    ya = veri["yuk_akisi"]
+    kat = {d: 1.0 for d in ("G", "Q") if d in paket.durum}
+    e_idx = {no: j for j, no in enumerate(paket.el_no)}
+    net = set(info.dno)
+    F = 0.0
+    for e in ag["elemanlar"]:
+        if e.get("cubuk") is None:
+            continue
+        uclar = [k for k, n in enumerate(e["dugumler"]) if n in net]
+        if not uclar:
+            continue
+        u = np.zeros(12)
+        for d, gm in kat.items():
+            u += gm * np.asarray(paket.durum[d]["uc"][e_idx[e["no"]]], dtype=float)
+        lamT = np.asarray(e["lam"], dtype=float).T
+        for k in uclar:          # eleman ucuna düğümden gelen kuvvet (yerel → bina); yukarı + = düğüme (temele) aşağı yük
+            F += float((lamT @ u[6 * k:6 * k + 3])[2])
+    dug = 0.0
+    for n in net:
+        for d, gm in kat.items():
+            Fd = YK.dugum.get(n, {}).get(d)
+            if Fd is not None:
+                dug -= gm * Fd[2]
+    km = tm._Kmb(paket, info)
+    w = -km.uz(kat)
+    zemin = float(info.k0 * np.dot(w, [r["A"] for r in info.dugumler]))      # Σ p·A (yuvarlatılmamış)
+    ya["kolon_N_kolonlar"] = ya["kolon_N"]
+    ya["kolon_N"] = tm._r(F + dug, 7)
+    ya["dugum_yuku"] = tm._r(dug, 7)
+    ya["fark"] = tm._r(zemin - (F + dug) - info.W, 5)
+    return veri, ic
+
+
+def _temel_ilk_no(B, dno):
+    """temel.py ara düğümleri için ilk numara: 50001'den başlayıp [ilk_no, ilk_no + 10000) bloğunda model düğümü olmayan ilk değer
+    (kullanıcı 50001… numaralı düğüm kaydı verdiyse çakışma olmaz)."""
+    mevcut = sorted({n for n in (set(dno) | set(B.coz.dugum) | set(B.coz.kayit) | {_EFENDI + k["no"] for k in B.katlar})
+                     if n >= TEMEL_ILK_NO})
+    ilk = TEMEL_ILK_NO
+    for n in mevcut:
+        if n >= ilk + _TEMEL_BLOK:
+            break
+        if n >= ilk:
+            ilk = n + 1
+    return ilk
+
+
+def _temel_agi(B, dugumler, dno, elemanlar, model_el, eno):
+    """temel.ag_kur ile mütemadi / radye temel ağı (aks–kat görünümü BT). GLOBAL aks kesişimindeki ağ noktaları mevcut düğümü
+    kullanır (temel düğümü = C3 tabanı) ya da aks–kat numara kuralıyla (20·ix + iy + 1) yaratılır; sanal çizgi noktaları 500001…,
+    öteki ağ noktaları ``_temel_ilk_no``'dan. Yeni elemanlar 'cubuk': None, yerel eksen lam bina koordinatında. Dönüş (eno, info)."""
+    tm = _tm()
+    coz = B.coz
+    S = B.sistemler["GLOBAL"]
+    BT = _temel_gorunum(B, ag={"eno": {e["no"]: e for e in elemanlar}})
+    z0 = BT.kat[0]["kot"]
+    z_ad = B.katlar[0].get("z") or B.katlar[0]["ad"]
+    tip_ad = "mütemadi temel" if B.temeller["tip"] == "surekli" else "radye"
+    ilk_no = _temel_ilk_no(B, dno)
+    konum = {}
+    for d in dugumler:
+        if not d["ic"] and not d["efendi"] and abs(d["Z"] - z0) <= 1e-6:
+            konum.setdefault((round(d["X"], 3), round(d["Y"], 3)), d["no"])
+    acik = {n for n, m in B.mesnetler.items() if m.get("kaynak") != "temel"}
+    tab_ters = {ixy: n for n, ixy in BT.taban_ixy.items()}
+
+    def bul(X, Yy):
+        for dx in (0.0, -0.001, 0.001):
+            for dy in (0.0, -0.001, 0.001):
+                n = konum.get((round(X + dx, 3), round(Yy + dy, 3)))
+                if n is not None and math.hypot(dno[n]["X"] - X, dno[n]["Y"] - Yy) <= TOL:
+                    return n
+        return None
+
+    def mesnet_hatasi(n):
+        raise MatrisHatasi(f"Düğüm {n} ({dno[n]['adres']}) açık mesnetli ('mesnetler') ve {tip_ad} ağının üzerinde. Açık mesnedi "
+                           "kaldırın (düğüm temele oturur) ya da tekil temel seçin.")
+
+    def bos(a):
+        return (a not in dno and a not in coz.dugum and a not in coz.kayit and not ilk_no <= a < ilk_no + _TEMEL_BLOK)
+
+    def dugum(ix, iy, kat):
+        X, Yy = BT.xk[ix], BT.yk[iy]
+        n = tab_ters.get((ix, iy))
+        if n is None:
+            n = bul(X, Yy)
+        if n is not None:
+            if n in acik:
+                mesnet_hatasi(n)
+            return n
+        xad, yad = BT.xad[ix], BT.yad[iy]
+        gercek = xad in S["a1"] and yad in S["a2"]
+        aday = None
+        if gercek:
+            i1, i2 = S["s1"].index(xad), S["s2"].index(yad)
+            if i2 < 20 and bos(20 * i1 + i2 + 1):
+                aday = 20 * i1 + i2 + 1
+        if aday is None:
+            coz._sira += 1
+            while not bos(coz._sira):
+                coz._sira += 1
+            aday = coz._sira
+        coz.ekle(aday, (X, Yy, z0), {"tur": "aks", "sistem": "GLOBAL", "aks": [xad, yad], "z": z_ad, "ix": i1, "iy": i2}
+                 if gercek else {"tur": "temel"})
+        r = {"no": aday, "X": X, "Y": Yy, "Z": z0, "adres": f"{xad}{yad}/{z_ad}" if gercek else f"T({_f(X)}; {_f(Yy)})", "kat": 0,
+             "aks": [xad, yad] if gercek else None, "efendi": False, "key": (aday, 0, 0), "tur": "temel", "seviye_tam": 0,
+             "ic": False, "ad": None}
+        dugumler.append(r)
+        dno[aday] = r
+        konum[(round(X, 3), round(Yy, 3))] = aday
+        return aday
+
+    eno0 = eno
+    once = len(dugumler)
+    eno, info = tm.ag_kur(BT, dugum, dugumler, elemanlar, model_el, eno, en_fazla=EN_FAZLA_SD, ilk_no=ilk_no)
+    tm.sayilar_sd_denetimi(BT, dugumler, info, EN_FAZLA_SD)
+    for r in dugumler[once:]:          # temel.py'nin eklediği ara düğümler genel model kaydı alanlarıyla
+        for a, v in (("tur", "temel"), ("seviye_tam", 0), ("ic", False), ("ad", None)):
+            r.setdefault(a, v)
+        r["key"] = (r["no"], 0, 0)
+        dno[r["no"]] = r
+    for r in info.dugumler:            # açık mesnet bir ağ noktasıyla çakışıyorsa (aks kesişimi dışındaki ağ noktaları dahil)
+        n = bul(r["X"], r["Y"])
+        if n is not None and n in acik:
+            mesnet_hatasi(n)
+    for e in elemanlar:
+        if e["no"] > eno0:
+            a, b = dno[e["dugumler"][0]], dno[e["dugumler"][1]]
+            e["lam"] = _lam_bina((a["X"], a["Y"], a["Z"]), (b["X"], b["Y"], b["Z"]), 0)
+            e["cubuk"] = None
+    kopuk = [n for n in B.temel_dugumleri if n not in info.dno]
+    if kopuk:
+        n = kopuk[0]
+        kolonsuz = all(k["dugum"] != n for k in BT.kolonlar)
+        raise MatrisHatasi(f"{'Mütemadi temel' if B.temeller['tip'] == 'surekli' else 'Radye'}: taban düğümü {n} ({dno[n]['adres']}) "
+                           "temel ağına bağlanmadı (altında temel kirişi yok). Aksı temeller.surekli.akslar listesine ekleyin, yon = "
+                           "'xy' seçin ya da bu düğüme 'mesnetler' ile mesnet verin."
+                           + (" (düğüm kolon taşımıyor: temel kirişinin uçları kolonlara göre belirlenir)" if kolonsuz else ""))
+    bag = [c["no"] for c in B.cubuklar if abs(coz.dugum[c["i"]]["Z"] - z0) <= 1e-6 and abs(coz.dugum[c["j"]]["Z"] - z0) <= 1e-6]
+    if bag:
+        B.uyarilar.append(f"{', '.join(f'Ç{n}' for n in bag[:8])}{' …' if len(bag) > 8 else ''} temel seviyesinde: temel ağıyla paralel "
+                          "çalışır (rijitlik ve öz ağırlık ayrıca sayılır); bağ kirişi istemiyorsanız silin.")
+    if BT.sanal:
+        info.notlar.append(f"Ek aks sistemindeki {sum(1 for ix, iy in BT.taban_ixy.values() if BT.xad[ix].startswith('x=') or BT.yad[iy].startswith('y='))} "
+                           f"taban düğümü için radye ızgarasına {BT.sanal} sanal çizgi eklendi (x=…, y=…). Farklı oturma denetimi ızgara "
+                           "komşuluğuna bakar: sanal çizgiyle ayrılan kolon çiftleri bu (bilgi) denetimde karşılaştırılmaz.")
+    info.BT = BT
+    return eno, info
+
+
 def _ag_kur(B, kutle=None):
     D = B.coz.dugum
     dugumler, dno = [], {}
@@ -2131,6 +2468,9 @@ def _ag_kur(B, kutle=None):
             if c["yalniz_cekme"]:
                 me["yalniz_cekme"] = True
             model_el.append(me)
+    temel_info = None
+    if B.temeller["tip"] != "tekil":
+        eno, temel_info = _temel_agi(B, dugumler, dno, elemanlar, model_el, eno)
     n_kole = len(dugumler)
     # mesnetler + otomatik dönme tutucuları (bütün çubuk uçları mafsallı düğüm)
     mesnetler, model_mes, yaylar = [], [], []
@@ -2207,7 +2547,7 @@ def _ag_kur(B, kutle=None):
         dugumler.append(r)
         dno[no] = r
     nsd = 6 * n_kole
-    if nsd > EN_FAZLA_SD:
+    if nsd - (temel_info.tutulu_sd if temel_info is not None else 0) > EN_FAZLA_SD:
         raise MatrisHatasi(f"Model {n_kole} düğüm × 6 = {nsd} serbestlik derecesi; tarayıcıda çözüm için en fazla {EN_FAZLA_SD}. "
                            "Modeli küçültün (bölme düğümlerini azaltın, vute parça sayısını düşürün: analiz.vute_parca).")
     model_dg = []
@@ -2215,6 +2555,9 @@ def _ag_kur(B, kutle=None):
         d["m"] = Y._motor_koordinat(d["X"], d["Y"], d["Z"])
         if not d["efendi"]:
             model_dg.append({"no": d["no"], "x": d["m"][0], "y": d["m"][1], "z": d["m"][2]})
+    if temel_info is not None:
+        model_mes += [dict(m) for m in temel_info.model_mesnet]
+        yaylar += [dict(y) for y in temel_info.model_yay]
     model = {"tip": "cerceve3b", "hesap": "sayisal", "baslik": B.baslik + " — genel model", "birim": dict(B.birim),
              "dugumler": model_dg, "elemanlar": model_el, "mesnetler": model_mes, "yukler": [], "yayili": []}
     if yaylar:
@@ -2243,7 +2586,7 @@ def _ag_kur(B, kutle=None):
     ag = {"dugumler": dugumler, "elemanlar": elemanlar, "mesnetler": mesnetler, "sd_sayisi": nsd, "mod": "sayisal",
           "dugum_key": dugum_key, "dno": dno, "efendi": efendi, "diyaframlar": diyaframlar, "n_kole": n_kole,
           "diyafram_istek": istek, "diyafram_destek": True, "diyafram_mod": mod, "rijitlik_carpani": {"kolon": ck, "kiris": cb},
-          "model_c": model_c, "donme_tutulan": donme, "fe_cubuk": {e["no"]: e["cubuk"] for e in elemanlar}}
+          "model_c": model_c, "donme_tutulan": donme, "fe_cubuk": {e["no"]: e["cubuk"] for e in elemanlar}, "temel": temel_info}
     return ag, model
 
 
@@ -2709,6 +3052,8 @@ def _akis(B, YK, ag, durumlar_kisa):
                      p["toplam"][d] for p in B.paneller if p["dagitim"] == "yok"),
                  "cubuk_oz": sum(o.get(d, {}).get("oz", 0.0) for o in YK.cubuk_ozet.values()),
                  "duvarlar": sum(o.get(d, {}).get("duvar", 0.0) for o in YK.cubuk_ozet.values())}
+        if getattr(YK, "temel_oz", 0.0) and d == "G":
+            parca["temel_oz"] = YK.temel_oz          # temel kirişi / radye öz ağırlığı (kat 0; temel.py W)
         parca["ek"] = YK.toplam[d] - sum(parca.values())
         parca.update({"toplam": YK.toplam[d], "temel": tep, "yay": yay, "kolon_taban": tep + yay})
         korunum[d] = parca
@@ -3775,9 +4120,10 @@ def _oneri_uygula(bina, oneriler, B, tur_tasarim=None, kucultme=True):
 # 14) Çıktı verisi (yapi şemasıyla geriye uyumlu + genel model alanları)
 # ============================================================================
 def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, *, deprem, ruzgar, kutle, ozetler,
-          gosterilecek, kimlik, kren, yalniz):
+          gosterilecek, kimlik, kren, yalniz, temel_veri=None):
     S = Y._sonlu
     D = B.coz.dugum
+    tk = _temel_kisa(ag.get("temel"))
     bina = {
         "baslik": B.baslik, "sistem": B.sistem, "model": "genel",
         "akslar": {k: [dict(a) for a in v] for k, v in B.akslar.items()},
@@ -3792,7 +4138,9 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
         "temeller": {"tip": B.temeller["tip"], "mesnet": B.temeller["mesnet"], "zemin": dict(B.temeller["zemin"]),
                      "varsayilan": dict(B.temeller["varsayilan"]),
                      "liste": [{"dugum": t["dugum"], "kolon_no": t["kolon_no"], "aks": t["aks"], "B": t.get("B"), "L": t.get("L")}
-                               for t in akis["temeller"]]},
+                               for t in akis["temeller"]],
+                     **({"surekli": {a: v for a, v in B.temeller["surekli"].items() if a != "kesit"}} if B.temeller["tip"] == "surekli" else {}),
+                     **({"radye": dict(B.temeller["radye"])} if B.temeller["tip"] == "radye" else {})},
         "deprem": copy.deepcopy(B.deprem), "kar": copy.deepcopy(B.kar), "ruzgar": copy.deepcopy(B.ruzgar),
         "kombinasyon_kumesi": B.kombinasyon_kumesi, "analiz": {k: v for k, v in B.analiz.items()},
     }
@@ -3865,6 +4213,14 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
             uyarilar.append(f"Doğrulanmamış kütüphane değeri kullanıldı: KAPLAMALAR (panel P{p['no']}): {p['g_kaynak']}")
     uyarilar = list(dict.fromkeys(uyarilar))
     en_dc = max((t.get("DC", 0.0) for t in akis["temeller"]), default=0.0)
+    if temel_veri is not None:
+        en_dc = max(en_dc, float(temel_veri["DC_zemin"]))
+        for u in temel_veri["uyarilar"]:
+            uyarilar.append("Temel: " + u)
+        if temel_veri["en_buyuk_dc"] > 1.0 + 1e-9:
+            uyarilar.append(f"Temel tahkiklerinde en büyük D/C = {temel_veri['en_buyuk_dc']:.2f} > 1 (veri.temel.tasarim).")
+    if en_dc > 1.0:
+        uyarilar.append(f"En büyük temel taban basıncı oranı D/C = {en_dc:.2f} > 1.")
     if deprem:
         for u in deprem["uyarilar"]:
             if u not in uyarilar:
@@ -3892,13 +4248,14 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
     veri = {
         "tur": "bina", "surum": 3, "model": "genel", "baslik": B.baslik, "sistem": B.sistem, "birim": dict(B.birim), "cozum_kimligi": kimlik,
         "bina": bina, "kutuphane_ozeti": kutuphane_ozeti, "ag": ag_veri, "yukler": yukler,
-        "durumlar": {ad: Y._kisa_veri(k, diyagram=ad in tam) for ad, k in cikti_durum.items()},
+        "durumlar": {ad: Y._kisa_veri(k, diyagram=ad in tam, **tk) for ad, k in cikti_durum.items()},
         "kombinasyonlar": [dict(r, **({"kren": k["kren"]} if k.get("kren") else {}))
                            for r, k in zip(Y._kombinasyon_veri(kombinasyonlar), kombinasyonlar)],
         "kombinasyon_ozet": kmb_ozet, "gosterilecek": list(gosterilecek),
-        "sonuclar": {ad: Y._kisa_veri(k, u_dahil=False) for ad, k in sonuclar.items()},
+        "sonuclar": {ad: Y._kisa_veri(k, u_dahil=False, **tk) for ad, k in sonuclar.items()},
         "zarf": {"kombinasyonlar": zarf["kombinasyonlar"], "kombinasyon_sayisi": len(zarf["kombinasyonlar"]),
-                 "elemanlar": [{a: (_r6(v) if isinstance(v, float) else v) for a, v in z.items()} for z in zarf["elemanlar"]]},
+                 "elemanlar": [{a: (_r6(v) if isinstance(v, float) else v) for a, v in z.items()} for z in zarf["elemanlar"]
+                               if z["no"] not in tk["ince"]]},
         "akis": akis_veri,
         "deprem": S(deprem) if deprem else None,
         "ruzgar": S(ruzgar) if ruzgar else None,
@@ -3919,6 +4276,7 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
                  "catlamis_rijitlik": B.analiz["catlamis_rijitlik"]},
         "uyarilar": uyarilar,
         "fe_model": fe_model,
+        "temel": temel_veri if temel_veri is not None else (_tm().tekil_ozet(akis["temeller"], B.temeller["zemin"]["q_em"]) if _tm() else None),
     }
     return veri
 
@@ -3930,7 +4288,7 @@ def _tablo(b, s):
     return Y._tablo(b, s)
 
 
-def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl):
+def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl, temel=(None, None)):
     anl.baslik(B.baslik, 2)
     if B.aciklama:
         anl.metin(B.aciklama)
@@ -3982,6 +4340,19 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
               "(temeller.mesnet); bölme ve kesişim düğümleri oturmaz, onlara 'mesnetler' listesiyle mesnet verilir.")
     anl.metin(f"{ag['n_kole']} düğüm × 6 = **{ag['sd_sayisi']} SD**, {len(ag['elemanlar'])} sonlu eleman; diyafram: "
               + ", ".join(f"kat {k}: {v['mod']} ({v['neden']})" for k, v in ag["diyafram_mod"].items()) + ".")
+    ti = ag.get("temel")
+    if ti is not None:            # mütemadi / radye: aks–kat anlatımıyla aynı metin (yapi._adim_6)
+        n_tk = sum(1 for e in ti.elemanlar if e["tur"] == "temel-kirisi")
+        n_rs = len(ti.elemanlar) - n_tk
+        anl.metin(f"**Temel ({'mütemadi' if ti.tip == 'surekli' else 'radye'}):** kot_0'da {len(ti.dugumler)} temel düğümü, "
+                  f"{n_tk} temel kirişi parçası" + (f", {n_rs} radye şeridi" if n_rs else "") + ". Kolon tabanları sabit mesnet "
+                  "değildir; temel düğümüne bağlanır, her temel düğümünde düşey Winkler yayı k_z = k0·A_etki vardır"
+                  + (" ve temel düzlemi içindeki hareketler (X, Y ötelemeleri, düşey eksen etrafında dönme) tutuludur; eğilme "
+                     "dönmeleri serbesttir." if ti.yatay == "tutulu" else " ve yatay yaylar vardır.")
+                  + f" Temel kirişleri GLOBAL X/Y aksları boyunca (radye: GLOBAL aks zarfı + taşma) kurulur; aks kesişimi dışındaki "
+                  f"temel düğümleri {ti.ilk_no}'den numaralanır."
+                  + (f" Ek aks sistemindeki taban düğümleri için ızgaraya {ti.BT.sanal} sanal çizgi (x=…, y=…) eklendi." if ti.BT.sanal else "")
+                  + " Ayrıntı: 'Temel ve zemin' adımı.")
     se._basla(anl, adim(), "Yük durumları",
               "Her yük türü ayrı bir durumdur; rijitlik matrisi bir kez kurulur, bütün durumlar aynı anda çözülür.")
     anl.metin("Durumlar: " + ", ".join(f"`{d}`" for d in durumlar_kisa) + f". Çözüm yolu: {yol}.")
@@ -4001,9 +4372,10 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
     anl.metin(f"Kombinasyon kümesi `{B.kombinasyon_kumesi}`: {len(uyg)} uygulanan birleşim"
               + (f" ({sum(1 for k in uyg if k.get('kren'))} kren varyantı)" if kren else "") + ".")
     se._basla(anl, adim(), "Denge ve korunum", "Σ uygulanan düşey yük = Σ mesnet tepkisi (yay kuvvetleri dahil), her durumda.")
-    anl.metin(_tablo(["Durum", "Σ yük (kN)", "Σ tepki (kN)", "Paneller", "Çubuk öz", "Duvar", "Ek"],
-                     [[d, _f(p["toplam"], 2), _f(p["kolon_taban"], 2), _f(p["paneller"], 1), _f(p["cubuk_oz"], 1), _f(p["duvarlar"], 1),
-                       _f(p["ek"], 1)] for d, p in akis["korunum"].items()]))
+    toz = any("temel_oz" in p for p in akis["korunum"].values())
+    anl.metin(_tablo(["Durum", "Σ yük (kN)", "Σ tepki (kN)", "Paneller", "Çubuk öz", "Duvar"] + (["Temel öz"] if toz else []) + ["Ek"],
+                     [[d, _f(p["toplam"], 2), _f(p["kolon_taban"], 2), _f(p["paneller"], 1), _f(p["cubuk_oz"], 1), _f(p["duvarlar"], 1)]
+                      + ([_f(p.get("temel_oz", 0.0), 1)] if toz else []) + [_f(p["ek"], 1)] for d, p in akis["korunum"].items()]))
     if tas is not None:
         se._basla(anl, adim(), "Kesit tahkikleri", "Her çubuk kendi türüne göre tahkik edilir: çelikte ÇYTHYE (eğilmeli eleman ya da "
                   "eksenel çubuk), betonarmede TS 500; çaprazlarda TBDY 2018 Bölüm 9 koşulları.")
@@ -4015,19 +4387,19 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
               _f(k["dc"], 3), k["durum"]] for k in gec[:10]]))
         for u in tas["uyarilar"][:6]:
             anl.uyari(u)
+    if temel[0] is not None:
+        _tm().anlatim(anl, adim(), ag["temel"].BT, ag, temel[0], temel[1], toplam_servis=YK.toplam["G"] + YK.toplam["Q"])
 
 
 # ============================================================================
 # 16) Ana işlev
 # ============================================================================
-def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
+def bina_coz(bina, *, goster=None, anlat=True):
     """Genel (surum 3) bina modelini çözer. Dönüş ``mo.Sonuc``: ``.veri`` (yapi.bina_coz şemasıyla uyumlu + genel model alanları:
     ag.cubuklar, ag.paneller, yukler.paneller/cubuklar, akis.mesnetler, kren, yalniz_cekme, bina.seviyeler, uyarilar), ``.ic``
-    (tembel kombinasyon, eleman tahkiki, kesit önerisi ve ısı haritası — ``alan`` — için paket).
-
-    ``_temel_tekil`` (iç kullanım, yalnız ``kesit_oner``): mütemadi/radye temelli aks–kat binası tekil temel mesnetleriyle çözülür
-    (uyarıyla); verilmezse bu temel tipleri öğretici hatadır."""
-    B = _oku(bina, temel_tekil=_temel_tekil)
+    (tembel kombinasyon, eleman tahkiki, kesit önerisi ve ısı haritası — ``alan`` — için paket). Mütemadi / radye temelde
+    veri.temel aks–kat motoruyla aynı şemadadır (temel.py, ``_temel_gorunum`` görünümüyle); tekil temelde temel.tekil_ozet."""
+    B = _oku(bina)
     _parcalar(B)
     YK = _yukleri_hazirla(B)
     kutle = dep = None
@@ -4044,6 +4416,8 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
         cub = {cno: kay[d] for cno, kay in YK.cubuk.items() if kay.get(d)}
         dug = {n: dd[d] for n, dd in YK.dugum.items() if d in dd}
         durumlar[d] = _motor_durum(B, cub, dug)
+    if ag.get("temel") is not None:      # temel kirişi / radye öz ağırlığı (G): yapi._yuk_durumlari ile aynı kayıtlar
+        _temel_yuk(B, YK, ag["temel"], durumlar["G"])
     ruzgar = None
     if B.ruzgar:
         if any(p["ruzgar"] for p in B.paneller):
@@ -4106,8 +4480,11 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
     akis = _akis(B, YK, ag, durumlar_kisa)
     kren = _kren_veri(B, paket, kren_ozet, ag) if kren_ozet else None
     kimlik = Y._cozum_kimligi(B)
+    temel_veri = temel_ic = None
+    if ag.get("temel") is not None:
+        temel_veri, temel_ic = _temel_sonuclari(B, ag, paket, kombinasyonlar, YK)
     veri = _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, deprem=deprem, ruzgar=ruzgar,
-                 kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik, kren=kren, yalniz=yalniz)
+                 kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik, kren=kren, yalniz=yalniz, temel_veri=temel_veri)
     ts = _tasarim_mod()
     T = tas = None
     if ts is not None:
@@ -4119,16 +4496,18 @@ def bina_coz(bina, *, goster=None, anlat=True, _temel_tekil=False):
         veri["sonuclar"], veri["gosterilecek"] = {}, []
         veri["ozet"]["gosterilen_sayisi"] = 0
         veri["ozet"]["sonuclar_tembel"] = True
-    tas_tam = _boyut_sinirla(veri, durumlar_kisa)
+    tas_tam = _boyut_sinirla(veri, durumlar_kisa, temel=ag.get("temel"))
     anl = mo.Anlatim()
     if anlat:
-        _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl)
+        _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl,
+                 temel=(temel_veri, temel_ic))
     else:
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", "", "")
     sonuc.veri = veri
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T,
-                "serbest": True, "bina": B.ham, "B": B, "tas": tas, "temel": None, "oteleme_asan": _oteleme_asan(deprem),
+                "serbest": True, "bina": B.ham, "B": B, "tas": tas,
+                "temel": _tm().basinc_meta(ag["temel"]) if ag.get("temel") is not None else None, "oteleme_asan": _oteleme_asan(deprem),
                 # alan.py (ısı haritası, eleman bilgisi): yapi.bina_coz ile aynı paket — normalize bina, ağ, motor modeli, yükler,
                 # tasarım sonucu (yanıtta kısaltıldıysa tam satırlar: betonarme kullanımı kapasite satırlarını arar), kombinasyon türleri
                 "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas_tam if tas_tam is not None else tas,
@@ -4150,7 +4529,7 @@ def _oteleme_asan(deprem):
 YANIT_SINIRI = 1_600_000     # karakter: büyük modelde (yüzlerce çubuk) yanıt bu sınırı aşarsa ayrıntılar tembel bırakılır
 
 
-def _boyut_sinirla(veri, durumlar_kisa, sinir=YANIT_SINIRI):
+def _boyut_sinirla(veri, durumlar_kisa, sinir=YANIT_SINIRI, temel=None):
     """Büyük modelde yanıt boyutu: önce tasarım kontrol satırları 3'e iner (D/C'yi belirleyen satır ilk sıradadır), yetmezse G ve Q
     durumları da ince kayıt olur (tam diyagramlar bina_kombinasyon ile tembel alınır). Dönüş: tasarım kısaltıldıysa kısaltılmamış
     tasarım sonucunun kopyası (rapor için; ``ic["tas_tam"]``), yoksa None."""
@@ -4168,12 +4547,12 @@ def _boyut_sinirla(veri, durumlar_kisa, sinir=YANIT_SINIRI):
         return tam
     for ad in ("G", "Q"):
         if ad in durumlar_kisa:
-            veri["durumlar"][ad] = Y._kisa_veri(durumlar_kisa[ad], diyagram=False)
+            veri["durumlar"][ad] = Y._kisa_veri(durumlar_kisa[ad], diyagram=False, **_temel_kisa(temel))
     veri["ozet"]["durumlar_tembel"] = True
     if boy() <= sinir:
         return tam
     for k in veri["durumlar"].values():          # çok büyük model: ince kayıtlarda yalnız enb (uç kuvvetleri tembel)
-        k["elemanlar"] = [{"no": e["no"], "enb": e["enb"]} for e in k["elemanlar"]]
+        k["elemanlar"] = [{"no": e["no"], "enb": e["enb"]} if "enb" in e else e for e in k["elemanlar"]]
     veri["ozet"]["uc_kuvvetleri_tembel"] = True
     return tam
 
@@ -4225,8 +4604,8 @@ ONER_TEKIL_UYARI = "Öneri genel model motoruyla (tekil temel mesnetleriyle) hes
 
 
 def genel_cozum(bina):
-    """Aks–kat (surum 1) binasının kesit önerisi için genel motorla çözümü → ``ic`` (``ic["oner_uyarilari"]``: mütemadi/radye
-    temel tekil temel mesnetlerine çevrildiyse ``ONER_TEKIL_UYARI``). Köprü bu paketi aks–kat çözüm kimliğiyle önbelleğe alır."""
+    """Aks–kat (surum 1) binasının kesit önerisi için genel motorla çözümü → ``ic`` (gerçek temel tipiyle: tekil, mütemadi ya da
+    radye; ``ic["oner_uyarilari"]`` boş liste). Köprü bu paketi aks–kat çözüm kimliğiyle önbelleğe alır."""
     if isinstance(bina, str):
         try:
             bina = json.loads(bina)
@@ -4234,11 +4613,9 @@ def genel_cozum(bina):
             raise MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
     if not isinstance(bina, dict):
         raise MatrisHatasi("Kesit önerisi için bina bir sözlük (ya da JSON metni) olmalı.")
-    tip = str(((bina.get("temeller") or {}) if isinstance(bina.get("temeller"), dict) else {}).get("tip") or "tekil").strip().lower()
-    tekil = tip in ("surekli", "radye")
-    r = bina_coz(copy.deepcopy(bina), anlat=False, _temel_tekil=tekil)
+    r = bina_coz(copy.deepcopy(bina), anlat=False)
     ic = r.ic
-    ic["oner_uyarilari"] = [ONER_TEKIL_UYARI] if tekil else []
+    ic["oner_uyarilari"] = []
     return ic
 
 
@@ -4255,7 +4632,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     hedef: "hepsi" | [{"tur": "cubuk"|"kolon"|"kiris"|..., "no": n}].
 
     ``ic``: genel model paketi (``ic["serbest"]``) doğrudan kullanılır; aks–kat paketi (``yapi.bina_coz``) verilirse binası genel
-    motorla yeniden çözülür (mütemadi/radye temel tekil temel mesnetleriyle, uyarıyla) ve D/C önce, kullanıcının gördüğü aks–kat
+    motorla yeniden çözülür (gerçek temel tipiyle) ve D/C önce, kullanıcının gördüğü aks–kat
     tasarım tablosundan (``ic["veri"]``, ``kaynak`` eşlemesiyle) alınır. ``gorunen``: aks–kat paketi zaten genel motorla çözülmüşse
     (köprü önbelleği) görünen çözümün paketi. Her öneride C4 alanları: cubuk, tur, kesit, oneri, sistem, malzeme, b, h, kaynak,
     dc_once, dc_oneri, dc_sonra, degisim, uygula; üst düzeyde uyarilar."""
@@ -4337,7 +4714,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         if not degisen:
             break
         bina_ham = yeni
-        r = bina_coz(bina_ham, anlat=False, _temel_tekil=ONER_TEKIL_UYARI in uyarilar)
+        r = bina_coz(bina_ham, anlat=False)
         ic = r.ic
         ic["tas"] = r.veri.get("tasarim")
     son = ic.get("tas") or (ic["tasarim"] and _tasarim(ts, ic["tasarim"]))

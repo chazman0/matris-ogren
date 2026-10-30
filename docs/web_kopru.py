@@ -56,7 +56,7 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     "dc_sonra", "donati_azaltma" ([{kesit, yeni, donati_orani, rho_once, cubuklar}]: yakınsamadan sonra en küçük yeterli ρ), "bina" (yinele > 0: öneriler uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır
                     önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
                     çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
-                    kez yeniden çözülüp önbelleğe alınır (mütemadi/radye temel tekil temel mesnetleriyle, uyarıyla); dc_once
+                    kez yeniden çözülüp önbelleğe alınır (gerçek temel tipiyle: tekil, mütemadi ya da radye); dc_once
                     görünen aks–kat tasarım tablosundandır.
   "bina_eleman_bilgi": girdi {"cozum_kimligi", "tur": "cubuk" | "kolon" | "kiris" | "fe", "no", "durum"? (yük durumu,
                     kombinasyon, "zarf+"/"zarf-"/"Zarf"; varsayılan "G"), "bina"?} → {"paket": {"sekmeler": {"ic": [bölüm],

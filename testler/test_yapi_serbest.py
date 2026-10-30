@@ -847,22 +847,34 @@ def test_cozum_kimligi_cozmeden(ad):
     assert yapi.cozum_kimligi(b2) == coz(b2).veri["cozum_kimligi"]
 
 
-def test_mutemadi_radye_genel_modelde_hata():
-    for tip in ("surekli", "radye"):
-        b = yapi.bina_sablon("celik-cbf-3kat")
-        b["temeller"]["tip"] = tip
-        with pytest.raises(mo.MatrisHatasi, match="henüz çözülmüyor"):
-            coz(b)
-        r = YS.bina_coz(b, goster="yok", anlat=False, _temel_tekil=True)         # yalnız kesit önerisi: tekil temelle, uyarıyla
-        assert r.veri["bina"]["temeller"]["tip"] == "tekil" and any("genel modelde çözülmüyor" in u for u in r.veri["uyarilar"])
+def test_mutemadi_radye_genel_model_hatalari():
+    """Mütemadi / radye genel modelde çözülür (eskiden 'henüz çözülmüyor'); kalan öğretici hatalar (C11)."""
     b = yapi.bina_sablon("celik-cbf-3kat")
     b["temeller"]["tip"] = "kazik"
     with pytest.raises(mo.MatrisHatasi, match="tanımsız"):
         coz(b)
-    b = yapi.bina_sablon("betonarme-4kat-radye")                  # aks–kat modeline mesnet: genel motor + radye → öğretici hata
+    # ek aks sistemindeki taban (GLOBAL ızgaranın dışında): mütemadi temelde öğretici hata
+    b = kutu_bina(0.0, deprem=False)
+    b["aks_sistemleri"] = [{"ad": "R", "tur": "kartezyen", "orijin": [3, 3, 0], "aci": 30, "x": [{"ad": "P", "konum": 0}],
+                            "y": [{"ad": "Q", "konum": 0}]}]
+    b["cubuklar"] += [{"no": 20, "i": {"sistem": "R", "aks": ["P", "Q"], "z": "±0.00"}, "j": {"sistem": "R", "aks": ["P", "Q"], "z": "Çatı"},
+                       "tur": "kolon", "kesit": "K"},
+                      {"no": 21, "i": {"sistem": "R", "aks": ["P", "Q"], "z": "Çatı"}, "j": R("A", "1", "Çatı"), "tur": "kiris", "kesit": "B"}]
+    b["temeller"] = {"tip": "surekli", "surekli": {"yon": "xy", "B": 1.0, "tasma": 0.5}}
+    with pytest.raises(mo.MatrisHatasi, match="GLOBAL X/Y aks kesişiminde değil") as h:
+        coz(copy.deepcopy(b))
+    assert str(h.value).startswith("Mütemadi temel: taban düğümü") and "R:PQ/±0.00" in str(h.value)
+    # açık mesnet temel ağının üzerinde (A1 temel kotunda)
+    b["temeller"] = {"tip": "radye", "radye": {"h": 0.5, "tasma": 0.5}}
+    b["mesnetler"] = [{"dugum": R("A", "1", "±0.00"), "ux": True, "uy": True, "uz": True}]
+    with pytest.raises(mo.MatrisHatasi, match=r"açık mesnetli \('mesnetler'\) ve radye ağının üzerinde"):
+        coz(copy.deepcopy(b))
+    # aks–kat modeline (genel motor) üst katta açık mesnet: artık radyeyle çözülür
+    b = yapi.bina_sablon("betonarme-4kat-radye")
     b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "kat": 1}, "uz": True}]
-    with pytest.raises(mo.MatrisHatasi, match="radye temel genel"):
-        coz(b)
+    v = coz(b).veri
+    assert v["model"] == "genel" and v["temel"]["tip"] == "radye" and v["bina"]["temeller"]["tip"] == "radye"
+    assert len(v["akis"]["mesnetler"]) == 1 and v["akis"]["temeller"] == []
 
 
 def test_akis_temel_ve_acik_mesnet_kayitlari():
