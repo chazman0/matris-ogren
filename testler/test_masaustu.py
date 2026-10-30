@@ -322,7 +322,10 @@ def test_hazirla_cikti_yapisi(hazir_uygulama):
     for sayfa in ("index.html", "galeri.html"):
         html = (c / sayfa).read_text(encoding="utf-8")
         assert "cdn.jsdelivr.net" not in html, sayfa
-        assert not re.findall(r'(?:src|href)="((?:https?:)?//[^"]+)"', html), sayfa
+        # yüklenen kaynaklar (src=…, <link href=…>) yerel olmalı; <a> köprüleri kaynak yüklemez, dış adresi sistem
+        # tarayıcısında açılır (main.js shell.openExternal)
+        assert not re.findall(r'\bsrc="((?:https?:)?//[^"]+)"', html), sayfa
+        assert not re.findall(r'<link\b[^>]*\bhref="((?:https?:)?//[^"]+)"', html), sayfa
         for yol in re.findall(r'(?:src|href)="(kutuphane/[^"]+)"', html):
             assert (c / yol).is_file(), yol
     assert any(y.endswith("katex.min.css") for y in bilgi["kutuphaneler"])
