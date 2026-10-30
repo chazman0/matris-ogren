@@ -1,7 +1,7 @@
 # op4 — Opus Fortis yapısal modelleme ve analiz programı (yerel Windows uygulaması)
 
 op4, Matris Öğren'in hesap motorunu (Python: `yapi.py`, `yapi_serbest.py`, `tasarim.py`, `rapor.py` …) gömülü olarak
-kullanan, **web uygulaması olmayan**, kurulum dosyasıyla dağıtılan bir Windows programıdır (AutoCAD / Tekla benzeri).
+kullanan, **web uygulaması olmayan**, kurulum dosyasıyla dağıtılan bir Windows programıdır (ticari CAD ve yapı modelleme programları benzeri).
 Bu klasör programın **iskeletidir** (araç zinciri kanıtı): derleme, DirectX 12 çizimi, arayüz, gömülü Python, başsız
 ekran testi ve kurulum paketi uçtan uca çalışır; modelleme komutları sonraki adımlardadır.
 
