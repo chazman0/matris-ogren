@@ -924,26 +924,29 @@ def test_ek_aks_sistemi_kolon_tabanlari_mesnetli():
 
 
 def test_rijit_diyafram_seviyesinde_acik_mesnet():
+    """C14: rijit diyaframlı seviyedeki ux/uy/rz mesnedi ceza rijitlikli yayla uygulanır (eskiden öğretici hata: 'yatay ux/uy ve
+    dönme rz ayrıca mesnetlenemez'); uz/rx/ry mesnet olarak kalır."""
     b = yapi.bina_sablon("celik-cbf-3kat")
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uy": True}]
-    with pytest.raises(mo.MatrisHatasi, match=r"rijit diyaframlı \+3\.50 seviyesinde: yatay ux/uy ve dönme rz ayrıca mesnetlenemez") as h:
-        coz(b)
-    assert "analiz" in str(h.value) and "esnek" in str(h.value) and "efendi düğüm 9" not in str(h.value)
-    # ipucu önce arayüz ayarını söyler (DIYAFRAM-IPUCU; eskiden yalnız JSON düzenlemesi önerilirdi)
-    assert "Bina sayfası › Deprem sekmesi › Diyafram: «Esnek»" in str(h.value)
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uy": True, "uz": True}]
+    r = coz(b)
+    v = r.veri
+    assert v["ag"]["diyafram_seviye"]["1"]["mod"] == "rijit"
+    assert any(u.startswith("Düğüm") and "(A1/+3.50) rijit diyaframlı +3.50 seviyesinde: ux/uy/rz mesnedi diyafram bağıyla (ceza "
+               "rijitliği) uygulandı; bu nokta bütün katın yatay hareketini tutar." in u for u in v["uyarilar"])
+    m = v["akis"]["mesnetler"]
+    assert len(m) == 1 and m[0]["adres"] == "A1/+3.50"
+    yay = [y for y in v["durumlar"]["G"]["yaylar"] if y.get("tur") == "diyafram-mesnet"]
+    assert [y["bilesen"] for y in yay] == ["Fz"]                        # bina uy → motor z
+    assert all(not str(e).startswith("rijit diyaframlı") for e in v["uyarilar"])
     b2 = copy.deepcopy(b)
-    b2["deprem"]["diyafram"] = "esnek"                                                  # arayüzün yazdığı alan
-    assert coz(b2).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
-    b2 = copy.deepcopy(b)
-    b2["analiz"]["diyafram"] = {"1": "rijit"}                                            # JSON'da kat bazında rijit: ayar geçmez
-    with pytest.raises(mo.MatrisHatasi, match=r"analiz\.diyafram rijit verilmiş") as h:
-        coz(b2)
-    assert '"analiz": {"diyafram": {"1": "esnek"}}' in str(h.value) and "Deprem sekmesi" not in str(h.value)
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet verilebilir
-    assert coz(b).veri["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "ux": True}]
-    b["analiz"]["diyafram"] = {"1": "esnek"}                                             # önerilen çıkış yolu
-    assert coz(b).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    b2["deprem"]["diyafram"] = "esnek"                                  # esnek diyaframda olağan mesnet (yay yok)
+    v2 = coz(b2).veri
+    assert v2["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    assert not any(y.get("tur") == "diyafram-mesnet" for y in v2["durumlar"]["G"]["yaylar"])
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet: ceza yayı gerekmez
+    v3 = coz(b).veri
+    assert v3["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
+    assert not any(y.get("tur") == "diyafram-mesnet" for y in v3["durumlar"]["G"]["yaylar"])
 
 
 def test_panel_ek_yuku_durumu():

@@ -1632,7 +1632,7 @@ class _Paket:
         ilk = next(iter(kisalar.values()))
         self.dugum_no = [d["no"] for d in ilk["dugumler"]]
         self.tepki_dugum = [t["dugum"] for t in ilk["tepkiler"]]
-        self.yay_meta = [{a: y.get(a) for a in ("dugum", "sd", "bilesen", "k")} for y in ilk["yaylar"]]
+        self.yay_meta = [{a: y.get(a) for a in ("dugum", "sd", "bilesen", "k", "tur")} for y in ilk["yaylar"]]
         self.el_no = [e["no"] for e in ilk["elemanlar"]]
         self.el_x = [list(e["x"]) for e in ilk["elemanlar"]]
         self.ns = [len(x) for x in self.el_x]
@@ -2760,7 +2760,8 @@ def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=No
                               {"no": e["no"], "uc_kuvvetleri": [_r5(x) for x in e["uc_kuvvetleri"]],
                                "enb": {a: _r5(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
                 "denge": {a: _r(v) for a, v in k["denge"].items()},
-                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"])}
+                "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r5(y["kuvvet"]),
+                            **({"tur": y["tur"]} if y.get("tur") else {})}
                            for y in k["yaylar"] if y["dugum"] not in yaysiz], **ek}
     return {"u": [_r(x) for x in k["u"]] if u_dahil else None, "diyagram": True,
             "dugumler": [{"no": d["no"], **{a: _r(d[a]) for a in ("uX", "uY", "uZ", "rX", "rY", "rZ")}} for d in k["dugumler"]],
@@ -2770,7 +2771,8 @@ def _kisa_veri(k, u_dahil=True, diyagram=True, ince=None, seyrek=None, yaysiz=No
                            **{a: [_r6(x) for x in sec(e, e[a])] for a in _DIYAGRAM},
                            "enb": {a: _r(v) for a, v in e["enb"].items()}} for e in k["elemanlar"]],
             "denge": {a: _r(v) for a, v in k["denge"].items()},
-            "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"])}
+            "yaylar": [{"dugum": y["dugum"], "sd": y.get("sd"), "bilesen": y.get("bilesen"), "k": _r(y["k"]), "kuvvet": _r(y["kuvvet"]),
+                            **({"tur": y["tur"]} if y.get("tur") else {})}
                        for y in k["yaylar"] if y["dugum"] not in yaysiz], **ek}
 
 

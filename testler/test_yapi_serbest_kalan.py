@@ -216,3 +216,97 @@ def test_parcali_aks_kat_kirisine_tek_oneri():
 def tasarim_mod():
     import tasarim
     return tasarim
+
+
+# ---------------------------------------------------------------------------
+# K-10: yaylı mesnet (C13)
+# ---------------------------------------------------------------------------
+def _R(x, y, z):
+    return {"aks": [x, y], "z": z}
+
+
+def _yayli_konsol(P=10.0, **mesnet):
+    m = {"dugum": _R("A", "1", "Üst"), "ux": True, "uy": True, "rx": True, "ry": True, "rz": True, "kz": 5000.0}
+    m.update(mesnet)
+    return {"tur": "bina", "surum": 3, "sistem": "celik",
+            "akslar": {"x": [{"ad": "A", "konum": 0.0}, {"ad": "B", "konum": 4.0}], "y": [{"ad": "1", "konum": 0.0}],
+                       "z": [{"ad": "±0.00", "konum": 0.0, "kat": 0}, {"ad": "Üst", "konum": 3.0, "kat": 1}]},
+            "malzemeler": {"S275": {"kutuphane": "S275", "gamma": 0.0}},
+            "kesitler": {"K": {"tip": "profil", "profil": "HEB 200", "malzeme": "S275"}},
+            "cubuklar": [{"no": 1, "i": _R("A", "1", "Üst"), "j": _R("B", "1", "Üst"), "tur": "kiris", "kesit": "K"}],
+            "mesnetler": [{k: v for k, v in m.items() if v is not None}],
+            "ek_yukler": [{"tur": "dugum", "dugum": _R("B", "1", "Üst"), "durum": "G", "FZ": -P}], "kombinasyon_kumesi": "cythye_gkt"}
+
+
+def test_yayli_mesnet_konsol_el_hesabi():
+    r = coz(_yayli_konsol())
+    v = r.veri
+    B = r.ic["B"]
+    EI = B.malzemeler["S275"]["E"] * B.kesitler["K"]["I_guclu"]
+    uc = next(d["no"] for d in v["ag"]["dugumler"] if abs(d["X"] - 4.0) < 1e-9)
+    uz = next(d["uZ"] for d in v["durumlar"]["G"]["dugumler"] if d["no"] == uc)
+    assert uz == pytest.approx(-(10.0 / 5000.0 + 10.0 * 4.0 ** 3 / (3.0 * EI)), rel=1e-6)    # δ = P/k_z + P·L³/(3EI)
+    m = v["akis"]["mesnetler"]
+    assert len(m) == 1 and m[0]["tip"] == "yay" and m[0]["yay"] == {"kz": 5000.0} and m[0]["N_G"] == pytest.approx(10.0)
+    assert v["ag"]["mesnetler"][0]["yay"] == {"kz": 5000.0}
+    y = v["durumlar"]["G"]["yaylar"]
+    assert len(y) == 1 and y[0]["tur"] == "yay-mesnet" and y[0]["bilesen"] == "Fy" and y[0]["kuvvet"] == pytest.approx(10.0)
+    kg = v["akis"]["korunum"]["G"]
+    assert kg["toplam"] == pytest.approx(10.0) and kg["yay"] == pytest.approx(10.0) and kg["kolon_taban"] == pytest.approx(kg["toplam"])
+    assert all(x.get("tur") == "yay-mesnet" for k in v["sonuclar"].values() for x in k["yaylar"])
+
+
+def test_yayli_mesnet_eksen_eslemesi():
+    """Bina eksenlerindeki yaylar motor eksenlerine: kx → kx, ky → kz, kz → ky, krx → krx, kry → krz, krz → kry."""
+    b = _yayli_konsol(ux=None, uy=None, rz=None, kx=1e5, ky=2e5, krz=3e5)
+    b["mesnetler"][0].pop("kz")
+    b["mesnetler"][0]["uz"] = True
+    b["ek_yukler"] += [{"tur": "dugum", "dugum": _R("B", "1", "Üst"), "durum": "G", "FX": 20.0, "FY": 30.0}]
+    r = coz(b)
+    v = r.veri
+    y = {x["bilesen"]: x for x in v["durumlar"]["G"]["yaylar"]}
+    assert set(y) == {"Fx", "Fz", "My"} and {x["tur"] for x in y.values()} == {"yay-mesnet"}
+    assert y["Fx"]["k"] == pytest.approx(1e5) and y["Fz"]["k"] == pytest.approx(2e5) and y["My"]["k"] == pytest.approx(3e5)
+    assert y["Fx"]["kuvvet"] == pytest.approx(-20.0, rel=1e-6)                 # yatay yük yalnız yayla dengelenir
+    assert -y["Fz"]["kuvvet"] == pytest.approx(-30.0, rel=1e-6)                # bina FY = −motor Fz
+    assert v["akis"]["mesnetler"][0]["yay"] == {"kx": 1e5, "ky": 2e5, "krz": 3e5}
+
+
+@pytest.mark.parametrize("ek,desen", [({"uz": True}, r"mesnetler\[1\]: uz hem tutulu hem yaylı verilemez \(kz\)\."),
+                                      ({"kz": 0}, r"mesnetler\[1\]: kz pozitif bir sayı olmalı \(kN/m ya da kN·m/rad\)\."),
+                                      ({"kz": -5}, r"kz pozitif bir sayı"), ({"kz": "abc"}, r"kz pozitif bir sayı"),
+                                      ({"krx": True}, r"rx hem tutulu hem yaylı|krx pozitif bir sayı")])
+def test_yayli_mesnet_hatalari(ek, desen):
+    with pytest.raises(Exception, match=desen):
+        coz(_yayli_konsol(**ek))
+
+
+# ---------------------------------------------------------------------------
+# K-15: rijit diyaframlı seviyede mesnet (C14)
+# ---------------------------------------------------------------------------
+def test_rijit_diyafram_mesnedi_ceza_yayi():
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["deprem"]["etkin"] = True
+    b["yuk_durumlari"]["E"]["acik"] = True
+    b["surum"] = 3
+    b["mesnetler"] = [{"dugum": {"aks": ["C", "2"], "kat": 1}, "ux": True}]
+    r = coz(copy.deepcopy(b))
+    v = r.veri
+    assert v["ag"]["diyafram_seviye"]["1"]["mod"] == "rijit"
+    m = v["akis"]["mesnetler"]
+    assert len(m) == 1 and m[0]["tip"] == "ozel"
+    assert any("rijit diyaframlı 1. kat seviyesinde: ux/uy/rz mesnedi diyafram bağıyla (ceza rijitliği) uygulandı" in u
+               for u in v["uyarilar"])
+    p = r.ic["paket"]
+    d = p.durum["EX+"]
+    iy = [i for i, mm in enumerate(p.yay_meta) if mm.get("tur") == "diyafram-mesnet"]
+    assert [p.yay_meta[i]["bilesen"] for i in iy] == ["Fx"]
+    FX = float(d["tep"][:, 0].sum()) + float(sum(d["yay"][i] for i in iy))
+    assert FX == pytest.approx(-v["deprem"]["X"]["VtE"], rel=1e-6)            # Σ tepki FX + Σ ceza yayı = −Σ uygulanan FX
+    n = m[0]["dugum"]
+    ux = {x["no"]: x["uX"] for x in v["durumlar"]["EX+"]["dugumler"]}
+    assert abs(ux[n]) <= 1e-6 * max(abs(x) for x in ux.values())
+    b["analiz"] = dict(b.get("analiz") or {}, diyafram={"1": "esnek"})
+    v2 = coz(b).veri
+    assert v2["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    assert not any(y.get("tur") == "diyafram-mesnet" for y in v2["durumlar"]["G"]["yaylar"])

@@ -1334,6 +1334,20 @@ def _panelleri_oku(B, ham, coz):
         B.panel_no[no] = r
 
 
+# yaylı mesnet (C13): bina eksenlerinde yay anahtarı → tuttuğu yön; motor ekseni anahtarı (bina X → motor x, Y → −z, Z → y) ve
+# motor yay kuvveti bileşeni (yaylar[].bilesen)
+_YAY_YON = {"kx": "ux", "ky": "uy", "kz": "uz", "krx": "rx", "kry": "ry", "krz": "rz"}
+_YAY_MOTOR = {"kx": "kx", "ky": "kz", "kz": "ky", "krx": "krx", "kry": "krz", "krz": "kry"}
+_MOTOR_BILESEN = {"kx": "Fx", "ky": "Fy", "kz": "Fz", "krx": "Mx", "kry": "My", "krz": "Mz"}
+
+
+def _mesnet_tipi(bay, yay):
+    if yay:
+        return "yay"
+    return "ankastre" if all(bay.values()) else ("mafsal" if bay["ux"] and bay["uy"] and bay["uz"] and not any(
+        bay[a] for a in ("rx", "ry", "rz")) else "ozel")
+
+
 def _mesnetleri_oku(B, bina, coz):
     B.mesnetler = {}
     for k, m in enumerate(bina.get("mesnetler") or [], start=1):
@@ -1341,15 +1355,34 @@ def _mesnetleri_oku(B, bina, coz):
             raise MatrisHatasi(f"mesnetler[{k}] sözlük olmalı: {{\"dugum\": REF, \"ux\": true, ...}}.")
         n = coz.no(m.get("dugum"), f"mesnetler[{k}]")
         bay = {a: bool(m.get(a, False)) for a in ("ux", "uy", "uz", "rx", "ry", "rz")}
+        yay = {}
+        for a in _YAY_YON:              # yaylı mesnet: kx, ky, kz (kN/m), krx, kry, krz (kN·m/rad), bina eksenlerinde, > 0
+            v = m.get(a)
+            if v is None:
+                continue
+            try:
+                x = float(v) if not isinstance(v, bool) else float("nan")
+            except (TypeError, ValueError):
+                x = float("nan")
+            if not math.isfinite(x) or x <= 0:
+                raise MatrisHatasi(f"mesnetler[{k}]: {a} pozitif bir sayı olmalı (kN/m ya da kN·m/rad).")
+            yay[a] = x
         if n in B.mesnetler:
             for a in bay:
                 B.mesnetler[n][a] = B.mesnetler[n][a] or bay[a]
+            if yay:
+                B.mesnetler[n]["yay"] = dict(B.mesnetler[n].get("yay") or {}, **yay)
+            bay = {a: B.mesnetler[n][a] for a in bay}
+            yay = B.mesnetler[n].get("yay") or {}
+        for a, yon in _YAY_YON.items():
+            if a in yay and bay[yon]:
+                raise MatrisHatasi(f"mesnetler[{k}]: {yon} hem tutulu hem yaylı verilemez ({a}).")
+        if n in B.mesnetler:
+            B.mesnetler[n]["tip"] = _mesnet_tipi(bay, yay)
             continue
-        if not any(bay.values()):
+        if not any(bay.values()) and not yay:
             continue
-        tip = "ankastre" if all(bay.values()) else ("mafsal" if bay["ux"] and bay["uy"] and bay["uz"] and not any(
-            bay[a] for a in ("rx", "ry", "rz")) else "ozel")
-        B.mesnetler[n] = dict(bay, tip=tip, kaynak="mesnetler", yay=None)
+        B.mesnetler[n] = dict(bay, tip=_mesnet_tipi(bay, yay), kaynak="mesnetler", yay=yay or None)
     # temel kuralı (C3): EN ALT Z seviyesindeki (kat 0) her aks kesişimi — hangi aks sisteminde olursa olsun ({aks, z} ya da
     # {sistem, aks, z}) — temeller.mesnet ile mesnetlenir (açık mesnet kaydı yoksa); bölme, kesişim ve koordinat düğümleri asla.
     z0 = B.katlar[0]["kot"] if B.katlar else None
@@ -2508,16 +2541,24 @@ def _ag_kur(B, kutle=None):
     n_kole = len(dugumler)
     # mesnetler + otomatik dönme tutucuları (bütün çubuk uçları mafsallı düğüm)
     mesnetler, model_mes, yaylar = [], [], []
+    yay_tur = {}                  # (düğüm, motor bileşeni) → yaylar[].tur ('yay-mesnet' | 'diyafram-mesnet'; C12)
     for no in sorted(B.mesnetler):
         m = B.mesnetler[no]
+        acik_yay = m.get("yay") if m["kaynak"] != "temel" else None
         mesnetler.append({"dugum": no, "tip": m["tip"], "aks": m.get("aks"), "sistem": m.get("sistem"), "B": m.get("B"), "L": m.get("L"),
-                          "kaynak": m["kaynak"], "ux": m["ux"], "uy": m["uy"], "uz": m["uz"], "rx": m["rx"], "ry": m["ry"], "rz": m["rz"]})
+                          "kaynak": m["kaynak"], "ux": m["ux"], "uy": m["uy"], "uz": m["uz"], "rx": m["rx"], "ry": m["ry"], "rz": m["rz"],
+                          **({"yay": dict(acik_yay)} if acik_yay else {})})
         mm = {"dugum": no}
         for a_b, a_m in (("ux", "ux"), ("uy", "uz"), ("uz", "uy"), ("rx", "rx"), ("ry", "rz"), ("rz", "ry")):
             if m[a_b]:
                 mm[a_m] = True
-        model_mes.append(mm)
-        if m.get("yay"):
+        if len(mm) > 1:
+            model_mes.append(mm)
+        if acik_yay:              # yaylı mesnet (C13): bina → motor eksenleri
+            yaylar.append({"dugum": no, **{_YAY_MOTOR[a]: v for a, v in acik_yay.items()}})
+            for a in acik_yay:
+                yay_tur[(no, _MOTOR_BILESEN[_YAY_MOTOR[a]])] = "yay-mesnet"
+        elif m.get("yay"):        # tekil temel 'elastik' (temeller.mesnet)
             yaylar.append({"dugum": no, "ky": m["yay"]["kZ"], "krx": m["yay"]["krX"], "krz": m["yay"]["krY"]})
     uc_say = {}
     for me in model_el:
@@ -2546,6 +2587,7 @@ def _ag_kur(B, kutle=None):
                           f"{', '.join(map(str, donme[:10]))}{' …' if len(donme) > 10 else ''}.")
     # diyaframlar
     diyaframlar, efendi, mod = [], {}, {}
+    ceza = None
     istek = B.deprem is not None and kutle is not None
     for kk in (kutle or []):
         kat = kk["kat"]
@@ -2557,21 +2599,27 @@ def _ag_kur(B, kutle=None):
         if len(koleler) < 2:
             mod[kat] = {"mod": "esnek", "neden": "seviyede ikiden az düğüm"}
             continue
-        for n in koleler:          # rijit diyafram düzlem içi serbestlikleri efendi düğüme bağlı: köle düğümde ayrıca mesnet olmaz
+        for n in koleler:          # rijit diyafram: köle düğümün düzlem içi serbestlikleri (ux, uy, rz) efendiye bağlı
             m = B.mesnetler.get(n)
             if m and m.get("kaynak") == "mesnetler" and (m["ux"] or m["uy"] or m["rz"]):
-                bas = [a for a in ("ux", "uy", "rz") if m[a]]
-                if mod[kat]["neden"] == "analiz.diyafram":
-                    # kat diyaframı JSON'daki analiz.diyafram ile rijit verildi: arayüzdeki Deprem › Diyafram ayarı bunu geçmez
-                    ipucu = (f"ya da bu katın diyaframını esnek yapın: model JSON'unda analiz.diyafram rijit verilmiş, "
-                             f"\"analiz\": {{\"diyafram\": {{\"{kat}\": \"esnek\"}}}} yazın (Deprem › Diyafram ayarı bunu geçmez)")
-                else:
-                    ipucu = (f"ya da diyaframı esnek yapın: Bina sayfası › Deprem sekmesi › Diyafram: «Esnek» (bütün katlar; JSON'da "
-                             f"\"deprem\": {{\"diyafram\": \"esnek\"}}, yalnız bu kat için \"analiz\": {{\"diyafram\": {{\"{kat}\": "
-                             f"\"esnek\"}}}})")
-                raise MatrisHatasi(
-                    f"Düğüm {n} ({dno[n]['adres']}) rijit diyaframlı {B.kat[kat]['ad']} seviyesinde: yatay ux/uy ve dönme rz ayrıca "
-                    f"mesnetlenemez (verilen: {', '.join(bas)}); yalnız düşey uz ve rx/ry verilebilir {ipucu}.")
+                # mesnet köle serbestliğine verilemez (sonlu_eleman): ceza rijitlikli yay olur, K_r = TᵀKT ile efendiye bağlanır (C14)
+                if ceza is None:
+                    ceza = _diyafram_ceza_rijitligi(model_el, elemanlar)
+                mm = mes_idx.get(n)
+                if mm is not None:
+                    for a_m in ("ux", "uz", "ry"):
+                        mm.pop(a_m, None)
+                    if len(mm) == 1:
+                        model_mes.remove(mm)
+                        del mes_idx[n]
+                yy = {"dugum": n}
+                for a_b, a_m, bil, kk_ in (("ux", "kx", "Fx", ceza[0]), ("uy", "kz", "Fz", ceza[0]), ("rz", "kry", "My", ceza[1])):
+                    if m[a_b]:
+                        yy[a_m] = kk_
+                        yay_tur[(n, bil)] = "diyafram-mesnet"
+                yaylar.append(yy)
+                B.uyarilar.append(f"Düğüm {n} ({dno[n]['adres']}) rijit diyaframlı {B.kat[kat]['ad']} seviyesinde: ux/uy/rz mesnedi "
+                                  "diyafram bağıyla (ceza rijitliği) uygulandı; bu nokta bütün katın yatay hareketini tutar.")
         no = _EFENDI + kat
         x, y, z = Y._motor_koordinat(kk["X"], kk["Y"], kk["kot"])
         diyaframlar.append({"dugumler": koleler, "ana": {"no": no, "x": x, "y": y, "z": z}, "ad": f"Kat {kat}"})
@@ -2620,8 +2668,33 @@ def _ag_kur(B, kutle=None):
     ag = {"dugumler": dugumler, "elemanlar": elemanlar, "mesnetler": mesnetler, "sd_sayisi": nsd, "mod": "sayisal",
           "dugum_key": dugum_key, "dno": dno, "efendi": efendi, "diyaframlar": diyaframlar, "n_kole": n_kole,
           "diyafram_istek": istek, "diyafram_destek": True, "diyafram_mod": mod, "rijitlik_carpani": {"kolon": ck, "kiris": cb},
-          "model_c": model_c, "donme_tutulan": donme, "fe_cubuk": {e["no"]: e["cubuk"] for e in elemanlar}, "temel": temel_info}
+          "model_c": model_c, "donme_tutulan": donme, "fe_cubuk": {e["no"]: e["cubuk"] for e in elemanlar}, "temel": temel_info,
+          "yay_tur": yay_tur}
     return ag, model
+
+
+def _yay_turu_yaz(ag, kisalar):
+    """Yay kuvveti kayıtlarına tür (C12): 'yay-mesnet' (yaylı açık mesnet, C13) ya da 'diyafram-mesnet' (rijit diyaframlı seviyedeki
+    ux/uy/rz mesnedinin ceza yayı, C14); temel / Winkler yaylarında alan yok."""
+    tur = ag.get("yay_tur") or {}
+    if not tur:
+        return
+    for k in kisalar:
+        for y in k["yaylar"]:
+            t = tur.get((y["dugum"], y.get("bilesen")))
+            if t:
+                y["tur"] = t
+
+
+def _diyafram_ceza_rijitligi(model_el, elemanlar):
+    """Rijit diyaframlı seviyedeki ux/uy/rz mesnedinin ceza yayları (C14): k_t = 1e6·max(E·A/L) (kN/m), k_r = 1e6·max(E·max(Iy, Iz)/L)
+    (kN·m/rad), bütün sonlu elemanlar üzerinden."""
+    kt = kr = 0.0
+    for me, e in zip(model_el, elemanlar):
+        L = e["L"] if e.get("L") else 1.0
+        kt = max(kt, me["E"] * me["A"] / L)
+        kr = max(kr, me["E"] * max(me["Iy"], me["Iz"]) / L)
+    return 1e6 * kt, 1e6 * kr
 
 
 class _MekanizmaAtla:
@@ -3058,7 +3131,7 @@ def _akis(B, YK, ag, durumlar_kisa):
         if tg is None or tq is None:
             continue
         ortak = {"dugum": m["dugum"], "adres": ag["dno"][m["dugum"]]["adres"], "tip": m["tip"], "N_G": tg["FZ"], "N_Q": tq["FZ"],
-                 "MX": tg["MX"] + tq["MX"], "MY": tg["MY"] + tq["MY"]}
+                 "MX": tg["MX"] + tq["MX"], "MY": tg["MY"] + tq["MY"], **({"yay": dict(m["yay"])} if m.get("yay") else {})}
         if m.get("kaynak") != "temel":         # açık mesnet kaydı (mesnetler listesi): temel değildir, ayrı tabloda
             mesnetler.append(ortak)
             continue
@@ -4237,8 +4310,8 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
                       "kenarlar": [{"kenar": k["kenar"], "dugumler": k["dugumler"], "uzunluk": _r(k["L"]), "tasiyan": k["tasiyan"],
                                     "tam": k["tam"], "cubuklar": [x[0] for x in k["parcalar"]]} for k in p["kenarlar"]]}
                      for p in B.paneller],
-        "mesnetler": [{"dugum": m["dugum"], "tip": m["tip"], "kaynak": m["kaynak"], **{a: m[a] for a in ("ux", "uy", "uz", "rx", "ry", "rz")}}
-                      for m in ag["mesnetler"]],
+        "mesnetler": [{"dugum": m["dugum"], "tip": m["tip"], "kaynak": m["kaynak"], **{a: m[a] for a in ("ux", "uy", "uz", "rx", "ry", "rz")},
+                       **({"yay": dict(m["yay"])} if m.get("yay") else {})} for m in ag["mesnetler"]],
         "diyaframlar": [{"ad": d["ad"], "ana": d["ana"]["no"], "dugumler": list(d["dugumler"]), "X": _r(d["ana"]["x"]),
                          "Y": _r(-d["ana"]["z"]), "Z": _r(d["ana"]["y"])} for d in ag["diyaframlar"]],
         "diyafram": "rijit" if ag["efendi"] else "esnek", "diyafram_seviye": {str(k): v for k, v in ag["diyafram_mod"].items()},
@@ -4516,6 +4589,7 @@ def bina_coz(bina, *, goster=None, anlat=True):
             kisa_m.update({ad: k for ad, k in kisa_c.items() if not ad.startswith("~x")})
             yol += " ×2 (brüt K: G, Q, S, W, K; çatlamış K: deprem durumları ve G~c, Q~c, S~c)"
     durumlar_kisa = {ad: Y._kisa_bina(k, ag) for ad, k in kisa_m.items()}
+    _yay_turu_yaz(ag, durumlar_kisa.values())
     paket = Y._Paket(durumlar_kisa)
     deprem = Y._deprem_son(B, ag, dep, paket, durumlar) if dep else None
     for ad in list(paket.durum):
