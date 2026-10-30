@@ -1348,6 +1348,7 @@
         role: "toolbar", "aria-label": kt.ad + " araçları", "aria-orientation": kt.yon === "dikey" ? "vertical" : "horizontal", "data-kutu": kt.id,
       });
       d.style.setProperty("--arac-saydam", String(kt.saydamlik));
+      d._genis = !kt.kucuk;
       const ks = kt.komutlar.map(komut).filter(Boolean);
       d.innerHTML = '<div class="arac-tutamak" title="' + kacis(kt.ad) + (kt.kilitli ? " (kilitli)" : " — sürükleyerek taşıyın") + '">' +
         '<span class="arac-tutamak-izi" aria-hidden="true"></span><span class="arac-kutu-ad">' + kacis(kt.ad) + "</span>" +
@@ -1442,6 +1443,9 @@
   function bicimUygula(d, b, sutunW) {
     BICIM_TUM.forEach(function (c) { d.classList.remove(c); });
     BICIM_SINIF[b].split(" ").forEach(function (c) { d.classList.add(c); });
+    // geniş (ikon + ad) kutunun iki düğme sütunlu biçimi yalnız ikonludur (küçük): dar sütunda önce adlar gizlenir, kutu taşma
+    // çekmecesine ancak ikonlu iki sütun da sığmazsa düşer (hazır yerleşimlerin odak kutusu geniştir)
+    if (d._genis) { const k2 = b === "d2" || b === "dk2"; d.classList.toggle("arac-kucuk", k2); d.classList.toggle("arac-genis", !k2); }
     d.style.width = (b === "dk1" || b === "dk2") && sutunW ? sutunW + "px" : "";
     d.setAttribute("aria-orientation", b.charAt(0) === "d" ? "vertical" : "horizontal");
     d._bicim = b;

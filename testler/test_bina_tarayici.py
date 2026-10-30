@@ -603,6 +603,30 @@ def test_kenara_sabitle_ve_surukleyerek_kenara_birak(tarayici, sunucu):
         ctx.close()
 
 
+@pytest.mark.parametrize("en,boy", [(1500, 950), (1366, 768)])
+def test_hazir_yerlesimin_odak_kutusu_kenarda_acik(tarayici, sunucu, en, boy):
+    """Hazır yerleşimlerin odak kutusu geniştir (ikon + ad): sütuna geniş sığmazsa yalnız ikonlu iki sütuna küçülür, taşma çekmecesine
+    düşmez (1366×768'de bütün çizim komutlarını taşıyan Çizim kutusu ikonlu iki sütuna da sığmaz); her yerleşimde A1–A6."""
+    ctx, pg, hatalar = _yerlesim_sayfasi(tarayici, sunucu, en, boy)
+    try:
+        for h in ("cizim", "duzenleme", "degistirme", "olcme", "gorunum", "analiz", "sonuc"):
+            pg.evaluate(f"MatrisArac.hazirYerlesim('{h}')")
+            _yerlesim_bekle(pg)
+            d = _duzen_denetle(pg, f"hazır {h} {en}×{boy}")
+            if en == 1366 and h == "cizim":
+                assert d["tasan"] == ["k-cizim"], d["tasan"]
+                continue
+            assert f"k-{h}" not in d["tasan"] and d["rihtim"].get(f"k-{h}", [None, True])[1] is False, (h, d["rihtim"], d["tasan"])
+            bicim = pg.evaluate(f"(() => {{ const k = document.querySelector(\".arac-kutu[data-kutu='k-{h}']\"); return [k._bicim, k.classList.contains('arac-kucuk')]; }})()")
+            # iki sütunlu biçimde yalnız ikon (küçük); tek sütunda geniş kalır
+            assert bicim[1] == (bicim[0] == "d2"), (h, bicim)
+        # geniş kutu tercihi kaydı değişmez (küçülme yalnız görünüm)
+        assert pg.evaluate("MatrisArac.yerlesim().kutular.find(k => k.id === 'k-sonuc').kucuk") is False
+        _hatasiz(hatalar, f"hazır yerleşimler {en}×{boy}")
+    finally:
+        ctx.close()
+
+
 def test_yuzen_kutu_capasina_doner(tarayici, sunucu):
     """A14: sahnenin ortasına sürüklenen Analiz yüzer (yer "serbest", çapa); 1500→1024→1500 sonrası aynı yerde (±1 px); 1024'te kenardaki
     kutulara binmez."""
