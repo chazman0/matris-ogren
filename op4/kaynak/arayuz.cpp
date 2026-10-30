@@ -43,24 +43,52 @@ void ArayuzStili(float olcek) {
     s.FramePadding = ImVec2(6, 4);
     s.ItemSpacing = ImVec2(8, 5);
     s.FontSizeBase = 15.0f;
+    // Opus Fortis paleti: antrasit #14181B zemin, kahve #8A6B3C vurgu, altın #B08950 seçim, krem #EDE6D8 yazı.
+    auto renk = [](int rgb, float a = 1.0f) {
+        return ImVec4(((rgb >> 16) & 255) / 255.0f, ((rgb >> 8) & 255) / 255.0f, (rgb & 255) / 255.0f, a);
+    };
+    const ImVec4 antrasit = renk(0x14181B), kahve = renk(0x8A6B3C), altin = renk(0xB08950), krem = renk(0xEDE6D8);
     ImVec4* c = s.Colors;
-    const ImVec4 lacivert(0.094f, 0.157f, 0.251f, 1.0f), altin(0.788f, 0.635f, 0.153f, 1.0f);
-    c[ImGuiCol_WindowBg] = ImVec4(0.105f, 0.118f, 0.137f, 1.0f);
+    c[ImGuiCol_Text] = renk(0xE9E4DA);
+    c[ImGuiCol_TextDisabled] = renk(0x8E887E);
+    c[ImGuiCol_WindowBg] = renk(0x1B1F23);
     c[ImGuiCol_ChildBg] = c[ImGuiCol_WindowBg];
-    c[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.135f, 0.16f, 0.98f);
-    c[ImGuiCol_MenuBarBg] = ImVec4(0.085f, 0.095f, 0.11f, 1.0f);
-    c[ImGuiCol_TitleBg] = lacivert;
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.13f, 0.22f, 0.35f, 1.0f);
-    c[ImGuiCol_Header] = ImVec4(0.16f, 0.25f, 0.38f, 1.0f);
-    c[ImGuiCol_HeaderHovered] = ImVec4(0.21f, 0.32f, 0.48f, 1.0f);
-    c[ImGuiCol_HeaderActive] = ImVec4(0.25f, 0.38f, 0.56f, 1.0f);
-    c[ImGuiCol_Tab] = lacivert;
-    c[ImGuiCol_TabSelected] = ImVec4(0.17f, 0.28f, 0.44f, 1.0f);
-    c[ImGuiCol_TabDimmedSelected] = ImVec4(0.14f, 0.22f, 0.34f, 1.0f);
+    c[ImGuiCol_PopupBg] = renk(0x1E2226, 0.98f);
+    c[ImGuiCol_Border] = renk(0x2E3338);
+    c[ImGuiCol_MenuBarBg] = antrasit;
+    c[ImGuiCol_TitleBg] = antrasit;
+    c[ImGuiCol_TitleBgActive] = renk(0x241F19);
+    c[ImGuiCol_TitleBgCollapsed] = antrasit;
+    c[ImGuiCol_FrameBg] = renk(0x262B30);
+    c[ImGuiCol_FrameBgHovered] = renk(0x33302A);
+    c[ImGuiCol_FrameBgActive] = renk(0x3D3528);
+    c[ImGuiCol_Button] = renk(0x2A2F34);
+    c[ImGuiCol_ButtonHovered] = ImVec4(kahve.x, kahve.y, kahve.z, 0.75f);
+    c[ImGuiCol_ButtonActive] = kahve;
+    c[ImGuiCol_Header] = ImVec4(kahve.x, kahve.y, kahve.z, 0.40f);
+    c[ImGuiCol_HeaderHovered] = ImVec4(kahve.x, kahve.y, kahve.z, 0.62f);
+    c[ImGuiCol_HeaderActive] = ImVec4(kahve.x, kahve.y, kahve.z, 0.85f);
+    c[ImGuiCol_Tab] = antrasit;
+    c[ImGuiCol_TabHovered] = ImVec4(kahve.x, kahve.y, kahve.z, 0.80f);
+    c[ImGuiCol_TabSelected] = renk(0x3A3125);
+    c[ImGuiCol_TabSelectedOverline] = altin;
+    c[ImGuiCol_TabDimmed] = antrasit;
+    c[ImGuiCol_TabDimmedSelected] = renk(0x2C2721);
     c[ImGuiCol_CheckMark] = altin;
     c[ImGuiCol_SliderGrab] = altin;
-    c[ImGuiCol_DockingPreview] = ImVec4(altin.x, altin.y, altin.z, 0.6f);
-    c[ImGuiCol_Separator] = ImVec4(0.22f, 0.25f, 0.30f, 1.0f);
+    c[ImGuiCol_SliderGrabActive] = krem;
+    c[ImGuiCol_ResizeGrip] = ImVec4(kahve.x, kahve.y, kahve.z, 0.25f);
+    c[ImGuiCol_ResizeGripHovered] = ImVec4(kahve.x, kahve.y, kahve.z, 0.67f);
+    c[ImGuiCol_ResizeGripActive] = altin;
+    c[ImGuiCol_SeparatorHovered] = ImVec4(kahve.x, kahve.y, kahve.z, 0.78f);
+    c[ImGuiCol_SeparatorActive] = altin;
+    c[ImGuiCol_Separator] = renk(0x30353A);
+    c[ImGuiCol_TextSelectedBg] = ImVec4(altin.x, altin.y, altin.z, 0.35f);
+    c[ImGuiCol_NavCursor] = altin;
+    c[ImGuiCol_DockingPreview] = ImVec4(altin.x, altin.y, altin.z, 0.55f);
+    c[ImGuiCol_DockingEmptyBg] = antrasit;
+    c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+    c[ImGuiCol_PlotHistogram] = altin;
     s.ScaleAllSizes(olcek);
     s.FontScaleDpi = olcek;
 }
@@ -70,10 +98,14 @@ void ArayuzYazitipi(float /*olcek*/) {
     io.Fonts->Clear();
     char windows[MAX_PATH] = {};
     GetWindowsDirectoryA(windows, MAX_PATH);
-    std::string segoe = std::string(windows) + "\\Fonts\\segoeui.ttf";
     ImFontConfig ic;
     ic.OversampleH = 2;
-    if (!DosyaVar(segoe.c_str()) || !io.Fonts->AddFontFromFileTTF(segoe.c_str(), 15.0f, &ic)) io.Fonts->AddFontDefault();
+    // Türkçe karakterli (ç ğ ı İ ö ş ü) ilk sistem yazı tipi; hiçbiri yoksa ImGui'nin gömülü yazı tipi (yalnız ASCII).
+    for (const char* ad : {"segoeui.ttf", "arial.ttf", "tahoma.ttf"}) {
+        std::string yol = std::string(windows) + "\\Fonts\\" + ad;
+        if (DosyaVar(yol.c_str()) && io.Fonts->AddFontFromFileTTF(yol.c_str(), 15.0f, &ic)) return;
+    }
+    io.Fonts->AddFontDefault();
 }
 
 void KomutYaz(ArayuzDurumu& d, const std::string& satir) {

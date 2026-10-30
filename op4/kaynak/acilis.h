@@ -1,5 +1,5 @@
 // op4 — açılış (yükleme) ekranı: kenarlıksız, ekranın ortasında; Opus Fortis logo yuvası + ilerleme metni ve çubuğu.
-// Logo: <uygulama>\kimlik\logo.png varsa o, yoksa kimlik\opus_fortis_logo_placeholder.png (yer tutucu).
+// Logo: <uygulama>\kimlik\logo.png → opus-fortis-yatay-acik-zemin.png (kurumsal) → opus_fortis_logo_placeholder.png.
 #pragma once
 
 #include <windows.h>
@@ -25,6 +25,7 @@ public:
     static void Ciz(HDC dc, int g, int y, float olcek, const Resim* logo, const std::wstring& surum,
                     const std::wstring& metin, float oran);
     static constexpr int TABAN_G = 620, TABAN_Y = 380;  // 96 DPI'daki boyut
+    static constexpr int LOGO_Y = 160;                  // logo yuvasının yüksekliği (96 DPI); genişlik TABAN_G − 80
 
 private:
     static LRESULT CALLBACK Yordam(HWND h, UINT m, WPARAM w, LPARAM l);

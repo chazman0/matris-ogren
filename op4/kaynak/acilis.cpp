@@ -13,8 +13,11 @@ namespace {
 
 constexpr wchar_t kSinif[] = L"op4.Acilis";
 constexpr UINT WM_ILERLEME = WM_APP + 1;
-const COLORREF kLacivert = RGB(24, 40, 64);
-const COLORREF kAltin = RGB(201, 162, 39);
+// Opus Fortis paleti (kimlik/README.md).
+const COLORREF kAntrasit = RGB(0x14, 0x18, 0x1B);
+const COLORREF kKahve = RGB(0x8A, 0x6B, 0x3C);
+const COLORREF kAltin = RGB(0xB0, 0x89, 0x50);
+const COLORREF kKrem = RGB(0xED, 0xE6, 0xD8);
 
 bool DosyaVar(const std::wstring& yol) {
     DWORD a = GetFileAttributesW(yol.c_str());
@@ -53,8 +56,11 @@ void Sigdir(int kg, int ky, int g, int y, int& og, int& oy) {
 }  // namespace
 
 std::wstring AcilisEkrani::LogoYolu(const std::wstring& dizin) {
-    std::wstring gercek = dizin + L"\\kimlik\\logo.png";
-    if (DosyaVar(gercek)) return gercek;
+    // Öncelik: kimlik\logo.png (elle konan) → kurumsal yatay logo (açık zemin) → yer tutucu.
+    for (const wchar_t* ad : {L"logo.png", L"opus-fortis-yatay-acik-zemin.png"}) {
+        std::wstring yol = dizin + L"\\kimlik\\" + ad;
+        if (DosyaVar(yol)) return yol;
+    }
     return dizin + L"\\kimlik\\opus_fortis_logo_placeholder.png";
 }
 
@@ -64,7 +70,7 @@ void AcilisEkrani::Ciz(HDC dc, int g, int y, float s, const Resim* logo, const s
     Dikdortgen(dc, 0, 0, g, y, RGB(255, 255, 255));
     // Logo alanı (üst bölüm).
     const int bantY = y - P(78);
-    RECT logoKutusu{P(40), P(34), g - P(40), P(34) + P(150)};
+    RECT logoKutusu{P(40), P(28), g - P(40), P(28) + P(LOGO_Y)};
     if (logo && logo->g > 0) {
         int og = logo->g, oy = logo->y;  // logo zaten hedef boyuta ölçeklenmiş olarak gelir
         int x = (logoKutusu.left + logoKutusu.right - og) / 2;
@@ -89,24 +95,25 @@ void AcilisEkrani::Ciz(HDC dc, int g, int y, float s, const Resim* logo, const s
         if (bmp) DeleteObject(bmp);
         DeleteDC(bdc);
     } else {
-        Metin(dc, L"OPUS FORTIS", logoKutusu, P(44), FW_BOLD, kLacivert, DT_CENTER | DT_VCENTER);
+        Metin(dc, L"OPUS FORTİS", logoKutusu, P(44), FW_BOLD, kAntrasit, DT_CENTER | DT_VCENTER);
     }
     // Ürün adı ve alt başlık.
-    RECT ad{P(40), P(196), g - P(40), P(250)};
-    Metin(dc, L"op4", ad, P(46), FW_SEMIBOLD, kLacivert, DT_CENTER | DT_VCENTER);
-    RECT alt{P(40), P(250), g - P(40), P(278)};
-    Metin(dc, L"Yapısal modelleme, analiz ve tasarım", alt, P(17), FW_NORMAL, RGB(96, 104, 118), DT_CENTER | DT_VCENTER);
+    Dikdortgen(dc, g / 2 - P(28), P(200), g / 2 + P(28), P(202), kAltin);  // ince altın ayraç
+    RECT ad{P(40), P(204), g - P(40), P(254)};
+    Metin(dc, L"op4", ad, P(44), FW_SEMIBOLD, kAntrasit, DT_CENTER | DT_VCENTER);
+    RECT alt{P(40), P(254), g - P(40), P(280)};
+    Metin(dc, L"Yapısal modelleme, analiz ve tasarım", alt, P(16), FW_NORMAL, kKahve, DT_CENTER | DT_VCENTER);
     // Alt bant: ilerleme.
-    Dikdortgen(dc, 0, bantY, g, y, kLacivert);
+    Dikdortgen(dc, 0, bantY, g, y, kAntrasit);
     RECT im{P(24), bantY + P(14), g - P(24), bantY + P(38)};
-    Metin(dc, metin, im, P(15), FW_NORMAL, RGB(235, 240, 248), DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+    Metin(dc, metin, im, P(15), FW_NORMAL, kKrem, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
     const int cy = bantY + P(46);
-    Dikdortgen(dc, P(24), cy, g - P(24), cy + P(4), RGB(52, 70, 98));
+    Dikdortgen(dc, P(24), cy, g - P(24), cy + P(4), RGB(0x34, 0x30, 0x2A));
     int dolu = P(24) + static_cast<int>(std::lround((g - P(48)) * std::clamp(oran, 0.0f, 1.0f)));
     Dikdortgen(dc, P(24), cy, dolu, cy + P(4), kAltin);
     RECT sr{P(24), cy + P(8), g - P(24), y - P(4)};
-    Metin(dc, surum, sr, P(12), FW_NORMAL, RGB(160, 172, 190), DT_RIGHT | DT_VCENTER);
-    Metin(dc, L"© Opus Fortis", sr, P(12), FW_NORMAL, RGB(160, 172, 190), DT_LEFT | DT_VCENTER);
+    Metin(dc, surum, sr, P(12), FW_NORMAL, RGB(0x9A, 0x93, 0x86), DT_RIGHT | DT_VCENTER);
+    Metin(dc, L"© Opus Fortis", sr, P(12), FW_NORMAL, RGB(0x9A, 0x93, 0x86), DT_LEFT | DT_VCENTER);
 }
 
 LRESULT CALLBACK AcilisEkrani::Yordam(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -188,12 +195,12 @@ bool AcilisEkrani::Olustur(HINSTANCE ornek, const std::wstring& dizin, const std
     const RECT& c = mi.rcWork;
     const int x = c.left + (c.right - c.left - g) / 2, yy = c.top + (c.bottom - c.top - y) / 2;
 
-    // Logo: yuvaya (genişlik g − 80, yükseklik 150 taban piksel) sığacak boyutta, yüksek kaliteli ölçekleme.
+    // Logo: yuvaya (genişlik g − 80, yükseklik LOGO_Y taban piksel) sığacak boyutta, yüksek kaliteli ölçekleme.
     std::wstring logoYolu = LogoYolu(dizin);
     int lg = 0, ly = 0;
     if (PngBoyutu(logoYolu, lg, ly)) {
         int og, oy;
-        Sigdir(lg, ly, g - static_cast<int>(std::lround(80 * olcek_)), static_cast<int>(std::lround(150 * olcek_)), og, oy);
+        Sigdir(lg, ly, g - static_cast<int>(std::lround(80 * olcek_)), static_cast<int>(std::lround(AcilisEkrani::LOGO_Y * olcek_)), og, oy);
         std::string hata;
         logoVar_ = PngOku(logoYolu, logo_, hata, og, oy);
         if (!logoVar_) Gunluk("Açılış: logo okunamadı (%s): %s", Utf8(logoYolu).c_str(), hata.c_str());
@@ -236,7 +243,7 @@ bool AcilisResmi(const std::wstring& dizin, const std::wstring& surum, const std
     int lg = 0, ly = 0;
     if (PngBoyutu(logoYolu, lg, ly)) {
         int og, oy;
-        Sigdir(lg, ly, g - static_cast<int>(std::lround(80 * olcek)), static_cast<int>(std::lround(150 * olcek)), og, oy);
+        Sigdir(lg, ly, g - static_cast<int>(std::lround(80 * olcek)), static_cast<int>(std::lround(AcilisEkrani::LOGO_Y * olcek)), og, oy);
         logoVar = PngOku(logoYolu, logo, hata, og, oy);
     }
     Gunluk("Açılış resmi: logo %s (%s)", logoVar ? "yüklendi" : "YOK", Utf8(logoYolu).c_str());

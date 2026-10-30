@@ -31,11 +31,12 @@ op4/
     resim.*               PNG oku / yaz (WIC)
     gunluk.*              günlük
     op4.manifest, op4.rc.in   DPI farkındalığı, UTF-8 kod sayfası, simge, sürüm bilgisi
-  kimlik/                 logo ve simge (şimdilik YER TUTUCU; bkz. kimlik/README.md)
+  kimlik/                 Opus Fortis kurumsal kimliği (logolar, palet), op4.ico, yer tutucular (bkz. kimlik/README.md)
   kurulum/op4.iss         Inno Setup betiği (UTF-8 BOM'lu)
   araclar/
     python_hazirla.py     gömülü Python + numpy/sympy + motor dosyaları → paket/python, paket/motor
-    yer_tutucu_kimlik.py  yer tutucu logo / simge üretici
+    kimlik_uret.py        kurumsal simgeden op4.ico üretici
+    yer_tutucu_kimlik.py  yer tutucu logo / simge üretici (gerçek kimlik yoksa yedek)
     mingw.cmake           Linux'ta MinGW-w64 ile sözdizimi / bağlama denetimi
 ```
 
