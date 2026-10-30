@@ -76,7 +76,7 @@ jobs:
       - name: Derle (Release)
         run: |
           bas=$(date +%s)
-          cmake --build op4-yapi --config Release --parallel -- /nologo /v:minimal
+          cmake --build op4-yapi --config Release --parallel -- -nologo -v:minimal  # "-" ile: Git Bash "/x" bağımsız değişkenlerini yola çevirir
           echo "SURE_DERLE=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
 
       - name: Paket klasörü (op4.exe + kimlik + gömülü Python + hesap motoru)
