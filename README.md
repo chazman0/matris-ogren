@@ -57,12 +57,16 @@ Aks tabanlı 3B bina modeli: çiz, yükle, çöz, tahkik et, raporla. Öğretim 
 - **Tasarım ve kesit önerisi:** TS 500 betonarme ve ÇYTHYE 2018 çelik kontrolleri, eleman başına D/C; seçili eleman ya da bütün
   model için kesit önerisi ve "Hepsini uygula" ile yeniden çözüm.
 - **Temeller:** tekil temel; mütemadi (ters T temel kirişleri) ve radye (ızgara plak) Winkler zemininde, taban basıncı ve oturma.
-  Mütemadi ve radye yalnız aks–kat modelinde çözülür; genel modele geçerken temel (onayla) tekil yapılır.
-- **Çıktılar:** statik hesap raporu (önizleme, yazdır / PDF, HTML), tablolar ve metraj (hücre düzenleme, yapıştırma, CSV), ısı
-  haritası (yer değiştirme, iç kuvvet, gerilme, kullanım oranı; döşeme paneli ve radye alanları), IFC4 yapı modeli, `.matris`
-  proje dosyası.
-- **Arayüz:** sürüklenip yeniden gruplanan yüzen araç kutuları, sağ tık (dokunmatikte uzun basma) ile eleman bilgisi ve komutları,
-  ölçme araçları (uzaklık, açı, alan, kot farkı, koordinat), tek geri al yığını; `?` bütün klavye kısayollarını gösterir.
+  Aks–kat ve genel model aynı temel modülünü (`temel.py`) kullanır: genel modelde temel kirişleri ve radye GLOBAL X/Y aks çizgileri
+  boyunca kurulur (ek aks sistemindeki tabanlar yalnız kirişsiz radyede ağa katılır); genel modele geçerken temel ayarı korunur.
+- **Mesnetler:** açık mesnet her doğrultuda tutulu ya da yaylı olabilir (k_x, k_y, k_z kN/m; k_rx, k_ry, k_rz kN·m/rad); rijit
+  diyaframlı kat seviyesindeki mesnet diyafram bağıyla (ceza rijitliği) uygulanır.
+- **Çıktılar:** statik hesap raporu (önizleme, yazdır / PDF, HTML), tablolar ve metraj (hücre düzenleme, yapıştırma, CSV dışa ve
+  içe aktarma), ısı haritası (yer değiştirme, iç kuvvet, gerilme, kullanım oranı; döşeme paneli ve radye alanları), IFC4 yapı modeli
+  (rüzgâr, deprem ve kren eylemleri, temel öz ağırlığı dahil), `.matris` proje dosyası.
+- **Arayüz:** sahne kenarlarına yerleşen (rıhtım) araç kutuları — sığmayanlar "⋯" çekmecesinde, istenen kutu sahnede yüzdürülür —,
+  sağ tık (dokunmatikte uzun basma) ile eleman bilgisi ve komutları, ölçme araçları (uzaklık, açı, alan, kot farkı, koordinat), tek
+  geri al yığını; `?` bütün klavye kısayollarını gösterir.
 
 Ayrıntılar: [`KULLANIM.md`](KULLANIM.md) §3.9 (Python: `yapi`, genel model, rapor, tablolar, ısı haritası alanları) ve §3.10–3.12
 (Bina sayfası, aks tabanlı çizim, kısayollar); modüllerin dayandığı tasarım kararları ve veri şemaları: [`TASARIM.md`](TASARIM.md).
@@ -85,16 +89,16 @@ Ayrıntılar: [`KULLANIM.md`](KULLANIM.md) §3.9 (Python: `yapi`, genel model, r
 | `dersler/` | Markdown dersler; yazım kuralları `dersler/BICIM.md`'de. |
 | `ders_derle.py` | Dersleri denetler (`--denetle`) ve `docs/dersler.json`'a derler. |
 | `PLAN_SONLU_ELEMANLAR.md` | Matristen sonlu eleman uygulamasına geçiş planı. |
-| `Matris_Ogren.ipynb` | Google Colab defteri: matris modülünün (`matris_ogren.py`) konu anlatımı ve çalıştırılabilir örnekleri. Sonlu eleman ve bina modülleri defterde yoktur; onlar uygulamadadır. |
+| `Matris_Ogren.ipynb` | Google Colab defteri: matris modülünün (`matris_ogren.py`) konu anlatımı ve çalıştırılabilir örnekleri; kurulum hücresi programın on modülünü (matris, sonlu eleman, bina, temel, tasarım, rapor, tablolar, alan) gömülü taşır, "Bina modeli" bölümü bir şablonu çözer, statik hesap raporunu ve kesit önerisini defterde gösterir. |
 | `KULLANIM.md` | Motorun fonksiyon fonksiyon kullanım kılavuzu (matris, sonlu eleman, bina, rapor, tablolar, ısı haritası, köprü işlemleri, Bina sayfası). |
 | `TASARIM.md` | Tasarım belgesi haritası: kod yorumlarındaki §1–§19 bölümleri, veri şemaları ve sürüm şeması. |
 | `docs/` | Yüklenebilir web uygulaması (PWA); motor tarayıcıda Pyodide ile çalışır. `docs/*.py` (köprü hariç) kökteki modüllerin kopyasıdır. |
 | `masaustu/` | Masaüstü sürümü: `docs/`'u çevrimdışı çalışan bir bilgisayar programı olarak paketler (bkz. `masaustu/README.md`). |
 | `testler/` | pytest testleri; `testler/js/` node testleri. |
 | `web_yap.py` | `docs/` klasörünü üretir: modülleri kopyalar, dersleri derler, sürüm damgası basar. |
-| `defter_yap.py` | Colab defterini üretir (matris modülünü gömer). |
+| `defter_yap.py` | Colab defterini üretir (on modülü zlib + base64 ve SHA-256 özetiyle gömer; ek paket gerekmez). |
 | `.github/workflows/` | `testler.yml` (her itmede testler), `masaustu.yml` (masaüstü paketleri). |
 
 Geliştirme: kökteki bir modül ya da ders değişince `python3 web_yap.py` docs klasörünü günceller (modülleri kopyalar, dersleri
-derler, sürüm damgası basar); `matris_ogren.py` değişince `defter_yap.py` defteri yeniden üretir (nbformat gerekir). Testler:
+derler, sürüm damgası basar); gömülü on modülden biri değişince `python3 defter_yap.py` defteri yeniden üretir. Testler:
 `python3 -m pytest testler -q` ve `node --test testler/js/*.test.js`; dersler için ayrıca `python3 ders_derle.py --denetle`.
