@@ -521,12 +521,19 @@ def test_genel_temel_bolumu(cozumler):
     j = b13.index("Açık mesnet tepkileri")
     assert j > i and "| 1001 |" in metin(b13[j:]) and "| 7 |" in metin(b13[j:])
     assert b13[i:b13.index("</table>", i)].count("<tr>") - 1 == len(v["akis"]["temeller"])       # başlık satırı + temeller
-    # genel modelde mütemadi/radye analizi yok: geometri yerine açık not
+    # model radye, çözüm tekil temelli (çözümden sonra temel tipi değişti): geometri yerine 'yeniden çözün' notu (iki motorda da)
     b4 = copy.deepcopy(b)
     b4["temeller"]["tip"] = "radye"
     b13 = bolum(rapor.statik_rapor(b4, v), 13)
-    assert "Mütemadi/radye temel analizi bu çözümde yapılmadı (genel model: kolon tabanları tekil mesnet)." in b13
+    assert rapor.ESKI_TEMEL_NOTU == ("Bu çözümde mütemadi/radye temel sonucu yok (çözüm eski ya da temel tipi değişti); "
+                                     "binayı yeniden çözün.")
+    assert rapor.ESKI_TEMEL_NOTU in b13 and "yapılmadı" not in b13 and "yapılmaz" not in b13
     assert "Radye temel boyutları" not in b13
+    b5, v5 = cozumler["betonarme-2kat-3x2"]                  # aks–kat motoru: aynı not ('mütemadi' eş anlamlısıyla)
+    b5 = copy.deepcopy(b5)
+    b5["temeller"]["tip"] = "mütemadi"
+    b13 = bolum(rapor.statik_rapor(b5, v5), 13)
+    assert rapor.ESKI_TEMEL_NOTU in b13 and "Mütemadi (sürekli) temel boyutları" not in b13
 
 
 def test_genel_betonarme_vute_ve_ek_aks_sistemi_temeli(cozumler):
