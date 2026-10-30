@@ -15,7 +15,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const sunucu = require("./lib/sunucu");
 const Y = require("./lib/yardimci");
-const { menuSablonu, kisayolMetni } = require("./lib/menu");
+const { menuSablonu, kisayolMetni, kisayolListesiTemizle } = require("./lib/menu");
 
 const UYGULAMA_ADI = "Matris Öğren";
 const UYGULAMA_KIMLIGI = "com.matrisogren.app";
@@ -206,6 +206,7 @@ function pencereAc() {
   const d = {
     no: ++pencereSayac, pencere: pencere, wcId: pencere.webContents.id, yol: null, ad: null, kirli: false, hazir: false, kuyruk: [],
     kapatOnay: false, kapatBekliyor: false, kurtarmaBekliyor: false, kurtarmaSil: false, cikisIcin: false, soruAcik: false,
+    kisayollar: null,                   // Bina sayfasının son gönderdiği kısayol listesi (matris:kisayollar); pencereyle birlikte silinir
   };
   pencereler.set(d.wcId, d);
 
@@ -233,6 +234,7 @@ function pencereAc() {
     if (!ayrinti || !ayrinti.isMainFrame || ayrinti.isSameDocument) return;
     if (d.hazir && d.kirli) d.kurtarmaBekliyor = true;   // yeniden yükleme: son otomatik kayıt geri verilir
     d.hazir = false;
+    d.kisayollar = null;                // yeni belge: Bina sayfası hazır olunca listeyi yeniden gönderir
   });
   wc.on("render-process-gone", function (_e, ayrinti) {
     if (!ayrinti || ayrinti.reason === "clean-exit" || pencere.isDestroyed()) return;
@@ -522,6 +524,13 @@ function ipcKur() {
     catch (e) { /* disk dolu vb.: sessiz geç */ }
   });
   ipcMain.on("matris:hazir", function (olay) { const d = gonderen(olay); if (d) hazirOldu(d); });
+  // Bina sayfasının kısayol listesi (araç kutusu komut kaydı + sayfa tuşları; Yardım › Klavye kısayolları penceresi için)
+  ipcMain.on("matris:kisayollar", function (olay, liste) {
+    const d = gonderen(olay);
+    if (!d) return;
+    const temiz = kisayolListesiTemizle(liste);
+    d.kisayollar = temiz.length ? temiz : null;
+  });
   ipcMain.on("matris:tam-ekran", function (olay) { const d = gonderen(olay); if (d) d.pencere.setFullScreen(!d.pencere.isFullScreen()); });
   ipcMain.on("matris:yeni-pencere", function (olay) { if (gonderen(olay)) pencereAc(); });
   ipcMain.on("matris:harici", function (olay, url) { if (gonderen(olay)) hariciAc(url); });
@@ -561,10 +570,12 @@ function menuKur() {
         const p = pencere || BrowserWindow.getFocusedWindow();
         if (p && !p.isDestroyed()) p.setFullScreen(!p.isFullScreen());
       },
+      // menü kısayolları + (Bina sayfası hazırsa) o pencerenin gönderdiği sayfa kısayolları; liste yoksa yönlendiren eski metin
       kisayollar: function (pencere) {
+        const d = durumBul(pencere) || odakDurumu();
         dialog.showMessageBox(pencere || undefined, {
-          type: "info", title: "Klavye kısayolları", message: "Klavye kısayolları", detail: kisayolMetni(process.platform),
-          buttons: ["Tamam"], noLink: true,
+          type: "info", title: "Klavye kısayolları", message: "Klavye kısayolları",
+          detail: kisayolMetni(process.platform, d ? d.kisayollar : null), buttons: ["Tamam"], noLink: true,
         });
       },
       harici: hariciAc,

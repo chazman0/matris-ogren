@@ -136,8 +136,8 @@ test("preload: yalnız dar ve dondurulmuş window.masaustu yüzeyi açılır", f
   assert.deepEqual(Object.keys(k.acilan), ["masaustu"]);
   const m = k.acilan.masaustu;
   assert.ok(Object.isFrozen(m));
-  assert.deepEqual(Object.keys(m).sort(), ["ac", "degisti", "dosyaDinle", "harici", "hazir", "kaydet", "klasordeGoster", "komutDinle",
-    "otomatikKayit", "pdfYazdir", "platform", "projeAc", "projeKaydet", "surum", "tamEkran", "yeni", "yeniPencere"]);
+  assert.deepEqual(Object.keys(m).sort(), ["ac", "degisti", "dosyaDinle", "harici", "hazir", "kaydet", "kisayollar", "klasordeGoster",
+    "komutDinle", "otomatikKayit", "pdfYazdir", "platform", "projeAc", "projeKaydet", "surum", "tamEkran", "yeni", "yeniPencere"]);
   assert.equal(m.surum, "1.2.3");
   assert.equal(m.platform, process.platform);
   assert.equal(preloadYukle([]).acilan.masaustu.surum, "0.0.0");
@@ -188,6 +188,44 @@ test("preload: pencere iletileri ve dinleyiciler", function () {
   assert.throws(function () { m.komutDinle("işlev değil"); }, TypeError);
 });
 
+// kısayol listesi temizleyicisi için örnekler: geçerli, sınırda, bozuk ve kötü niyetli satırlar
+function kisayolOrnekleri() {
+  const uzun = "x".repeat(121), sinir = "y".repeat(120);
+  return [
+    undefined, null, "metin", 5, { length: 3 }, [],
+    [{ tus: "S", ad: "Seç", grup: "Düzenleme" }, { tus: "Esc", ad: "Kipten çık", grup: "Sayfa" }],
+    [{ tus: " G ", ad: "Aks\nverisi\u0000düzenle", grup: "Aks\u2028" }, { tus: "", ad: "boş tuş", grup: "" }, { tus: "K", ad: "", grup: "" },
+      { tus: "K", ad: "Kolon", grup: 3 }, { tus: "K", ad: "Kolon" }, { tus: 1, ad: "sayı", grup: "" }, null, "S", ["a", "b", "c"],
+      { tus: sinir, ad: sinir, grup: sinir }, { tus: "L", ad: uzun, grup: "" }, { tus: "\u0007", ad: "zil", grup: "" },
+      { tus: "W", ad: "Duvar", grup: "Çizim", fazla: "<script>" }],
+    Array.from({ length: 1000 }, function (_, i) { return { tus: "T" + i, ad: "Komut " + i, grup: "G" + (i % 7) }; }),
+    Array.from({ length: 5000 }, function (_, i) { return i < 4500 ? null : { tus: "Z" + i, ad: "geç", grup: "" }; }),
+  ];
+}
+
+test("preload: kısayol listesi temizlenip matris:kisayollar ile gönderilir (lib/menu.js kuralıyla aynı)", function () {
+  const k = preloadYukle([]);
+  const m = k.acilan.masaustu;
+  m.kisayollar([{ tus: "S", ad: "Seç", grup: "Düzenleme" }, { tus: "X", ad: "uzun".repeat(40), grup: "" }, { tus: "Esc", ad: "Kipten\nçık", grup: "Sayfa" }]);
+  assert.deepEqual(k.send, [["matris:kisayollar", [{ tus: "S", ad: "Seç", grup: "Düzenleme" }, { tus: "Esc", ad: "Kipten çık", grup: "Sayfa" }]]]);
+  m.kisayollar("liste değil");
+  assert.deepEqual(k.send[1], ["matris:kisayollar", []]);
+  const ornekler = kisayolOrnekleri();
+  ornekler.forEach(function (o, i) {
+    k.send.length = 0;
+    m.kisayollar(o);
+    assert.deepEqual(k.send, [["matris:kisayollar", MENU.kisayolListesiTemizle(o)]], "örnek " + i);
+  });
+  const ozel = MENU.kisayolListesiTemizle(ornekler[7]);
+  assert.deepEqual(ozel.map(function (s) { return s.tus; }), ["G", "y".repeat(120), "W"]);
+  assert.deepEqual(ozel[0], { tus: "G", ad: "Aks verisi düzenle", grup: "Aks" });
+  assert.deepEqual(Object.keys(ozel[2]), ["tus", "ad", "grup"]);
+  assert.equal(MENU.kisayolListesiTemizle(ornekler[8]).length, MENU.KISAYOL_SATIR_SINIRI);
+  assert.equal(MENU.KISAYOL_SATIR_SINIRI, 400);
+  assert.equal(MENU.KISAYOL_METIN_SINIRI, 120);
+  assert.deepEqual(MENU.kisayolListesiTemizle(ornekler[9]), [], "ilk 4000 öğeden sonrası taranmaz");
+});
+
 function olay(secenek) {
   const o = Object.assign({ isTrusted: true, defaultPrevented: false, dataTransfer: { types: ["Files"], files: [], dropEffect: "none" } }, secenek || {});
   o.preventDefault = function () { o.defaultPrevented = true; };
@@ -218,6 +256,152 @@ test("preload: sürükle-bırak yalnız gerçek bırakmalarda ve proje dosyalar�
   const yalnizMetin = olay({ dataTransfer: { types: ["Files"], files: [{ name: "x.txt", yol: "/x.txt" }] } });
   k.pencere.drop(yalnizMetin);
   assert.equal(k.send.length, 1);
+});
+
+// ------------------------------------------------------------------ sayfa köprüsü (docs/masaustu_kopru.js): kısayol listesi gönderimi
+// Köprü sahte pencere / belge / zamanlayıcıyla bir vm bağlamında çalışır; sahte MatrisArac komut kaydı ve sayfa tuşlarını verir.
+function kopruYukle(secenek) {
+  const sec = secenek || {};
+  const z = { simdi: 0, bekleyen: [], no: 0 };
+  const zamanlayici = function (fn, ms) { z.bekleyen.push({ t: z.simdi + (ms || 0), no: ++z.no, fn: fn }); return z.no; };
+  const ilerle = function (ms) {
+    const hedef = z.simdi + ms;
+    for (;;) {
+      z.bekleyen.sort(function (a, b) { return a.t - b.t || a.no - b.no; });
+      const s = z.bekleyen[0];
+      if (!s || s.t > hedef) break;
+      z.bekleyen.shift();
+      z.simdi = s.t;
+      s.fn();
+    }
+    z.simdi = hedef;
+  };
+  const giden = [];
+  const dinleyiciler = {};
+  const yuzey = {};
+  ["kaydet", "ac", "projeKaydet", "projeAc", "pdfYazdir", "klasordeGoster", "degisti", "yeni", "otomatikKayit", "tamEkran", "yeniPencere", "harici"]
+    .forEach(function (ad) { yuzey[ad] = function () { return Promise.resolve(null); }; });
+  yuzey.hazir = function () { giden.push(["hazir", z.simdi]); };
+  yuzey.komutDinle = function () { return function () {}; };
+  yuzey.dosyaDinle = function () { return function () {}; };
+  if (sec.kisayolYok !== true) yuzey.kisayollar = function (l) { giden.push(["kisayollar", z.simdi, JSON.parse(JSON.stringify(l))]); };
+  const pencere = {
+    masaustu: Object.freeze(yuzey),
+    addEventListener: function (ad, fn) { (dinleyiciler[ad] = dinleyiciler[ad] || []).push(fn); },
+    dispatchEvent: function (o) { (dinleyiciler[o.type] || []).slice().forEach(function (f) { f(o); }); return true; },
+  };
+  if (sec.arac) pencere.MatrisArac = sec.arac;
+  if (sec.bina) pencere.MatrisBina = sec.bina;
+  const belge = { readyState: sec.yukleniyor ? "loading" : "complete", documentElement: { classList: { add: function () {} } }, activeElement: null,
+    querySelector: function () { return null; }, getElementById: function () { return null; } };
+  vm.runInNewContext(fs.readFileSync(path.join(DOCS, "masaustu_kopru.js"), "utf8"), {
+    window: pencere, document: belge, navigator: {}, setTimeout: zamanlayici, clearTimeout: function () {}, console: console,
+    CustomEvent: function (tur, o) { this.type = tur; this.detail = o && o.detail; this.defaultPrevented = false; },
+  }, { filename: "masaustu_kopru.js" });
+  return { pencere: pencere, giden: giden, ilerle: ilerle, z: z,
+    yay: function (tur) { pencere.dispatchEvent({ type: tur }); }, kisayollar: function () { return giden.filter(function (g) { return g[0] === "kisayollar"; }); } };
+}
+
+function sahteArac() {
+  const komutlar = {
+    "aks-duzenle": { grup: "aks" }, kolon: { grup: "cizim" }, secim: { grup: "duzenleme" }, "tam-ekran": { grup: "gorunum" },
+    sigdir: { grup: "gorunum" }, ozel: { grup: "bilinmeyen" }, "duzlem-yukari": { grup: "aks" },
+  };
+  const A = {
+    GRUPLAR: [{ id: "aks", ad: "Aks" }, { id: "cizim", ad: "Çizim" }, { id: "duzenleme", ad: "Düzenleme" }, { id: "gorunum", ad: "Görünüm" }],
+    SAYFA_TUSLARI: [
+      { kisayol: "Esc", ad: "Kipten çık", grup: "sayfa" }, { kisayol: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "sayfa" },
+      { kisayol: "PgUp", ad: "Düzlem yukarı (sayfa)", grup: "aks" }, { kisayol: "F", ad: "Tam ekran (sayfa)", grup: "gorunum" },
+      { kisayol: "Ctrl+Shift+Z", ad: "Yinele", grup: "duzenleme" },
+    ],
+    kayit: [
+      { id: "secim", ad: "Seç", kisayol: "S" }, { id: "aks-duzenle", ad: "Aks verisi düzenle", kisayol: "G" }, { id: "kolon", ad: "Kolon", kisayol: "K" },
+      { id: "tam-ekran", ad: "Tam ekran", kisayol: "F" }, { id: "ozel", ad: "Duvar", kisayol: "W" }, { id: "duzlem-yukari", ad: "Düzlem yukarı", kisayol: "PgUp" },
+    ],
+    dinleyiciler: [],
+    kisayollar: function () { return A.kayit.slice(); },
+    komut: function (id) { return komutlar[id] || null; },
+    dinle: function (fn) { A.dinleyiciler.push(fn); return function () {}; },
+    olay: function () { A.dinleyiciler.forEach(function (f) { f("calistir", { id: "secim" }); }); },
+  };
+  return A;
+}
+
+test("köprü: Bina sayfası hazır olunca kısayol listesi (kayıt + sayfa tuşları) gönderilir; 500 ms'de en çok bir, değişmeyen liste gönderilmez", function () {
+  const A = sahteArac();
+  const k = kopruYukle({});
+  k.ilerle(1000);
+  assert.deepEqual(k.giden.map(function (g) { return g[0]; }), ["hazir"], "Bina sayfası hazır değilken liste gitmez");
+  k.yay("matris-bina-hazir");                      // MatrisArac henüz yok: hata vermez, gönderim yok
+  k.ilerle(600);
+  assert.equal(k.kisayollar().length, 0);
+
+  k.pencere.MatrisArac = A;
+  const t0 = k.z.simdi;
+  k.yay("matris-bina-hazir");
+  k.ilerle(499);
+  assert.equal(k.kisayollar().length, 0, "500 ms dolmadan gönderilmez");
+  k.ilerle(1);
+  const ilk = k.kisayollar();
+  assert.equal(ilk.length, 1);
+  assert.equal(ilk[0][1] - t0, 500);
+  // grup sırası araç grupları sırasıyla (bilinmeyen grup "Diğer" bilinenlerden sonra, sayfa tuşları en sonda); kayıtta olan tuşun
+  // sayfa satırı atlanır (F, PgUp), aynı grupta tuş bir kez
+  assert.deepEqual(ilk[0][2], [
+    { tus: "G", ad: "Aks verisi düzenle", grup: "Aks" }, { tus: "PgUp", ad: "Düzlem yukarı", grup: "Aks" },
+    { tus: "K", ad: "Kolon", grup: "Çizim" },
+    { tus: "S", ad: "Seç", grup: "Düzenleme" }, { tus: "Ctrl+Shift+Z", ad: "Yinele", grup: "Düzenleme" },
+    { tus: "F", ad: "Tam ekran", grup: "Görünüm" },
+    { tus: "W", ad: "Duvar", grup: "Diğer" },
+    { tus: "Esc", ad: "Kipten çık", grup: "Sayfa" }, { tus: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "Sayfa" },
+  ]);
+  assert.equal(A.dinleyiciler.length, 1, "kayıt bir kez dinlenir");
+  k.yay("matris-bina-hazir");                      // ikinci hazır olayı yeni dinleyici eklemez
+  assert.equal(A.dinleyiciler.length, 1);
+
+  // kayıt olayları: liste değişmediyse gönderim yok
+  for (let i = 0; i < 5; i++) { A.olay(); k.ilerle(50); }
+  k.ilerle(4000);
+  assert.equal(k.kisayollar().length, 1);
+  // değişen liste: sık olaylarda en çok 500 ms'de bir gönderim, son durum mutlaka gider
+  for (let i = 0; i < 12; i++) {
+    A.kayit.push({ id: "kolon", ad: "Kolon " + i, kisayol: "Ctrl+" + i });
+    A.olay();
+    k.ilerle(100);
+  }
+  k.ilerle(1000);
+  const sonra = k.kisayollar().slice(1);
+  assert.ok(sonra.length >= 2 && sonra.length <= 3, String(sonra.length));
+  for (let i = 1; i < k.kisayollar().length; i++) assert.ok(k.kisayollar()[i][1] - k.kisayollar()[i - 1][1] >= 500);
+  assert.ok(sonra[sonra.length - 1][2].some(function (s) { return s.tus === "Ctrl+11" && s.ad === "Kolon 11"; }), "son durum gönderildi");
+});
+
+test("köprü: hazır sayfada yükleme sonrası gönderim; geç kaydolan komutlar için bir denetim daha; eski yüzeyde sessiz", function () {
+  const A = sahteArac();
+  const k = kopruYukle({ arac: A, bina: { hazir: function () { return true; } } });
+  k.ilerle(600);
+  assert.equal(k.kisayollar().length, 1, "Bina zaten hazırsa olay beklenmez");
+  A.kayit.push({ id: "kolon", ad: "Kiriş", kisayol: "R" });      // olaysız kayıt (sonradan yüklenen modül)
+  k.ilerle(3000);
+  assert.equal(k.kisayollar().length, 2);
+  assert.ok(k.kisayollar()[1][2].some(function (s) { return s.tus === "R"; }));
+  // kayıt boşsa (Bina sayfası komutlarını kaydetmedi) liste gitmez
+  const bos = sahteArac(); bos.kayit = [];
+  const k2 = kopruYukle({ arac: bos, bina: { hazir: function () { return true; } } });
+  k2.ilerle(5000);
+  assert.equal(k2.kisayollar().length, 0);
+  // ön yükleme betiği kisayollar'ı açmıyorsa (eski masaüstü sürümü) olay dinlenmez, hata yok
+  const k3 = kopruYukle({ kisayolYok: true, arac: sahteArac() });
+  k3.yay("matris-bina-hazir");
+  k3.ilerle(5000);
+  assert.deepEqual(k3.giden.map(function (g) { return g[0]; }), ["hazir"]);
+  // SAYFA_TUSLARI ve grupAdi veren araç kutusu: grup adı ondan
+  const B = sahteArac();
+  B.grupAdi = function (g) { return g === "sayfa" ? "Sayfa" : g === "aks" ? "Aks (yeni)" : g; };
+  const k4 = kopruYukle({ arac: B, bina: { hazir: function () { return true; } } });
+  k4.ilerle(600);
+  const gruplar = Array.from(new Set(k4.kisayollar()[0][2].map(function (s) { return s.grup; })));
+  assert.deepEqual(gruplar, ["Aks (yeni)", "Çizim", "Düzenleme", "Görünüm", "Diğer", "Sayfa"]);
 });
 
 // ------------------------------------------------------------------ menü
@@ -285,8 +469,31 @@ test("menü: tıklama komutu pencereyle iletir; yerel işler çağrılır", func
   assert.match(metin, /Ctrl\+S {2}— {2}Kaydet/);
   assert.match(metin, /F11 {2}— {2}Tam ekran/);
   assert.match(MENU.kisayolMetni("darwin"), /⌘S/);
-  // menü kısayolları penceresi Bina sayfasının araç kısayollarına (komut kaydından üretilen listeler) yönlendirir
+  // liste yoksa (Bina sayfası hazır değil): menü kısayolları + araç kısayollarına (komut kaydından üretilen listeler) yönlendiren satır
   assert.match(metin, /\n\nBina sayfasındaki araç kısayolları .*Klavye kısayolları kartı ya da Bina sayfasında \? tuşu\.$/);
+  assert.ok(!/^Menü\n/.test(metin));
+  [undefined, null, [], "x", [{ tus: "", ad: "" }]].forEach(function (l) { assert.equal(MENU.kisayolMetni("win32", l), metin); });
+});
+
+test("menü: Klavye kısayolları penceresi sayfa listesiyle — Menü bölümü + Bina sayfası — <grup> bölümleri", function () {
+  const liste = [
+    { tus: "G", ad: "Aks verisi düzenle", grup: "Aks" }, { tus: "S", ad: "Seç", grup: "Düzenleme" }, { tus: "PgUp", ad: "Düzlem yukarı", grup: "Aks" },
+    { tus: "F", ad: "Tam ekran", grup: "Görünüm" }, { tus: "Esc", ad: "Kipten çık, seçimi bırak", grup: "Sayfa" }, { tus: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "Sayfa" },
+    { tus: "X", ad: "grupsuz", grup: "" }, { tus: "Y", ad: "çok\nsatırlı", grup: "Aks" }, { tus: "Z", ad: "z".repeat(121), grup: "Aks" },
+  ];
+  const yedek = MENU.kisayolMetni("win32").split("\n\n")[0];
+  const metin = MENU.kisayolMetni("win32", liste);
+  const bolumler = metin.split("\n\n");
+  assert.equal(bolumler[0], "Menü\n" + yedek, "Menü bölümü bugünkü menü satırları");
+  assert.deepEqual(bolumler.slice(1), [
+    "Bina sayfası — Aks\nG  Aks verisi düzenle\nPgUp  Düzlem yukarı\nY  çok satırlı",
+    "Bina sayfası — Düzenleme\nS  Seç",
+    "Bina sayfası — Görünüm\nF  Tam ekran",
+    "Bina sayfası — Sayfa\nEsc  Kipten çık, seçimi bırak\nEnter  Bağlam menüsünde: Bilgi",
+    "Bina sayfası — Diğer\nX  grupsuz",
+  ]);
+  assert.ok(!/yönlendir|\? tuşu\.$/.test(metin));
+  assert.match(MENU.kisayolMetni("darwin", liste), /^Menü\n⌘O {2}— {2}Aç \(Dosya\)/);
 });
 
 // README "Komutlar" tablosu: | `komut` | ek alanlar | Menü | Kısayol | (dipnot işaretleri ¹ ² ³ ⁴ sayılmaz)
@@ -318,12 +525,17 @@ test("menü: README Komutlar tablosu komut listesiyle birebir (iki yönlü)", fu
   // kimlik kümeleri her platformda eşit (macOS uygulama menüsünde yalnız "ayarlar" yinelenir)
   const kume = function (l) { return Array.from(new Set(l.map(function (k) { return k.komut; }))).sort(); };
   ["linux", "win32", "darwin"].forEach(function (p) { assert.deepEqual(kume(MENU.komutListesi(p)), kume(tablo), p); });
-  // dosyadan CSV içe aktarma yok: İçe aktar menüsünde tablo öğesi yok, tablolar yapıştırmayla (Analiz › Tablolar)
-  assert.ok(!tablo.some(function (k) { return k.komut === "csv-iceri"; }));
+  // CSV dosyası içe aktarma (sözleşme C23): Dosya › İçe aktar › Tablolar (.csv)… → komut csv-iceri (tablo editörü + dosya seçimi)
   const dosya = MENU.menuSablonu({ platform: "linux", komut: function () {}, yerel: {} })[0].submenu;
   const iceri = dosya.find(function (o) { return o.label === "İçe aktar"; }).submenu;
-  assert.deepEqual(iceri.map(function (o) { return o.id; }), ["komut:json-iceri"]);
+  assert.deepEqual(iceri.map(function (o) { return [o.id, o.label]; }), [["komut:json-iceri", "Bina verisi (.json)…"], ["komut:csv-iceri", "Tablolar (.csv)…"]]);
+  assert.deepEqual(tablo.filter(function (k) { return k.komut === "csv-iceri"; }), [{ komut: "csv-iceri", sayfa: null, menu: "Dosya › Tablolar (.csv)…", kisayol: "", sayfaTusu: false }]);
   assert.ok(tablo.some(function (k) { return k.komut === "tablolar" && /yapıştır/.test(k.menu) && k.kisayol === "Ctrl+T"; }));
+  const gelen = [];
+  iceri[1].click(null, "P");
+  MENU.menuSablonu({ platform: "linux", komut: function (ad, ek, p) { gelen.push([ad, ek, p]); }, yerel: {} })[0].submenu
+    .find(function (o) { return o.label === "İçe aktar"; }).submenu[1].click(null, "P9");
+  assert.deepEqual(gelen, [["csv-iceri", null, "P9"]]);
 });
 
 // ------------------------------------------------------------------ ana süreç yardımcıları

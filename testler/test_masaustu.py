@@ -461,6 +461,7 @@ window.masaustu = Object.freeze({
   pdfYazdir: (s) => { window.__cagri.push(["pdfYazdir", s]); return Promise.resolve({ad: s.ad, yol: "/k/" + s.ad}); },
   klasordeGoster: kayit("klasordeGoster"), degisti: kayit("degisti"), yeni: kayit("yeni"), otomatikKayit: kayit("otomatikKayit"),
   hazir: kayit("hazir"), tamEkran: kayit("tamEkran"), yeniPencere: kayit("yeniPencere"), harici: kayit("harici"),
+  kisayollar: kayit("kisayollar"),
   komutDinle: (fn) => { window.__dinleyici.komut = fn; return () => {}; },
   dosyaDinle: (fn) => { window.__dinleyici.dosya = fn; return () => {}; },
 });
@@ -536,6 +537,50 @@ def test_masaustu_koprusu_sahte_yuzeyle(tarayici):
         assert sayfa.evaluate("() => window.__cagri.filter(c => c[0] === 'projeKaydet')") == [
             ["projeKaydet", {"ad": "p.matris", "icerik": '{"kirli":1}', "farkli": False}],
             ["projeKaydet", {"ad": "p.matris", "icerik": '{"kirli":1}', "farkli": True}]]
+    finally:
+        baglam.close()
+
+
+def test_masaustu_koprusu_kisayol_listesini_gonderir(tarayici):
+    """Bina sayfası hazır olunca (matris-bina-hazir) köprü araç kutusu kaydının kısayollarını ve sayfa tuşlarını (sözleşme C22)
+    masaustu.kisayollar ile ana sürece gönderir: en çok 500 ms'de bir, liste değişmediyse gönderilmez."""
+    baglam = tarayici.new_context()
+    try:
+        baglam.add_init_script(SAHTE_MASAUSTU)
+        sayfa = _kopru_sayfasi(baglam)
+        sayfa.clock.install()
+        sayfa.goto(TEST_KOK)
+        sayfa.clock.run_for(1000)
+        kisayol = "() => window.__cagri.filter(c => c[0] === 'kisayollar').map(c => c[1])"
+        assert sayfa.evaluate(kisayol) == []
+        sayfa.evaluate("""() => {
+          const kayit = [{id: "secim", ad: "Seç", kisayol: "S"}, {id: "tam-ekran", ad: "Tam ekran", kisayol: "F"}];
+          const grup = {secim: "duzenleme", "tam-ekran": "gorunum"};
+          window.__aracDinleyici = [];
+          window.MatrisArac = {
+            GRUPLAR: [{id: "duzenleme", ad: "Düzenleme"}, {id: "gorunum", ad: "Görünüm"}],
+            SAYFA_TUSLARI: [{kisayol: "Esc", ad: "Kipten çık", grup: "sayfa"}, {kisayol: "F", ad: "Tam ekran (sayfa)", grup: "gorunum"},
+                            {kisayol: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "sayfa"}],
+            kisayollar: () => kayit.slice(), komut: (id) => ({grup: grup[id]}),
+            dinle: (fn) => { window.__aracDinleyici.push(fn); return () => {}; },
+            grupAdi: (g) => g === "sayfa" ? "Sayfa" : g,
+          };
+          window.__kayit = kayit;
+          window.dispatchEvent(new CustomEvent("matris-bina-hazir", {detail: {}}));
+        }""")
+        sayfa.clock.run_for(400)
+        assert sayfa.evaluate(kisayol) == []
+        sayfa.clock.run_for(200)
+        assert sayfa.evaluate(kisayol) == [[{"tus": "S", "ad": "Seç", "grup": "Düzenleme"}, {"tus": "F", "ad": "Tam ekran", "grup": "Görünüm"},
+                                            {"tus": "Esc", "ad": "Kipten çık", "grup": "Sayfa"},
+                                            {"tus": "Enter", "ad": "Bağlam menüsünde: Bilgi", "grup": "Sayfa"}]]
+        sayfa.evaluate("() => { window.__aracDinleyici.forEach(f => f('calistir', {id: 'secim'})); }")
+        sayfa.clock.run_for(5000)
+        assert len(sayfa.evaluate(kisayol)) == 1, "değişmeyen liste yeniden gönderilmez"
+        sayfa.evaluate("() => { window.__kayit.push({id: 'secim', ad: 'Kolon', kisayol: 'K'}); window.__aracDinleyici.forEach(f => f('calistir', {})); }")
+        sayfa.clock.run_for(600)
+        son = sayfa.evaluate(kisayol)
+        assert len(son) == 2 and {"tus": "K", "ad": "Kolon", "grup": "Düzenleme"} in son[1]
     finally:
         baglam.close()
 

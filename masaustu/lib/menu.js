@@ -49,9 +49,10 @@ function menuSablonu(ctx) {
       komut("Kaydet", "kaydet", "CmdOrCtrl+S"),
       komut("Farklı kaydet…", "farkli-kaydet", "CmdOrCtrl+Shift+S"),
       ayrac,
-      // Tablo içe aktarma dosyadan değil yapıştırmayla yapılır: Analiz › Tablolar (düzenle, yapıştır)… (CSV dosyası okuyucusu yok).
+      // Tablolar (.csv): tablo editörü açılır ve CSV dosyası seçtirilir; değişen hücreler bekleyen değişiklik olur (Uygula ile modele).
       { label: "İçe aktar", submenu: [
         komut("Bina verisi (.json)…", "json-iceri"),
+        komut("Tablolar (.csv)…", "csv-iceri"),
       ] },
       { label: "Dışa aktar", submenu: [
         komut("IFC yapı modeli (.ifc)…", "ifc", "CmdOrCtrl+E"),
@@ -323,9 +324,36 @@ function kisayolGoster(h, mac) {
   return String(h).split("+").map(function (p) { return ad[p] || p; }).join(mac ? "" : "+");
 }
 
-// Klavye kısayolları listesi (Yardım > Klavye kısayolları penceresi): menü kısayolları. Bina sayfasının araç kısayolları sayfadaki
-// komut kaydından üretilir (ana süreç onu okuyamaz); son satır oraya yönlendirir.
-function kisayolMetni(platform) {
+// Sayfadan gelen kısayol listesinin sınırları (sözleşme C22): en çok 400 satır, her alan en çok 120 karakterlik metin.
+const KISAYOL_SATIR_SINIRI = 400;
+const KISAYOL_METIN_SINIRI = 120;
+
+// Sayfanın gönderdiği kısayol listesi ([{tus, ad, grup}]) → temiz liste. Dizi değilse boş liste; tus ve ad dolu metin, grup metin
+// olmalı ve hiçbiri 120 karakteri aşmamalı, yoksa satır atılır; denetim karakterleri boşluk olur; en çok 400 satır.
+// preload.js aynı kuralı kendi içinde uygular (yalıtılmış ön yükleme betiği yerel modül yükleyemez); ana süreç yine de temizler.
+function kisayolListesiTemizle(liste) {
+  const sonuc = [];
+  if (!Array.isArray(liste)) return sonuc;
+  const n = Math.min(liste.length, KISAYOL_SATIR_SINIRI * 10);
+  for (let i = 0; i < n && sonuc.length < KISAYOL_SATIR_SINIRI; i++) {
+    const s = liste[i];
+    if (!s || typeof s !== "object") continue;
+    const alan = [s.tus, s.ad, s.grup];
+    if (!alan.every(function (x) { return typeof x === "string" && x.length <= KISAYOL_METIN_SINIRI; })) continue;
+    const temiz = alan.map(function (x) { return x.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim(); });
+    if (!temiz[0] || !temiz[1]) continue;
+    sonuc.push({ tus: temiz[0], ad: temiz[1], grup: temiz[2] });
+  }
+  return sonuc;
+}
+
+// Klavye kısayolları penceresinin (Yardım › Klavye kısayolları) metni.
+// - sayfaListesi yoksa (Bina sayfası bu pencerede henüz hazır olmadıysa): menü kısayolları ve Bina sayfasının araç kısayollarının
+//   nerede olduğunu söyleyen son satır.
+// - sayfaListesi ([{tus, ad, grup}], masaustu_kopru.js'in gönderdiği, araç kutusu komut kaydı + sayfa tuşları) varsa: "Menü" bölümü
+//   (aynı menü satırları) ve her grup için "Bina sayfası — <grup>" bölümü, satırlar "<tus>  <ad>"; gruplar listedeki ilk görünme
+//   sırasıyla.
+function kisayolMetni(platform, sayfaListesi) {
   const mac = platform === "darwin";
   const gorulen = new Set();
   const satirlar = [];
@@ -341,9 +369,24 @@ function kisayolMetni(platform) {
   ekle("CmdOrCtrl+=", "Yakınlaştır (Görünüm)");
   ekle("CmdOrCtrl+-", "Uzaklaştır (Görünüm)");
   ekle("CmdOrCtrl+0", "Gerçek boyut (Görünüm)");
-  satirlar.push("", "Bina sayfasındaki araç kısayolları (S seç, L çubuk çiz, K kolon, Ctrl+Enter çöz…): Yardım › Kullanım kılavuzu " +
-    "sayfasındaki Klavye kısayolları kartı ya da Bina sayfasında ? tuşu.");
-  return satirlar.join("\n");
+  const liste = kisayolListesiTemizle(sayfaListesi);
+  if (!liste.length) {
+    satirlar.push("", "Bina sayfasındaki araç kısayolları (S seç, L çubuk çiz, K kolon, Ctrl+Enter çöz…): Yardım › Kullanım kılavuzu " +
+      "sayfasındaki Klavye kısayolları kartı ya da Bina sayfasında ? tuşu.");
+    return satirlar.join("\n");
+  }
+  const gruplar = [], grupSatir = {};
+  liste.forEach(function (s) {
+    const g = s.grup || "Diğer";
+    if (!grupSatir[g]) { grupSatir[g] = []; gruplar.push(g); }
+    grupSatir[g].push(s.tus + "  " + s.ad);
+  });
+  const metin = ["Menü"].concat(satirlar);
+  gruplar.forEach(function (g) { metin.push("", "Bina sayfası — " + g); Array.prototype.push.apply(metin, grupSatir[g]); });
+  return metin.join("\n");
 }
 
-module.exports = { menuSablonu: menuSablonu, komutListesi: komutListesi, kisayolMetni: kisayolMetni, SAYFA_TUSU: SAYFA_TUSU };
+module.exports = {
+  menuSablonu: menuSablonu, komutListesi: komutListesi, kisayolMetni: kisayolMetni, kisayolListesiTemizle: kisayolListesiTemizle,
+  SAYFA_TUSU: SAYFA_TUSU, KISAYOL_SATIR_SINIRI: KISAYOL_SATIR_SINIRI, KISAYOL_METIN_SINIRI: KISAYOL_METIN_SINIRI,
+};
