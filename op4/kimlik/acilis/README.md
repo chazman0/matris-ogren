@@ -1,4 +1,7 @@
-# op4 açılış ekranı — "Kemer Çizgisi", açık zemin (seçilen tasarım)
+# op4 açılış ekranı — "Kemer Çizgisi", açık zemin
+
+Koyu zemin ikizi `../acilis-koyu/` klasöründedir (aynı zaman çizelgesi, ışık ve ilerleme çizgisi; yalnız renk ve opaklıklar
+zemine göre). Hangisinin varsayılan olacağı kullanıcı kararıyla belirlenir; program ikisini de taşır ve ayar olarak sunar.
 
 Kullanıcı kararı (30.10.2026): beş alternatif arasından **Kemer Çizgisi** seçildi; **açık zemin** varyasyonu kullanılacak,
 **kilit taşı yerine otururken etrafında çok loş bir ışık** yanacak, ilerleme çubuğu çentiksiz **düz çizgi** ("Gece" biçimi) olacak.
