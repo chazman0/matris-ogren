@@ -3,7 +3,8 @@
    Aynı kod hem web sürümünde hem masaüstü sürümünde çalışır:
    - Masaüstünde (ön yükleme betiği window.masaustu yüzeyini açmışsa) kaydet/aç/PDF işlemleri yerel iletişim
      kutularıyla yapılır, menü komutları ve açılan proje dosyaları sayfaya olay olarak iletilir, servis çalışanı
-     kaydedilmez (uygulama zaten yereldir).
+     kaydedilmez (uygulama zaten yereldir); Bina sayfası hazır olunca kısayol listesi (araç kutusu komut kaydı + sayfa tuşları)
+     Yardım › Klavye kısayolları penceresi için ana sürece gönderilir.
    - Web sürümünde: kaydet → Blob indirme, aç → dosya seçici (input[type=file]), PDF → yeni pencerede yazdırma.
 
    API (hepsi Promise döndürür; kullanıcı vazgeçerse sonuç null):
@@ -286,6 +287,73 @@
   // İşlenmemiş son açılan dosyayı verir ve kuyruktan çıkarır (geç yüklenen sayfa betikleri için).
   function bekleyenDosya() { const d = bekleyen; bekleyen = null; return d; }
 
+  // ------------------------------------------------------------------ klavye kısayolları (sözleşme C22)
+  // Masaüstünde Yardım › Klavye kısayolları penceresini ana süreç açar ama sayfanın komut kaydını okuyamaz: Bina sayfası hazır olunca
+  // ve araç kutusu kaydındaki her olayda (MatrisArac.dinle) liste ona gönderilir. Satırlar bina "?" penceresi ve Yardım tablosuyla
+  // aynıdır: kayıttaki kısayollar (grup = araç grubunun adı) + sayfa tuşları (MatrisArac.SAYFA_TUSLARI; kayıtta zaten olan tuş
+  // atlanır, "sayfa" → "Sayfa"). Gruplar araç grubu sırasıyla, sayfa tuşları sonda. En çok 500 ms'de bir ve yalnız liste
+  // değiştiyse gönderilir.
+  const KISAYOL_ARALIK_MS = 500;
+  const KISAYOL_GEC_DENETIM_MS = 3000;      // hazır olduktan sonra kaydolan modüller (ör. çizim araçları) için bir kez daha
+  let kisayolZaman = null, sonKisayol = "", kisayolDinleniyor = false;
+
+  function kisayolGrupAdi(A, g) {
+    if (typeof A.grupAdi === "function") { try { const a = A.grupAdi(g); if (a && a !== g) return String(a); } catch (e) { /* yoksay */ } }
+    const k = (Array.isArray(A.GRUPLAR) ? A.GRUPLAR : []).find(function (x) { return x && x.id === g; });
+    return k ? String(k.ad) : g === "sayfa" ? "Sayfa" : "Diğer";
+  }
+
+  // MatrisArac → [{tus, ad, grup}] (grup görünen ad)
+  function kisayolListesi(A) {
+    let kayit = [];
+    try { kayit = A.kisayollar() || []; } catch (e) { kayit = []; }
+    if (!kayit.length) return [];
+    const satirlar = [], var_ = {}, gorulen = {};
+    const ekle = function (tus, ad, g) {
+      const a = kisayolGrupAdi(A, g) + "\u0001" + tus;     // aynı (görünen) grupta aynı tuş bir kez
+      if (!tus || gorulen[a]) return;
+      gorulen[a] = 1;
+      satirlar.push({ tus: String(tus), ad: String(ad == null ? "" : ad), g: g, i: satirlar.length });
+    };
+    kayit.forEach(function (k) {
+      let kk = null;
+      try { kk = typeof A.komut === "function" ? A.komut(k.id) : null; } catch (e) { kk = null; }
+      var_[k.kisayol] = 1;
+      ekle(k.kisayol, k.ad, (kk && kk.grup) || "diger");
+    });
+    (Array.isArray(A.SAYFA_TUSLARI) ? A.SAYFA_TUSLARI : []).forEach(function (t) { if (t && !var_[t.kisayol]) ekle(t.kisayol, t.ad, t.grup || "sayfa"); });
+    const sira = {};
+    (Array.isArray(A.GRUPLAR) ? A.GRUPLAR : []).forEach(function (g, i) { if (g) sira[g.id] = i; });
+    const siraAl = function (g) { return g === "sayfa" ? 1000 : (sira[g] != null ? sira[g] : 500); };
+    satirlar.sort(function (a, b) { return siraAl(a.g) - siraAl(b.g) || a.i - b.i; });
+    return satirlar.map(function (s) { return { tus: s.tus, ad: s.ad, grup: kisayolGrupAdi(A, s.g) }; });
+  }
+
+  function kisayolGonder() {
+    kisayolZaman = null;
+    const A = window.MatrisArac;
+    if (!A || typeof A.kisayollar !== "function") return;
+    const liste = kisayolListesi(A);
+    if (!liste.length) return;
+    const metin = JSON.stringify(liste);
+    if (metin === sonKisayol) return;
+    sonKisayol = metin;
+    try { M.kisayollar(liste); } catch (e) { /* ana süreç ulaşılamıyor: bir sonraki değişiklikte yeniden denenir */ sonKisayol = ""; }
+  }
+  // en çok KISAYOL_ARALIK_MS'de bir gönderim: bekleyen zamanlayıcı varken gelen istekler ona katılır
+  function kisayolPlanla() {
+    if (!kisayolZaman) kisayolZaman = setTimeout(kisayolGonder, KISAYOL_ARALIK_MS);
+  }
+  function binaHazir() {
+    const A = window.MatrisArac;
+    if (A && typeof A.dinle === "function" && !kisayolDinleniyor) {
+      kisayolDinleniyor = true;
+      try { A.dinle(function () { kisayolPlanla(); }); } catch (e) { kisayolDinleniyor = false; }
+    }
+    kisayolPlanla();
+    setTimeout(kisayolPlanla, KISAYOL_GEC_DENETIM_MS);
+  }
+
   if (MASAUSTU) {
     document.documentElement.classList.add("masaustu");
     // Masaüstünde servis çalışanı gerekmez (dosyalar yerelden gelir); app.js'in kaydı sessizce atlanır.
@@ -296,8 +364,17 @@
     } catch (e) { /* yoksay */ }
     M.komutDinle(komutGeldi);
     M.dosyaDinle(dosyaGeldi);
+    // Bina sayfası hazır olunca kısayol listesi ana sürece (Yardım › Klavye kısayolları); sayfa zaten hazırsa yüklenince
+    const kisayolVar = typeof M.kisayollar === "function";
+    if (kisayolVar) window.addEventListener("matris-bina-hazir", binaHazir);
     // Sayfanın bütün betikleri yüklendikten sonra ana sürece "hazır" denir: bekleyen dosyalar ve komutlar o zaman gelir.
-    const hazir = function () { setTimeout(function () { M.hazir(); }, 0); };
+    const hazir = function () {
+      setTimeout(function () {
+        M.hazir();
+        const B = window.MatrisBina;
+        if (kisayolVar && B && typeof B.hazir === "function" && B.hazir()) binaHazir();
+      }, 0);
+    };
     if (document.readyState === "complete") hazir(); else window.addEventListener("load", hazir, { once: true });
   }
 

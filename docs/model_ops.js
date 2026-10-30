@@ -37,6 +37,13 @@
   const KAFES_CUBUGU = Object.freeze({ i: Object.freeze(["T", "My", "Mz"]), j: Object.freeze(["My", "Mz"]) });
   const CAPRAZ_TIPLERI = Object.freeze(["X", "tek-/", "tek-\\", "V", "ters-V", "K", "dismerkez-tek", "dismerkez-ters-V", "diz"]);
   const MAKAS_TIPLERI = Object.freeze(["pratt", "howe", "warren", "warren-dikmeli", "k", "fink", "besik-pratt", "besik-howe"]);
+  /** Makasın düzlem dışı tutması (K-22): "uc-dikme" uç dikmeleri (Warren'da ilk ve son diyagonalin mesnet ucu) rijit; "yok" bütün gövde mafsallı. */
+  const MAKAS_YANAL_TUTMA = Object.freeze(["uc-dikme", "yok"]);
+  const MAKAS_BURKULMA_NOTU = "Üst başlığın düzlem dışı burkulma boyu, aşık ya da düzlem dışı bağ yoksa bütün açıklıktır.";
+  /** Yaylı mesnet anahtarları (sözleşme C13; bina eksenleri) ve tuttukları yönler. */
+  const YAY_ANAHTARLARI = Object.freeze(["kx", "ky", "kz", "krx", "kry", "krz"]);
+  /** Winkler temel ağı kuran temel tipleri (C11; temel.tip_oku eş anlamlılarıyla). */
+  const YAYILI_TEMEL = Object.freeze(["surekli", "sürekli", "mutemadi", "mütemadi", "radye"]);
   const LISTELER = ["dugumler", "cubuklar", "paneller", "mesnetler", "kren", "ek_yukler", "uretecler"];
   /** Üreteç kayıtlarında düğüm REF'i taşıyan parametreler (taşıma / döndürme / aynada dönüştürülür). */
   const URETEC_REF_ALANLARI = Object.freeze({ capraz: ["goz"], makas: ["bas", "son"], "besik-cerceve": ["taban1", "taban2"] });
@@ -563,19 +570,45 @@
     const z0 = this.temelKotu();
     return z0 != null && Math.abs(d.Z - z0) <= 1e-6;
   };
+  /**
+   * Mesnetli mi: açık mesnet kaydı (tutulu bir yön ya da yaylı mesnet anahtarı kx…krz, sözleşme C13) ya da C3 temel kuralı. donme:
+   * dönmeleri rijit tutuluyor mu (rx, ry, rz kaydı; C3 tabanında temeller.mesnet ≠ mafsal — mütemadi / radye temelde kolon tabanı
+   * temel kirişine / radyeye rijit bağlıdır, sözleşme C11.7).
+   */
   P_.mesnetli = function (n, donme) {
     const s = this.mesnetKaydi(n);
-    if (s) return donme ? !!(s.rx && s.ry && s.rz) : !!(s.ux || s.uy || s.uz || s.rx || s.ry || s.rz);
-    if (this.izgaraTaban(n)) return donme ? this.temelTipi() !== "mafsal" : true;
+    if (s) return donme ? !!(s.rx && s.ry && s.rz) : !!(s.ux || s.uy || s.uz || s.rx || s.ry || s.rz) || YAY_ANAHTARLARI.some(function (a) { return +s[a] > 0; });
+    if (this.izgaraTaban(n)) return donme ? (this.yayiliTemel() || this.temelTipi() !== "mafsal") : true;
     return false;
   };
   P_.temelTipi = function () {
     const t = this.m.temeller && this.m.temeller.mesnet;
     return t ? String(t).toLowerCase() : "ankastre";
   };
+  /** temeller.tip mütemadi (surekli; eş anlamlıları sürekli, mutemadi, mütemadi — temel.tip_oku) ya da radye mi (C11: Winkler temel ağı). */
+  P_.yayiliTemel = function () {
+    const t = String((this.m.temeller && this.m.temeller.tip) || "tekil").trim().toLowerCase();
+    return YAYILI_TEMEL.indexOf(t) >= 0;
+  };
+  /** Nokta GLOBAL X/Y aks kesişiminde mi (her iki doğrultuda tol içinde bir GLOBAL aks; C11: Winkler ağı GLOBAL akslar boyunca kurulur). */
+  P_.globalKesisimde = function (P) {
+    const ak = this.m.akslar || {}, tol = this.tol;
+    const var_ = function (l, v) { return (Array.isArray(l) ? l : []).some(function (a) { return a && Math.abs(+a.konum - v) <= tol; }); };
+    return var_(ak.x, P[0]) && var_(ak.y, P[1]);
+  };
+  /** C11.7 iletileri: taban düğümü Winkler ağının dışına çıktı (açık nokta mesnet yazıldı) / ek sistem kesişimine geldi (ağ GLOBAL akslarda). */
+  P_.agDisiMetni = function (n, t) { return "Taban düğümü " + this.dugumEtiketi(n) + " mütemadi/radye temel ağından çıktı (yeni yeri ağın düğümü değil): Winkler ağı dışında nokta mesnet olarak açık mesnet kaydı yazıldı (düğüm " + this.dugumEtiketi(t) + ")."; };
+  P_.ekSistemTabanMetni = function (n) { return "Taban düğümü " + this.dugumEtiketi(n) + " GLOBAL aks kesişiminden çıktı: mütemadi/radye ağının dışında kalır (yalnız kirişsiz radyede ağa katılır; ötekilerde 'mesnetler' ile mesnet verin)."; };
+  /** İleti için düğüm adı: aks kesişiminde "A1/T" (ek sistemde "EK:a-b/T"), değilse numara. */
+  P_.dugumEtiketi = function (n) {
+    let r = null;
+    try { r = this.refYaz(n); } catch (e) { r = null; }
+    if (r && Array.isArray(r.aks)) return (r.sistem ? r.sistem + ":" + r.aks.join("-") : r.aks.join("")) + "/" + (r.z != null ? r.z : "k" + r.kat);
+    return String(n);
+  };
   P_.temelMesnetKaydi = function (n) {
-    const tip = this.temelTipi(), r = tip !== "mafsal";
-    if (tip === "elastik") this.uyar("Düğüm " + n + ": elastik temel serbest düğüme taşınamaz; ankastre mesnet yazıldı.");
+    const yayili = this.yayiliTemel(), tip = this.temelTipi(), r = yayili || tip !== "mafsal";
+    if (tip === "elastik" && !yayili) this.uyar("Düğüm " + n + ": elastik temel serbest düğüme taşınamaz; ankastre mesnet yazıldı.");
     return { dugum: this.refYaz(n), ux: true, uy: true, uz: true, rx: r, ry: r, rz: r };
   };
   P_.yetimSil = function (adaylar) {
@@ -1044,13 +1077,20 @@
     if (uzaklik([d.X, d.Y, d.Z], P) <= this.tol) return n;
     // hedefte mevcut düğüm (aks kesişimi dahil): başvurular ona yazılır (aks kesişiminde {aks, z} REF'i)
     const o = this.bul(P, this.tol, new Set([n]));
+    // mütemadi / radye temel (C11): aks kesişimindeki taban düğümü Winkler ağının düğümüdür; ağ GLOBAL X/Y akslarında kurulur
+    const yayiliTaban = this.yayiliTemel() && this.izgaraTaban(n) && !this.mesnetKaydi(n);
     if (o != null) {
       const tabanMesnet = this.izgaraTaban(n) && !this.mesnetKaydi(n) && !this.mesnetli(o);
+      const ekSistemTaban = yayiliTaban && !tabanMesnet && this.izgaraTaban(o) && !this.mesnetKaydi(o) && !this.globalKesisimde(P);
       this.refDegistir(new Map([[n, o]]));
       const i = this.m.dugumler.findIndex(function (x) { return x && +x.no === n; });
       if (i >= 0) this.m.dugumler.splice(i, 1);
       this._h = null;
-      if (tabanMesnet && this.baglantilar().get(o)) this.m.mesnetler.push(this.temelMesnetKaydi(o));
+      if (tabanMesnet && this.baglantilar().get(o)) {
+        this.m.mesnetler.push(this.temelMesnetKaydi(o));
+        if (yayiliTaban) this.uyar(this.agDisiMetni(n, o));
+      }
+      if (ekSistemTaban) this.uyar(this.ekSistemTabanMetni(n));
       this.uyar("Düğüm " + n + " hedefteki düğüm " + o + " ile birleşti.");
       return o;
     }
@@ -1068,7 +1108,8 @@
       const bag = this.baglantilar().get(yeni);
       if (tabanMesnet && bag && (bag.cubuk.length || bag.panel.length)) {
         this.m.mesnetler.push(this.temelMesnetKaydi(yeni));
-        this.uyar("Temel düğümü " + n + " taşındı: aks–kat temel kuralı yerine açık mesnet kaydı yazıldı (düğüm " + yeni + ").");
+        if (yayiliTaban) this.uyar(this.agDisiMetni(n, yeni));
+        else this.uyar("Temel düğümü " + n + " taşındı: aks–kat temel kuralı yerine açık mesnet kaydı yazıldı (düğüm " + yeni + ").");
       }
       this.uyar("Aks–kat düğümü " + n + " taşındı; aks dışına çıktığı için serbest düğüm " + yeni + " oldu.");
       return yeni;
@@ -1137,16 +1178,22 @@
     const r = kopya(s);
     if (!R) return r;
     const t = [!!s.ux, !!s.uy, !!s.uz], d = [!!s.rx, !!s.ry, !!s.rz];
+    const kt = [s.kx, s.ky, s.kz], kd = [s.krx, s.kry, s.krz];          // yaylı mesnet (C13): yay da yönüyle döner
     const ayni = function (l) { return l[0] === l[1] && l[1] === l[2]; };
-    if (ayni(t) && ayni(d)) return r;
+    if (ayni(t) && ayni(d) && ayni(kt) && ayni(kd)) return r;
     const per = [0, 1, 2].map(function (i) {
       const e = [0, 0, 0]; e[i] = 1;
       const v = R(e);
       return [0, 1, 2].find(function (k) { return Math.abs(Math.abs(v[k]) - 1) < 1e-6; });
     });
     if (per.some(function (x) { return x == null; })) return null;
-    const ta = ["ux", "uy", "uz"], da = ["rx", "ry", "rz"];
-    for (let i = 0; i < 3; i++) { r[ta[per[i]]] = t[i]; r[da[per[i]]] = d[i]; }
+    const ta = ["ux", "uy", "uz"], da = ["rx", "ry", "rz"], ka = ["kx", "ky", "kz"], kr = ["krx", "kry", "krz"];
+    ka.concat(kr).forEach(function (a) { delete r[a]; });
+    for (let i = 0; i < 3; i++) {
+      r[ta[per[i]]] = t[i]; r[da[per[i]]] = d[i];
+      if (kt[i] != null) r[ka[per[i]]] = kt[i];
+      if (kd[i] != null) r[kr[per[i]]] = kd[i];
+    }
     return r;
   }
   P_.kopyalaIc = function (s, f, R, sec) {
@@ -1322,20 +1369,22 @@
     for (const p of ps) p.kose = yeniKose.get(p).map(function (n) { return self.refYaz(n); });
     // mesnetler ve düğüm yükleri (üretecin mesnet kopyaları izlenir: kayıt elemanlarla taşınırsa kopya yine üretecindir)
     const tasinanMesnet = [];
+    const yayili = this.yayiliTemel();
     for (const n of dg) {
       const t = hedef.get(n);
       esle.set(n, t);
       if (t === n) continue;
+      const kay = this.mesnetKaydi(n), c3 = !kay && this.izgaraTaban(n);      // C3 tabanı: açık kaydı olmayan en alt seviye aks kesişimi
       if (mesnetliOnce.get(n) && !this.mesnetli(t)) {
-        const kay = this.mesnetKaydi(n);
         const r = mesnetDonustur(kay ? kay : this.temelMesnetKaydi(n), R);
         if (r) {
           const u = r.kaynak && r.kaynak.uretec != null ? +r.kaynak.uretec : null;
           delete r.kaynak; r.dugum = this.refYaz(t); this.m.mesnetler.push(r);
           if (u != null) tasinanMesnet.push({ r: r, uretec: u });
+          if (c3 && yayili) this.uyar(this.agDisiMetni(n, t));
         }
         else this.uyar("Düğüm " + n + " mesnedi dönüşüm altında eksenlere gelmediği için taşınmadı.");
-      }
+      } else if (c3 && yayili && this.izgaraTaban(t) && !this.mesnetKaydi(t) && !this.globalKesisimde(this.kon(t))) this.uyar(this.ekSistemTabanMetni(n));
       if (!kendi.has(n)) continue;
       this.m.mesnetler = this.m.mesnetler.filter(function (sk) { try { return self.refNo(sk.dugum, false) !== n; } catch (e) { return true; } });
       const yeniY = [];
@@ -1665,10 +1714,22 @@
   P_.ciftVarMi = function (n) { return this.m.cubuklar.some(function (c) { const u = this.uclar(c); return u[0] === n || u[1] === n; }, this); };
 
   // ---------------------------------------------------------------- makas
+  /**
+   * Makas üreteci. mafsalli_govde (varsayılan true): dikme ve diyagonallerin iki ucu mafsallı (My, Mz serbest; kafes). Mafsallı gövde
+   * düzlem dışında (makas düzlemine dik) hiçbir rijitlik vermez: paralel başlıklı tiplerde üst başlık yalnız mafsallı gövdeye asılı
+   * kalır, K makasın orta düğümleri tümüyle mafsallıdır — yapı mekanizma olurdu (K-22). yanal_tutma "uc-dikme" (varsayılan) bunu önler:
+   *   pratt / howe / warren-dikmeli / k: uç dikmeleri (Bn[0]–Tn[0], Bn[n]–Tn[n]) momentli (serbestlik yok; mesnet düğümünden konsol);
+   *   warren (uç dikmesi yok): ilk ve son diyagonal mesnet (alt) ucunda rijit;
+   *   k: ara dikmeler yalnız başlık uçlarında mafsallı, orta düğüm M'den sürekli geçer.
+   * "yok": bütün gövde mafsallı (eski davranış; aşık / düzlem dışı bağ verilmeli). Beşik ve Fink tiplerinde üst başlık mesnette alt
+   * başlığa bağlandığı için değişiklik yoktur.
+   */
   P_.makasIc = function (p, zorunluNo) {
     p = Object.assign({ goz: 6, yukari: [0, 0, 1], uc_yukseklik: 0, kesitler: {}, mafsalli_govde: true }, p || {});
     const tip = String(p.tip || "").toLowerCase();
     if (MAKAS_TIPLERI.indexOf(tip) < 0) throw new ModelHatasi("Makas tipi " + JSON.stringify(p.tip) + " tanımsız; seçenekler: " + MAKAS_TIPLERI.join(", ") + ".");
+    const yanal = String(p.yanal_tutma == null || p.yanal_tutma === "" ? "uc-dikme" : p.yanal_tutma).trim().toLowerCase();
+    if (MAKAS_YANAL_TUTMA.indexOf(yanal) < 0) throw new ModelHatasi("makasUret: yanal_tutma " + JSON.stringify(p.yanal_tutma) + " tanımsız; 'uc-dikme' ya da 'yok' olmalı.");
     if (p.bas == null || p.son == null) throw new ModelHatasi("makasUret: açıklığın iki mesnet noktası 'bas' ve 'son' (REF ya da [X,Y,Z]) verilmeli.");
     const self = this;
     const S = this.refNo(p.bas), E = this.refNo(p.son);
@@ -1696,10 +1757,15 @@
     ["ust", "alt", "dikme", "diyagonal"].forEach(function (k) { self.kesitUyar(ks[k], "Makas " + k); });
     const sayac = { "makas-ust": 0, "makas-alt": 0, "makas-dikme": 0, "makas-diyagonal": 0 };
     const kes = { "makas-ust": ks.ust, "makas-alt": ks.alt, "makas-dikme": ks.dikme, "makas-diyagonal": ks.diyagonal };
-    const ekle = function (tur, a, b) {
+    const mafsal = p.mafsalli_govde !== false, tut = mafsal && yanal === "uc-dikme";
+    const RIJIT = { i: [], j: [] }, ALT_UC = { i: ["My", "Mz"], j: [] }, UST_UC = { i: [], j: ["My", "Mz"] };
+    // serb: gövde çubuğunun uç serbestlikleri (verilmezse iki uç mafsallı); mafsalsız gövdede ve başlıklarda yok sayılır
+    const ekle = function (tur, a, b, serb) {
       if (a === b) return;
       const govde = tur === "makas-dikme" || tur === "makas-diyagonal";
-      const no = self.ekCubukTekil(Object.assign({ tur: tur }, kesitOz(kes[tur]), mafsalOz(govde && p.mafsalli_govde !== false)), a, b);
+      const sb = govde && mafsal ? (serb || MAFSAL_IKI_UC) : RIJIT;
+      const oz = Object.assign({ tur: tur }, kesitOz(kes[tur]), sb.i.length || sb.j.length ? { serbest: { i: sb.i.slice(), j: sb.j.slice() } } : {});
+      const no = self.ekCubukTekil(oz, a, b);
       if (no != null) sayac[tur]++;
     };
     const nok = function (x, z) { return self.dugumEkle(topla(topla(PS, olcek(u, x)), olcek(w, z))); };
@@ -1712,7 +1778,7 @@
     if (tip === "pratt" || tip === "howe" || tip === "warren-dikmeli") {
       altBaslik();
       for (let k = 0; k < n; k++) ekle("makas-ust", Tn[k], Tn[k + 1]);
-      for (let k = 0; k <= n; k++) ekle("makas-dikme", Bn[k], Tn[k]);
+      for (let k = 0; k <= n; k++) ekle("makas-dikme", Bn[k], Tn[k], tut && (k === 0 || k === n) ? RIJIT : null);
       for (let k = 0; k < n; k++) {
         const sol = k < n / 2;
         if (tip === "pratt") { if (sol) ekle("makas-diyagonal", Bn[k + 1], Tn[k]); else ekle("makas-diyagonal", Bn[k], Tn[k + 1]); }
@@ -1724,14 +1790,16 @@
       const M = [];
       for (let k = 0; k < n; k++) M.push(nok((k + 0.5) * d, h));
       for (let k = 0; k < n - 1; k++) ekle("makas-ust", M[k], M[k + 1]);
-      for (let k = 0; k < n; k++) { ekle("makas-diyagonal", Bn[k], M[k]); ekle("makas-diyagonal", Bn[k + 1], M[k]); }
+      // ilk ve son diyagonal mesnet (alt, i) ucunda rijit: üst başlığın uçlarını düzlem dışında mesnet düğümünden konsol gibi tutar
+      for (let k = 0; k < n; k++) { ekle("makas-diyagonal", Bn[k], M[k], tut && k === 0 ? UST_UC : null); ekle("makas-diyagonal", Bn[k + 1], M[k], tut && k === n - 1 ? UST_UC : null); }
     } else if (tip === "k") {
       altBaslik();
       for (let k = 0; k < n; k++) ekle("makas-ust", Tn[k], Tn[k + 1]);
       const M = [null];
       for (let k = 1; k < n; k++) M.push(nok(k * d, h / 2));
-      ekle("makas-dikme", Bn[0], Tn[0]); ekle("makas-dikme", Bn[n], Tn[n]);
-      for (let k = 1; k < n; k++) { ekle("makas-dikme", Bn[k], M[k]); ekle("makas-dikme", M[k], Tn[k]); }
+      ekle("makas-dikme", Bn[0], Tn[0], tut ? RIJIT : null); ekle("makas-dikme", Bn[n], Tn[n], tut ? RIJIT : null);
+      // ara dikme: yalnız başlık uçlarında mafsallı, orta düğüm M'den sürekli (M'yi düzlem dışında tutar)
+      for (let k = 1; k < n; k++) { ekle("makas-dikme", Bn[k], M[k], tut ? ALT_UC : null); ekle("makas-dikme", M[k], Tn[k], tut ? UST_UC : null); }
       for (let k = 0; k < n; k++) {
         if (k < n / 2) { ekle("makas-diyagonal", Tn[k], M[k + 1]); ekle("makas-diyagonal", Bn[k], M[k + 1]); }
         else { ekle("makas-diyagonal", M[k], Tn[k + 1]); ekle("makas-diyagonal", M[k], Bn[k + 1]); }
@@ -1757,8 +1825,10 @@
       ekle("makas-alt", S, B1); ekle("makas-alt", B1, B2); ekle("makas-alt", B2, E);
       ekle("makas-diyagonal", B1, TL); ekle("makas-diyagonal", B1, R); ekle("makas-diyagonal", B2, R); ekle("makas-diyagonal", B2, TR);
     }
+    if (mafsal && !tut && (paralel || tip === "warren")) this.uyar("Makas gövdesi bütünüyle mafsallı (yanal_tutma: yok): üst başlığı düzlem dışında aşık ya da bağ tutmazsa yapı mekanizmadır.");
+    this.uyar(MAKAS_BURKULMA_NOTU);
     this.uretecBitir(kayit);
-    return { uretec: kayit.no, sayilar: sayac, acilik: r9(L), mahya: hm != null ? r9(hm) : null };
+    return { uretec: kayit.no, sayilar: sayac, acilik: r9(L), mahya: hm != null ? r9(hm) : null, yanal_tutma: yanal };
   };
 
   // ---------------------------------------------------------------- aşık (ortak)
@@ -2642,7 +2712,8 @@
 
   return Object.freeze({
     TOL: TOL, ILK_SERBEST_DUGUM: ILK_SERBEST_DUGUM, SERBESTLIKLER: SERBESTLIKLER, MAFSAL_IKI_UC: MAFSAL_IKI_UC, MAFSAL_I: MAFSAL_I,
-    MAFSAL_J: MAFSAL_J, KAFES_CUBUGU: KAFES_CUBUGU, CAPRAZ_TIPLERI: CAPRAZ_TIPLERI, MAKAS_TIPLERI: MAKAS_TIPLERI, ModelHatasi: ModelHatasi,
+    MAFSAL_J: MAFSAL_J, KAFES_CUBUGU: KAFES_CUBUGU, CAPRAZ_TIPLERI: CAPRAZ_TIPLERI, MAKAS_TIPLERI: MAKAS_TIPLERI, MAKAS_YANAL_TUTMA: MAKAS_YANAL_TUTMA,
+    MAKAS_BURKULMA_NOTU: MAKAS_BURKULMA_NOTU, YAY_ANAHTARLARI: YAY_ANAHTARLARI, ModelHatasi: ModelHatasi,
     // okuma / geometri
     dugumKonumu: dugumKonumu, dugumBul: dugumBul, dugumNo: dugumNo, uzunluk: uzunluk, egim: egim, yerelEksenler: yerelEksenler,
     yerelEksenVektor: yerelEksenVektor, aciHedef: aciHedef, panelKenarCubuklari: panelKenarCubuklari, panelGeometrisi: panelGeometrisi,

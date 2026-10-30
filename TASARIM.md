@@ -80,7 +80,20 @@ tarayıcıda (Pyodide) ve masaüstünde çevrimdışı çalışır; başka yazı
 - **surum 3 "genel" (`yapi_serbest.bina_coz`):** aynı anahtarlar + `model: "genel"`, `ag.cubuklar`, `ag.paneller`,
   `ag.dugumler[].tur` (aks, bolme, kesisim, ic, efendi), `yukler.paneller` / `yukler.cubuklar`, `akis.mesnetler` (açık mesnetler:
   dugum, adres, tip, N_G, N_Q, MX, MY), `kren`, `yalniz_cekme`, `bina.seviyeler`, `uyarilar`.
-- **akis.temeller** yalnız temel mesnetlerini (kaynak `temel`: B, L, h, N_temel) taşır; açık `mesnetler` kayıtları `akis.mesnetler`'dedir.
+- **akis.temeller** yalnız tekil temel mesnetlerini (kaynak `temel`: B, L, h, N_temel) taşır (mütemadi / radyede boş); açık `mesnetler`
+  kayıtları `akis.mesnetler`'dedir (yaylı mesnette `tip: "yay"`, `yay: {kx…krz}` bina eksenlerinde).
+- **akis.sankey** kenarları `{kaynak, hedef, durum, kN, tur}`: `tur` `panel-cubuk` (`P{n}` → `Ç{n}`), `cubuk-cubuk`, `cubuk-mesnet`
+  (`M{düğüm}`), `dugum-cubuk` (`D{düğüm}`), `dugum-mesnet`. Düğüm kuralı: her durumda ve her çubuk ucu düğümünde girenler (düğüme
+  aşağı kuvvet veren çubuklar, düğüm yükü) çıkanlara (yukarı tutan çubuklar, mesnet / yay tepkisi) oranla bölünür; mütemadi / radye
+  ağının düğümünde tek çıkış `M{n}`'dir. Durum başına en çok 600 panel ve 600 öteki kenar (kesilirse `akis.sankey_kesildi`); `tur`'suz
+  eski kayıt `panel-cubuk` sayılır.
+- **durumlar[d] / sonuclar[k]**: yanıta yazılmayan yaylar (mütemadi / radye temel ağı) varsa `yay_ozet` {FX…MZ} (bina eksenlerinde
+  toplamları); yazılan `yaylar` kayıtları `tur` taşıyabilir: `yay-mesnet` (yaylı açık mesnet), `diyafram-mesnet` (rijit diyaframlı
+  seviyedeki mesnedin ceza yayı); türsüz kayıt Winkler / elastik temel yayıdır. Σ tepki = Σ `tepkiler` + Σ yazılan yaylar (motor →
+  bina: Fx→FX, Fz→−FY, Fy→FZ, Mx→MX, Mz→−MY, My→MZ) + `yay_ozet`.
+- **yukler.eylemler** `{durum: {cubuklar, dugumler, G_carpani?}}`: rüzgâr, deprem ve kren durumlarının yükleri (IFC için; genel modelde
+  çubuk yayılı / tekil yükleri, iki modelde düğüm kuvvetleri, EZ'de G çarpanı). **temel.oz_yuk** `{elemanlar: [{no, q}], dugumler:
+  [{dugum, P}], W}`: temel öz ağırlığının temel.py'nin eklediği yükleri (Σq·L + ΣP = W).
 - Köprü önbelleği: `cozum_kimligi` (normalize girdinin özeti; `yapi.cozum_kimligi(bina)` çözmeden verir); son çözümlerin iç paketi
   (`ic`) tembel kombinasyon, tasarım ayrıntısı, kesit önerisi, rapor, tablolar ve ısı haritası için saklanır.
 
@@ -101,8 +114,12 @@ birim ağırlıklar, duvar ve kaplama takımları; TBDY tabloları; kombinasyon 
 
 ## §11 Kesit tahkikleri (tasarım)
 
-- `tasarim.py`: TS 500 betonarme kiriş (eğilme, kesme) ve kolon (N–M etkileşimi, e_min, eş zamanlı noktalar, TBDY 7.3 sınırları);
-  ÇYTHYE 2018 çelik (YDKT / GKT; eğilme, YBB, basınç, kesme, çekme, bileşik etki); basit kesitler (kutu, boru, korniyer, U).
+- `tasarim.py`: TS 500 betonarme kiriş (eğilme, kesme) ve kolon (N–M etkileşimi, e_min, eş zamanlı noktalar, iki eksenli eğilmede
+  Bresler, TBDY 7.3 sınırları); ÇYTHYE 2018 çelik (YDKT / GKT; eğilme, YBB, basınç, kesme, çekme, bileşik etki); basit kesitler (kutu,
+  boru, korniyer, U). `kesit_sinifi` basit kesit adını da çözer (Tablo 5.1A/B parça oranları: `{profil, egilme, basinc, parcalar,
+  kaynak}`).
+- Genel modelin betonarme kolonu aks–kat ile aynı tahkiki alır: iki eksenli eğilme (Bresler) satırı D/C'ye girer; özet `yon`, `bX`/`bY`
+  (bina X/Y izdüşümleri, 90° döndürülmüş kolonda takaslı) ve `N_max`/`N_min` (birleşim başına alt uç N'si) aks–kat kuralındadır.
 - Kayıt (`veri.tasarim.elemanlar[]`): `{no, tur, adres, kesit, dc, durum, belirleyen, kontroller, ozet}`; genel modelde ek `cubuk`,
   `grup`, `L`, `varsayimlar`, `kaynak`; `kontroller[0]` D/C'yi belirleyen satır. D/C dayanım satırlarının en büyüğüdür; yönetmelik
   alt/üst sınır koşulları (`kosul: true`) yalnız sağlanmadığında belirler.
@@ -112,8 +129,11 @@ birim ağırlıklar, duvar ve kaplama takımları; TBDY tabloları; kombinasyon 
   b, h, kaynak, dc_once` (Tasarım tablosunda görünen D/C), `dc_oneri` (mevcut iç kuvvetlerle tahmin), `degisim` (büyüt / küçült / aynı / donatı: betonarme
   kolonda b × h aynı, gerekli ρ büyük), `uygula` (`{ad, tanim, yeni, ek_kesitler?}` ya da null), `gerekce` (metin listesi), `dc_sonra`
   (`yinele` > 0 ise yeniden çözümdeki D/C, yoksa `dc_oneri`); üst düzeyde `dc_sonra`, `donati_azaltma` ve `uyarilar` (yakınsamadıysa
-  D/C > 1 kalan çubuklar). `yinele` (en çok 3): 0. tur bütün önerileri uygular, sonraki turlar yalnız D/C > 1 grupları büyütür. Aks–kat çözümü genel motorla bir kez yeniden çözülür. Arayüz: "Kesit öner ve uygula" komutu (sağ tıkta tek eleman;
-  araç kutusunda ve masaüstü Tasarım menüsünde seçim ya da bütün model; "Hepsini uygula" yeniden çözer).
+  D/C > 1 kalan çubuklar). `yinele` (en çok 3): 0. tur bütün önerileri uygular, sonraki turlar yalnız D/C > 1 grupları büyütür. Aks–kat çözümü genel motorla (gerçek temelle) bir kez yeniden çözülür. Parçalı aks–kat elemanı tek öneridir (`cubuklar`, `kaynak.parca`
+  > 1; `dc_oneri` parçaların en büyüğü); `grup: true` üye listesine tek grup önerisi verir (`grup {kesit, tur, uye}`); depremli
+  `yinele` yanıtı `oteleme {sinir, once, sonra}` taşır ve öneri göreli kat ötelemesi sınırını aştırmaz; köprü yanıtında `sure_ms`.
+  Arayüz: "Kesit öner ve uygula" komutu (sağ tıkta tek eleman; araç kutusunda ve masaüstü Tasarım menüsünde seçim ya da bütün model;
+  "Kesit grubuna uygula (N çubuk)"; "Hepsini uygula" yeniden çözer, ötelemeyi önce → sonra yazar, bekleme notunda süre tahmini).
 
 ## §12 Genel 3B model (surum 3)
 
@@ -129,7 +149,12 @@ tepkileri ve iç kuvvetleri verir (`testler/test_yapi_serbest.py`).
 ### 12.2 Çubuk türleri, yükler, paneller
 
 - Çubuk `tur`: kolon, kiris, capraz, makas-ust, makas-alt, makas-dikme, makas-diyagonal, asik, kren, bag, diger. Uç serbestlikleri
-  `serbest: {i: [...], j: [...]}` (N, Vy, Vz, T, My, Mz), `yalniz_cekme`, `K` ([güçlü, zayıf]), `Lb`, `aci`, `duvar`.
+  `serbest: {i: [...], j: [...]}` (N, Vy, Vz, T, My, Mz), `yalniz_cekme`, `K` ([güçlü, zayıf]), `Lb`, `aci`, `duvar` (duvar taşıyabilen
+  türler kiris, bag, diger). Türlerin Türkçe adı tek sözlüktür (`yapi_serbest.TUR_ADI`, `tablolar.TUR_ADI`, `rapor.TUR_ADI`: kiriş,
+  çapraz, makas üst başlık, makas alt başlık, makas dikmesi, makas diyagonali, aşık, kren kirişi, bağ, diğer); motor adresi
+  `Ç{no} ({TUR_ADI[tur]})`, makine `tur` alanları değişmez.
+- Makas üreteci: mafsallı gövdede `yanal_tutma` (`"uc-dikme"` varsayılan: uç dikmeleri, Warren'ın ilk / son diyagonali ve K makasın ara
+  dikmeleri moment sürekli; `"yok"`: bütün gövde mafsallı) düzlem dışı mekanizmayı önler.
 - Panel `tur`: doseme, cati, cephe; `dagitim`: iki (açıortay bölgeleri; dikdörtgende 45° kuralı), tek-13, tek-24, yok; kalınlık 0
   taşıyıcı olmayan kaplamadır (sac). Kar μ1 panel eğiminden, rüzgâr panel normaline (c_p otomatik ya da dört değer).
 - Ek yükler: çubuk (yayılı / tekil, global ya da yerel yön), düğüm (REF, FX…MZ), panel `{tur: "panel", panel, durum: G | Q | S, p}`
@@ -138,17 +163,50 @@ tepkileri ve iç kuvvetleri verir (`testler/test_yapi_serbest.py`).
 
 ### 12.3 Temel kuralı
 
-En alt Z seviyesindeki (kat 0) **bütün aks kesişimleri** — hangi aks sisteminde olursa olsun — `temeller.mesnet` ile mesnetlenir
-(açık `mesnetler` kaydı yoksa); bölme, kesişim ve koordinat düğümleri asla. **Mütemadi ve radye temel genel modelde çözülmez:** motor
-öğretici hata verir (`TEMEL_TIP_HATASI`), arayüz genel modele geçerken onayla tekil temele çevirir, rapor "analiz yapılmadı" notu
-düşer. Sınır: genel modelde `EN_FAZLA_SD = 2000` (aks sınırı yok); aks–kat modelinde 12 × 12 aks, 12 kat, 1500 SD.
+**Temel düğümleri:** en alt Z seviyesindeki (kat 0), açık `mesnetler` kaydı olmayan ve en az bir çubuk taşıyan **aks kesişimleri** —
+hangi aks sisteminde olursa olsun; bölme, kesişim ve koordinat düğümleri asla.
+
+- **Tekil:** temel düğümleri `temeller.mesnet` ile nokta mesnettir (B × L kaydı, `ozel` ek sistemde `{sistem, aks}`); çözümde
+  `veri.temel = temel.tekil_ozet(...)`.
+- **Mütemadi ve radye:** sabit mesnet yoktur; düğümler `temel.py`'nin Winkler ağına bağlanır. Ağ **GLOBAL X/Y aks çizgileri** boyunca
+  kurulur: mütemadide temel kotunda kolonu olan akslarda temel kirişleri (`surekli.akslar` GLOBAL adlar: x doğrultulu hatlar için Y
+  aksı, y doğrultulu hatlar için X aksı adları), radyede GLOBAL aks zarfı + taşma üzerinde ızgara.
+- **Izgara dışındaki taban** (GLOBAL kesişimden 1 mm'den uzak, ek aks sistemi): yalnız **kirişsiz radyede** ağa katılır — düğümden
+  geçen sanal ızgara çizgileri (`x=<X>` / `y=<Y>`) eklenir. Mütemadi temelde ve kirişli radyede öğretici hata ("… GLOBAL X/Y aks
+  kesişiminde değil (ek aks sistemi) …"); o düğüme `mesnetler` ile mesnet verilir.
+- **Ağın üzerindeki açık mesnet hatadır** ("Düğüm N (…) açık mesnetli ('mesnetler') ve <mütemadi temel|radye> ağının üzerinde …");
+  ağa bağlanmayan taban ve boş ağ da öğretici hata verir; temel seviyesindeki bağ çubuğu yalnız uyarıdır.
+- **temel.py yeniden kullanımı:** genel motor temel.py'ye aks–kat görünümü verir (`yapi_serbest._temel_gorunum(B, ilk=False, ag=None)`:
+  GLOBAL akslar sıralı `xk/xad/yk/yad`, `kat`, `temeller`, `malzemeler`, `kesitler`, `taban_ixy`, `kolonlar`, `kolon_key`, `kolon_no`,
+  `sanal`); çözümsüz modelde de çalışır (tablolar). Çıktı aks–kat `veri.temel` şemasıyla aynıdır; ek olarak temel elemanları
+  `veri.ag.elemanlar`'da (`tur` `temel-kirisi` | `radye-serit`, `cubuk` null, `kesit` TK | RS), ağ düğümleri `veri.ag.dugumler`'de
+  (`tur: "temel"`), `veri.akis.korunum.G.temel_oz = W`, `veri.yukler` toplamı ve kat 0 satırı W'yi içerir, `veri.bina.temeller.tip`
+  çözülen tiptir (`.surekli` / `.radye` normalize).
+- Sınır: genel modelde `EN_FAZLA_SD = 2000` (aks sınırı yok; temel ağı dahil, `ag` gerekirse büyütülür); aks–kat modelinde 12 × 12 aks,
+  12 kat, 1500 SD.
+
+### 12.4 Açık mesnetler: yaylı ve diyafram bağlı
+
+- `mesnetler[]` kaydı `kx, ky, kz` (kN/m) ve `krx, kry, krz` (kN·m/rad) yay rijitliklerini **bina eksenlerinde** taşıyabilir (her biri
+  pozitif sayı ya da yok). Aynı doğrultu hem tutulu hem yaylı olamaz ("mesnetler[k]: <yön> hem tutulu hem yaylı verilemez (<anahtar>).");
+  ≤ 0 ya da sayı olmayan değer hatadır. Motor yayları `kx→kx, ky→kz, kz→ky, krx→krx, kry→krz, krz→kry` ile motor eksenlerine çevirir;
+  yay kayıtları `tur: "yay-mesnet"` taşır, mesnet kaydı `tip: "yay"`.
+- Rijit diyaframlı bir seviyedeki düğümün `ux`/`uy`/`rz` mesnedi köle SD'lere ceza yayı olarak uygulanır (k_t = 10⁶·max EA/L,
+  k_r = 10⁶·max EI/L; `K_r = TᵀKT` efendiye bağlar; yay kayıtları `tur: "diyafram-mesnet"`); `uz`/`rx`/`ry` olağan mesnettir. Uyarı:
+  "Düğüm N (adres) rijit diyaframlı <kat adı> seviyesinde: ux/uy/rz mesnedi diyafram bağıyla (ceza rijitliği) uygulandı; bu nokta
+  bütün katın yatay hareketini tutar." Arayüzde Mesnet aracı önce sorar (Olduğu gibi uygula / Yalnız düşey mesnet (uz, rx, ry) / Bu
+  katın diyaframını esnek yap / Vazgeç); diyafram kipi `analiz.diyafram[kat]` > `deprem.diyafram` > "rijit" (katta kalınlıklı panel yoksa
+  esnek) sırasıyla okunur.
 
 ## §13 Temeller
 
 `temel.py`: mütemadi temel (seçilen aks çizgileri boyunca ters T temel kirişleri, Winkler düğüm yayları k_z = k0·B·l, tabla dönme yayı
 k0·B³/12·l) ve radye (iki doğrultulu ızgara, şerit I = b·h³/12, J ≈ b·h³/6; isteğe bağlı aks kirişleri); taban basıncı, oturma,
-farklı oturma, TS 500 / TBDY 16.8 zemin denetimleri, zımbalama, donatı. Tekil temel (B × L; ankastre / mafsal / elastik) `yapi.py`'dedir.
-Çıktı `veri.temel`; anlatımda "Temel ve zemin" adımı; arayüzde Temel sekmesi ve temel tipi seçici (`docs/bina.js`).
+farklı oturma, TS 500 / TBDY 16.8 zemin denetimleri, zımbalama, donatı. **İki motor da temel.py'yi kullanır:** aks–kat (`yapi.py`)
+doğrudan, genel model (`yapi_serbest.py`) §12.3'teki aks–kat görünümüyle; temel öz ağırlığı G'ye eklenir ve `veri.temel.oz_yuk`
+dağılışını verir. Tekil temel (B × L; ankastre / mafsal / elastik) `yapi.py`'dedir (genel modelde de aynı kayıt). Çıktı `veri.temel`;
+anlatımda "Temel ve zemin" adımı; arayüzde Temel sekmesi ve temel tipi seçici (`docs/bina.js`; genel modelde mütemadi / radye açık,
+sahne güncel çözümde temel kirişlerini ve radyeyi `veri.temel.hatlar` / `model.plak`'tan çizer).
 
 ## §14 Çıktılar
 
@@ -159,11 +217,30 @@ kaynak yok. Bölüm sırası sabit: 1 kapak/künye, 2 yönetmelikler, 3 genel bi
 8 analiz yöntemi, 9 yük birleşimleri, 10 analiz sonuçları, 11 betonarme, 12 çelik, 13 temel, 14 sonuç; metraj özeti, Ek A düğümler,
 Ek B çubuklar, Ek C seçilen tablolar. Veri olmayan bölüm "Bu modelde uygulanmadı" notuyla kalır.
 
+- §10.1 korunum: Σ tepki = Σ mesnet tepkisi + Σ yazılan yay kuvveti + `yay_ozet` (§4); düğüm tablolarında yaylı mesnet, diyafram bağlı
+  mesnet ve elastik temel yayı ayrı türle (rijitlikleriyle), mütemadi / radye ağı tek "zemin yayları" satırıyla (ağ düğümlerinin yatay
+  tutulma tepkileri "temel ağı (yatay tutulu)" satırlarıdır). Korunum tablosunda
+  "temel öz ağırlığı" satırı.
+- §5: basit çelik kesitlerin sınıfı (`tasarim.kesit_sinifi`, "<ad>: basınçta …, eğilmede …" ve parça oranları).
+- §13: iki modelde de temel analizi ve tasarımı `veri.temel`'den; model mütemadi / radye ama çözümde o sonuç yoksa "Bu çözümde
+  mütemadi/radye temel sonucu yok (çözüm eski ya da temel tipi değişti); binayı yeniden çözün."; boyutlar `veri.bina.temeller`'in
+  normalize kaydından; açık mesnetler ayrı tabloda.
+
 ### 14.2 IFC
 
 `docs/ifc_disari.js` (`window.MatrisIFC`): IFC4 STEP; proje → yapı → katlar, aks ızgaraları (ek sistemler dahil), fiziksel model
-(kolon, kiriş, üye, döşeme, kaplama, temel), malzeme ve profil setleri, isteğe bağlı yapısal analiz modeli, yükler (aks–kat modelinde G / Q, genel modelde G / Q / S) ve D/C
+(kolon, kiriş, üye, döşeme, kaplama, temel), malzeme ve profil setleri, isteğe bağlı yapısal analiz modeli, yükler ve D/C
 özellikleri. GlobalId'ler belirlenimci (aynı modelden aynı kimlik).
+
+- **Yükler:** G / Q / S'ye ek olarak W, E ve K eylemleri `veri.yukler.eylemler`'den (§4) her durumun yük grubuna yazılır: çubuk yayılı /
+  tekil yükleri IfcStructuralLinearAction / IfcStructuralCurveAction (global bileşenler q·vek), tekil yük ve düğüm kuvvetleri
+  IfcStructuralPointAction; rijit diyaframın efendi düğümü kendi IfcStructuralPointConnection'ı ("Kat k diyafram merkezi", üye bağlantısı
+  yok); EZ, G eylemlerinin `G_carpani` ile ölçeklenmiş kopyası. Yanıt boyutu sınırında eylemler yazılmamışsa (`eylemler_not`) eski not
+  uyarı olarak kalır.
+- **Temel öz ağırlığı:** mütemadi / radyede `veri.temel.oz_yuk` (temel elemanlarına yayılı, düğümlere tekil), tekil temelde temel başına
+  γ·B·L·h.
+- **Vute:** kutu ve U tabanlı vute daralan katı (değişken kesit) olarak; boru, korniyer ve çift korniyer tabanlı vute sabit kesitle ve
+  uyarıyla. Basit profil boyutları motorla aynı kuralla (UPN yuvarlatması, eşit olmayan kollu korniyer yok).
 
 ## §15 Tablolar ve metraj
 
@@ -178,7 +255,20 @@ tabloları kullanır; köprü `bina_tablolar`. Metraj eğitim amaçlı yaklaşı
 
 `docs/tablo_editoru.js` (`window.MatrisTablo`): sarı (düzenlenmiş) hücreler, "Uygula" (tek geri al adımı), sekmeyle ayrılmış
 yapıştırma, CSV dışa aktarma (BOM, `;`, ondalık virgül), rapora tablo seçimi. Masaüstü "Tablolar (.csv)" bütün tabloları tek CSV'ye
-yazar; CSV dosyası içe aktarılmaz.
+yazar.
+
+**CSV içe aktarma** ("İçe aktar (.csv)…"; masaüstünde Dosya › İçe aktar › Tablolar (.csv)…, komut `csv-iceri`; `MatrisTablo.ac(...,
+{csvIceri: true})`, `ed.csvIceAktar()`): BOM kabul; ayırıcı `;` `,` ya da sekme kendiliğinden; `Tablo: başlık;grup;ad` bölümleri
+birden çok tabloyu doldurur, yoksa etkin tablo; başlık hücreleri sütun başlıklarıyla, satırlar anahtar sütunuyla (yoksa sırayla)
+eşlenir; yalnız düzenlenebilir hücreler değişir ve sarı bekleyen hücre olur ("Uygula", Ctrl+Z); bilinmeyen ya da düzenlenemeyen
+sütunlar bildirilir.
+
+**Genel model tablo kuralları:** Duvar Yükleri duvar taşıyabilen her çubuğu (kiris, bag, diger) listeler, duvarsız satırın Duvar ve
+yükseklik hücreleri o çubuğun kaydına yazar (genelleştirilmiş modelde `kaynak` yalnız köken bilgisidir); döşeme kalıbı kenar başına kiriş
+yarı genişliği kadar içeri ötelenmiş net alandır (dikdörtgende (dx − b₁/2 − b₃/2)·(dy − b₂/2 − b₄/2), aks–kat ile aynı); kat
+ağırlıkları `veri.yukler.katlar`'dan (iki motorda her kolonun ağırlığı üst seviyesine); Mesnetler tablosunda açık mesnetin `k_x … k_rz`
+hücreleri düzenlenir, Mesnet Tepkileri satır türleri "mesnet", "yaylı mesnet", "mesnet (diyafram bağıyla)", "elastik mesnet (zemin
+yayı)", "zemin yayı" ("Yay rijitliği" sütunu yalnız yaylı satır varsa).
 
 ## §16 Isı haritaları
 
@@ -203,8 +293,8 @@ tarafsız eksen, boyunca grafikler).
 
 ### 17.1 Araç kutuları ve ölçme
 
-`docs/arac_kutusu.js` (`window.MatrisArac`): komut kaydı (`komutKaydet`, `baglar`), katalog, yüzen / sürüklenen / gruplanan
-kutular, Özelleştir, hazır yerleşimler, tek kaynaklı kısayollar (`kisayollar()`; Yardım sayfasındaki tablo ve Bina sayfasındaki `?`
+`docs/arac_kutusu.js` (`window.MatrisArac`): komut kaydı (`komutKaydet`, `baglar`), katalog, kenara yerleşen (rıhtım, §17.4) ya da
+yüzen, sürüklenen, gruplanan kutular, Özelleştir, hazır yerleşimler, tek kaynaklı kısayollar (`kisayollar()`; Yardım sayfasındaki tablo ve Bina sayfasındaki `?`
 penceresi bundan üretilir), kullanılamayan komutun nedeni. `docs/olcum.js` (`window.MatrisOlcum`): uzaklık, açı, alan, kot farkı,
 koordinat, eleman boyu; çizim kipinde yalnız aks kesişimleri ve düğümlere yakalama (§19), ölçüm kipinde orta nokta ve izdüşüm de.
 
@@ -215,11 +305,40 @@ koordinat, eleman boyu; çizim kipinde yalnız aks kesişimleri ve düğümlere 
 türetilir; çözümden sonra köprü `bina_eleman_bilgi` (`{cozum_kimligi, tur: cubuk | kolon | kiris | fe, no, durum?}` → `{paket:
 {sekmeler: {ic, yer}, ...}}`) "Motor ayrıntısı" bölümlerini ekler (istasyon iç kuvvetleri, en büyük değerler, uç yer değiştirmeleri).
 
-### 17.3 Tam ekran ve yerleşim (*çıkarım*)
+### 17.3 Tam ekran ve yerleşim
 
 `docs/bina.js`: ⛶ / F tam ekran (Esc ya da F çıkar), daraltılabilir araç çubuğu ve özellik paneli, sonuçlar sağ panelde ya da alt
-çekmecede, sürüklenen ayırıcılar, telefonda alt şerit. Kutuların sahneyi örtmemesi için kenar payları (`kenarPaylari`), "Sığdır"
-modeli kutuların arasına yerleştirir.
+çekmecede, sürüklenen ayırıcılar, telefonda alt şerit. "Sığdır" modeli kenar paylarının içine yerleştirir (`MatrisBina.izdusum().alan`);
+3B'de aks balonu ve kot etiketi payı yetmezse kenar payı büyür.
+
+### 17.4 Araç kutusu yerleşimi: rıhtım (kenar şeritleri) ve taşma çekmecesi
+
+Yerleşim (`MatrisArac.Duzen.rihtim(liste, W, H, sec)`, `docs/arac_kutusu.js`) katman boyutu ve kutu listesinin **saf işlevidir;
+geçmişi yoktur** (aynı girdi aynı çıktı; büyütüp küçültmek ya da tam ekrana girip çıkmak aynı yerleşime döner).
+
+- **Kayıt (yerleşim sürüm 2):** kutu `yer` (`"kenar"` | `"serbest"`), `kenar` (ust / alt / sol / sag), `sira`, `katli` (yalnız
+  kullanıcının daraltması; yerleşim yazmaz), `konum` (yalnız yüzen kutu). **Öncelik = kutu dizisindeki sıra.** Sürüm 1 kayıtlar bir kez
+  dönüştürülür (`otoKatli`, `otoKonum` atılır, kenar çapadan, bina sayfasında birleşik "Düzenleme ve aks" ikiye ayrılır) ve bildirim
+  gösterilir: "Araç kutuları kenar yerleşimine geçirildi; bir kutuyu sahneye sürükleyerek yüzdürebilirsiniz."
+- **Şeritler:** üst ve alt **bant** bütün genişlikte tek satır, sol ve sağ **sütun** bantların arasında tek sütun. Kutu biçimleri bir kez
+  ölçülür: yatay başlıklı / başlıksız / daraltılmış, dikey tek / iki düğme sütunlu / daraltılmış çip.
+- **Sığdırma:** bantta yer yetmezse en düşük öncelikli kutudan başlayarak başlık gizlenir, yine yetmezse en düşük öncelikli kutu
+  çıkarılır; sonra başlıklar öncelik sırasıyla geri verilir. Sütunda önce tek, gerekirse iki düğme sütunu; yine sığmayan en düşük
+  öncelikli kutu çıkarılır. En küçük sahne (yükseklik 120, genişlik 200 px) korunur. Çıkarılan kutu kalınlığını değiştirmeden öteki
+  şeride düşebilir, yoksa **taşma çekmecesine** gider.
+- **Taşma çekmecesi:** "⋯ n" düğmesi (sayı rozeti; içindeki komut etkinse onun simgesi) yönetici düğmesiyle birlikte sol alt köşede, alt
+  bandın ilk öğeleridir (kutuların üstüne binmez). Çekmece varsa yerleşim iki geçiş yapar (ikinci geçişte köşeye çekmece düğmesi eklenir).
+  Çekmece kümesi kaydedilmez; yer açılınca kutu kendiliğinden döner. Esc ya da dışarı basma kapatır (odak düğmeye döner).
+- **Kenar payları = şerit kalınlıkları:** sahnenin sığdırma dikdörtgeni şeritlerin içindedir; kenardaki kutu modeli örtemez. Yüzen
+  kutular paya sayılmaz (kullanıcı sahnenin üstüne koymuştur).
+- **Kullanıcı eylemleri kazanır:** kenara sürükleyip bırakılan (yerleştirme işaretiyle), açılan (▸) ya da "Gizli kutular → göster" ile
+  geri gelen kutu şeridinin başına geçer; bu yüzden başka bir kutu çekmeceye düşerse bildirim söyler ("“X” sığmadı; ⋯ düğmesinden
+  açılır."). Sahneye bırakılan kutu yüzer (`yer: "serbest"`, çapa kaydedilir); bir kutunun üstüne binerse en yakın boş yerde gösterilir,
+  çapa değişmez. Kutu menüsü: kenardaki kutuda "Kenar › Üst / Alt / Sol / Sağ" ve "Sahnede yüzdür", çekmecedeki kutuda ayrıca "Kenara
+  sabitle", yüzen kutuda "Yatay yap / Dikey yap" ve "Kenara yerleştir". "Varsayılana dön" sayfanın varsayılan yerleşimine döner.
+- **Sayfa tuşları:** `MatrisArac.SAYFA_TUSLARI` (Esc, Shift+F10, Enter, ?, PgUp, PgDn, F, Shift+F, Ctrl+Shift+Z, Backspace;
+  `{kisayol, ad, grup}`): Bina sayfasının `?` penceresi, Yardım kartı ve masaüstü Yardım › Klavye kısayolları aynı satırları gösterir.
+- Telefonda (katman < 640 px) kutular sahnenin altındaki kaydırılabilir şerittir; rıhtım ve çekmece kullanılmaz.
 
 ## §18 Masaüstü sürümü (*çıkarım*)
 
@@ -253,3 +372,82 @@ Aks verisi tablosu (`tablolar.py` "Akslar" / "Aks sistemleri"; ad değişince ba
 Z aksları (kat dışı Saçak, Mahya, Kren dahil), önden cephede Y aksları, yandan kesitte X aksları; PgUp / PgDn komşu düzleme geçer.
 Çizim araçları: `docs/bina_cizim.js` (çubuk çiz, hızlı kolon / kiriş / çapraz / panel, eğik çubuk, makas, beşik çerçeve, aşık,
 kren yolu, mesnet, yük ata, düzenleme ve değiştirme komutları).
+
+## §20 op4 mimarisi (*taslak*; Faz 0)
+
+op4, Opus Fortis için yerel Windows yapısal modelleme ve analiz programıdır (web sayfası değil). Bağlayıcı belirtim, gerekçeler ve
+aşamalı plan [`op4/MIMARI.md`](op4/MIMARI.md)'dedir; bu bölüm onun §1, §4 ve §8'inin özetidir. Çelişkide MIMARI.md geçerlidir.
+Faz 0 iskeleti (`op4/`, `.github/workflows/op4.yml`) CI'da uçtan uca çalışır; aşağıdaki hedef mimari Faz 1'den itibaren kurulur.
+
+### 20.1 Kararlar (MIMARI §1)
+
+| Konu | Karar |
+|---|---|
+| Ürün | `op4.exe` (arayüz; C++20, statik CRT) ve `op4motor.exe` (Python barındırıcısı; ana + tembel yardımcı süreç). Kurulum `op4-setup-<sürüm>.exe` (Inno Setup; lisans doğrulanır, yedek NSIS); sürüm `op4-vX.Y.Z` etiketinden. Açılışta Opus Fortis logolu açılış ekranı. |
+| Arayüz | Dear ImGui (docking) + Win32 kabuk; yerel dosya ve görev pencereleri. Türkçe arayüz, ondalık virgül, kN ve m. |
+| Grafik | Doğrudan Direct3D 12; donanımda MSAA 8×, WARP'ta 4×; ters-Z sonsuz uzak düzlem (D32); kamera-göreli koordinat, örneklenmiş kesit ağları, sabit piksel kalınlıklı çizgiler. |
+| Gezinme | Sol sürükle kaydırır, Shift + sol sürükle döndürür, tekerlek imlece doğru yakınlaştırır; hesap mutlak çapaya göredir (kayma ≤ 0,0001 px ölçüldü). |
+| Hesap motoru | Kökteki Python motoru değişmeden; gömülü CPython ayrı süreçte, protokol `web_kopru.calistir` JSON'u (§20.3). |
+| Model çekirdeği | QuickJS-ng; `docs/` altındaki saf JS modülleri (`model_ops`, `aks_sistemi`, `ifc_disari` …) değişmeden çalışır, model otoritesidir. |
+| Belge içerikleri | Dersler, rapor önizleme ve adım adım matematik ayrı bir "Belge penceresi"nde (yerel dosyalar, ağ yok). |
+| Proje dosyası | `.op4` (ZIP); Kaydet, Farklı kaydet, Aç, otomatik kayıt, kurtarma, son dosyalar. Pencere başına bir proje. |
+| IFC | Dışa aktarma Faz 1 (`ifc_disari.js`), içe aktarma Faz 6 (isteğe bağlı bileşen). |
+| Ağ ±%2 | Görüntü ağı: analitik dış çizgi + LOD; analiz ağı: `ag_eniyile.py` (Richardson, GCI). |
+| CI | Windows işi `windows-2025` (derle, WARP ekran görüntüleri, gerçek pencere, kurulum / kaldırma), etikette Release; ekran görüntüleri ve `OP4OLCUM` ölçümleri günlüğe yazılır. |
+
+### 20.2 Üst düzey yapı (MIMARI §4)
+
+```
+op4.exe  (pencere başına bir proje)
+  UI iş parçacığı : Win32 döngüsü → girdi birleştirme → ImGui → komut yöneticisi → D3D12
+  Çekirdek        : QuickJS-ng bağlamı (model otoritesi, geri al yığını)
+  Motor G/Ç       : boru çiftleri ↔ op4motor süreçleri; yanıtlar UI kuyruğuna
+  İş havuzu       : kesit ağı / LOD, BVH, zip / PNG, öznitelik zenginleştirme, IFC ağı
+      │ boru çifti (4 B uzunluk + UTF-8 JSON)          │                         │ (Faz 5)
+  op4motor "ana": op4_sunucu.py, çözüm önbelleği    op4motor "yardımcı" (tembel)    Belge penceresi
+```
+
+- **Düzenleme:** komut noktaları toplar (yakalama C++ BVH'de) → önizleme yalnız üst katmanda → işlemede çekirdeğe tek işlem
+  (`uygula(islem, parametreler)`) → çekirdek eklenen / silinen / değişen kümeleri döndürür → UI yalnız değişen örnekleri yazar,
+  sonuçları "eski" işaretler, otomatik kaydı kurar.
+- **Çözüm:** F5 → çekirdekten bina metni → ana motora `bina_coz` (`anlat: false`) → `SonucOzeti`; ayrıntılar istendikçe
+  `cozum_kimligi` ile.
+- **Proje durumu:** dosya yolu ve kirli bayrağı, çekirdek bağlamı, değişmez sahne anlığı ve sütunlu öznitelik tablosu, seçim ve
+  süzgeçler, görünümler, sonuç özeti, GPU kaynakları. Eleman kimliği `{tur, no, alt}`.
+
+### 20.3 Hesap motoru tümleşimi (MIMARI §8)
+
+- **Süreç:** `op4motor.exe` (≈ 150 satır C++) geçersiz std tutamaçlarını boşaltır, gömülü Python dosyalarını denetler (eksikse
+  okunur hata, `Py_FatalError` yok), BLAS iş parçacığı sayısını ayarlar (ana: çekirdek − 1, yardımcı: 1) ve
+  `Py_Main(-X utf8 -B -m op4_sunucu --istek … --yanit … --rol ana|yardimci)` çağırır. Yalıtımı `._pth` sağlar.
+- **Sunucu** (`op4/motor/op4_sunucu.py`): stdout / stderr ve fd 1–2 günlüğe yönlendirilir (motordaki `print` protokolü bozmaz);
+  `SIGINT` işleyicisi kurulur; `web_kopru` içe aktarılınca `hazir` gönderilir; istekler ana iş parçacığında sırayla
+  `calistir()` ile işlenir; okuyucu iş parçacığı `iptal`te `_thread.interrupt_main()`, `kapat`ta düzgün çıkış yapar.
+- **Protokol:** miras alınan iki anonim boru; çerçeve 4 bayt küçük-endian uzunluk + UTF-8 JSON (≤ 512 MB). UI → motor
+  `{"tur":"istek","id","istek":{islem, girdi, ayarlar}}`, `{"tur":"iptal","id"}`, `{"tur":"kapat"}`; motor → UI `hazir`,
+  `durum`, `ilerleme` (Faz 5), `yanit` (`calistir` metni olduğu gibi, yeniden ayrıştırılmaz), `gunluk`. İstek gövdesi web
+  isteğiyle birebir aynıdır (§4 ve `docs/web_kopru.py` şemaları bağlayıcıdır).
+- **Yönlendirme:** ana süreç bina çözümü, kombinasyon, tasarım, kesit önerisi, eleman bilgisi, rapor, tablolar, alan, yük yolu,
+  `bina_kimlik`, `bina_ag_eniyile`; yardımcı süreç matris işlemleri, dersler, yardım, sonlu eleman, kütüphane, şablonlar,
+  deprem önizleme, `ifc_iceri`.
+- **İptal ve sınırlar:** iptal yanıtı `{"hata": "İşlem iptal edildi.", "hata_turu": "iptal"}`; 5 s içinde yanıt yoksa süreç
+  sonlandırılıp yeniden başlatılır (≈ 0,5 s). Zaman aşımı yok, ilerleme görünür; bellek tavanı Job Object ile (varsayılan %60);
+  `id` eşlemesiyle eski yanıtlar atılır.
+- **Paket:** `python\` (CPython embeddable, numpy, `._pth`), saf paketler önceden derlenmiş `.pyc` ile, `motor\` (kök motor
+  modülleri, `web_kopru.py`, `op4_sunucu.py`); isteğe bağlı `bilesen\ifc\`, `bilesen\seyrek\`. Kurulum yolu Türkçe karakter ve
+  boşluk içerebilir (CI `C:\op4 dene ŞĞİı` yoluna kurar).
+- **Motorda yalnız eklemeli değişiklik:** varsayılanlar bugünkü davranışı korur (`anlat` varsayılan true, `bina_kimlik`,
+  iptal türü, `ayarlar.sd_siniri`, ilerleme kancası, ürün adı parametresi; seyrek çözüm yolu ve genel modelde radye /
+  mütemadi temel ilgili fazlarda). `pytest testler` ve `node --test testler/js/*.test.js` değişmeden geçer.
+
+**Faz 1 paket sözleşmeleri** (`op4/MIMARI.md` §24): dört paket (A derleme-motor, B model-cekirdegi, C arayuz-goruntu, D
+dosya-cozum) paralel çalışır; aralarındaki arayüzler `op4/kaynak/cekirdek/` başlıklarında (S1–S27: eleman kimliği, sahne
+anlığı, öznitelik tablosu, seçim ve seçme, model çekirdeği, motor tel protokolü ve hizmeti, proje belgesi ve dosyası,
+ayarlar, sonuç, komut defteri, arayüz kancaları, Hizmetler, uygulama kabuğu) ve `op4/js/` JSDoc'unda sabittir; komut
+kataloğu `op4/veri/komutlar.json`. Kilitleyen: `op4/testler/` (doctest, node, pytest; Linux ve Windows CI),
+`testler/test_op4_sozlesme.py` (dosya sahipliği, komut kataloğu, kod tabloları).
+
+Uygulayan (Faz 0): `op4/kaynak/` (C++ iskeleti; motor şimdilik süreç içi `motor.cpp`, `--test-motor` tanı kipi), `op4/kurulum/op4.iss`,
+`op4/araclar/` (`python_hazirla.py`, `kimlik_uret.py`, `gunluk_png_yaz.py`, `gunluk_png_coz.py`, `ci_bekle.sh`),
+`.github/workflows/op4.yml`. Kilitleyen: `testler/test_op4_araclar.py` (günlük protokolü, iş akışı sözleşmesi, sürüm tek kaynağı,
+sihirbaz görselleri), `testler/test_program_adi_yok.py` (op4'ün C++, HLSL, CMake ve kurulum dosyaları dahil), Windows CI.

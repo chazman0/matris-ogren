@@ -328,12 +328,14 @@ def test_kesit_oner_aks_kat_yalniz_kimlik(kopru):
     g = kopru._GENEL_ONBELLEK[kimlik]
     y2 = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": kimlik, "hedef": [{"tur": "kolon", "no": 1}]})
     assert y2["oneriler"][0] == y["oneriler"][0] and kopru._GENEL_ONBELLEK[kimlik] is g
-    # mütemadi temel: tekil temel mesnetleriyle, uyarıyla
+    # mütemadi temel: genel motor da gerçek temelle (Winkler ağı) çözer; eskiden tekil temel mesnetleriyle, uyarıyla
     v = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("betonarme-3kat-surekli-temel")})["veri"]
     y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": 5}]})
-    assert y["hata"] is None and any("tekil temel mesnetleriyle" in u for u in y["uyarilar"])
+    assert y["hata"] is None and not any("tekil temel mesnetleriyle" in u for u in y["uyarilar"])
     assert y["oneriler"][0]["dc_once"] == pytest.approx(next(k["dc"] for k in v["tasarim"]["elemanlar"]
                                                              if k["tur"] == "kolon" and k["no"] == 5))
+    g = kopru._GENEL_ONBELLEK[v["cozum_kimligi"]]
+    assert g["B"].temeller["tip"] == "surekli" and g["alan"]["ag"]["temel"] is not None
 
 
 def test_kesit_oner_aks_kat_uygula_tabloda_yeterli(kopru):
@@ -544,3 +546,108 @@ def test_eleman_tasarim_genellestirilmis_model_eslesmesi(kopru):
         for tur, no in (("cubuk", rec["cubuk"]), (rec["tur"], rec["no"])):
             z = iste(kopru, "bina_eleman_tasarim", {"cozum_kimligi": k, "tur": tur, "no": no})
             assert z["hata"] is None and z["sonuc"]["cubuk"] == rec["cubuk"] and z["sonuc"]["dc"] == rec["dc"], (tur, no, z.get("hata"))
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node kurulu değil")
+def test_genellestirilmis_mutemadi_temel_kopru_islemleri(kopru):
+    """K-1 (C11): genelleştirilmiş mütemadi temel modeli bütün köprü işlemlerinden geçer: çözüm (veri.temel), kombinasyon
+    (out.temel), ısı haritası radye katmanı, temel elemanında eleman bilgisi, tasarım, rapor, tablolar, kesit önerisi."""
+    b = yapi.bina_sablon("betonarme-3kat-surekli-temel")
+    r = subprocess.run([shutil.which("node"), "-e", _GENEL_BETIK, str(PROJE / "docs" / "model_ops.js")], input=json.dumps(b),
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    g = json.loads(r.stdout)
+    g["temeller"] = b["temeller"]
+    kopru._BINA_ONBELLEK.clear()
+    y = iste(kopru, "bina_coz", {"bina": g})
+    assert y["hata"] is None
+    v = y["veri"]
+    k = v["cozum_kimligi"]
+    assert v["model"] == "genel" and v["temel"]["tip"] == "surekli" and v["temel"]["tasarim"]
+    km = iste(kopru, "bina_kombinasyon", {"cozum_kimligi": k, "ad": "G+Q"})
+    assert km["hata"] is None and km["sonuc"]["temel"]["p_maks"] == pytest.approx(v["temel"]["p_maks"], rel=1e-6)
+    for durum in ("G", "zarf+"):
+        a = iste(kopru, "bina_alan", {"cozum_kimligi": k, "durum": durum})
+        assert a["hata"] is None
+        rd = a["alan"]["radye"]
+        assert rd is not None and (len(rd["x"]), len(rd["y"])) == (25, 23)
+    tem = next(e["no"] for e in v["ag"]["elemanlar"] if e["tur"] == "temel-kirisi")
+    eb = iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "fe", "no": tem})
+    assert eb["hata"] is None and eb["paket"]["sekmeler"]["ic"]
+    kolon = next(c["no"] for c in v["ag"]["cubuklar"] if c["tur"] == "kolon")
+    assert iste(kopru, "bina_eleman_tasarim", {"cozum_kimligi": k, "tur": "cubuk", "no": kolon})["hata"] is None
+    assert iste(kopru, "bina_eleman_bilgi", {"cozum_kimligi": k, "tur": "cubuk", "no": kolon})["hata"] is None
+    rp = iste(kopru, "bina_rapor", {"cozum_kimligi": k, "secenek": {"eleman_detay": "yok"}})
+    assert rp["hata"] is None and rp["html"]
+    tb = iste(kopru, "bina_tablolar", {"cozum_kimligi": k, "bina": g})
+    assert tb["hata"] is None and tb["cozumlu"]
+    ko = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": k, "hedef": [{"tur": "cubuk", "no": kolon}]})
+    assert ko["hata"] is None and ko["oneriler"] and not any("tekil temel" in u for u in ko["uyarilar"])
+
+
+def test_karma_model_panel_kaynagi(kopru):
+    """K-20 (C17): aks–kat döşemeleri genel modelde panel olur; veri.yukler.paneller[i].kaynak = {aks_kat: 'doseme', no} (öteki
+    paneller null) — eleman bilgisi döşemeyi panele bağlar."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["mesnetler"] = [{"dugum": {"aks": ["B", "2"], "z": "Temel"}, "ux": True, "uy": True, "uz": True}]
+    kopru._BINA_ONBELLEK.clear()
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    assert v["model"] == "genel"
+    pan = v["yukler"]["paneller"]
+    assert pan and all("kaynak" in p for p in pan)
+    assert any(p["kaynak"] == {"aks_kat": "doseme", "no": 1} for p in pan)
+    assert {p["kaynak"]["no"] for p in pan if p["kaynak"]} == {d["no"] for d in b["dosemeler"]}
+
+
+def test_sure_ms_bina_coz_ve_kesit_oner(kopru, yanit):
+    """K-31 / C19: bina_coz ve bina_kesit_oner yanıtında üst düzey tam sayı sure_ms; bina_coz veri.ozet.cozum_sure_ms'e de yazar."""
+    assert isinstance(yanit["sure_ms"], int) and yanit["sure_ms"] >= 0
+    assert yanit["veri"]["ozet"]["cozum_sure_ms"] == yanit["sure_ms"]
+    y = iste(kopru, "bina_kesit_oner", {"bina": yapi.bina_sablon("betonarme-2kat-3x2"), "hedef": [{"tur": "kolon", "no": 1}]})
+    assert y["hata"] is None and isinstance(y["sure_ms"], int) and y["sure_ms"] >= 0
+    g = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-cbf-3kat")})
+    assert isinstance(g["sure_ms"], int) and g["veri"]["ozet"]["cozum_sure_ms"] == g["sure_ms"]
+
+
+def test_kesit_oner_grup_kipi(kopru):
+    """K-32 / C19: grup: true + üye listesi → tek öneri (grup {kesit, tur, uye}, cubuklar = bütün üyeler, ortak kart); yinele 1'de
+    kart bütün üyelere uygulanır, dc_sonra üyelerin yeniden çözümdeki gerçek D/C'lerinin en büyüğü."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    v = iste(kopru, "bina_coz", {"bina": b})["veri"]
+    kesitler = {}
+    for k in b["kolonlar"]:
+        kesitler.setdefault(k["kesit"], []).append(k["no"])
+    kesit, uyeler = max(kesitler.items(), key=lambda x: len(x[1]))
+    hedef = [{"tur": "kolon", "no": n} for n in uyeler]
+    y = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": hedef, "grup": True})
+    assert y["hata"] is None and len(y["oneriler"]) == 1
+    o = y["oneriler"][0]
+    assert o["grup"] == {"kesit": kesit, "tur": "kolon", "uye": len(uyeler)} and len(o["cubuklar"]) >= len(uyeler)
+    tablo = {k["no"]: k["dc"] for k in v["tasarim"]["elemanlar"] if k.get("tur") == "kolon"}
+    assert o["dc_once"] == pytest.approx(max(tablo[n] for n in uyeler), abs=1e-4)
+    tek = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": hedef})["oneriler"]
+    assert len(tek) == len(uyeler)
+    if o["oneri"] is not None and o["degisim"] != "aynı":
+        alan = lambda x: (x["b"] or 0) * (x["h"] or 0)     # noqa: E731
+        assert alan(o) >= max(alan(t) for t in tek if t.get("oneri")) - 1e-9          # ortak kart = en büyük b × h
+    y1 = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": hedef, "grup": True, "yinele": 1})
+    assert y1["hata"] is None and len(y1["oneriler"]) == 1
+    yeni = y1["bina"]
+    kartlar = {k["kesit"] for k in yeni["kolonlar"] if k["no"] in uyeler}
+    assert len(kartlar) == 1
+    if y1["turlar"][0].get("degisen"):
+        assert kartlar != {kesit}
+    assert iste(kopru, "bina_coz", {"bina": yeni})["hata"] is None
+    z = iste(kopru, "bina_coz", {"bina": dict(yeni, surum=3)})["veri"]          # öneri motoru (genel) ile yeniden çözüm
+    gercek = {}
+    for k in z["tasarim"]["elemanlar"]:
+        kay = k.get("kaynak") or {}
+        if kay.get("aks_kat") == "kolon":
+            gercek[kay["no"]] = max(gercek.get(kay["no"], 0.0), k["dc"])
+    assert y1["dc_sonra"] == pytest.approx(max(gercek[n] for n in uyeler), abs=1e-4)
+    assert y1["oneriler"][0]["dc_sonra"] == pytest.approx(y1["dc_sonra"], abs=1e-9)
+    h = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": [{"tur": "kolon", "no": uyeler[0]},
+                                                                                         {"tur": "kiris", "no": 1}], "grup": True})
+    assert h["hata"] and "aynı olmalı" in h["hata"]
+    h2 = iste(kopru, "bina_kesit_oner", {"cozum_kimligi": v["cozum_kimligi"], "hedef": "hepsi", "grup": True})
+    assert h2["hata"] and "üye listesi" in h2["hata"]
