@@ -934,12 +934,17 @@
   ]);
   const YAY_VARSAYILAN = Object.freeze({ kz: 10000 });
   /**
-   * "Yaylı mesnet" penceresinin değerleri → {kx?, …, krz?}: boş, sayı olmayan ya da ≤ 0 alan yazılmaz (C13: her anahtar > 0 ya da yok).
-   * Hiç pozitif alan yoksa hata (pencere kapanmaz).
+   * "Yaylı mesnet" penceresinin değerleri → {kx?, …, krz?}: boş ya da ≤ 0 alan yazılmaz (C13: her anahtar > 0 ya da yok). Dolu ama
+   * sayı olmayan alan hata verir (yazım yanlışı o yönü sessizce serbest bırakmasın: "5 000" binlik ayraçlı yazılmış olabilir). Hiç
+   * pozitif alan yoksa hata (pencere kapanmaz).
    */
   function yayDegerleri(o) {
     const r = {};
-    YAY_ANAHTARLARI.forEach(function (y) { const v = sayi(o && o[y.a] != null ? o[y.a] : ""); if (v != null && v > 0) r[y.a] = v; });
+    YAY_ANAHTARLARI.forEach(function (y) {
+      const ham = o && o[y.a] != null ? o[y.a] : "", v = sayi(ham);
+      if (v == null && String(ham).trim() !== "") throw new Error("Yaylı mesnet: " + y.etiket + " alanı sayı değil (“" + String(ham).trim() + "”); ondalık için virgül ya da nokta kullanın, binlik ayraç yazmayın.");
+      if (v != null && v > 0) r[y.a] = v;
+    });
     if (!Object.keys(r).length) throw new Error("Yaylı mesnet için en az bir yay rijitliği girin (k_x … k_rz; pozitif sayı, kN/m ya da kN·m/rad).");
     return r;
   }

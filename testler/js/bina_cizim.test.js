@@ -765,7 +765,10 @@ test("K-10 yaylı mesnet: ön ayar, pencere değerleri (boş / ≤ 0 yazılmaz),
   assert.equal(BC.MESNET_ON_AYAR.yay.ad, "Yaylı (elastik)");
   assert.deepEqual(BC.YAY_ANAHTARLARI.map(function (y) { return y.etiket; }), ["k_x (kN/m)", "k_y (kN/m)", "k_z (kN/m)", "k_rx (kN·m/rad)", "k_ry (kN·m/rad)", "k_rz (kN·m/rad)"]);
   assert.deepEqual(Object.assign({}, BC.YAY_VARSAYILAN), { kz: 10000 }, "yalnız k_z dolu");
-  assert.deepEqual(BC.yayDegerleri({ kx: "", ky: "-5", kz: "10000", krx: "0", kry: "2,5", krz: "abc" }), { kz: 10000, kry: 2.5 });
+  assert.deepEqual(BC.yayDegerleri({ kx: "", ky: "-5", kz: "10000", krx: "0", kry: "2,5", krz: " " }), { kz: 10000, kry: 2.5 });
+  // dolu ama sayı olmayan alan sessizce atlanmaz (o yön serbest kalırdı): hata, alan adıyla
+  assert.throws(function () { BC.yayDegerleri({ kz: "10000", kx: "5 000" }); }, /^Error: Yaylı mesnet: k_x \(kN\/m\) alanı sayı değil \(“5 000”\)/);
+  assert.throws(function () { BC.yayDegerleri({ kz: "10000", krz: "abc" }); }, /k_rz \(kN·m\/rad\) alanı sayı değil/);
   assert.throws(function () { BC.yayDegerleri({ kx: "", kz: "0", krz: "-1" }); }, /en az bir yay rijitliği/);
   const m = bos();
   let r = BC.mesnetAta(m, G("A", "1", "±0.00"), "yay", { yay: { kz: 10000 } });
