@@ -4482,6 +4482,44 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
 # ============================================================================
 # 15) Anlatım
 # ============================================================================
+def _eylem_dugumleri(yukler):
+    """Motor eksenli düğüm yükleri → [{dugum, F: [FX, FY, FZ, MX, MY, MZ]}] (bina eksenleri)."""
+    out = []
+    for y in yukler:
+        F = list(Y._bina_vek((y.get("Fx", 0.0), y.get("Fy", 0.0), y.get("Fz", 0.0)))) + \
+            list(Y._bina_vek((y.get("Mx", 0.0), y.get("My", 0.0), y.get("Mz", 0.0))))
+        if any(abs(v) > 1e-12 for v in F):
+            out.append({"dugum": y["dugum"], "F": [_r(v) for v in F]})
+    return out
+
+
+def _eylemler(durumlar, kaynak, dep):
+    """veri.yukler.eylemler (C16): rüzgâr, deprem ve kren durumlarının uygulanan yükleri, bina eksenlerinde. Panel rüzgârında ve
+    kren alt durumlarında çubuk yükleri (x çubuğun i ucundan m; yayili q kN/m, tekil P kN, birim vektör vek yönünde) ve düğüm
+    yükleri; kat kuvvetli rüzgârda ve EX±/EY±'de düğüm yükleri (rijit diyaframda efendi düğüme kuvvet ve burulma momenti);
+    EZ = G_carpani × G (TBDY Denk. 4.10)."""
+    out = {}
+    for ad, dd in kaynak.items():
+        cubuklar = []
+        for cno in sorted(dd["cubuk"]):
+            yayili, tekil = [], []
+            for x1, x2, q1, q2, vek, et in dd["cubuk"][cno]:
+                v = [_r(x) for x in vek]
+                if et == "kren":           # tekerlek yükü (motorda çok kısa düzgün yük: _tekil_parca) → tekil yük
+                    tekil.append({"x": _r((x1 + x2) / 2.0), "P": _r(q1 * (x2 - x1)), "vek": v})
+                else:
+                    yayili.append({"x1": _r(x1), "x2": _r(x2), "q1": _r(q1), "q2": _r(q2), "vek": v})
+            cubuklar.append({"no": cno, "yayili": yayili, "tekil": tekil})
+        dug = [{"dugum": n, "F": [_r(v) for v in F]} for n, F in sorted(dd["dugum"].items()) if any(abs(v) > 1e-12 for v in F)]
+        out[ad] = {"cubuklar": cubuklar, "dugumler": dug}
+    for ad in ("W+X", "W-X", "W+Y", "W-Y", "EX+", "EX-", "EY+", "EY-"):
+        if ad in durumlar and ad not in out:
+            out[ad] = {"cubuklar": [], "dugumler": _eylem_dugumleri(durumlar[ad]["yukler"])}
+    if "EZ" in durumlar and dep is not None:
+        out["EZ"] = {"cubuklar": [], "dugumler": [], "G_carpani": _r(2.0 / 3.0 * dep["sp"]["SDS"])}
+    return out
+
+
 def _tablo(b, s):
     return Y._tablo(b, s)
 
@@ -4617,11 +4655,13 @@ def bina_coz(bina, *, goster=None, anlat=True):
     if ag.get("temel") is not None:      # temel kirişi / radye öz ağırlığı (G): yapi._yuk_durumlari ile aynı kayıtlar
         _temel_yuk(B, YK, ag["temel"], durumlar["G"])
     ruzgar = None
+    eylem_kaynak = {}             # C16: rüzgâr (panel) ve kren alt durumlarının çubuk / düğüm kayıtları (bina eksenleri)
     if B.ruzgar:
         if any(p["ruzgar"] for p in B.paneller):
             wd, ruzgar = _ruzgar_panel(B, YK)
             for ad, dd in wd.items():
                 durumlar[ad] = _motor_durum(B, dd["cubuk"], dd["dugum"])
+                eylem_kaynak[ad] = dd
         else:
             wd, ruzgar = Y._ruzgar_durumlari(B, ag)
             ruzgar["yontem"] = "kat"
@@ -4631,6 +4671,7 @@ def bina_coz(bina, *, goster=None, anlat=True):
         kd, kren_ozet = _kren_durumlari(B)
         for ad, dd in kd.items():
             durumlar[ad] = _motor_durum(B, dd["cubuk"], dd["dugum"])
+            eylem_kaynak[ad] = dd
         kren_adlar = list(kd)
     if dep is not None:
         ed, _ = Y._deprem_birim_durumlari(B, ag, dep)
@@ -4684,6 +4725,7 @@ def bina_coz(bina, *, goster=None, anlat=True):
         temel_veri, temel_ic = _temel_sonuclari(B, ag, paket, kombinasyonlar, YK)
     veri = _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, deprem=deprem, ruzgar=ruzgar,
                  kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik, kren=kren, yalniz=yalniz, temel_veri=temel_veri)
+    veri["yukler"]["eylemler"] = _eylemler(durumlar, eylem_kaynak, dep)
     ts = _tasarim_mod()
     T = tas = None
     if ts is not None:
@@ -4725,6 +4767,7 @@ def _oteleme_asan(deprem):
     return {y: [s["kat"] for s in katlar if s.get(f"uygun_{y}") is False] for y in ("x", "y")}
 
 
+EYLEMLER_NOTU = "Yanıt boyutu sınırı: rüzgâr/deprem/kren eylemleri yazılmadı."
 YANIT_SINIRI = 1_600_000     # karakter: büyük modelde (yüzlerce çubuk) yanıt bu sınırı aşarsa ayrıntılar tembel bırakılır
 
 
@@ -4753,7 +4796,21 @@ def _boyut_sinirla(veri, durumlar_kisa, sinir=YANIT_SINIRI, temel=None):
     for k in veri["durumlar"].values():          # çok büyük model: ince kayıtlarda yalnız enb (uç kuvvetleri tembel)
         k["elemanlar"] = [{"no": e["no"], "enb": e["enb"]} if "enb" in e else e for e in k["elemanlar"]]
     veri["ozet"]["uc_kuvvetleri_tembel"] = True
+    _eylemleri_sinirla(veri, boy(), sinir)
     return tam
+
+
+def _eylemleri_sinirla(veri, boyut, sinir):
+    """C16 boyut koruması (en son adım): rüzgâr/deprem/kren eylemleri yanıtı sınırın üstüne TEK BAŞINA taşıyorsa ya da kendileri
+    sınırın dörtte birinden büyükse atılır (veri.yukler.eylemler_not). Eylemlerden bağımsız olarak zaten büyük bir yanıtta küçük
+    eylem kümesi korunur (IFC'nin W/E/K yükleri için tek kaynak)."""
+    e = veri["yukler"].get("eylemler")
+    if not e or boyut <= sinir:
+        return
+    L = len(json.dumps(e, ensure_ascii=False))
+    if boyut - L <= sinir or L > sinir // 4:
+        veri["yukler"].pop("eylemler")
+        veri["yukler"]["eylemler_not"] = EYLEMLER_NOTU
 
 
 def eleman_tasarim(ic, tur, no, goster=None):

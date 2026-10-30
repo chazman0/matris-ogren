@@ -2791,6 +2791,29 @@ def _kombinasyon_veri(kombinasyonlar):
     return out
 
 
+_EYLEM_SINIRI = 400_000          # karakter: veri.yukler.eylemler bu boyutu aşarsa yazılmaz (C16)
+EYLEMLER_NOTU = "Yanıt boyutu sınırı: rüzgâr/deprem/kren eylemleri yazılmadı."
+
+
+def _eylemler(durumlar, dep):
+    """veri.yukler.eylemler (C16; aks–kat): W±X/W±Y kat kuvvetleri ve EX±/EY± deprem yükleri düğüm yükü olarak (bina eksenleri;
+    rijit diyaframda efendi düğüme kuvvet ve burulma momenti), EZ = G_carpani × G. Çubuk yükü yok (bu durumlar düğümseldir)."""
+    out = {}
+    for ad in ("W+X", "W-X", "W+Y", "W-Y", "EX+", "EX-", "EY+", "EY-"):
+        if ad not in durumlar:
+            continue
+        dug = []
+        for y in durumlar[ad]["yukler"]:
+            F = list(_bina_vek((y.get("Fx", 0.0), y.get("Fy", 0.0), y.get("Fz", 0.0)))) + \
+                list(_bina_vek((y.get("Mx", 0.0), y.get("My", 0.0), y.get("Mz", 0.0))))
+            if any(abs(v) > 1e-12 for v in F):
+                dug.append({"dugum": y["dugum"], "F": [_r(v) for v in F]})
+        out[ad] = {"cubuklar": [], "dugumler": dug}
+    if "EZ" in durumlar and dep is not None:
+        out["EZ"] = {"cubuklar": [], "dugumler": [], "G_carpani": _r(2.0 / 3.0 * dep["sp"]["SDS"])}
+    return out
+
+
 def _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, *, deprem=None, ruzgar=None,
                   kutle=None, ozetler=None, gosterilecek=None, kimlik=None, temel_veri=None):
     ince = ag["temel"].ince if ag.get("temel") is not None else set()
@@ -4458,6 +4481,11 @@ def bina_coz(bina, *, goster=None, anlat=True):
     veri = _veri_olustur(B, Y, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol,
                          deprem=deprem, ruzgar=ruzgar, kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik,
                          temel_veri=temel_veri)
+    eyl = _eylemler(durumlar, dep)
+    if len(json.dumps(eyl, ensure_ascii=False)) <= _EYLEM_SINIRI:
+        veri["yukler"]["eylemler"] = eyl
+    else:
+        veri["yukler"]["eylemler_not"] = EYLEMLER_NOTU
     ts = _tasarim_modulu()
     T = tas = None
     if ts is not None:      # Dilim 3: kesit tahkikleri (tasarim.py yoksa alan yazılmaz)

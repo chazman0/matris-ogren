@@ -394,3 +394,85 @@ def test_akis_dugum_yuku_kenarlari():
     assert sorted((e["kaynak"], e["hedef"], e["tur"]) for e in sk) == sorted([(f"D{uc}", "Ç1", "dugum-cubuk"),
                                                                               ("Ç1", f"M{mes}", "cubuk-mesnet")])
     assert all(e["kN"] == pytest.approx(10.0) for e in sk)
+
+
+# ---------------------------------------------------------------------------
+# K-37: rüzgâr, deprem ve kren eylemleri (C16)
+# ---------------------------------------------------------------------------
+def _eylem_toplami(e):
+    F = [0.0] * 6
+    for c in e["cubuklar"]:
+        for y in c["yayili"]:
+            for a in range(3):
+                F[a] += (y["q1"] + y["q2"]) / 2.0 * (y["x2"] - y["x1"]) * y["vek"][a]
+        for t in c["tekil"]:
+            for a in range(3):
+                F[a] += t["P"] * t["vek"][a]
+    for d in e["dugumler"]:
+        for a in range(6):
+            F[a] += d["F"][a]
+    return F
+
+
+def test_eylemler_genel_sanayi_panel_ruzgari_deprem_kren():
+    b = yapi.bina_sablon("celik-sanayi-4hol")
+    r = coz(b)
+    v = r.veri
+    e = v["yukler"]["eylemler"]
+    assert "eylemler_not" not in v["yukler"]
+    for ad in ("W+X", "W-X", "W+Y", "W-Y"):                     # panel rüzgârı: çubuk yükleri, toplam = veri.ruzgar.toplam
+        F = _eylem_toplami(e[ad])
+        assert e[ad]["cubuklar"] and F[:3] == pytest.approx(v["ruzgar"]["toplam"][ad], abs=1e-3)
+    for ad, i in (("EX+", 0), ("EX-", 0), ("EY+", 1), ("EY-", 1)):     # ± dışmerkezlik işaretidir; kuvvet V_tE yönünde
+        F = _eylem_toplami(e[ad])
+        assert F[i] == pytest.approx(v["deprem"]["X" if i == 0 else "Y"]["VtE"], rel=1e-5) and abs(F[1 - i]) < 1e-6
+        assert not e[ad]["cubuklar"] and abs(F[2]) < 1e-9
+    assert e["EZ"] == {"cubuklar": [], "dugumler": [], "G_carpani": pytest.approx(2.0 / 3.0 * v["deprem"]["SDS"])}
+    B = r.ic["B"]
+    kren = [k for k in e if k.startswith("K")]
+    assert kren and set(kren) == {d for k in v["kren"]["kopruler"] for d in k["durumlar"]}
+    for ad in kren:
+        ki = int(ad[1:].split(".")[0])
+        k0 = B.kopruler[ki - 1]
+        t, phi = k0[0]["tekerlek"], k0[0]["dinamik"]
+        F = _eylem_toplami(e[ad])
+        assert F[2] == pytest.approx(-phi * t["adet"] * (t["P_maks"] + (t["P_min"] if len(k0) > 1 else 0.0)), rel=1e-6)
+        yatay = math.hypot(len(k0) * t["adet"] * t["H_yanal"], t["adet"] * t["H_fren"])
+        assert math.hypot(F[0], F[1]) == pytest.approx(yatay, rel=1e-6)
+        assert all(c["tekil"] and not c["yayili"] for c in e[ad]["cubuklar"])
+        for c in e[ad]["cubuklar"]:
+            L = B.cubuk_no[c["no"]]["L"]
+            assert all(0.0 <= x["x"] <= L + 1e-9 for x in c["tekil"])
+
+
+@pytest.mark.parametrize("surum", [1, 3])
+def test_eylemler_dugum_yukleri_3x3(surum):
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    b["yuk_durumlari"]["W"]["acik"] = True
+    if surum == 3:
+        b["surum"] = 3
+    v = coz(b).veri
+    e = v["yukler"]["eylemler"]
+    assert set(e) == {"W+X", "W-X", "W+Y", "W-Y", "EX+", "EX-", "EY+", "EY-", "EZ"}
+    dug = {d["no"] for d in v["ag"]["dugumler"]}
+    for ad, x in e.items():
+        assert x["cubuklar"] == [] and all(d["dugum"] in dug for d in x["dugumler"])
+    rz = v["ruzgar"]
+    assert _eylem_toplami(e["W+X"])[0] == pytest.approx(rz["toplam_x"], rel=1e-6)
+    assert _eylem_toplami(e["W-Y"])[1] == pytest.approx(-rz["toplam_y"], rel=1e-6)
+    assert _eylem_toplami(e["EX+"])[0] == pytest.approx(v["deprem"]["X"]["VtE"], rel=1e-5)
+    assert _eylem_toplami(e["EY+"])[1] == pytest.approx(v["deprem"]["Y"]["VtE"], rel=1e-5)
+    assert any(abs(d["F"][5]) > 0 for d in e["EX+"]["dugumler"])          # dışmerkezlik: efendi düğümde burulma momenti
+    assert any(d["dugum"] in {n["no"] for n in v["ag"]["dugumler"] if n["efendi"]} for d in e["EX+"]["dugumler"])
+
+
+def test_eylemler_boyut_korumasi():
+    v = {"yukler": {"eylemler": {"W+X": {"cubuklar": [], "dugumler": [{"dugum": 1, "F": [1.0] * 6}] * 50}}}}
+    YS._eylemleri_sinirla(v, 100, 1000)
+    assert "eylemler" in v["yukler"]                                   # sınır içinde: dokunulmaz
+    L = len(json.dumps(v["yukler"]["eylemler"], ensure_ascii=False))
+    YS._eylemleri_sinirla(v, 900 + L, 1000)                            # yanıtı tek başına sınırın üstüne taşıyor: atılır
+    assert "eylemler" not in v["yukler"] and v["yukler"]["eylemler_not"] == YS.EYLEMLER_NOTU
+    v = {"yukler": {"eylemler": {"EZ": {"cubuklar": [], "dugumler": [], "G_carpani": 0.8}}}}
+    YS._eylemleri_sinirla(v, 5000, 1000)                               # zaten büyük yanıtta küçük eylem kümesi korunur
+    assert "eylemler" in v["yukler"]
