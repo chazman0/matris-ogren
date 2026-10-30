@@ -588,3 +588,26 @@ def test_kesit_oner_grup_kipi_celik():
     with pytest.raises(YS.MatrisHatasi, match="aynı olmalı"):
         YS.kesit_oner(None, ic=ic, hedef=hedef + [{"tur": "cubuk", "no": next(c["no"] for c in ic["tasarim"].B.cubuklar
                                                                                     if c["tur"] == "kiris")}], grup=True)
+
+
+def test_diyafram_TKT_yogun_carpimla_ayni(monkeypatch):
+    """sonlu_eleman._TKT (K-31, Pyodide hızı): K_r = Tᵀ K T, T'nin yapısıyla — yoğun çarpımla yuvarlama düzeyinde aynı. BLAS'lı
+    CPython'da (masaüstü) yoğun çarpım kalır (sonuçlar önceki sürümle bayt bayt aynı)."""
+    import numpy as np
+    import sonlu_eleman as se
+    assert se._BLAS_VAR
+    monkeypatch.setattr(se, "_BLAS_VAR", False)          # Pyodide yolu
+    gorulen = []
+    eski = se._diyafram_kur
+
+    def izle(M):
+        eski(M)
+        if M.T is not None:
+            gorulen.append(np.abs(M.T.T @ M.K @ M.T - M.K_r).max() / np.abs(M.K_r).max())
+    se._diyafram_kur = izle
+    try:
+        yapi.bina_coz(yapi.bina_sablon("betonarme-3kat-3x3"), goster="yok", anlat=False)
+        YS.bina_coz(yapi.bina_sablon("celik-cbf-3kat"), anlat=False)
+    finally:
+        se._diyafram_kur = eski
+    assert gorulen and max(gorulen) < 1e-14
