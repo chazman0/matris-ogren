@@ -2598,33 +2598,200 @@ print(f"Σ kolon taban N = {toplam:.2f} kN")
 '''
 
 
-def _py_betik(B, ag, model, durum, Y):
+_PY_KOMPAKT = 200        # FE eleman sayısı bunun üstündeyse betik tabloları tek satırlık liste/sözlük olarak yazılır (K-12)
+_PY_SD_SINIRI = 1500     # SD sayısı bunun üstündeyse genel modelde Python adımı yazılmaz (betik çok büyür; not düşülür)
+
+
+_PY_GOVDE_GENEL = '''
+GAUSS = ((-0.7745966692414834, 5/9), (0.0, 8/9), (0.7745966692414834, 5/9))   # 3 noktalı Gauss-Legendre (4. derece kesin)
+
+def hermite(L, parcalar):
+    """Parçalı doğrusal q(x) için ∫ Nᵀ q dx, N = Hermite kübik: [f_i, m_i, f_j, m_j] (yerel eğilme düzlemi)."""
+    f = [0.0, 0.0, 0.0, 0.0]
+    for q1, q2, x1, x2 in parcalar:
+        h = (x2 - x1)/2
+        for xi, w in GAUSS:
+            x = x1 + h*(1 + xi)
+            q = q1 + (q2 - q1)*(x - x1)/(x2 - x1)
+            s = x/L
+            N = (1 - 3*s**2 + 2*s**3, L*(s - 2*s**2 + s**3), 3*s**2 - 2*s**3, L*(-s**2 + s**3))
+            f = [fa + w*h*q*Na for fa, Na in zip(f, N)]
+    return f
+
+def eksenel(L, parcalar):
+    """Yerel x′ yükü: bileşke W ve ilk düğüme göre statik moment S → [W − S/L, S/L]."""
+    fi = fj = 0.0
+    for q1, q2, x1, x2 in parcalar:
+        D = x2 - x1
+        W = (q1 + q2)*D/2
+        Sm = q1*x1*D + q1*D**2/2 + (q2 - q1)*(x1*D/2 + D**2/3)
+        fi, fj = fi + W - Sm/L, fj + Sm/L
+    return [fi, fj]
+
+def lam3b(cx, cy, cz, a):
+    """Yerel eksenler (satırlar x′, y′, z′): y′ elemanı içeren düşey düzlemde yukarı, düşey elemanda z′ = z; aci kadar x′ etrafında."""
+    D = np.hypot(cx, cz)
+    if D < 1e-9:
+        lam = [[0.0, cy, 0.0], [-cy, 0.0, 0.0], [0.0, 0.0, 1.0]]
+    else:
+        lam = [[cx, cy, cz], [-cx*cy/D, D, -cy*cz/D], [-cz/D, 0.0, cx/D]]
+    if a:
+        ca, sa = np.cos(np.radians(a)), np.sin(np.radians(a))
+        lam = [lam[0], [ca*y + sa*z for y, z in zip(lam[1], lam[2])], [-sa*y + ca*z for y, z in zip(lam[1], lam[2])]]
+    return np.array(lam)
+
+def eleman(k):
+    """(yerel k [yoğunlaştırılmış], T, SD'ler, yerel f_eq [yoğunlaştırılmış])."""
+    i, j, Ek, Gk, Ak, Iy, Iz, Jk = elemanlar[k]
+    d = np.array(dugum_xyz[j]) - np.array(dugum_xyz[i])
+    Lb = float(np.sqrt(d @ d))
+    lam = lam3b(*(d/Lb), aci.get(k, 0.0))
+    ea, gj, by, bz = Ek*Ak/Lb, Gk*Jk/Lb, Ek*Iy/Lb**3, Ek*Iz/Lb**3
+    kl = np.zeros((12, 12))
+    def koy(a, b, v):
+        kl[a, b] = v; kl[b, a] = v
+    koy(0, 0, ea); koy(0, 6, -ea); koy(6, 6, ea)
+    koy(3, 3, gj); koy(3, 9, -gj); koy(9, 9, gj)
+    koy(1, 1, 12*bz); koy(1, 5, 6*Lb*bz); koy(1, 7, -12*bz); koy(1, 11, 6*Lb*bz)
+    koy(5, 5, 4*Lb**2*bz); koy(5, 7, -6*Lb*bz); koy(5, 11, 2*Lb**2*bz)
+    koy(7, 7, 12*bz); koy(7, 11, -6*Lb*bz); koy(11, 11, 4*Lb**2*bz)
+    koy(2, 2, 12*by); koy(2, 4, -6*Lb*by); koy(2, 8, -12*by); koy(2, 10, -6*Lb*by)
+    koy(4, 4, 4*Lb**2*by); koy(4, 8, 6*Lb*by); koy(4, 10, 2*Lb**2*by)
+    koy(8, 8, 12*by); koy(8, 10, 6*Lb*by); koy(10, 10, 4*Lb**2*by)
+    Te = np.kron(np.eye(4), lam)
+    px, py, pz = [], list(yayili.get(k, [])), []
+    for q1, q2, x1, x2, g, iz in yayili_g.get(k, []):          # global yön → yerel bileşenler: λ ĝ
+        c = lam[:, g]*(np.sqrt(max(0.0, 1.0 - lam[0, g]**2)) if iz else 1.0)
+        for hedef, ck in zip((px, py, pz), c):
+            if abs(ck) > 1e-12:
+                hedef.append((q1*ck, q2*ck, x1, x2))
+    feq = None
+    if px or py or pz:
+        fx, fy, fz = eksenel(Lb, px), hermite(Lb, py), hermite(Lb, pz)      # z′: θ_y = −w′ → moment satırları ters işaretli
+        feq = np.array([fx[0], fy[0], fz[0], 0, -fz[1], fy[1], fx[1], fy[2], fz[2], 0, -fz[3], fy[3]])
+    r = serbest.get(k)
+    if r:                                  # statik yoğunlaştırma: k* = k_ff − k_fr k_rr⁻¹ k_rf, f* = f_f − k_fr k_rr⁻¹ f_r
+        f_ = [a for a in range(12) if a not in r]
+        Kinv = np.linalg.inv(kl[np.ix_(r, r)])
+        kfr = kl[np.ix_(f_, r)]
+        kc = np.zeros((12, 12))
+        kc[np.ix_(f_, f_)] = kl[np.ix_(f_, f_)] - kfr @ (Kinv @ kl[np.ix_(r, f_)])
+        kl = (kc + kc.T)/2
+        if feq is not None:
+            fc = np.zeros(12)
+            fc[f_] = feq[f_] - kfr @ (Kinv @ feq[r])
+            feq = fc
+    return kl, Te, [6*i + a for a in range(6)] + [6*j + a for a in range(6)], feq
+
+K = np.zeros((n, n)); F = np.zeros(n)
+for k in range(len(elemanlar)):
+    kl, Te, dofs, feq = eleman(k)
+    K[np.ix_(dofs, dofs)] += Te.T @ kl @ Te
+    if feq is not None:
+        F[dofs] += Te.T @ feq
+for p, v in F_dugum:
+    F[p] += v
+for p, kk in yaylar:
+    K[p, p] += kk
+serbest_sd = [p for p in range(n) if p not in set(sabit)]
+u = np.zeros(n)
+Kff, Ff = K[np.ix_(serbest_sd, serbest_sd)], F[serbest_sd]
+try:
+    u[serbest_sd] = np.linalg.solve(Kff, Ff)
+    tekil = not np.allclose(Kff @ u[serbest_sd], Ff, rtol=1e-9, atol=1e-9*max(abs(Ff).max(), 1.0))
+except np.linalg.LinAlgError:
+    tekil = True
+if tekil:
+    # rijit diyafram betikte yok: mafsallı kirişli çerçevede düğümlerin düşey eksen etrafındaki dönmesi tutulmayabilir (mekanizma);
+    # düşey yük bu hareketi uyarmaz → en küçük normlu çözüm (iç kuvvetler ve tepkiler aynı)
+    u[serbest_sd] = np.linalg.lstsq(Kff, Ff, rcond=None)[0]
+    print("(K tekil — rijit diyafram olmadan serbest dönme var: en küçük kareler çözümü)")
+R = K @ u - F
+R_y = sum(R[p] for p in sabit if p % 6 == 1)
+Y_y = -sum(kk*u[p] for p, kk in yaylar if p % 6 == 1)
+print(f"Toplam düşey yük (G) = {toplam_G:.6f} kN   (eşdeğer düğüm yükleri ΣF_y = {-F[1::6].sum():.6f})")
+print(f"Σ mesnet tepkisi F_y = {R_y:.6f} kN;  Σ yay kuvveti F_y = {Y_y:.6f} kN")
+print(f"ΣF_Z = {R_y + Y_y:.6f} kN   (bina Z = motor y; toplam düşey yükle aynı olmalı)")
+print(f"max |u_y| = {abs(u[1::6]).max()*1000:.3f} mm")
+print("Kolon alt uç eksenel kuvvetleri (basınç +):")
+for k, ad, uc in taban_kolonlar:
+    kl, Te, dofs, feq = eleman(k)
+    f = kl @ (Te @ u[dofs]) - (feq if feq is not None else 0.0)
+    print(f"  {ad}: N = {(f[0] if uc == 0 else -f[6]):.3f} kN")
+'''
+
+
+def _py_betik(B, ag, model, durum, Y, genel=None):
+    """'Aynı hesap Python'da' betiği (G durumu, tek başına çalışan numpy). ``genel`` None: aks–kat ağı (yerel y′ yükleri, kolon
+    tabanları B.kolonlar'dan). Genel model (yapi_serbest, K-12): ``genel`` = {"baslik", "taban": [(FE sırası, ad, alt uç 0|6)],
+    "toplam_G"}; yerel eksen açısı (aci), uç serbestlikleri (statik yoğunlaştırma), global yönlü yayılı yükler (λ ile x′, y′, z′
+    bileşenleri) ve yaylar (Winkler ağı dahil) betiğe girer; çok elemanlı modelde tablolar tek satırda."""
     S = lambda x: repr(float(x))  # noqa: E731
     idx = {dg["no"]: i for i, dg in enumerate(model["dugumler"])}
-    s = [f"# {B.baslik}: bina ağı (cerceve3b), {ag['sd_sayisi']} SD, G durumu, doğrudan rijitlik yöntemi (tek başına çalışır)",
+    kompakt = genel is not None and len(model["elemanlar"]) > _PY_KOMPAKT
+    baslik = B.baslik if genel is None else genel["baslik"]
+    s = [f"# {baslik}: bina ağı (cerceve3b), {ag['sd_sayisi']} SD, G durumu, doğrudan rijitlik yöntemi (tek başına çalışır)",
          "import numpy as np", "np.set_printoptions(precision=4, suppress=True, linewidth=110)", "",
          "# --- düğümler: motor koordinatı (x_m, y_m, z_m) = (X, Z, -Y) bina ---",
          "dugum_xyz = [" + ", ".join(f"({S(x)}, {S(y)}, {S(z)})" for d in model["dugumler"] for x, y, z in [(d["x"], d["y"], d["z"])]) + "]",
          "n = 6*len(dugum_xyz)",
-         "# elemanlar: (i, j, E, G, A, Iy, Iz, J)  i, j = düğüm sırası (0'dan); kolonlar alt→üst, kirişler küçük→büyük aks",
-         "elemanlar = ["]
-    for e in model["elemanlar"]:
-        s.append(f"    ({idx[e['dugumler'][0]]}, {idx[e['dugumler'][1]]}, {S(e['E'])}, {S(e['G'])}, {S(e['A'])}, {S(e['Iy'])}, {S(e['Iz'])}, {S(e['J'])}),")
-    s.append("]")
-    s.append("# yayılı yükler (yerel y', aşağı negatif): eleman sırası -> [(q1, q2, x1, x2), ...]; düzgün yük q1 = q2")
-    yay = {}
+         "# elemanlar: (i, j, E, G, A, Iy, Iz, J)  i, j = düğüm sırası (0'dan); kolonlar alt→üst, kirişler küçük→büyük aks"
+         if genel is None else "# elemanlar: (i, j, E, G, A, Iy, Iz, J)  i, j = düğüm sırası (0'dan); yerel x′ i → j"]
+    el_sat = [f"({idx[e['dugumler'][0]]}, {idx[e['dugumler'][1]]}, {S(e['E'])}, {S(e['G'])}, {S(e['A'])}, {S(e['Iy'])}, {S(e['Iz'])}, {S(e['J'])})"
+              for e in model["elemanlar"]]
+    if kompakt:
+        s.append("elemanlar = [" + ", ".join(el_sat) + "]")
+    else:
+        s.append("elemanlar = [")
+        s += [f"    {x}," for x in el_sat]
+        s.append("]")
     eno_idx = {e["no"]: k for k, e in enumerate(model["elemanlar"])}
+    if genel is not None:
+        aci = {k: float(e["aci"]) for k, e in enumerate(model["elemanlar"]) if e.get("aci")}
+        s.append("aci = {" + ", ".join(f"{k}: {S(a)}" for k, a in aci.items()) + "}   # yerel eksen açısı (derece; y′, z′ x′ "
+                 "etrafında döner)")
+        ad6 = ("N", "Vy", "Vz", "T", "My", "Mz")
+        serb = {}
+        for k, e in enumerate(model["elemanlar"]):
+            sv = e.get("serbest") or {}
+            r = [ad6.index(a) for a in sv.get("i") or []] + [6 + ad6.index(a) for a in sv.get("j") or []]
+            if r:
+                serb[k] = sorted(r)
+        s.append("serbest = {" + ", ".join(f"{k}: {v}" for k, v in serb.items()) + "}   # uç serbestlikleri: yerel SD sıraları "
+                 "(0-5 i ucu N, Vy, Vz, T, My, Mz; 6-11 j ucu)")
+    s.append("# yayılı yükler (yerel y', aşağı negatif): eleman sırası -> [(q1, q2, x1, x2), ...]; düzgün yük q1 = q2")
+    yay, yay_g = {}, {}
     el_L = {e["no"]: e["L"] for e in ag["elemanlar"]}
     for y in durum["yayili"]:
         k = eno_idx[y["eleman"]]
-        if "q1" in y:
+        q1, q2 = (y["q1"], y["q2"]) if "q1" in y else (y["q"], y["q"])
+        x1, x2 = (y.get("x1", 0.0), y["x2"]) if "x2" in y else (0.0, el_L[y["eleman"]])
+        if genel is not None and y.get("yon"):
+            g = {"gx": 0, "gy": 1, "gz": 2}[str(y["yon"]).lower()]
+            yay_g.setdefault(k, []).append((q1, q2, x1, x2, g, 1 if y.get("izdusum") else 0))
+        elif "q1" in y:
             yay.setdefault(k, []).append((y["q1"], y["q2"], y["x1"], y["x2"]))
         else:
             yay.setdefault(k, []).append((y["q"], y["q"], 0.0, el_L[y["eleman"]]))
-    s.append("yayili = {")
-    for k in sorted(yay):
-        s.append(f"    {k}: [" + ", ".join(f"({S(a)}, {S(b)}, {S(c)}, {S(d)})" for a, b, c, d in yay[k]) + "],")
-    s.append("}")
+    if kompakt:
+        s.append("yayili = {" + ", ".join(f"{k}: [" + ", ".join(f"({S(a)}, {S(b)}, {S(c)}, {S(d)})" for a, b, c, d in yay[k]) + "]"
+                                         for k in sorted(yay)) + "}")
+    else:
+        s.append("yayili = {")
+        for k in sorted(yay):
+            s.append(f"    {k}: [" + ", ".join(f"({S(a)}, {S(b)}, {S(c)}, {S(d)})" for a, b, c, d in yay[k]) + "],")
+        s.append("}")
+    if genel is not None:
+        s.append("# global yönlü yayılı yükler (motor ekseni g: 0 = x, 1 = y yukarı, 2 = z; bina X → x, Y → −z, Z → y): eleman sırası ->")
+        s.append("# [(q1, q2, x1, x2, g, izdüşüm), ...]; panel → çubuk, duvar ve öz ağırlık yükleri; λ ile x′, y′, z′ bileşenlerine ayrılır")
+        g_sat = [f"{k}: [" + ", ".join(f"({S(a)}, {S(b)}, {S(c)}, {S(d)}, {g}, {iz})" for a, b, c, d, g, iz in yay_g[k]) + "]"
+                 for k in sorted(yay_g)]
+        if kompakt:
+            s.append("yayili_g = {" + ", ".join(g_sat) + "}")
+        else:
+            s.append("yayili_g = {")
+            s += [f"    {x}," for x in g_sat]
+            s.append("}")
     fd = []
     for y in durum["yukler"]:
         i = idx[y["dugum"]]
@@ -2646,6 +2813,12 @@ def _py_betik(B, ag, model, durum, Y):
             if y.get(a):
                 yaylar.append(f"({6 * i + j}, {S(y[a])})")
     s.append("yaylar = [" + ", ".join(yaylar) + "]   # elastik mesnet: (SD, k)")
+    if genel is not None:
+        s.append("taban_kolonlar = [" + ", ".join(f"({eno_idx[no]}, {ad!r}, {uc})" for no, ad, uc in genel["taban"]) + "]   "
+                 "# (eleman sırası, ad, alt uç: 0 = i, 6 = j)")
+        s.append(f"toplam_G = {S(genel['toplam_G'])}")
+        s += _PY_GOVDE_GENEL.rstrip("\n").split("\n")
+        return s
     taban = [eno_idx[c["eleman"]] for c in B.kolonlar if c["kat"] == 1]
     s.append(f"taban_kolonlar = {taban}")
     s.append("kolon_ad = {" + ", ".join(f"{eno_idx[c['eleman']]}: {c['adres']!r}" for c in B.kolonlar if c["kat"] == 1) + "}")

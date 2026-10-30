@@ -4523,7 +4523,8 @@ def _tablo(b, s):
     return Y._tablo(b, s)
 
 
-def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl, temel=(None, None)):
+def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl, temel=(None, None),
+             py=None):
     anl.baslik(B.baslik, 2)
     if B.aciklama:
         anl.metin(B.aciklama)
@@ -4624,6 +4625,47 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
             anl.uyari(u)
     if temel[0] is not None:
         _tm().anlatim(anl, adim(), ag["temel"].BT, ag, temel[0], temel[1], toplam_servis=YK.toplam["G"] + YK.toplam["Q"])
+    if py is not None and py[0] is not None and py[1] is not None:
+        _python_adimi(B, ag, py[0], py[1], akis, anl, adim())
+
+
+PY_ADIM_NOTU = ("Model {sd} SD (> {sinir}): betik çok büyüyeceği için bu adımda yazılmadı. Aynı hesabın küçük bir örneği için modeli "
+                "sadeleştirin (ör. birkaç aks) ya da sonlu_eleman modülüyle doğrudan çözün.")
+
+
+def _python_adimi(B, ag, model, durum_G, akis, anl, no):
+    """Son anlatım adımı (K-12): G durumunun tek başına çalışan numpy betiği (yapi._py_betik genel kipi) — düğümler, 6 SD'li uzay
+    çerçeve elemanları (A, Iy, Iz, J, E, G, yerel eksen açısı, uç serbestlikleri), mesnetler ve yaylar (Winkler ağı dahil),
+    global yönlü yayılı yüklerin Gauss integrasyonuyla eşdeğer düğüm yükleri; K kurulur, çözülür, Σ tepki (+ Σ yay) ve kolon alt uç
+    kuvvetleri yazılır. Rijit diyafram ve yatay durumlar betiğe alınmaz (yapi.py ile aynı not). SD > Y._PY_SD_SINIRI: atlanır."""
+    se._basla(anl, no, "Aynı hesap Python'da",
+              "Ağ kurma, panel → çubuk ve öz ağırlık yayılı yüklerinin (global yönlü; λ ile yerel eksenlere ayrılır) Gauss "
+              "integrasyonuyla eşdeğer düğüm yüklerine çevrilmesi, uç serbestliklerinin statik yoğunlaştırması, birleştirme, çözüm ve "
+              "kolon alt uç kuvvetleri tek bir numpy betiğinde. Betik sonlu_eleman modülünü içe aktarmaz; çıktısı 'Denge ve korunum' "
+              "adımındaki G toplamıyla aynı olmalıdır (rijit diyafram ve yatay yüklerin çözümü betiğe alınmaz).")
+    sd = ag["sd_sayisi"]
+    if sd > Y._PY_SD_SINIRI:
+        anl.metin(PY_ADIM_NOTU.format(sd=sd, sinir=Y._PY_SD_SINIRI))
+        return None
+    D = B.coz.dugum
+    fe_dug = {e["no"]: e["dugumler"] for e in model["elemanlar"]}
+    kolonlar = [c for c in B.cubuklar if c["tur"] == "kolon"]
+    alt = lambda c: c["i"] if D[c["i"]]["Z"] <= D[c["j"]]["Z"] + 1e-9 else c["j"]  # noqa: E731
+    z0 = min((D[alt(c)]["Z"] for c in kolonlar), default=None)
+    taban = []
+    for c in kolonlar:
+        a = alt(c)
+        if abs(D[a]["Z"] - z0) > 1e-6:
+            continue
+        fe = next((f for f in c["fe"] if a in fe_dug.get(f, ())), None)
+        if fe is None:
+            continue
+        taban.append((fe, f"Ç{c['no']} ({_adres_kisa(D[a], seviye=False)})", 0 if fe_dug[fe][0] == a else 6))
+        if len(taban) >= 8:
+            break
+    genel = {"baslik": B.baslik, "taban": taban, "toplam_G": akis["korunum"]["G"]["toplam"]}
+    satirlar = Y._py_betik(B, ag, model, durum_G, None, genel=genel)
+    return mo._python_bolumu(anl, satirlar)
 
 
 # ============================================================================
@@ -4746,7 +4788,7 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
     anl = mo.Anlatim()
     if anlat:
         _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzgar, kren, yalniz, tas, T, yol, anl,
-                 temel=(temel_veri, temel_ic))
+                 temel=(temel_veri, temel_ic), py=(model, durumlar.get("G")))
     else:
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", "", "")

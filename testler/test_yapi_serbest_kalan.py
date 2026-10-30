@@ -590,6 +590,58 @@ def test_kesit_oner_grup_kipi_celik():
                                                                                     if c["tur"] == "kiris")}], grup=True)
 
 
+# ---------------------------------------------------------------------------
+# K-12: 'Aynı hesap Python'da' adımı (genel model, G durumu)
+# ---------------------------------------------------------------------------
+def _py_kodu(r):
+    k = [b for b in r.anlatim.bloklar if b[0] == "kod"]
+    return k[-1][1] if k else None
+
+
+@pytest.mark.parametrize("ad", ["celik-cbf-3kat", "betonarme-2kat-3x2", "betonarme-3kat-surekli-temel"])
+def test_python_adimi_alt_surecte_sigma_fz(ad, tmp_path):
+    import re
+    import subprocess
+    import sys
+    b = yapi.bina_sablon(ad)
+    b["surum"] = 3                                     # genellestir: aks–kat girdisi genel motorla
+    r = YS.bina_coz(copy.deepcopy(b), goster="yok")
+    md = r.anlatim.markdown()
+    assert "Aynı hesap Python'da" in md and "rijit diyafram ve yatay yüklerin çözümü betiğe alınmaz" in md
+    _, kod, cikti = _py_kodu(r)
+    assert "import sonlu_eleman" not in kod and "yayili_g = {" in kod
+    dosya = tmp_path / "betik.py"
+    dosya.write_text(kod, encoding="utf-8")
+    p = subprocess.run([sys.executable, "-I", str(dosya)], capture_output=True, text=True, timeout=600, cwd=tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert p.stdout.strip() == cikti.strip()              # anlatımdaki çıktı aynı betiğin çıktısı
+    fz = float(re.search(r"ΣF_Z = (-?[\d.]+) kN", p.stdout).group(1))
+    G = r.veri["akis"]["korunum"]["G"]
+    assert fz == pytest.approx(G["toplam"], rel=1e-6, abs=1e-6) and fz == pytest.approx(G["kolon_taban"], rel=1e-6, abs=1e-6)
+    if ad == "betonarme-2kat-3x2":                     # diyafram yok: kolon alt uç N motorla aynı
+        kol = re.findall(r"Ç(\d+) \([^)]*\): N = (-?[\d.]+) kN", p.stdout)
+        uc = {e["no"]: e for e in r.veri["durumlar"]["G"]["elemanlar"]}
+        for no, N in kol:
+            c = r.ic["B"].cubuk_no[int(no)]
+            assert float(N) == pytest.approx(-uc[c["fe"][0]]["N"][0], abs=2e-3)
+    if ad == "celik-cbf-3kat":                         # mafsallı kirişli çerçeve: diyafram yokken serbest dönme (lstsq yolu)
+        assert "K tekil" in p.stdout
+
+
+def test_python_adimi_boyut_siniri(monkeypatch):
+    b = yapi.bina_sablon("betonarme-4kat-radye")
+    b["surum"] = 3
+    r = YS.bina_coz(copy.deepcopy(b), goster="yok")
+    kod = _py_kodu(r)[1]
+    assert len(r.ic["alan"]["model"]["elemanlar"]) > 200
+    assert any(s.startswith("elemanlar = [(") and s.endswith(")]") for s in kod.split("\n"))      # tek satırlık tablo
+    monkeypatch.setattr(yapi, "_PY_SD_SINIRI", 100)
+    r2 = YS.bina_coz(yapi.bina_sablon("celik-cbf-3kat"), goster="yok")
+    md = r2.anlatim.markdown()
+    assert "Aynı hesap Python'da" in md and "Model 330 SD (> 100): betik çok büyüyeceği için bu adımda yazılmadı." in md
+    assert _py_kodu(r2) is None
+
+
 def test_diyafram_TKT_yogun_carpimla_ayni(monkeypatch):
     """sonlu_eleman._TKT (K-31, Pyodide hızı): K_r = Tᵀ K T, T'nin yapısıyla — yoğun çarpımla yuvarlama düzeyinde aynı. BLAS'lı
     CPython'da (masaüstü) yoğun çarpım kalır (sonuçlar önceki sürümle bayt bayt aynı)."""
