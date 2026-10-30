@@ -38,11 +38,12 @@
    - Yapısal analiz modeli (secenek.analiz, varsayılan açık): IfcStructuralAnalysisModel, IfcStructuralPointConnection +
      IfcBoundaryNodeCondition, IfcStructuralCurveMember (IfcEdge/IfcVertexPoint), IfcRelConnectsStructuralMember (uç serbestlikleri),
      IfcStructuralLoadCase / IfcStructuralLoadGroup (birleşimler, IfcRelAssignsToGroupByFactor), veri varsa yükler
-     (IfcStructuralLinearAction / IfcStructuralCurveAction POLYGONAL, IfcStructuralPointAction): aks–kat G ve Q (kiriş yükleri,
-     döşeme payları, kolon öz ağırlığı); surum 3 G, Q ve S (veri.yukler.cubuklar öz ağırlık/duvar, veri.yukler.paneller kenar
-     dağılımları, bina.ek_yukler çubuk/düğüm yükleri; ayrıntı: genelYukler); iki modelde rüzgâr (W±X/W±Y), deprem (EX±/EY±; EZ =
-     G_carpani × G) ve kren (K…) eylemleri veri.yukler.eylemler'den (rijit diyafram efendi düğümü "Kat k diyafram merkezi" bağlantısı
-     ve kat düğümlerine rijit bağlarıyla) ve mütemadi/radye temel öz ağırlığı veri.temel.oz_yuk'tan (yükler ayrıntısı: yukler).
+     (IfcStructuralLinearAction / IfcStructuralCurveAction POLYGONAL, IfcStructuralPointAction): aks–kat G, Q ve S (kiriş yükleri,
+     döşeme payları, kolon öz ağırlığı; kar çatı katı döşeme paylarından, veri.kar.s); surum 3 G, Q ve S (veri.yukler.cubuklar öz
+     ağırlık/duvar, veri.yukler.paneller kenar dağılımları, bina.ek_yukler çubuk/düğüm yükleri; ayrıntı: genelYukler); iki modelde
+     rüzgâr (W±X/W±Y), deprem (EX±/EY±; EZ = G_carpani × G) ve kren (K…) eylemleri veri.yukler.eylemler'den (rijit diyafram efendi
+     düğümü "Kat k diyafram merkezi" bağlantısı ve kat düğümlerine rijit bağlarıyla; efendi bir kat düğümüyle çakışıyorsa merkez o
+     düğüm) ve mütemadi/radye temel öz ağırlığı veri.temel.oz_yuk'tan (yükler ayrıntısı: yukler).
      Analiz üyesi ↔ fiziksel eleman (IfcRelAssignsToProduct) ve D/C (Pset_MatrisOgren) surum 3'te motorun çubuk no'suyla eşlenir.
    - Düğüm başvuruları (REF): §12.1 {"dugum"} | {"aks", "kat"} | {"X", "Y", "Z"}; §19.2 {"aks", "z"} | {"sistem", "aks", "z"} ve
      dugumler kayıtlarında "bolme" (cubuk_i, cubuk_j, oran) ve "kesisim" (a, b doğruları) düğümleri. Aynı konumdaki (1 mm) REF'ler tek düğüm.
@@ -1811,6 +1812,9 @@
   // SET [1:?]); motorun modeli birebir şöyle yazılır: efendi düğümün yalnız ux, uy, rz serbestliği var (uz, rx, ry tutulu koşul) ve
   // kat düğümlerine (veri.ag.diyaframlar[].dugumler) kesitsiz rijit bağ üyeleriyle bağlanır; bağın kat düğümü ucunda düşey kesme,
   // burulma ve yatay eksenli eğilme serbest (Vy, T, Mz) — bağ yalnız yatay ötelemeyi ve düşey eksen etrafında dönmeyi aktarır.
+  // Efendi düğüm bir kat düğümüyle çakışıyorsa (1 mm; simetrik planda ortadaki kolon) ayrı merkez bağlantısı yazılmaz: aynı konumda
+  // iki bağlantı olur, ortak düğüm diyaframa bağlanmaz ve düğümleri birleştiren okuyucuda merkezin uz, rx, ry koşulu kat düğümünü
+  // mesnetlerdi. Merkez o kat düğümünün kendi bağlantısıdır (eylemler ona, rijit bağlar ondan öteki kat düğümlerine).
   Uretici.prototype.diyaframMerkezleri = function (yer, baglanti, uyeler, tepe) {
     const Bm = this.Bm, w = this.w, self = this, dug = this.dug;
     const Y = Bm.veri && Bm.veri.yukler;
@@ -1830,32 +1834,44 @@
       const d = efendi[no] || {}, g = diy[no] || {};
       const P = [sayi(d.X, sayi(g.X, NaN)), sayi(d.Y, sayi(g.Y, NaN)), sayi(d.Z, sayi(g.Z, NaN))];
       if (!P.every(isFinite)) return;               // konumsuz: yükü "karşılığı olmayan düğüm" sayılır
-      // bağlanacak kat düğümleri (analiz modelinde olan, efendiyle çakışmayan)
+      // bağlanacak kat düğümleri (analiz modelinde olan); efendiyle çakışan kat düğümü (ortak) merkezin kendisi olur
       const gor = {}, kole = [];
+      let ortak = null;
       dizi(g.dugumler).forEach(function (n) {
         const x = dug.no[+n];
-        if (!x || !baglanti[x.no] || gor[x.no] || vboy(vfark([x.X, x.Y, x.Z], P)) < 1e-6) return;
+        if (!x || !baglanti[x.no] || gor[x.no]) return;
         gor[x.no] = true;
-        kole.push(x);
+        if (!ortak && vboy(vfark([x.X, x.Y, x.Z], P)) < 1e-3) ortak = x;
+        else kole.push(x);
       });
-      if (!kole.length) return;
+      if (!kole.length && !ortak) return;
       const km = d.kat !== undefined && d.kat !== null ? d.kat : (/(\d+)/.exec(String(g.ad || "")) || [])[1];
       const kat = km !== undefined && km !== null ? "Kat " + km : "Diyafram " + no;
-      if (!kosul) {
-        kosul = w.ekle("IFCBOUNDARYNODECONDITION", ["Diyafram merkezi (uz, rx, ry tutulu; ux, uy, rz kat düğümlerine rijit bağlı)",
-          T("IFCBOOLEAN", false), T("IFCBOOLEAN", false), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", false)]);
+      if (kole.length && !ucKosul) {
         ucKosul = w.ekle("IFCBOUNDARYNODECONDITION", ["Diyafram bağı ucu (Vy, T, Mz serbest)", T("IFCBOOLEAN", true), T("IFCBOOLEAN", false),
           T("IFCBOOLEAN", true), T("IFCBOOLEAN", false), T("IFCBOOLEAN", true), T("IFCBOOLEAN", false)]);
       }
-      const vp = w.ekle("IFCVERTEXPOINT", [self.nokta(P)]);
-      const rep = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Vertex", [vp]]);
-      const sek = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [rep]]);
-      const merkez = baglanti[no] = w.ekle("IFCSTRUCTURALPOINTCONNECTION", [self.gid("yd:" + no), null, kat + " diyafram merkezi",
-        "Rijit diyafram efendi düğümü N" + no + " (kütle merkezi; " + kole.length + " kat düğümüne rijit bağlı)", null, yer, sek, kosul, null]);
-      uyeler.push(merkez);
+      let merkez, vp, Pm = P;
+      if (ortak) {
+        merkez = baglanti[ortak.no];
+        vp = tepe[ortak.no];
+        Pm = [ortak.X, ortak.Y, ortak.Z];
+      } else {
+        if (!kosul) {
+          kosul = w.ekle("IFCBOUNDARYNODECONDITION", ["Diyafram merkezi (uz, rx, ry tutulu; ux, uy, rz kat düğümlerine rijit bağlı)",
+            T("IFCBOOLEAN", false), T("IFCBOOLEAN", false), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", false)]);
+        }
+        vp = w.ekle("IFCVERTEXPOINT", [self.nokta(P)]);
+        const rep = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Vertex", [vp]]);
+        const sek = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [rep]]);
+        merkez = w.ekle("IFCSTRUCTURALPOINTCONNECTION", [self.gid("yd:" + no), null, kat + " diyafram merkezi",
+          "Rijit diyafram efendi düğümü N" + no + " (kütle merkezi; " + kole.length + " kat düğümüne rijit bağlı)", null, yer, sek, kosul, null]);
+        uyeler.push(merkez);
+      }
+      baglanti[no] = merkez;
       self.diyaframNo[no] = true;
       kole.forEach(function (x) {
-        const t = vbirim(vfark([x.X, x.Y, x.Z], P)), dd = derinlikYonu(t, 0);
+        const t = vbirim(vfark([x.X, x.Y, x.Z], Pm)), dd = derinlikYonu(t, 0);
         const ed = w.ekle("IFCEDGE", [vp, tepe[x.no]]);
         const r2 = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Edge", [ed]]);
         const s2 = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [r2]]);
@@ -1923,8 +1939,9 @@
     return liste;
   };
 
-  // Yükler (yalnız veri varsa). Aks–kat: G ve Q, veri.yukler.kirisler/dosemeler/kolonlar'dan kiriş parçasına (yayılı, kN/m, aşağı +)
-  // ve düğüme (tekil). surum 3 (genel model): G, Q ve S, veri.yukler.cubuklar/paneller ve bina.ek_yukler'den (genelYukler).
+  // Yükler (yalnız veri varsa). Aks–kat: G, Q ve S, veri.yukler.kirisler/dosemeler/kolonlar'dan kiriş parçasına (yayılı, kN/m, aşağı +)
+  // ve düğüme (tekil); kar yalnız çatı katı (veri.kar.kat) döşeme paylarında, tepe s·lx/2 (motordaki gibi). surum 3 (genel model):
+  // G, Q ve S, veri.yukler.cubuklar/paneller ve bina.ek_yukler'den (genelYukler).
   // Rüzgâr, deprem ve kren (C16): veri.yukler.eylemler[durum] o durumun yük durumuna — cubuklar[].yayili/tekil (genel model; bina
   // eksenlerinde q·vek, FE parçalarına bölünür), dugumler[].F düğüme (rijit diyafram efendi düğümü kendi bağlantısında:
   // diyaframMerkezleri); EZ = G_carpani × (bütün G eylemleri). eylemler_not ya da eylemler yoksa bu etkiler yalnız yük
@@ -1952,18 +1969,27 @@
     dizi(Y.kirisler).forEach(function (r) {
       const kn = sozluk(r.kN_m);
       const g = sayi(kn.oz, 0) + sayi(kn.duvar, 0) + sayi(kn.ek_G, 0), q = sayi(kn.ek_Q, 0);
+      // kar ek yükü (kirişe S durumunda düzgün yayılı ek yük): kN_m'de yok, toplamı S.ek (kN) = q·L
+      const L = sayi(r.L, 0), s = L > 0 ? sayi(sozluk(r.S).ek, 0) / L : 0;
       dizi(parcaElemanlari[r.no]).forEach(function (p) {
         if (g) ekle(p.no, "G", [[0, p.L, g, g]]);
         if (q) ekle(p.no, "Q", [[0, p.L, q, q]]);
+        if (s) ekle(p.no, "S", [[0, p.L, s, s]]);
       });
     });
+    // kar (S): yalnız çatı katı (veri.kar.kat) döşemelerinde s = μ·Ce·Ct·Sk (kN/m²); döşeme payının tepe değeri motordaki gibi s·lx/2
+    // (G ve Q payıyla aynı birim şekil, parcalar_birim)
+    const kar = sozluk(veri.kar), sKar = sayi(kar.s, 0);
     dizi(Y.dosemeler).forEach(function (d) {
+      const tepeS = sKar > 0 && kar.kat !== undefined && +d.kat === +kar.kat ? sKar * sayi(d.lx, 0) / 2 : 0;
       dizi(d.paylar).forEach(function (p) {
         if (!self.yapisalUye[p.eleman]) return;
         const pb = dizi(p.parcalar_birim);
         if (!pb.length) return;
         if (sayi(p.tepe_g, 0)) ekle(p.eleman, "G", pb.map(function (s) { return [s[0], s[1], s[2] * p.tepe_g, s[3] * p.tepe_g]; }));
         if (sayi(p.tepe_q, 0)) ekle(p.eleman, "Q", pb.map(function (s) { return [s[0], s[1], s[2] * p.tepe_q, s[3] * p.tepe_q]; }));
+        const ts = sayi(p.tepe_s, tepeS);
+        if (ts) ekle(p.eleman, "S", pb.map(function (s) { return [s[0], s[1], s[2] * ts, s[3] * ts]; }));
       });
     });
     // tekil düğüm yükleri: kolon öz ağırlığı (G, üst düğüm), ek düğüm yükleri, dağıtımsız panel payları, eylemler, temel öz ağırlığı

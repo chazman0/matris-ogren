@@ -365,6 +365,30 @@ test("veri ile: yük durumları, birleşimler (katsayı ilişkisi), D/C özelli�
   assert.match(r.metin, /IFCSTRUCTURALLOADCONFIGURATION\(/);
 });
 
+test("aks–kat kar (S): çatı katı döşeme payı s·lx/2 (veri.kar), kirişin S ek yükü düzgün; alt kat döşemesine kar yok", function () {
+  const pb = [[0, 2.5, 0, 1], [2.5, 5, 1, 0]];
+  const veri = {
+    kombinasyonlar: [], durumlar: { G: {}, Q: {}, S: {} }, kar: { s: 0.6, kat: 2 },
+    yukler: { kirisler: [{ no: 21, L: 6, kN_m: { oz: 3.0, duvar: 0, ek_G: 0, ek_Q: 0 }, S: { doseme: 0, ek: 9, toplam_kN: 9 } }], kolonlar: [],
+      // E10: 1. kat kirişi (kar yok), E14: çatı kirişi 22 (lx = 5 → tepe 0,6·5/2 = 1,5 kN/m; üçgen 5 m → 3,75 kN); E13 = kiriş 21
+      dosemeler: [{ no: 1, kat: 1, lx: 5, paylar: [{ eleman: 10, tepe_g: 5.0, tepe_q: 2.0, parcalar_birim: pb }] },
+        { no: 2, kat: 2, lx: 5, paylar: [{ eleman: 14, tepe_g: 4.0, tepe_q: 1.0, parcalar_birim: pb }] }] },
+  };
+  const r = MatrisIFC.uretAyrintili(O.temel(), veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  const b = bilesenler(r);
+  yakin(b.top.S.slice(0, 3), [0, 0, -(3.75 + 9)], "S");
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('S \/ E13',\$,\$,-1\.5,\$,\$,\$\)/, "kiriş S ek yükü 9 kN / 6 m");
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('S \/ E14 @2\.5',\$,\$,-1\.5,\$,\$,\$\)/, "çatı döşeme payı tepe 1,5 kN/m");
+  assert.doesNotMatch(r.metin, /'S \/ E10/);
+  // motorun tepe_s'i varsa o kullanılır
+  veri.yukler.dosemeler[1].paylar[0].tepe_s = 2;
+  const r2 = MatrisIFC.uretAyrintili(O.temel(), veri, ZAMAN);
+  Object.assign(r2, stepDenetle(r2.metin));
+  yakin(bilesenler(r2).top.S.slice(0, 3), [0, 0, -(5 + 9)], "S (tepe_s)");
+});
+
 test("yük grupları çözümsüz: bina yük durumlarından (G, Q + açık S/W/E)", function () {
   const b = O.temel();
   b.yuk_durumlari = { G: { acik: true }, Q: { acik: true }, S: { acik: true }, W: { acik: false }, E: { acik: true } };
@@ -862,6 +886,38 @@ test("eylemler (K-37): W çubuk yayılı (FE parçalarına, global q·vek) + dü
     assert.equal(b.adet["EZ|" + t] || 0, b.adet["G|" + t] || 0, t);
   });
   assert.match(r.metin, /IFCSTRUCTURALLINEARACTION\('[^']{22}',#\d+,'EZ \/ E1',[^\n]*\(EZ = 0\.4 \\X2\\00D7\\X0\\ G\)'/);
+});
+
+test("eylemler (K-37): efendi düğüm bir kat düğümüyle çakışırsa merkez o düğüm (aynı yerde ikinci bağlantı ve mesnet koşulu yok)", function () {
+  const s = eylemliSentetik();
+  // simetrik plandaki orta kolon gibi: kütle merkezi N5 (3, 4, 3) üzerinde
+  const ef = s.veri.ag.dugumler.filter(function (d) { return d.efendi; })[0];
+  ef.Y = 4;
+  s.veri.ag.diyaframlar[0].Y = 4;
+  const r = MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  assert.doesNotMatch(r.metin, /diyafram merkezi/);
+  assert.doesNotMatch(r.metin, /IFCBOUNDARYNODECONDITION\('Diyafram merkezi/);
+  assert.equal(r.tipler.IFCSTRUCTURALPOINTCONNECTION, 6);
+  assert.equal(r.tipler.IFCSTRUCTURALCURVEMEMBER, 4 + 5);              // N5 dışındaki beş kat düğümüne rijit bağ
+  const n5 = /#(\d+)=IFCSTRUCTURALPOINTCONNECTION\('[^']{22}',#\d+,'N5',/.exec(r.metin);
+  assert.ok(n5, "N5 bağlantısı");
+  const kacir = function (m) { return MatrisIFC.stepMetin(m).replace(/[\\()+.*?[\]^$|{}]/g, "\\$&"); };
+  const bag = r.metin.match(new RegExp("IFCSTRUCTURALCURVEMEMBER\\('[^']{22}',#\\d+,'" + kacir("Kat 1 diyafram bağı → ") + "[^']*'", "g")) || [];
+  assert.equal(bag.length, 5);
+  assert.ok(bag.every(function (x) { return !/ N5'$/.test(x); }), "merkez düğüme bağ yok");
+  // bağların merkez ucu N5'e (koşulsuz, rijit)
+  const iUclari = Object.keys(r.varlik).filter(function (n) {
+    const m = r.varlik[n].tip === "IFCRELCONNECTSSTRUCTURALMEMBER" && new RegExp(",(#\\d+),#" + n5[1] + ",\\$,\\$,\\$,\\$$").exec(r.varlik[n].govde);
+    return m && /diyafram ba/.test(r.varlik[m[1].slice(1)].govde);
+  });
+  assert.equal(iUclari.length, 5);
+  // EX+ kat kuvveti N5'in bağlantısında, toplam aynı
+  const ex = /#(\d+)=IFCSTRUCTURALPOINTACTION\('[^']{22}',#\d+,'EX\+ \/ N900001','Diyafram merkezinde/.exec(r.metin);
+  assert.ok(ex, "EX+ eylemi");
+  assert.match(r.metin, new RegExp("IFCRELCONNECTSSTRUCTURALACTIVITY\\([^\\n]*,#" + n5[1] + ",#" + ex[1] + "\\);"));
+  yakin(bilesenler(r).top["EX+"], [10, 0, 0, 0, 0, -4], "EX+");
 });
 
 test("eylemler (K-37): eylemler_not ya da eylemler yoksa eski not uyarı olarak; yükler: false → diyafram merkezi yazılmaz", function () {

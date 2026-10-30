@@ -134,18 +134,25 @@ def _uyarisiz(r, veri):
 
 
 def _diyafram_beklenen(veri):
-    """Eylem taşıyan rijit diyafram efendi düğümleri → (merkez bağlantısı sayısı, rijit bağ üyesi sayısı: efendiyle çakışmayan kat
-    düğümleri)."""
+    """Eylem taşıyan rijit diyafram efendi düğümleri → (ayrı merkez bağlantısı sayısı, rijit bağ üyesi sayısı, ortak merkezli efendi
+    sayısı). Efendi bir kat düğümüyle çakışıyorsa (1 mm) ayrı bağlantı yazılmaz: merkez o kat düğümüdür, bağlar ondan öteki kat
+    düğümlerine."""
     ag = veri["ag"]
     dug = {d["no"]: d for d in ag["dugumler"]}
     eyl = (veri.get("yukler") or {}).get("eylemler") or {}
-    merkez = {n["dugum"] for e in eyl.values() for n in e.get("dugumler", []) if dug.get(n["dugum"], {}).get("efendi")}
-    bag = 0
+    efendi = {n["dugum"] for e in eyl.values() for n in e.get("dugumler", []) if dug.get(n["dugum"], {}).get("efendi")}
+    merkez = bag = ortak = 0
     for d in ag.get("diyaframlar", []):
-        if d["ana"] in merkez:
+        if d["ana"] in efendi:
             m = dug[d["ana"]]
-            bag += sum(1 for n in d["dugumler"] if math.dist((dug[n]["X"], dug[n]["Y"], dug[n]["Z"]), (m["X"], m["Y"], m["Z"])) > 1e-6)
-    return len(merkez), bag
+            uz = [math.dist((dug[n]["X"], dug[n]["Y"], dug[n]["Z"]), (m["X"], m["Y"], m["Z"])) for n in d["dugumler"]]
+            if any(x < 1e-3 for x in uz):
+                ortak += 1
+                bag += len(uz) - 1
+            else:
+                merkez += 1
+                bag += len(uz)
+    return merkez, bag, ortak
 
 
 @lru_cache(maxsize=None)
@@ -439,7 +446,7 @@ def test_sablon_step_ve_sayilar(ad, veri_ile):
     else:
         ag = veri["ag"]
         efendi = {d["no"] for d in ag["dugumler"] if d.get("efendi")}
-        merkez, bag = _diyafram_beklenen(veri)      # eylem taşıyan diyafram merkezleri ve rijit bağları (K-37)
+        merkez, bag, _ortak = _diyafram_beklenen(veri)      # eylem taşıyan diyafram merkezleri ve rijit bağları (K-37)
         assert tip["IFCSTRUCTURALCURVEMEMBER"] == sum(1 for e in ag["elemanlar"] if not set(e["dugumler"]) & efendi) + bag
         assert tip["IFCSTRUCTURALPOINTCONNECTION"] == len(ag["dugumler"]) - len(efendi) + merkez
         uyg = [k for k in veri["kombinasyonlar"] if k["uygulandi"] and k["tur"] != "drift"]
@@ -697,8 +704,8 @@ def _ornek_cozumlu(ad):
 
 @pytest.mark.parametrize("ad", ORNEK_ADLARI)
 def test_ornekler_cozulur(ad):
-    """K-11: her örnek yapi.bina_coz ile hatasız çözülür; çözüm verisiyle IFC uyarısız, yük eylemleri var ve G/Q (genelde S de)
-    toplamları çözümle aynı. 'serbest' (surum 3, mütemadi temel) motor paketiyle (C11 genel modelde temel) çözülür."""
+    """K-11: her örnek yapi.bina_coz ile hatasız çözülür; çözüm verisiyle IFC uyarısız, yük eylemleri var ve G/Q/S toplamları
+    çözümle aynı. 'serbest' (surum 3, mütemadi temel) motor paketiyle (C11 genel modelde temel) çözülür."""
     if _yayili_temelli_genel(_ornek_bina(ad)) and not _motor_genel_temel():
         pytest.skip("genel modelde mütemadi/radye temel motor paketi (C11) ile gelir")
     bina, veri, r = _ornek_cozumlu(ad)
@@ -708,15 +715,9 @@ def test_ornekler_cozulur(ad):
     vek = _yuk_vektorleri(r["metin"])
     temelli = (veri.get("temel") or {}).get("tip") in ("surekli", "radye")
     for d in ("G", "Q", "S"):
-        if d == "S" and not _genel_mi_bina(bina):
-            continue                                   # aks–kat IFC'si G ve Q yazar
         if d == "G" and temelli and not _motor_c11():
             continue                                   # temel öz ağırlığı motorla (oz_yuk) gelir
         assert -vek.get(d, [0.0] * 6)[2] == pytest.approx(veri["yukler"]["toplam"].get(d, 0.0), abs=0.1), d
-
-
-def _genel_mi_bina(bina):
-    return int(bina.get("surum", 1)) >= 3
 
 
 @pytest.mark.parametrize("ad", ["celik-sanayi-4hol", "betonarme-3kat-3x3", "celik-cbf-3kat"])
@@ -754,6 +755,21 @@ def test_eylem_toplamlari(ad):
             assert -t[2] == pytest.approx((tk["P_maks"] + tk["P_min"]) * tk["adet"] * k["dinamik"], rel=1e-9), d
     if ad == "celik-sanayi-4hol":
         assert any(d[0] == "K" for d in eyl)
+    # her yapısal düğüm ayrı konumda: efendi bir kat düğümüyle çakışırsa (betonarme-3kat-3x3: kütle merkezi orta kolonda) merkez o kat
+    # düğümüdür; aynı yerde ikinci bağlantı (düğüm birleştiren okuyucuda uz, rx, ry koşuluyla kolonu mesnetlerdi) yazılmaz
+    V = _varliklar(r["metin"])
+    konum = Counter()
+    for t, a in V.values():
+        if t == "IFCSTRUCTURALPOINTCONNECTION":
+            tepe = V[_r(V[_r(V[_r(a[6])][1][2][0])][1][3][0])]
+            konum[tuple(round(x, 3) for x in V[_r(tepe[1][0])][1][0])] += 1
+    assert max(konum.values()) == 1
+    merkez, bag, ortak = _diyafram_beklenen(veri)
+    adlar = Counter(V[_r(a[4])][0] for t, a in V.values() if t == "IFCRELCONNECTSSTRUCTURALACTIVITY"
+                    and V[_r(a[5])][0] == "IFCSTRUCTURALPOINTACTION" and "Diyafram merkezinde" in (V[_r(a[5])][1][3] or ("S", ""))[1])
+    assert set(adlar) <= {"IFCSTRUCTURALPOINTCONNECTION"} and (sum(adlar.values()) > 0) == (merkez + ortak > 0)
+    if ad == "betonarme-3kat-3x3":
+        assert (merkez, ortak) == (0, 3)
 
 
 @lru_cache(maxsize=None)
@@ -773,8 +789,8 @@ _TEMEL_SABLONLARI = ["betonarme-3kat-surekli-temel", "betonarme-4kat-radye"]
 
 @pytest.mark.parametrize("ad", _aks_kat_sablonlari() + [f"genel:{a}" for a in _TEMEL_SABLONLARI])
 def test_temel_oz_agirligi_toplami(ad):
-    """K-39 (C11 oz_yuk): IFC G toplamı = veri.yukler.toplam.G (temel öz ağırlığı dahil; 0,1 kN içinde), Q aynı; mütemadi/radye
-    temel elemanlarında ve temel düğümlerinde G eylemleri var (Σq·L + ΣP = W)."""
+    """K-39 (C11 oz_yuk): IFC G toplamı = veri.yukler.toplam.G (temel öz ağırlığı dahil; 0,1 kN içinde), Q ve S (aks–kat karı çatı
+    katı döşeme paylarından, veri.kar) aynı; mütemadi/radye temel elemanlarında ve temel düğümlerinde G eylemleri var (Σq·L + ΣP = W)."""
     genel = ad.startswith("genel:")
     kok = ad.split(":", 1)[-1]
     import yapi
@@ -789,6 +805,7 @@ def test_temel_oz_agirligi_toplami(ad):
     vek = _yuk_vektorleri(r["metin"])
     assert -vek["G"][2] == pytest.approx(veri["yukler"]["toplam"]["G"], abs=0.1)
     assert -vek["Q"][2] == pytest.approx(veri["yukler"]["toplam"]["Q"], abs=1e-6)
+    assert -vek.get("S", [0.0] * 6)[2] == pytest.approx(veri["yukler"]["toplam"].get("S", 0.0), abs=1e-6)
     if tip_ != "tekil":
         oz = veri["temel"]["oz_yuk"]
         assert sum(x["P"] for x in oz["dugumler"]) + sum(
@@ -809,7 +826,7 @@ def test_genel_temel_ifcopenshell(tmp_path):
     _bina, veri, r = _genel_temel_ifc("betonarme-3kat-surekli-temel")
     f = _ac(r["metin"], tmp_path, "genel_surekli")
     assert _dogrula(f, True) == []
-    merkez, bag = _diyafram_beklenen(veri)
+    merkez, bag, _ortak = _diyafram_beklenen(veri)
     assert len([n for n in f.by_type("IfcStructuralPointConnection") if n.Name.endswith("diyafram merkezi")]) == merkez
     assert len([u for u in f.by_type("IfcStructuralCurveMember") if "diyafram ba" in u.Name]) == bag
 
