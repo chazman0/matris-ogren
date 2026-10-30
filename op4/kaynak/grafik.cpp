@@ -164,6 +164,9 @@ bool Grafik::Baslat(bool warpZorla, std::string& hata) {
     DXGI_ADAPTER_DESC1 t{};
     bagdastirici_->GetDesc1(&t);
     bagdastiriciAdi_ = Utf8(t.Description);
+    // GPU'suz makinelerde (sanal makine, CI, bazı uzak masaüstü oturumları) "Microsoft Basic Render Driver" donanım
+    // bağdaştırıcısı gibi listelenir (SOFTWARE bayrağı yok) ama WARP'tır: MSAA ve etiket buna göre seçilir.
+    if (t.VendorId == 0x1414 && t.DeviceId == 0x8C) warp_ = true;
     {
         const D3D_FEATURE_LEVEL duzeyler[] = {static_cast<D3D_FEATURE_LEVEL>(0xc200), D3D_FEATURE_LEVEL_12_1,
                                               D3D_FEATURE_LEVEL_12_0, D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};

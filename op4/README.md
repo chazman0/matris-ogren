@@ -80,3 +80,36 @@ yakınlaş, F = tümünü göster, K = kesit / çubuk görünümü, G = ızgara.
 Yerel (Linux) denetim: MinGW-w64 ile derlenip Wine 9 + vkd3d + lavapipe (Xvfb) altında `--test-ekran`,
 `--test-acilis` ve `--test-pencere --motorsuz` çalışır. Wine'da numpy içe aktarımı Wine'ın eksik bir işlevine
 (0x80000100) takıldığı için `--test-motor` yalnız gerçek Windows'ta sınanır.
+
+## CI ölçümleri (windows-latest, Visual Studio 18 2026 / MSVC 14.51, Python 3.13.16)
+
+| Ölçü | Değer |
+|---|---|
+| CMake yapılandırma (Dear ImGui sığ klonu dahil) | ≈ 18 s |
+| Derleme (Release, imgui + op4) | ≈ 21–28 s |
+| Paket hazırlama (gömülü Python + pip + budama + .pyc) | ≈ 13–15 s (önbellekle) |
+| Inno Setup derlemesi | ≈ 14 s |
+| op4.exe (statik CRT) | 1,0 MB |
+| python/ (CPython 3.13 + numpy 2.5.3 + sympy 1.14.0, budanmış) | 96 MB |
+| motor/ (.py + .pyc) | 4,7 MB |
+| op4-setup.exe (LZMA2) | 27,3 MB |
+| Motor açılışı (DLL + Py_InitializeEx + import web_kopru + bina_sablonlar) | ≈ 350–410 ms (import web_kopru ≈ 320–380 ms) |
+| WARP ekran dışı kare (640×360, MSAA 4×, arayüz dahil) | ≈ 7–11 ms |
+| Gerçek pencere (Basic Render Driver, ekranı kaplayan) | ≈ 37 ms/kare; kaydırmada imleç altı kayma 0,0001 px |
+
+## Karşılaşılan tuzaklar
+
+* Git Bash, `/nologo` gibi `/` ile başlayan bağımsız değişkenleri Windows yoluna çevirir (`C:/Program Files/Git/nologo`):
+  MSBuild seçenekleri `-nologo -v:minimal` biçiminde verilir; Inno Setup adımı PowerShell'de çalışır.
+* Windows'ta boruya yönlendirilen Python çıktısı cp1252'dir; Türkçe karakterli `print` UnicodeEncodeError verir
+  (`PYTHONUTF8=1` + `sys.stdout.reconfigure(encoding="utf-8")`).
+* Python başvuruları (`Py_DecRef`) `Py_FinalizeEx`'ten SONRA bırakılırsa erişim ihlali (0xC0000005) olur; C++ RAII
+  sarmalayıcıları yorumlayıcı kapanmadan açıkça bırakılır.
+* Gömülü Python geçersiz (bozuk) standart tutamaç devralırsa `init_sys_streams` ile süreci sonlandırır; tutamaç hiç
+  yoksa (Gezgin'den / Start-Process ile açılış) sys.stdout = None olur ve sorun çıkmaz. Python yüklenmeden önce geçersiz
+  tutamaçlar boşaltılır.
+* CI'da yapıtlar ve ham günlük adresi (blob depolama) indirilemez: PNG'ler 256 renge indirgenip günlüğe base64 yazılır
+  ve günlük GitHub API'siyle okunur.
+* GPU'suz makinede "Microsoft Basic Render Driver" donanım bağdaştırıcısı gibi listelenir (WARP'tır).
+* Wine 9 (yerel denetim): `EnumWarpAdapter` E_NOTIMPL, numpy içe aktarımı Wine taslak işlevine (0x80000100) takılır,
+  dosya yönlendirmeli stdin ile Python başlamaz — bunlar Wine'a özgüdür, gerçek Windows'ta yoktur.
