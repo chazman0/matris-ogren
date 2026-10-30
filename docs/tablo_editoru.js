@@ -707,6 +707,29 @@
     const cv = degerCevir(m, tur);
     return !cv.hata && degerAyni(cv.deger, deger);
   }
+  /** Salt okunur hücre için: dosyadaki sayı, şimdiki değerin dosyanın yazdığı duyarlığa yuvarlanmış hâli mi? Tablo programları
+   *  CSV'yi görünen biçimle yeniden yazar ("-2,454225919E-17" → "-2.45E-17", "0,3333333333" → "0,33333333"); bu fark kullanıcının
+   *  düzenlemesi değildir. Tolerans dosya metninin son basamağının yarısı. Düzenlenebilir hücrelerde kullanılmaz (orada her fark
+   *  değişikliktir). */
+  function gorunenAyni(metin, deger, tur, ov) {
+    if (hucreAyni(metin, deger, tur, ov)) return true;
+    if (typeof deger !== "number" || !isFinite(deger) || (tur && tur.tur && tur.tur !== "sayi")) return false;
+    const t = String(metin === undefined || metin === null ? "" : metin).trim().replace(/[\s  ']/g, "").replace(/−/g, "-");
+    const m = /^[+-]?([\d.,]*\d[\d.,]*)(?:e([+-]?\d+))?$/i.exec(t);
+    // en az 3 anlamlı basamak: "3" ile 3,25 gibi kaba yuvarlamalar eşit sayılmaz (sıra denetimi gevşemesin)
+    if (!m || m[1].replace(/\D/g, "").replace(/^0+/, "").length < 3) return false;
+    const v = sayiOku(t);
+    if (isNaN(v)) return false;
+    // ondalık işareti sayiOku'nun kuralıyla: iki işaret varsa sondaki; tek işaret bir kez geçiyorsa o; birden çok geçiyorsa binlik
+    const g = m[1], nokta = (g.match(/\./g) || []).length, virgul = (g.match(/,/g) || []).length;
+    let isaret = "";
+    if (nokta && virgul) isaret = g.lastIndexOf(",") > g.lastIndexOf(".") ? "," : ".";
+    else if (virgul === 1) isaret = ",";
+    else if (nokta === 1) isaret = ".";
+    const ondalik = isaret ? g.length - g.lastIndexOf(isaret) - 1 : 0;
+    const birim = Math.pow(10, (m[2] ? parseInt(m[2], 10) : 0) - ondalik);
+    return Math.abs(deger - v) <= 0.5 * birim * (1 + 1e-9) + 1e-15 * Math.abs(v);
+  }
   /** Dosya adının sonundaki tablo adı ("Bina_katlar.csv" → katlar; dışa aktarımın adlandırması); yoksa null. */
   function dosyaTablosu(tablolar, ad) {
     const k = katla(String(ad || "").replace(/^.*[\\/]/, "").replace(/\.[^.]*$/, ""));
@@ -859,7 +882,7 @@
           if (ilkHata) return;
           const x = veri[k], r = t.satirlar[k], uymayan = [];
           dosyadaki.forEach(function (j) {
-            if (!ss[j].duzenlenebilir && !bosHucre(hucreAl(x, j)) && !hucreAyni(hucreAl(x, j), r.degerler[ss[j].ad], hucreTuru(r, ss[j]), ov)) uymayan.push(ss[j].baslik);
+            if (!ss[j].duzenlenebilir && !bosHucre(hucreAl(x, j)) && !gorunenAyni(hucreAl(x, j), r.degerler[ss[j].ad], hucreTuru(r, ss[j]), ov)) uymayan.push(ss[j].baslik);
           });
           if (uymayan.length) ilkHata = "Satır " + x.no + ": salt okunur sütunlar (" + uymayan.join(", ") + ") tablodaki " + (k + 1) + ". satırla uyuşmuyor";
         });
@@ -885,8 +908,9 @@
           const s = ss[j], tur = hucreTuru(r, s), simdi = r.degerler[s.ad], metin = hucre(j);
           if (!s.duzenlenebilir && bosHucre(metin)) return;          // salt okunur sütunda boş hücre: bilgi yok, değişiklik değil
           if (hucreAyni(metin, simdi, tur, ov)) return;
-          if (!s.duzenlenebilir) { saltFark[j] = (saltFark[j] || 0) + 1; plan.atlanan++; return; }
-          if (!duzenlenebilir(r, s)) { saltHucre++; plan.atlanan++; return; }
+          // salt okunur hücre: tablo programının görünen duyarlığa yuvarlaması fark sayılmaz (yazılmayacak; yalnız uyarı)
+          if (!s.duzenlenebilir) { if (!gorunenAyni(metin, simdi, tur, ov)) { saltFark[j] = (saltFark[j] || 0) + 1; plan.atlanan++; } return; }
+          if (!duzenlenebilir(r, s)) { if (!gorunenAyni(metin, simdi, tur, ov)) { saltHucre++; plan.atlanan++; } return; }
           const cv = degerCevir(metin === undefined ? "" : metin, tur);
           if (cv.hata) { plan.hatalar.push(Bas("Satır " + x.no + ", " + s.baslik + ": " + cv.hata)); return; }
           if (degerAyni(cv.deger, simdi)) return;

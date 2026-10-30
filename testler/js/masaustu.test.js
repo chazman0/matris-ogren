@@ -496,6 +496,50 @@ test("menü: Klavye kısayolları penceresi sayfa listesiyle — Menü bölümü
   assert.match(MENU.kisayolMetni("darwin", liste), /^Menü\n⌘O {2}— {2}Aç \(Dosya\)/);
 });
 
+// Yerel ileti kutusu kaydırılamaz: menü + Bina sayfası listesi (~90 satır) 1080 px ekrana sığmıyordu (alt bölümler ve Tamam düğmesi
+// ekran dışında kalıyordu). Pencere ana süreçte betiksiz, kaydırılabilir bir alt pencerede kisayolHtml ile gösterilir.
+test("menü: Klavye kısayolları penceresinin HTML'i — aynı bölümler, kaçışlı metin, betiksiz belge", function () {
+  const liste = [
+    { tus: "S", ad: "Seç", grup: "Çizim" }, { tus: "Esc", ad: "Kipten çık", grup: "Sayfa" }, { tus: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "Sayfa" },
+    { tus: "<b>", ad: "<img src=x onerror=alert(1)> & \"tırnak\"", grup: "<script>alert(1)</script>" },
+  ];
+  const b = MENU.kisayolBolumleri("win32", liste);
+  assert.deepEqual(b.gruplar.map(function (g) { return [g.ad, g.satirlar.length]; }), [["Çizim", 1], ["Sayfa", 2], ["<script>alert(1)</script>", 1]]);
+  assert.equal(b.yonlendirme, null);
+  const html = MENU.kisayolHtml("win32", liste);
+  assert.match(html, /^<!doctype html><html lang="tr">/);
+  assert.match(html, /Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"/);
+  assert.ok(!/<script|<img|onerror=alert\(1\)>/i.test(html), "sayfadan gelen metin kaçışlanır");
+  assert.ok(html.indexOf("&lt;img src=x onerror=alert(1)&gt; &amp; &quot;tırnak&quot;") > 0);
+  const basliklar = (html.match(/<h2>[^<]*<\/h2>/g) || []).map(function (h) { return h.slice(4, -5); });
+  assert.deepEqual(basliklar, ["Menü", "Bina sayfası — Çizim", "Bina sayfası — Sayfa", "Bina sayfası — &lt;script&gt;alert(1)&lt;/script&gt;"]);
+  assert.ok(html.indexOf('<tr><th scope="row"><kbd>Enter</kbd></th><td>Bağlam menüsünde: Bilgi</td></tr>') > 0);
+  // menü satırları düz metindekiyle aynı (her satır bir tablo satırı)
+  const satirSayisi = (html.match(/<tr>/g) || []).length;
+  assert.equal(satirSayisi, b.menu.length + 4);
+  assert.equal(MENU.kisayolMetni("win32", liste).split("\n").filter(function (s) { return / {2}/.test(s); }).length, satirSayisi);
+  // liste yoksa: başlıksız menü tablosu ve yönlendirme satırı (düz metindeki yedekle aynı)
+  const yedek = MENU.kisayolHtml("darwin", null);
+  assert.ok(!/<h2>/.test(yedek));
+  assert.ok(yedek.indexOf("<kbd>⌘O</kbd>") > 0);
+  assert.ok(yedek.indexOf(MENU.kisayolBolumleri("darwin", null).yonlendirme) > 0);
+  assert.equal(MENU.kisayolMetni("darwin").split("\n").pop(), MENU.kisayolBolumleri("darwin").yonlendirme);
+});
+
+test("ana süreç: Klavye kısayolları betiksiz, yalıtılmış, kaydırılabilir alt pencerede (ileti kutusunda değil)", function () {
+  const m = fs.readFileSync(path.join(MASAUSTU, "main.js"), "utf8");
+  assert.match(m, /kisayollar: function \(pencere\) \{ kisayolPenceresiAc\(durumBul\(pencere\) \|\| odakDurumu\(\), pencere\); \}/);
+  const i = m.indexOf("function kisayolPenceresiAc(");
+  assert.ok(i > 0);
+  const govde = m.slice(i, m.indexOf("\n}\n", i));
+  for (const desen of [/kisayolHtml\(process\.platform, d \? d\.kisayollar : null\)/, /parent: ana \|\| undefined/, /javascript: false/,
+    /sandbox: true/, /contextIsolation: true/, /nodeIntegration: false/, /"before-input-event"/, /"Escape"/, /d\.kisayolPenceresi = k/]) {
+    assert.match(govde, desen);
+  }
+  assert.ok(!/showMessageBox/.test(govde));
+  assert.ok(!/kisayolMetni/.test(m), "ana süreç düz metin ileti kutusunu kullanmaz");
+});
+
 // README "Komutlar" tablosu: | `komut` | ek alanlar | Menü | Kısayol | (dipnot işaretleri ¹ ² ³ ⁴ sayılmaz)
 function readmeKomutlari() {
   const metin = fs.readFileSync(path.join(MASAUSTU, "README.md"), "utf8");

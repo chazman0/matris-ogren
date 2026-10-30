@@ -519,6 +519,37 @@ test("CSV içe aktarma: bölümlü dosya tablolara adla eşlenir; bilinmeyen tab
   assert.deepEqual(p.hatalar, ["Aynı model alanı (katlar › [no = 1] › kot) dosyada iki kez farklı değerle var; sonuncusu kullanıldı."]);
 });
 
+test("CSV içe aktarma: tablo programının görünen duyarlıkla yeniden yazdığı salt okunur sayılar fark sayılmaz", () => {
+  // Tablo programları ("hücre içeriğini göründüğü gibi kaydet") küçük sayıları "-2.45E-17", uzun ondalıkları kısaltarak yazar.
+  const tl = csvTablolari();
+  const t = { ad: "yer", baslik: "Yer değiştirmeler", grup: "Analiz", sutunlar: [
+    { ad: "no", baslik: "Düğüm", tur: "sayi", ondalik: 0 }, { ad: "ux", baslik: "u_X", birim: "mm", tur: "sayi" },
+    { ad: "rz", baslik: "θ_Z", birim: "rad", tur: "sayi" }, { ad: "h", baslik: "Kalınlık", birim: "m", tur: "sayi", duzenlenebilir: true }],
+    satirlar: [
+      { degerler: { no: 1, ux: -2.454225919e-17, rz: 0.333333333333, h: 0.123456789 }, yol: { h: ["yer", { no: 1 }, "h"] } },
+      { degerler: { no: 2, ux: 1234.56789012, rz: 3.25, h: 0.5 }, yol: { h: ["yer", { no: 2 }, "h"] } }],
+  };
+  tl.push(t);
+  let m = [["Düğüm", "u_X [mm]", "θ_Z [rad]", "Kalınlık [m]"], ["1", "-2.45E-17", "0,33333333", "0,123456789"], ["2", "1234,568", "3,25", "0,5"]];
+  let p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual([p.degisiklikler, p.hatalar, p.atlanan], [[], [], 0]);
+  // gerçek düzenleme (salt okunur sütunda) yine uyarılır; kaba yuvarlama ("3" ↔ 3,25) da fark sayılır
+  m = [["Düğüm", "u_X [mm]", "θ_Z [rad]"], ["1", "-2.46E-17", "0,33333333"], ["2", "1234,568", "3"]];
+  p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual(p.hatalar, ["Düzenlenemez sütun: u_X [mm] (1 hücre farklı, atlandı)", "Düzenlenemez sütun: θ_Z [rad] (1 hücre farklı, atlandı)"]);
+  assert.equal(p.atlanan, 2);
+  // düzenlenebilir hücrede her fark değişikliktir (yuvarlanmış yazım da)
+  m = [["Düğüm", "Kalınlık [m]"], ["1", "0,1234568"], ["2", "0,5"]];
+  p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.deger]), [[0, 0.1234568]]);
+  // sırayla eşlemede salt okunur doğrulaması da görünen duyarlıkla yapılır
+  const k = { ad: "k", baslik: "Anahtarsız", grup: "Model", sutunlar: [{ ad: "a", baslik: "A", tur: "sayi" }, { ad: "b", baslik: "B", tur: "sayi", duzenlenebilir: true }],
+    satirlar: [{ degerler: { a: 1e-17, b: 1 }, yol: { b: ["k", 0, "b"] } }, { degerler: { a: 1e-17, b: 2 }, yol: { b: ["k", 1, "b"] } },
+      { degerler: { a: 2.454225919e-17, b: 3 }, yol: { b: ["k", 2, "b"] } }] };
+  p = I.csvIceAktarPlani([k], "k", [["A", "B"], ["1E-17", "1"], ["1E-17", "2"], ["2.45E-17", "4"]], {});
+  assert.deepEqual([p.degisiklikler.map((d) => [d.satir, d.deger]), p.hatalar], [[[2, 4]], []]);
+});
+
 test("CSV içe aktarma planı Duzenleme'ye yapıştırma gibi eklenir (tek geri al adımı)", () => {
   const tl = csvTablolari();
   const m = I.csvAyristir(I.csvUret(tl[0], {}));

@@ -48,8 +48,9 @@ Paketler GitHub'da **Releases** sayfasında (sürüm etiketleri, ör. `v1.0.0`) 
 - Bağlantılar (web sürümü, kaynak kodu) varsayılan tarayıcıda açılır; program kendisi hiçbir ağ isteği yapmaz.
 - Ayarlar, son dosyalar ve kurtarma kayıtları: Windows `%APPDATA%\Matris Öğren`, macOS `~/Library/Application Support/Matris Öğren`,
   Linux `~/.config/Matris Öğren`.
-- **Yardım → Klavye kısayolları** penceresi "Menü" bölümünde menü kısayollarını, Bina sayfası açıldıktan sonra da "Bina sayfası —
-  <grup>" bölümlerinde sayfanın bütün araç kısayollarını ve sayfa tuşlarını (Esc, Shift+F10, Enter, ?, PgUp/PgDn…) gösterir. Liste
+- **Yardım → Klavye kısayolları** ayrı, kaydırılabilir küçük bir pencere açar (Esc kapatır; yeniden seçilince aynı pencere öne gelir):
+  "Menü" bölümünde menü kısayollarını, Bina sayfası açıldıktan sonra da "Bina sayfası — <grup>" bölümlerinde sayfanın bütün araç
+  kısayollarını ve sayfa tuşlarını (Esc, Shift+F10, Enter, ?, PgUp/PgDn…) gösterir. Liste
   sayfadaki araç kutusu komut kaydından üretilir (Bina sayfasındaki **?** penceresi ve uygulamanın **Yardım** sayfasındaki "Klavye
   kısayolları" kartıyla aynı satırlar); Bina sayfası henüz açılmadıysa pencere menü kısayollarını ve oraya yönlendiren bir satırı
   gösterir. En çok kullanılan menü kısayolları: Ctrl+N yeni, Ctrl+O aç, Ctrl+S kaydet, Ctrl+Z / Ctrl+Y geri al / yinele, F5 çöz,
@@ -89,7 +90,7 @@ Notlar:
 | `hazirla.js` | `../docs`'u `uygulama/`ya kopyalar; motorun Pyodide sürümünü (`docs/motor.worker.js` → `PYODIDE_SURUM`) ve yüklediği paketleri (`loadPackage([...])`) okur, bağımlılıkları `pyodide-lock.json`'dan çözer, çekirdek + tekerlekleri SHA-256 denetimiyle `uygulama/pyodide/` altına indirir; sayfalardaki CDN kütüphanelerini (formül dizgisi, markdown) `uygulama/kutuphane/`ye indirip adresleri yerelleştirir; kopyadaki worker'a `self.MATRIS_PYODIDE_URL = "./pyodide/"` ekler; `uygulama/masaustu.json` ve `build/icon.png` yazar. Çıkış kodu 3 = ağ hatası. |
 | `main.js` | Ana süreç: `app://matris/` protokolü, pencereler ve pencere durumu, Türkçe menü, IPC, dosya iletişim kutuları, son dosyalar, otomatik kayıt / kurtarma, tek örnek, dosya ilişkilendirmesi, sürükle-bırak, PDF. |
 | `preload.js` | Yalıtılmış ön yükleme betiği: sayfaya yalnız `window.masaustu` yüzeyini açar; sürükle-bırakı işler. |
-| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler), komut listesi (`komutListesi`, aşağıdaki Komutlar tablosu), Klavye kısayolları penceresinin metni (`kisayolMetni(platform, sayfaListesi)`) ve sayfadan gelen kısayol listesinin temizleyicisi (`kisayolListesiTemizle`). |
+| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler), komut listesi (`komutListesi`, aşağıdaki Komutlar tablosu), Klavye kısayolları penceresinin bölümleri, düz metni ve betiksiz HTML belgesi (`kisayolBolumleri`, `kisayolMetni`, `kisayolHtml(platform, sayfaListesi)`) ve sayfadan gelen kısayol listesinin temizleyicisi (`kisayolListesiTemizle`). |
 | `lib/sunucu.js` | `uygulama/` dosyalarının sunulması: yol denetimi, içerik türleri (`application/wasm` vb.), HTML'e İçerik Güvenliği Politikası. |
 | `lib/yardimci.js` | Saf yardımcılar: atomik yazma, proje okuma, ayar deposu, son dosyalar, komut satırı, pencere sınırı, kurtarma, süzgeçler, PDF bilgi sözlüğü. |
 | `../docs/masaustu_kopru.js` | Sayfa tarafı köprü: `window.MatrisDosya` ve `masaustu-*` olayları (web sürümünde de yüklenir). |
@@ -197,6 +198,7 @@ dosyalar" süzgeçli yerel "Aç" iletişim kutusu). Dosya tek tablo (başlık sa
 daha çok uyuyorsa o tablo) ya da `Tablo: başlık;grup;ad` bölümlü olabilir. Başlıklar sütunlara "Başlık [birim]" metniyle, satırlar
 tablonun anahtar sütunlarıyla (ör. `no`; yoksa tablodaki sırayla) eşlenir. Değeri değişen düzenlenebilir hücreler bekleyen değişiklik
 olur (sarı; tek geri al adımı) ve **Uygula** ile modele geçer; özet bildirimi "CSV: N değişiklik bekliyor (Uygula), M uyarı".
+Salt okunur (hesaplanan) sütunlarda tablo programının sayıyı görünen duyarlıkla yeniden yazması (ör. `-2.45E-17`) fark sayılmaz.
 Pencere içindeki **İçe aktar (.csv)…** düğmesi aynı işi yapar (tarayıcıda gizli dosya girdisiyle).
 
 | `komut` | ek alanlar | Menü | Kısayol |

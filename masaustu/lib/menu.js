@@ -347,20 +347,20 @@ function kisayolListesiTemizle(liste) {
   return sonuc;
 }
 
-// Klavye kısayolları penceresinin (Yardım › Klavye kısayolları) metni.
+// Klavye kısayolları penceresinin bölümleri (kisayolMetni ve kisayolHtml aynı içerikten yazılır):
+// {menu: [[tus, etiket]], gruplar: [{ad, satirlar: [[tus, ad]]}], yonlendirme: metin | null}
 // - sayfaListesi yoksa (Bina sayfası bu pencerede henüz hazır olmadıysa): menü kısayolları ve Bina sayfasının araç kısayollarının
-//   nerede olduğunu söyleyen son satır.
-// - sayfaListesi ([{tus, ad, grup}], masaustu_kopru.js'in gönderdiği, araç kutusu komut kaydı + sayfa tuşları) varsa: "Menü" bölümü
-//   (aynı menü satırları) ve her grup için "Bina sayfası — <grup>" bölümü, satırlar "<tus>  <ad>"; gruplar listedeki ilk görünme
-//   sırasıyla.
-function kisayolMetni(platform, sayfaListesi) {
+//   nerede olduğunu söyleyen yönlendirme satırı; gruplar boş.
+// - sayfaListesi ([{tus, ad, grup}], masaustu_kopru.js'in gönderdiği, araç kutusu komut kaydı + sayfa tuşları) varsa: menü
+//   kısayolları ve her grup için bir bölüm; gruplar listedeki ilk görünme sırasıyla, grupsuz satırlar "Diğer".
+function kisayolBolumleri(platform, sayfaListesi) {
   const mac = platform === "darwin";
   const gorulen = new Set();
-  const satirlar = [];
+  const menu = [];
   const ekle = function (h, etiket) {
     if (!h || gorulen.has(h)) return;
     gorulen.add(h);
-    satirlar.push(kisayolGoster(h, mac) + "  —  " + etiket);
+    menu.push([kisayolGoster(h, mac), etiket]);
   };
   ekle("CmdOrCtrl+O", "Aç (Dosya)");
   ekle("CmdOrCtrl+Shift+N", "Yeni pencere (Dosya)");
@@ -370,23 +370,71 @@ function kisayolMetni(platform, sayfaListesi) {
   ekle("CmdOrCtrl+-", "Uzaklaştır (Görünüm)");
   ekle("CmdOrCtrl+0", "Gerçek boyut (Görünüm)");
   const liste = kisayolListesiTemizle(sayfaListesi);
-  if (!liste.length) {
-    satirlar.push("", "Bina sayfasındaki araç kısayolları (S seç, L çubuk çiz, K kolon, Ctrl+Enter çöz…): Yardım › Kullanım kılavuzu " +
-      "sayfasındaki Klavye kısayolları kartı ya da Bina sayfasında ? tuşu.");
-    return satirlar.join("\n");
-  }
-  const gruplar = [], grupSatir = {};
+  const gruplar = [], grupNo = {};
   liste.forEach(function (s) {
     const g = s.grup || "Diğer";
-    if (!grupSatir[g]) { grupSatir[g] = []; gruplar.push(g); }
-    grupSatir[g].push(s.tus + "  " + s.ad);
+    if (!(g in grupNo)) { grupNo[g] = gruplar.length; gruplar.push({ ad: g, satirlar: [] }); }
+    gruplar[grupNo[g]].satirlar.push([s.tus, s.ad]);
   });
-  const metin = ["Menü"].concat(satirlar);
-  gruplar.forEach(function (g) { metin.push("", "Bina sayfası — " + g); Array.prototype.push.apply(metin, grupSatir[g]); });
+  return {
+    menu: menu, gruplar: gruplar,
+    yonlendirme: gruplar.length ? null : "Bina sayfasındaki araç kısayolları (S seç, L çubuk çiz, K kolon, Ctrl+Enter çöz…): Yardım › " +
+      "Kullanım kılavuzu sayfasındaki Klavye kısayolları kartı ya da Bina sayfasında ? tuşu.",
+  };
+}
+
+// Klavye kısayolları penceresinin düz metni (Yardım › Klavye kısayolları).
+// - sayfaListesi yoksa: menü satırları ("<tus>  —  <etiket>") ve yönlendirme satırı.
+// - sayfaListesi varsa: "Menü" bölümü (aynı menü satırları) ve her grup için "Bina sayfası — <grup>" bölümü, satırlar "<tus>  <ad>".
+function kisayolMetni(platform, sayfaListesi) {
+  const b = kisayolBolumleri(platform, sayfaListesi);
+  const menu = b.menu.map(function (s) { return s[0] + "  —  " + s[1]; });
+  if (!b.gruplar.length) return menu.concat("", b.yonlendirme).join("\n");
+  const metin = ["Menü"].concat(menu);
+  b.gruplar.forEach(function (g) {
+    metin.push("", "Bina sayfası — " + g.ad);
+    g.satirlar.forEach(function (s) { metin.push(s[0] + "  " + s[1]); });
+  });
   return metin.join("\n");
+}
+
+function htmlKacis(m) {
+  return String(m).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+}
+
+// Klavye kısayolları penceresinin HTML belgesi: ana süreç bunu betiksiz, kaydırılabilir küçük bir pencerede gösterir (yerel ileti
+// kutusu kaydırılamaz; Bina sayfasının listesiyle ~90 satır ekrana sığmaz). İçerik kisayolMetni ile aynı bölümler: "Menü" ve
+// "Bina sayfası — <grup>" başlıkları altında iki sütunlu tablolar (liste yoksa başlıksız menü tablosu ve yönlendirme satırı).
+// Sayfadan gelen metinler kaçışlanır; belge dış kaynak yüklemez (İçerik Güvenliği Politikası: yalnız satır içi stil).
+function kisayolHtml(platform, sayfaListesi) {
+  const b = kisayolBolumleri(platform, sayfaListesi);
+  const tablo = function (satirlar) {
+    return '<table><tbody>' + satirlar.map(function (s) {
+      return '<tr><th scope="row"><kbd>' + htmlKacis(s[0]) + "</kbd></th><td>" + htmlKacis(s[1]) + "</td></tr>";
+    }).join("") + "</tbody></table>";
+  };
+  let govde;
+  if (!b.gruplar.length) govde = tablo(b.menu) + '<p class="not">' + htmlKacis(b.yonlendirme) + "</p>";
+  else {
+    govde = "<h2>Menü</h2>" + tablo(b.menu) + b.gruplar.map(function (g) {
+      return "<h2>" + htmlKacis("Bina sayfası — " + g.ad) + "</h2>" + tablo(g.satirlar);
+    }).join("");
+  }
+  return '<!doctype html><html lang="tr"><head><meta charset="utf-8">' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">' +
+    "<title>Klavye kısayolları</title><style>" +
+    ":root{color-scheme:light dark}" +
+    "body{margin:0;padding:14px 20px 20px;font:14px/1.45 system-ui,-apple-system,'Segoe UI',Ubuntu,sans-serif;background:Canvas;color:CanvasText}" +
+    "h1{font-size:18px;margin:0 0 6px}h2{font-size:14px;margin:18px 0 4px;padding-bottom:3px;border-bottom:1px solid GrayText}" +
+    "table{border-collapse:collapse;width:100%}th{text-align:left;font-weight:normal;white-space:nowrap;vertical-align:top;" +
+    "padding:2px 14px 2px 0;width:1%;min-width:8.5em}td{padding:2px 0;vertical-align:top}" +
+    "kbd{font:12.5px ui-monospace,Menlo,Consolas,monospace;padding:0 5px;border:1px solid GrayText;border-radius:4px}" +
+    ".not{color:GrayText;margin:14px 0 0}" +
+    "</style></head><body><h1>Klavye kısayolları</h1>" + govde + '<p class="not">Esc ile kapanır.</p></body></html>';
 }
 
 module.exports = {
   menuSablonu: menuSablonu, komutListesi: komutListesi, kisayolMetni: kisayolMetni, kisayolListesiTemizle: kisayolListesiTemizle,
+  kisayolBolumleri: kisayolBolumleri, kisayolHtml: kisayolHtml,
   SAYFA_TUSU: SAYFA_TUSU, KISAYOL_SATIR_SINIRI: KISAYOL_SATIR_SINIRI, KISAYOL_METIN_SINIRI: KISAYOL_METIN_SINIRI,
 };
