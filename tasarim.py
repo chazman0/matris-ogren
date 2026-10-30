@@ -1445,8 +1445,17 @@ def kesit_sinifi(profil, Fy=275.0, E=E_CELIK, anl=None) -> dict:
     çıkarılmış başlıklar arası yükseklik). Eğilme (Tablo 5.1B): kompakt / kompakt olmayan / narin; basınç
     (Tablo 5.1A): narin olmayan / narin.
 
+    Basit kesit adı (KUTU / BORU / L / 2L / UPN: ``_ad_coz``) tabloda yoksa Tablo 5.1A/B basit kesit kuralları uygulanır (C20):
+    dönüş {tur, profil, egilme, basinc, parcalar, kaynak} (2L'de eğilme sınıfı yok: None).
+
     Dönüş: baslik {oran, lambda_p, lambda_r, egilme, basinc_lambda_r, basinc}, govde {...}, egilme, basinc."""
-    p = _profil(profil)
+    try:
+        p = _profil(profil)
+    except MatrisHatasi:
+        c = _ad_coz(profil) if isinstance(profil, str) else None
+        if c is None:
+            raise
+        return _basit_kesit_sinifi(_kesit_hesap(*c), Fy, E, anl)
     Fy, _ = _Fy(Fy, p)
     E = _sayi(E, "E (MPa)", pozitif=True, sifir_olur=False)
     k = math.sqrt(E / Fy)
@@ -2343,6 +2352,31 @@ def _cubuk_kesit(profil):
     return k
 
 
+def _basit_kesit_sinifi(k, Fy, E, anl=None):
+    """kesit_sinifi'nin basit kesit yolu (mm birimli kesit sözlüğü k): Tablo 5.1A / 5.1B parça oranları (_basit_sinif)."""
+    if isinstance(Fy, (str, dict)):
+        t = k.get("t") or max(k.get("tf", 0.0), k.get("tw", 0.0)) or None
+        Fy = celik_malzeme(Fy, t if not isinstance(Fy, dict) else None)["Fy"]
+    else:
+        Fy = _sayi(Fy, "Fy (MPa)", pozitif=True, sifir_olur=False)
+    E = _sayi(E, "E (MPa)", pozitif=True, sifir_olur=False)
+    sn = _basit_sinif(k, Fy, E)
+    sonuc = _json({"tur": "kesit_sinifi", "profil": k["ad"], "Fy": Fy, "E": E, "egilme": sn["egilme"], "basinc": sn["basinc"],
+                   "parcalar": sn["parcalar"], "kaynak": sn["kaynak"]})
+    if anl is not None:
+        _basla(anl, f"Enkesit sınıfı: {k['ad']} (ÇYTHYE 5.4.1)",
+               "Kesitin ince parçaları akmadan önce yerel olarak buruşabilir; genişlik/kalınlık oranları Tablo 5.1A (basınç) ve "
+               "5.1B (eğilme) sınırlarıyla karşılaştırılır.")
+        anl.metin(se._tablo(["Parça", "Oran", "λr (basınç)", "Basınç", "λp (eğilme)", "λr (eğilme)", "Eğilme"],
+                            [[x["ad"], _f(x["oran"], 2), _f(x["lambda_r_basinc"], 2), x["basinc"],
+                              _f(x["lambda_p"], 2) if x.get("lambda_p") is not None else "–",
+                              _f(x["lambda_r"], 2) if x.get("lambda_r") is not None else "–", x.get("egilme") or "–"]
+                             for x in sonuc["parcalar"]]))
+        anl.metin(f"**{k['ad']}: basınçta {sonuc['basinc']}" + (f", eğilmede {sonuc['egilme']}" if sonuc["egilme"] else "")
+                  + f"** ({sonuc['kaynak']}).")
+    return sonuc
+
+
 def _basit_sinif(k, Fy, E):
     """Tablo 5.1A (basınç) ve 5.1B (eğilme) sınıfı — basit kesitler."""
     q = math.sqrt(E / Fy)
@@ -3213,7 +3247,8 @@ def _grid(lo, hi, adim):
     return [round(lo + i * adim, 6) for i in range(n + 1)]
 
 
-def betonarme_kesit_oner(tur, kuvvetler, malzeme=None, mevcut_b=None, mevcut_h=None, kisitlar=None, anl=None) -> dict:
+def betonarme_kesit_oner(tur, kuvvetler, malzeme=None, mevcut_b=None, mevcut_h=None, kisitlar=None, anl=None, Ndm=None,
+                         Ndm_kaynak=None) -> dict:
     """Betonarme kesit önerisi (5 cm adımlı tarama; en küçük alan).
 
     ``tur`` "kolon" | "kiris"; ``kuvvetler`` [{"ad", "N" (kN, basınç +), "Mx", "My" (kN·m), "V" (kN), "deprem"}];
@@ -3230,6 +3265,10 @@ def betonarme_kesit_oner(tur, kuvvetler, malzeme=None, mevcut_b=None, mevcut_h=N
     * Kiriş: M_d = max |Mx| için tek donatılı ρ ≤ ρ_max = min(0,85ρ_b; 0,02) (TS 500 Denk. 7.4–7.5) ve
       V_d ≤ 0,22 f_cd b_w d (Denk. 8.7) sağlayan en küçük h; h ≥ 300 mm (TS 500 7.3), TBDY: b_w ≥ 250 mm, h ≥ 3t_f,
       h ≤ 3,5 b_w (7.4.1.1). h ≤ 3,5 b sağlanamazsa (b sabit değilse) b 5 cm büyütülür.
+
+    ``Ndm`` (kN, kolon): TBDY 7.3.1.2 boyutlandırmasının N_dm'i dışarıdan (ör. ön elemeden önceki bütün deprem birleşimlerinin
+    en büyüğü ya da deprem birleşimi yokken G + Q); kuvvetlerdeki deprem birleşimlerinin en büyüğüyle büyüğü alınır, N_d de en az
+    bu değerdir. ``Ndm_kaynak`` "deprem" | "G+Q" | "bütün": gerekçedeki N_dm açıklaması.
 
     Dönüş: tur, oneri {b, h (m), b_mm, h_mm, ...}, A_c_gerekli_cm2, gerekce [metin], denenenler [...], mevcut, durum,
     uyarilar."""
@@ -3251,7 +3290,8 @@ def betonarme_kesit_oner(tur, kuvvetler, malzeme=None, mevcut_b=None, mevcut_h=N
     uyarilar = []
     fck, fcd = bm["fck"], bm["fcd"]
     if tur == "kolon":
-        sonuc = _kolon_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar)
+        sonuc = _kolon_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar,
+                            Ndm=None if Ndm is None else _sayi(Ndm, "Ndm (kN)"), Ndm_kaynak=Ndm_kaynak)
     else:
         sonuc = _kiris_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar)
     sonuc.update({"tur": "betonarme_kesit_oner", "eleman": tur, "beton": bm["sinif"], "donati": dm["sinif"],
@@ -3262,18 +3302,23 @@ def betonarme_kesit_oner(tur, kuvvetler, malzeme=None, mevcut_b=None, mevcut_h=N
     return sonuc
 
 
-def _kolon_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar):
+_NDM_ACIKLAMA = {"G+Q": "(deprem birleşimi yok: N_dm ≈ G + Q, tasarım kaydının 'Ndm ≤ 0,40 fck Ac' satırıyla aynı)",
+                 "bütün": "(deprem birleşimi yok: bütün birleşimlerin en büyük eksenel basıncı)"}
+
+
+def _kolon_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar, Ndm=None, Ndm_kaynak=None):
     fck, fcd = bm["fck"], bm["fcd"]
     pas = _sayi(kis.get("paspayi", 0.05), "paspayi (m)", pozitif=True, sifir_olur=False)
     rho_max = _sayi(kis.get("rho_max", 0.04), "rho_max", pozitif=True, sifir_olur=False)
     yer = kis.get("yerlesim", "dort_yuz")
-    Nd = max([c["N"] for c in kuv] + [0.0])
+    Nd = max([c["N"] for c in kuv] + [0.0] + ([Ndm] if (tbdy and Ndm is not None) else []))
     isaretli = any(c["deprem"] is not None for c in kuv)
     dep = [True if c["deprem"] is None else c["deprem"] for c in kuv]
-    if tbdy and not isaretli:
+    if tbdy and not isaretli and Ndm is None:
         uyarilar.append("Kuvvetlerde 'deprem' işareti yok: TBDY 7.3.1.2 N_dm ≤ 0,40 f_ck A_c bütün kombinasyonlara "
                         "uygulandı (güvenli taraf).")
-    Ndm = max([c["N"] for c, d in zip(kuv, dep) if d] + [0.0]) if tbdy else 0.0
+    Ndm_k = max([c["N"] for c, d in zip(kuv, dep) if d] + [0.0]) if tbdy else 0.0
+    Ndm = max(Ndm_k, Ndm) if (tbdy and Ndm is not None) else Ndm_k
     Ac_tbdy = Ndm * 1e3 / (0.40 * fck) if tbdy else 0.0      # mm²
     Ac_ts = Nd * 1e3 / (0.9 * fcd)
     Ac_ger = max(Ac_tbdy, Ac_ts)
@@ -3286,7 +3331,8 @@ def _kolon_oner(kuv, bm, dm, kis, adim, tbdy, mevcut_b, mevcut_h, uyarilar):
     gerekce = []
     if tbdy:
         gerekce.append(f"TBDY 2018 md. 7.3.1.2: A_c ≥ N_dm/(0,40 f_ck) = {_f(Ndm, 1)}·10³/(0,40·{_f(fck, 0)}) = "
-                       f"{_f(Ac_tbdy / 100, 1)} cm² (N_dm = deprem birleşimlerindeki en büyük eksenel basınç).")
+                       f"{_f(Ac_tbdy / 100, 1)} cm² "
+                       + _NDM_ACIKLAMA.get(Ndm_kaynak, "(N_dm = deprem birleşimlerindeki en büyük eksenel basınç)") + ".")
     gerekce.append(f"TS 500 md. 7.4.1 (Denk. 7.7): A_c ≥ N_d/(0,9 f_cd) = {_f(Nd, 1)}·10³/(0,9·{_f(fcd, 2)}) = "
                    f"{_f(Ac_ts / 100, 1)} cm².")
     gerekce.append(f"Gerekli brüt alan A_c = {_f(Ac_ger / 100, 1)} cm²; en küçük boyut ≥ {_f(bmin_y, 0)} mm "

@@ -4005,21 +4005,12 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
         # öneri, tahkikle aynı donatı ağırlık merkezi derinliğiyle (paspayı + etriye + çubuk yarıçapı = pas + 20 mm; tasarim'ın
         # kiriş varsayılanı 40 mm, kolon 50 mm) — yoksa önerilen kesit kendi tahkikinde yetmeyebilir
         kis = {"paspayi": float(bilgi.get("pas", 0.03)) + Y._PAS_EK}
-        ndm_kaynak = None
-        if tur == "kolon" and bilgi.get("N_dm") is not None:
-            # TBDY 7.3.1.2 boyutlandırması, kaydın 'Ndm ≤ 0,40 fck Ac' satırıyla aynı N_dm ile: deprem birleşimi yoksa G + Q (ön
-            # elemede düşen deprem birleşimi de olabilir). Eskiden deprem yokken gerekçe 'N_dm = 0 → A_c ≥ 0 cm²' derdi.
-            dep_N = [k["N"] for k in kuv if k.get("deprem")]
-            if not dep_N or max(dep_N) < bilgi["N_dm"] - 1e-9:
-                kuv.append({"ad": "N_dm", "N": bilgi["N_dm"], "Mx": 0.0, "My": 0.0, "V": 0.0, "deprem": True})
-            ndm_kaynak = bilgi.get("N_dm_kaynak")
-        o = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis)
+        # TBDY 7.3.1.2 boyutlandırması, kaydın 'Ndm ≤ 0,40 fck Ac' satırıyla aynı N_dm ile (bütün deprem birleşimlerinin en büyüğü,
+        # ön elemeden önce; deprem birleşimi yoksa G + Q). Eskiden deprem yokken gerekçe 'N_dm = 0 → A_c ≥ 0 cm²' derdi.
+        ndm = {"Ndm": bilgi["N_dm"], "Ndm_kaynak": bilgi.get("N_dm_kaynak")} if (tur == "kolon" and bilgi.get("N_dm") is not None) else {}
+        o = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis, **ndm)
         on = o.get("oneri") or {}
         gerekce = list(o.get("gerekce", []))
-        if ndm_kaynak in ("G+Q", "bütün"):
-            ack = ("(deprem birleşimi yok: N_dm ≈ G + Q, tasarım kaydının 'Ndm ≤ 0,40 fck Ac' satırıyla aynı)" if ndm_kaynak == "G+Q"
-                   else "(deprem birleşimi yok: bütün birleşimlerin en büyük eksenel basıncı)")
-            gerekce = [g.replace("(N_dm = deprem birleşimlerindeki en büyük eksenel basınç)", ack) for g in gerekce]
         durum = o.get("durum")
         dc_oneri = degisim = None
 
@@ -4053,7 +4044,8 @@ def _oner_cubuk(ts, T, c, dc_kayit=None):
                 else:
                     kis["b_min"] = min(on["b"], on["h"]) + 0.05
                 try:
-                    o2 = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis)
+                    o2 = ts.betonarme_kesit_oner(tur, kuv, bilgi["malzeme"], mevcut_b=bilgi["b"], mevcut_h=bilgi["h"], kisitlar=kis,
+                                                 **ndm)
                 except MatrisHatasi:
                     break
                 on2 = o2.get("oneri") or {}

@@ -386,6 +386,23 @@ def test_kesit_sinifi_ipe300_s275():
     assert s["baslik"]["basinc_lambda_r"] == pytest.approx(0.56 * k) and s["govde"]["basinc_lambda_r"] == pytest.approx(1.49 * k)
 
 
+@pytest.mark.parametrize("ad,profil,parca", [("BORU 168.3x6.3", "BORU 168.3x6.3", 1), ("KUTU 150x8", "KUTU 150x150x8", 2),
+                                             ("L 100x10", "L 100x100x10", 1), ("2L 70x7 s=10", "2L 70x70x7 s=10", 1),
+                                             ("UPN 200", "UPN 200", 2)])
+def test_kesit_sinifi_basit_kesitler(ad, profil, parca):
+    """C20: tabloda olmayan basit kesit adı (_ad_coz) Tablo 5.1A/B basit kesit kurallarıyla sınıflanır (eskiden 'tabloda yok')."""
+    s = ta.kesit_sinifi(ad, 275)
+    assert s["tur"] == "kesit_sinifi" and s["profil"] == profil and len(s["parcalar"]) == parca
+    assert s["basinc"] in ("narin olmayan", "narin") and s["kaynak"].startswith("ÇYTHYE 2018 Tablo 5.1")
+    assert s["egilme"] in (("kompakt", "kompakt olmayan", "narin") if not ad.startswith("2L") else (None,))
+    c = ta.celik_cubuk_kontrol(ad, "S275", 2, kuvvetler={"N": 10})["sinif"]        # çubuk tahkikiyle aynı sınıf
+    assert c["basinc"] == s["basinc"] and c["egilme"] == s["egilme"]
+    assert ta.kesit_sinifi(ad, "S275")["Fy"] == pytest.approx(275.0)
+    with pytest.raises(mo.MatrisHatasi, match="tabloda yok"):
+        ta.kesit_sinifi("XYZ 100", 275)
+    assert ta.kesit_sinifi("BORU 406.4x5", 355)["basinc"] == "narin"         # D/t = 81 > 0,11·E/Fy = 62
+
+
 def test_kesit_sinifi_kompakt_olmayan_baslik():
     s = ta.kesit_sinifi("HEA 300", 355)     # 300/(2·14) = 10,71 > 0,38√(E/355) = 9,02
     assert s["baslik"]["egilme"] == "kompakt olmayan" and s["egilme"] == "kompakt olmayan"
@@ -961,6 +978,27 @@ def test_betonarme_kolon_oner_el_hesabi():
                           deprem=[False, True])
     assert kk["dc"] <= 1.0 + 1e-9
     assert any("7.3.1.2" in g for g in r["gerekce"]) and json_temiz(r)
+
+
+def test_betonarme_kolon_oner_ndm_dis_degeri():
+    """K-42: N_dm dışarıdan (Ndm, Ndm_kaynak): sözde kuvvet eklemeden TBDY 7.3.1.2 boyutlandırması ve gerekçe ifadesi."""
+    kuv = [{"ad": "G+Q", "N": 1400, "Mx": 60, "My": 30, "deprem": False},
+           {"ad": "G+Q+E", "N": 1500, "Mx": 90, "My": 40, "deprem": True}]
+    r0 = ta.betonarme_kesit_oner("kolon", kuv)
+    assert r0["N_dm_kN"] == pytest.approx(1500.0)
+    r = ta.betonarme_kesit_oner("kolon", kuv, Ndm=2000.0, Ndm_kaynak="deprem")          # ön elemede düşen deprem birleşimi
+    assert r["N_dm_kN"] == pytest.approx(2000.0) and r["A_c_TBDY_cm2"] == pytest.approx(2000e3 / 12 / 100)
+    assert r["N_d_kN"] == pytest.approx(2000.0)                                          # N_d en az N_dm
+    assert any("(N_dm = deprem birleşimlerindeki en büyük eksenel basınç)" in g for g in r["gerekce"])
+    r = ta.betonarme_kesit_oner("kolon", kuv, Ndm=1000.0)                                 # küçükse kuvvetlerdeki büyük olan
+    assert r["N_dm_kN"] == pytest.approx(1500.0)
+    kuv_d = [dict(k, deprem=False) for k in kuv]
+    r = ta.betonarme_kesit_oner("kolon", kuv_d, Ndm=1100.0, Ndm_kaynak="G+Q")             # deprem birleşimi yok: G + Q
+    assert r["N_dm_kN"] == pytest.approx(1100.0) and r["A_c_TBDY_cm2"] == pytest.approx(1100e3 / 12 / 100)
+    assert any("(deprem birleşimi yok: N_dm ≈ G + Q, tasarım kaydının 'Ndm ≤ 0,40 fck Ac' satırıyla aynı)" in g for g in r["gerekce"])
+    r = ta.betonarme_kesit_oner("kolon", kuv_d, Ndm=1500.0, Ndm_kaynak="bütün")
+    assert any("(deprem birleşimi yok: bütün birleşimlerin en büyük eksenel basıncı)" in g for g in r["gerekce"])
+    assert not any("deprem' işareti yok" in u for u in r["uyarilar"]) and json_temiz(r)
 
 
 def test_betonarme_kolon_oner_nm_belirleyici():
