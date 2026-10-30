@@ -1681,6 +1681,8 @@
       const t = e.target;
       if (!t || !t.closest) return;
       if (t.closest(".arac-tasma, .arac-tasma-ac, .arac-menu, .arac-diyalog")) return;
+      // özelleştirme kipinde komut listesi ve kutular düğme sürüklemenin kaynağıdır: çekmecedeki kutuya bırakılabilsin diye açık kalır
+      if (self.ozellestirKipi && t.closest(".arac-ozellestir, .arac-kutu") && self.kok.contains(t)) return;
       self._tasmaAc(false, false);
     };
     document.addEventListener("pointerdown", this._tasmaDisari, true);

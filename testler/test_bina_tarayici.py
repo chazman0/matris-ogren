@@ -603,6 +603,44 @@ def test_kenara_sabitle_ve_surukleyerek_kenara_birak(tarayici, sunucu):
         ctx.close()
 
 
+def test_ozellestirmede_cekmecedeki_kutuya_dugme_birakilir(tarayici, sunucu):
+    """Özelleştirme kipinde açık çekmece, kutudan ya da komut listesinden düğme sürüklemeye başlayınca kapanmaz: düğme çekmecedeki
+    kutuya bırakılabilir (1280×720'de Ölçme çekmecede); sahneye basınca yine kapanır."""
+    ctx, pg, hatalar = _yerlesim_sayfasi(tarayici, sunucu, 1280, 720)
+    try:
+        assert "k-olcme" in pg.evaluate("MatrisArac.tasanlar()")
+        pg.evaluate("MatrisArac.ozellestir(true)")
+        pg.wait_for_timeout(250)
+        pg.click(".arac-tasma-ac")
+        pg.wait_for_timeout(200)
+        kaynak = pg.locator(".arac-kok > .arac-kutu[data-kutu='k-cizim'] .arac-dugme[data-komut='sec']").bounding_box()
+        hedef = pg.locator(".arac-tasma .arac-kutu[data-kutu='k-olcme'] .arac-dugmeler").bounding_box()
+        x0, y0 = kaynak["x"] + kaynak["width"] / 2, kaynak["y"] + kaynak["height"] / 2
+        x1, y1 = hedef["x"] + hedef["width"] - 10, hedef["y"] + hedef["height"] / 2
+        pg.mouse.move(x0, y0)
+        pg.mouse.down()
+        assert pg.query_selector(".arac-tasma") is not None, "sürükleme başlarken çekmece kapandı"
+        for i in range(1, 13):
+            pg.mouse.move(x0 + (x1 - x0) * i / 12, y0 + (y1 - y0) * i / 12)
+            pg.wait_for_timeout(30)
+        pg.mouse.up()
+        pg.wait_for_timeout(300)
+        kutular = {k["id"]: k["komutlar"] for k in pg.evaluate("MatrisArac.yerlesim()")["kutular"]}
+        assert "sec" in kutular["k-olcme"] and "sec" not in kutular["k-cizim"], kutular
+        assert pg.query_selector(".arac-tasma") is not None
+        nokta = pg.evaluate("""() => { const s = document.getElementById('bn-svg'), r = s.getBoundingClientRect();
+          for (let y = r.top + 10; y < r.bottom; y += 10) for (let x = r.left + 10; x < r.right; x += 10) {
+            const t = document.elementFromPoint(x, y); if (t && t.closest('#bn-svg')) return [x, y]; }
+          return null; }""")
+        pg.mouse.click(nokta[0], nokta[1])
+        pg.wait_for_timeout(200)
+        assert pg.query_selector(".arac-tasma") is None, "sahneye basınca çekmece kapanır"
+        pg.evaluate("MatrisArac.ozellestir(false)")
+        _hatasiz(hatalar, "özelleştirmede çekmece")
+    finally:
+        ctx.close()
+
+
 @pytest.mark.parametrize("en,boy", [(1500, 950), (1366, 768)])
 def test_hazir_yerlesimin_odak_kutusu_kenarda_acik(tarayici, sunucu, en, boy):
     """Hazır yerleşimlerin odak kutusu geniştir (ikon + ad): sütuna geniş sığmazsa yalnız ikonlu iki sütuna küçülür, taşma çekmecesine
