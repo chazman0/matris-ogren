@@ -96,6 +96,10 @@ public:
     Ref& operator=(const Ref&) = delete;
     PyObject* get() const { return p_; }
     explicit operator bool() const { return p_ != nullptr; }
+    void Birak() {  // Py_FinalizeEx'ten ÖNCE çağrılmalı (sonra Py_DecRef erişim ihlali verir)
+        if (p_) api_.Py_DecRef(p_);
+        p_ = nullptr;
+    }
 
 private:
     PyApi& api_;
@@ -359,6 +363,10 @@ void Motor::Calis(std::wstring dizin, Ilerleme ilerleme) {
         if (!cagir(is->istek, yanit)) yanit = R"({"hata": "Python hatası", "hata_turu": "ic"})";
         is->yanit.set_value(std::move(yanit));
     }
+    // Tüm başvurular yorumlayıcı kapanmadan bırakılır; Ref yıkıcıları Py_FinalizeEx'ten sonra çalışırsa çöker.
+    surumF.Birak();
+    yukleF.Birak();
+    jsonMod.Birak();
     api.Py_DecRef(calistirF);
     api.Py_DecRef(kopru);
     double tk = GecenMs();
