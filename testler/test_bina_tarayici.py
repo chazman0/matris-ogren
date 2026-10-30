@@ -593,6 +593,11 @@ def test_kenara_sabitle_ve_surukleyerek_kenara_birak(tarayici, sunucu):
         d = _duzen_denetle(pg, "sürükleyerek kenara")
         assert d["rihtim"].get("k-sonuc") == ["sag", False], d["rihtim"]
         assert "k-olcme" in d["tasan"], d["tasan"]
+        # "Varsayılana dön" bina sayfasının varsayılanına (modülün genel varsayılanına değil) döner
+        pg.evaluate("MatrisArac.varsayilanaDon()")
+        _yerlesim_bekle(pg)
+        assert [k["id"] for k in pg.evaluate("MatrisArac.yerlesim()")["kutular"]] == KUTULAR
+        assert pg.evaluate("MatrisArac.tasanlar()") == ["k-olcme", "k-degistirme", "k-uretec"]
         _hatasiz(hatalar, "kenara sabitle")
     finally:
         ctx.close()

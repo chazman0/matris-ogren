@@ -6287,7 +6287,8 @@
     let kayitli = null;
     try { kayitli = localStorage.getItem(ARAC_ANAHTAR); } catch (e) { kayitli = null; }
     // yerleşim değişince (kutu taşındı, katlandı, gizlendi) sahne kutuların bıraktığı alana yeniden sığar
-    const sec = { anahtar: ARAC_ANAHTAR, kisayollar: true, olay: function (ad) { if (ad === "calistir") aracYenile(); else if ((ad === "yerlesim" || ad === "boyut") && B && kamera) sahneYenile(); } };
+    const sec = { anahtar: ARAC_ANAHTAR, kisayollar: true, olay: function (ad) { if (ad === "calistir") aracYenile(); else if ((ad === "yerlesim" || ad === "boyut") && B && kamera) sahneYenile(); },
+      varsayilan: function () { return binaVarsayilanYerlesim(M); } };      // "Varsayılana dön" bina varsayılanına döner
     // araç kutuları eski sol araç çubuğunun (Seç, Kolon, Kiriş, Döşeme, Duvar, Sil, Kütüphane) bütün komutlarını taşır: çubuk gizlenir.
     // Sınıf varsayılan yerleşimden ve kurulumdan ÖNCE eklenir: genişlik ve ilk yerleşim kapsayıcının son boyuyla yapılır (sonradan
     // genişleyen katman alta çapalı kutuları üstteki kutuların üstüne itmesin)

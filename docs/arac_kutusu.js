@@ -390,7 +390,8 @@
     degistirme: { kenar: "sag", yon: "dikey" }, olcme: { kenar: "sag", yon: "dikey" },
     gorunum: { kenar: "alt", yon: "yatay" }, analiz: { kenar: "alt", yon: "yatay" }, sonuc: { kenar: "alt", yon: "yatay" },
   };
-  const YERLESIM_SIRASI = ["aks", "duzenleme", "gorunum", "analiz", "sonuc", "cizim", "degistirme", "olcme"];
+  // dizi sırası = öncelik (yer kalmayınca sondakiler taşma çekmecesine gider)
+  const YERLESIM_SIRASI = ["cizim", "duzenleme", "gorunum", "analiz", "sonuc", "aks", "olcme", "degistirme"];
   function varsayilan() {
     const y = { surum: SURUM, ad: "varsayilan", kutular: [] };
     YERLESIM_SIRASI.forEach(function (g) { y.kutular.push(yeniKutuNesnesi("k-" + g, grupAdi(g), grupKomutlari(g), VARSAYILAN_DUZEN[g])); });
@@ -1185,7 +1186,8 @@
   /**
    * Araç kutusu yöneticisi: bir kapsayıcının üstünde yüzen kutular.
    *  sec: { anahtar (localStorage), yonetici (true: köşede yönetici düğmesi), kisayollar (true), mobilGenislik (640),
-   *         olay(ad, veri) ("calistir" | "yerlesim" | "ozellestir"), yerlesim (başlangıç; yoksa kayıtlı ya da varsayılan) }
+   *         olay(ad, veri) ("calistir" | "yerlesim" | "ozellestir" | "boyut"), yerlesim (başlangıç; yoksa kayıtlı ya da varsayılan),
+   *         varsayilan() (sayfanın varsayılan yerleşimi: "Varsayılana dön" ve okunamayan kayıt; yoksa modülün genel varsayılanı) }
    */
   const GOC_ILETISI = "Araç kutuları kenar yerleşimine geçirildi; bir kutuyu sahneye sürükleyerek yüzdürebilirsiniz.";
   function Yonetici(kap, sec) {
@@ -1202,7 +1204,7 @@
     const rapor = {};
     if (this.sec.yerlesim) { try { y = dogrula(this.sec.yerlesim, rapor); } catch (e) { y = null; } }
     if (!y) y = this._oku(rapor);
-    this.y = y || varsayilan();
+    this.y = y || this._varsayilan();
     this._tasmaAcik = false;
     this._tasan = [];
     if (getComputedStyle(kap).position === "static") kap.style.position = "relative";
@@ -1270,8 +1272,13 @@
   Y._dene = function (f, mesaj) {
     try { this._uygula(f(), mesaj); return true; } catch (e) { this.bildir(e.message || String(e)); return false; }
   };
+  // sayfanın varsayılan yerleşimi (sec.varsayilan) ya da modülün genel varsayılanı
+  Y._varsayilan = function () {
+    if (typeof this.sec.varsayilan === "function") { try { return dogrula(this.sec.varsayilan()); } catch (e) { /* genel varsayılan */ } }
+    return varsayilan();
+  };
   Y.hazirYerlesim = function (ad) {
-    const y = hazir(ad);
+    const y = ad === "varsayilan" || !HAZIR[ad] ? this._varsayilan() : hazir(ad);
     this._uygula(y, "Yerleşim: " + ((HAZIR[ad] && HAZIR[ad].ad) || "Varsayılan"));
   };
   Y.varsayilanaDon = function () { this.hazirYerlesim("varsayilan"); };
