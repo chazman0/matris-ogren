@@ -2,37 +2,40 @@
 """
 defter_yap.py — Matris_Ogren.ipynb (Google Colab defteri) üretici
 =================================================================
-matris_ogren.py modülünü base64+zlib olarak defterin kurulum hücresine gömer;
-öğretici Markdown hücreleri ve Colab FORM hücreleriyle (#@title / #@param)
-Matris_Ogren.ipynb dosyasını baştan kurar.
+Programın 10 Python modülünü (matris_ogren, sonlu_eleman, yapi_veri, yapi, yapi_serbest, temel, tasarim, rapor, tablolar,
+alan) zlib + base64 olarak defterin kurulum hücresine gömer ({ad: (_SHA256, _PAKET)} sözlüğü); öğretici Markdown hücreleri ve
+Colab FORM hücreleriyle (#@title / #@param) Matris_Ogren.ipynb dosyasını baştan kurar. Kurulum hücresi modülleri bir klasöre
+(Colab'da /content/matris_modulleri, başka yerde geçici klasör) yazar ve klasörü Python yoluna ekler; "Bina modeli" bölümü bir
+şablonu çözer (ΣG, en büyük D/C, belirleyen), statik hesap raporunu (rapor.statik_rapor) defterde gösterir ve kesit önerisi
+(yapi_serbest.kesit_oner) tablosunu verir.
 
-Çalıştırma (proje klasöründen; nbformat gerekir):
-  Windows PowerShell:
-    Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"
-    & "$env:USERPROFILE\\.local\\bin\\uv.exe" run --python 3.13 --with nbformat python defter_yap.py
-  Linux / macOS:
-    uv run --no-project --python 3.13 --with nbformat python3 defter_yap.py   (ya da: pip install nbformat; python3 defter_yap.py)
+Çalıştırma (proje klasöründen; ek paket gerekmez — nbformat kuruluysa defter ayrıca şemaya göre doğrulanır):
+  python3 defter_yap.py
+  (Windows PowerShell: Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"; py defter_yap.py)
 
-Modül (matris_ogren.py) değişince bu betiği yeniden çalıştırmak yeterlidir;
-defter her seferinde sıfırdan üretilir (yeniden çalıştırılabilir). Hücre kimlikleri sıra numarasından gelir: modül
-değişmediyse defter bayt bayt aynı çıkar. testler/test_defter.py gömülü modülün özetini (_SHA256) matris_ogren.py ile
-karşılaştırır; modül değişip defter yeniden üretilmezse test kalır.
-
-Defter yalnız matris modülünü (matris_ogren.py) kapsar; sonlu eleman ve bina modülleri web / masaüstü uygulamasındadır.
+Modüllerden biri değişince bu betiği yeniden çalıştırmak yeterlidir; defter her seferinde sıfırdan üretilir. Hücre kimlikleri
+sıra numarasından gelir ve JSON nbformat biçimiyle (1 boşluk girinti, sıralı anahtarlar) yazılır: modüller değişmediyse defter bayt
+bayt aynı çıkar. testler/test_defter.py gömülü her modülün özetini ve baytlarını dosyasıyla karşılaştırır; modül değişip defter
+yeniden üretilmezse test kalır.
 """
 from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 import textwrap
 import zlib
 from pathlib import Path
 
-import nbformat
-from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
+try:  # isteğe bağlı: yalnız şema doğrulaması (defter nbformat olmadan da aynı baytlarla yazılır)
+    import nbformat
+except ImportError:  # pragma: no cover — kurulu değilse doğrulama atlanır
+    nbformat = None
 
 KLASOR = Path(__file__).resolve().parent
+# deftere gömülen modüller (içe aktarma sırasıyla; matris_ogren en başta)
+MODULLER = ("matris_ogren", "sonlu_eleman", "yapi_veri", "yapi", "yapi_serbest", "temel", "tasarim", "rapor", "tablolar", "alan")
 MODUL = KLASOR / "matris_ogren.py"
 DEFTER = KLASOR / "Matris_Ogren.ipynb"
 
@@ -40,14 +43,22 @@ DEFTER = KLASOR / "Matris_Ogren.ipynb"
 # ============================================================================
 # Hücre yardımcıları
 # ============================================================================
+def _md_hucre(kaynak: str) -> dict:
+    return {"cell_type": "markdown", "metadata": {}, "source": kaynak}
+
+
+def _kod_hucre(kaynak: str, metadata: dict | None = None) -> dict:
+    return {"cell_type": "code", "execution_count": None, "metadata": dict(metadata or {}), "outputs": [], "source": kaynak}
+
+
 def md(metin: str):
     """Markdown hücresi (girintiler temizlenir)."""
-    return new_markdown_cell(textwrap.dedent(metin).strip("\n"))
+    return _md_hucre(textwrap.dedent(metin).strip("\n"))
 
 
 def kod(metin: str):
     """Düz kod hücresi."""
-    return new_code_cell(textwrap.dedent(metin).strip("\n"))
+    return _kod_hucre(textwrap.dedent(metin).strip("\n"))
 
 
 def form(baslik: str, parametreler: str, govde: str, ipucu: str):
@@ -80,76 +91,142 @@ def form(baslik: str, parametreler: str, govde: str, ipucu: str):
         "else:",
         f"    display(Markdown({ipucu_py}))",
     ]
-    return new_code_cell("\n".join(satirlar), metadata={"cellView": "form"})
+    return _kod_hucre("\n".join(satirlar), metadata={"cellView": "form"})
 
 
 # ============================================================================
-# 1) Kurulum hücresi — modül base64+zlib olarak gömülür
+# 1) Kurulum hücresi — modüller base64+zlib olarak gömülür
 # ============================================================================
-KURULUM_SABLON = r'''#@title 🔧 1) Kurulum — önce bunu çalıştır { display-mode: "form" }
-# matris_ogren.py modülü aşağıda zlib ile sıkıştırılmış ve base64 ile kodlanmış olarak gömülüdür.
-# Bu hücre onu çalışma dizinine matris_ogren.py olarak yazar ve `mo` adıyla içe aktarır.
-# Colab'da sympy / numpy / IPython hazırdır; pip kurulumu gerekmez.
-import base64, hashlib, importlib, sys, zlib
+KURULUM_SABLON = r"""#@title 🔧 1) Kurulum — önce bunu çalıştır { display-mode: "form" }
+# Programın Python modülleri (matris, sonlu eleman, bina: aks–kat ve genel model, temel, tasarım, rapor, tablolar, alan) aşağıda
+# zlib ile sıkıştırılmış ve base64 ile kodlanmış olarak gömülüdür: {modül adı: (SHA-256 özeti, paket)}. Bu hücre onları bir klasöre
+# (Colab'da /content/matris_modulleri, başka yerde geçici klasör) yazar, klasörü Python yoluna ekler ve matris modülünü `mo`
+# adıyla içe aktarır. Colab'da sympy / numpy / IPython hazırdır; pip kurulumu gerekmez.
+import base64, hashlib, importlib, sys, tempfile, zlib
 from pathlib import Path
 
 _SURUM = "__SURUM__"
-_SHA256 = "__SHA__"
-_PAKET = (
-__PAKET__
-)
-_kaynak = zlib.decompress(base64.b64decode(_PAKET))
-if hashlib.sha256(_kaynak).hexdigest() != _SHA256:
-    raise RuntimeError("Gömülü modül bozuk (sağlama toplamı uyuşmuyor). Defteri defter_yap.py ile yeniden üretin.")
+_MODULLER = {
+__MODULLER__
+}
 
-_hedef = Path.cwd() / "matris_ogren.py"
 try:  # Colab'da mıyız? (find_spec, üst paket 'google' yoksa hata verir; bu yüzden try/except)
     import google.colab  # noqa: F401
     _colab = True
 except Exception:  # noqa: BLE001
     _colab = False
-if not _hedef.exists():
-    _hedef.write_bytes(_kaynak)
-    _durum = "yazıldı"
-elif _hedef.read_bytes() == _kaynak:
-    _durum = "zaten güncel"
-elif _colab:
-    _hedef.write_bytes(_kaynak)
-    _durum = "güncellendi"
-else:  # yerel çalışma: klasördeki farklı modül korunur, üzerine yazılmaz
-    _durum = "⚠️ klasördeki FARKLI matris_ogren.py korundu; gerekiyorsa defteri defter_yap.py ile yeniden üretin"
+_klasor = Path("/content/matris_modulleri") if _colab else Path(tempfile.gettempdir()) / "matris_modulleri"
+_klasor.mkdir(parents=True, exist_ok=True)
+_yazilan, _bayt = [], 0
+for _ad, (_sha, _paket) in _MODULLER.items():
+    _kaynak = zlib.decompress(base64.b64decode(_paket))
+    if hashlib.sha256(_kaynak).hexdigest() != _sha:
+        raise RuntimeError(f"Gömülü modül {_ad}.py bozuk (sağlama toplamı uyuşmuyor). Defteri defter_yap.py ile yeniden üretin.")
+    _hedef = _klasor / f"{_ad}.py"
+    if not _hedef.exists() or _hedef.read_bytes() != _kaynak:
+        _hedef.write_bytes(_kaynak)
+        _yazilan.append(_ad)
+    _bayt += len(_kaynak)
 
-if str(Path.cwd()) not in sys.path:
-    sys.path.insert(0, str(Path.cwd()))
+if str(_klasor) in sys.path:
+    sys.path.remove(str(_klasor))
+sys.path.insert(0, str(_klasor))          # gömülü modüller çalışma klasöründeki aynı adlı dosyalardan önce gelir
 importlib.invalidate_caches()
-if "matris_ogren" in sys.modules:          # hücre ikinci kez çalıştırılırsa güvenli yeniden yükleme
-    mo = importlib.reload(sys.modules["matris_ogren"])
-else:
-    import matris_ogren as mo
+for _ad in _MODULLER:                     # hücre ikinci kez çalıştırılırsa modüller gömülü kopyadan yeniden yüklenir
+    sys.modules.pop(_ad, None)
+import matris_ogren as mo
 
-print(f"✅ Hazır. Sürüm: {mo.__version__}  (gömülü sürüm {_SURUM}; matris_ogren.py {_durum}; "
-      f"{len(_kaynak):,} bayt, {len(mo.__all__)} işlev)")
+print(f"✅ Hazır. Sürüm: {mo.__version__}  (gömülü sürüm {_SURUM}; {len(_MODULLER)} modül, {_bayt:,} bayt → {_klasor}; "
+      + (f"yazılan: {', '.join(_yazilan)}" if _yazilan else "hepsi zaten güncel") + ")")
 print("Bölümleri sırayla çalıştırabilirsin. Fonksiyon listesi için: mo.yardim()")
-'''
+"""
 
 
-def kurulum_hucresi(kaynak: bytes) -> nbformat.NotebookNode:
-    paket = base64.b64encode(zlib.compress(kaynak, 9)).decode("ascii")
-    satirlar = [paket[i:i + 76] for i in range(0, len(paket), 76)]
-    blok = "\n".join(f'    "{s}"' for s in satirlar)
-    m = re.search(r'^__version__\s*=\s*"([^"]+)"', kaynak.decode("utf-8"), re.M)
+def _yasak_desen():
+    """Depo bekçi testinin (testler/test_program_adi_yok.py) yasak ad deseni ve istisnası (dosya varsa; içe aktarmadan, sözdizim
+    ağacından okunur) ya da (None, None). Base64 rastgele bir harf dizisidir: satır satır tarayan bekçi testi bir paket satırında
+    yanlışlıkla bir ürün adına benzeyen parça bulmasın diye satır sonu o parçanın ortasına kaydırılır."""
+    import ast
+    yol = KLASOR / "testler" / "test_program_adi_yok.py"
+    if not yol.exists():
+        return None, None
+
+    def deger(d):
+        if isinstance(d, ast.Constant) and isinstance(d.value, str):
+            return d.value
+        if isinstance(d, ast.BinOp) and isinstance(d.op, ast.Add):
+            return deger(d.left) + deger(d.right)
+        raise ValueError("desen okunamadı")
+    yasak = istisna = None
+    try:
+        for d in ast.parse(yol.read_text(encoding="utf-8")).body:
+            if isinstance(d, ast.Assign) and isinstance(d.targets[0], ast.Name):
+                ad = d.targets[0].id
+                if ad == "_YASAK" and isinstance(d.value, ast.List):
+                    yasak = re.compile("|".join(f"(?:{deger(x)})" for x in d.value.elts), re.IGNORECASE)
+                elif ad == "_ISTISNA" and isinstance(d.value, ast.Call) and d.value.args:
+                    istisna = re.compile(deger(d.value.args[0]), re.IGNORECASE)
+    except (SyntaxError, ValueError, re.error):
+        return None, None
+    return yasak, istisna
+
+
+_YASAK, _ISTISNA = _yasak_desen()
+
+
+def _satir_temiz(parca: str) -> re.Match | None:
+    """Paket parçasının defter dosyasındaki JSON satırı yasak desene uyuyor mu (uyan ilk eşleşme ya da None)."""
+    if _YASAK is None:
+        return None
+    satir = "    " + json.dumps(f'        "{parca}"\n', ensure_ascii=False) + ","
+    return _YASAK.search(_ISTISNA.sub("", satir) if _ISTISNA is not None else satir)
+
+
+def _paket_satirlari(kaynak: bytes, genislik: int = 76) -> list[str]:
+    """zlib + base64 paketi, en çok ``genislik`` karakterlik satırlara (yasak desene uyan parça satır sonuyla bölünür)."""
+    return _bol(base64.b64encode(zlib.compress(kaynak, 9)).decode("ascii"), genislik)
+
+
+def _bol(paket: str, genislik: int = 76) -> list[str]:
+    satirlar, i = [], 0
+    while i < len(paket):
+        parca = paket[i:i + genislik]
+        while len(parca) > 1 and (m := _satir_temiz(parca)) is not None:
+            bas = m.start() - len('    "        \\"')            # satır önekini (girinti + kaçışlı tırnak) düş
+            parca = parca[:max(1, min(len(parca) - 1, bas + 2))]
+        satirlar.append(parca)
+        i += len(parca)
+    return satirlar
+
+
+def kurulum_hucresi(kaynaklar: dict) -> dict:
+    """kaynaklar: {modül adı: bayt} (MODULLER sırasıyla) → kurulum hücresi."""
+    bloklar = []
+    for ad, kaynak in kaynaklar.items():
+        satirlar = "\n".join(f'        "{x}"' for x in _paket_satirlari(kaynak))
+        bloklar.append(f'    "{ad}": ("{hashlib.sha256(kaynak).hexdigest()}", (\n{satirlar}\n    )),')
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', kaynaklar["matris_ogren"].decode("utf-8"), re.M)
     surum = m.group(1) if m else "?"
     src = (KURULUM_SABLON
            .replace("__SURUM__", surum)
-           .replace("__SHA__", hashlib.sha256(kaynak).hexdigest())
-           .replace("__PAKET__", blok))
-    return new_code_cell(src, metadata={"cellView": "form"})
+           .replace("__MODULLER__", "\n".join(bloklar)))
+    return _kod_hucre(src, metadata={"cellView": "form"})
+
+
+def _sablon_adlari() -> list[str]:
+    """Bina şablonlarının adları (yapi.bina_sablonlar, defter üretilirken): Bina modeli formunun açılır listesi."""
+    import sys
+    if str(KLASOR) not in sys.path:
+        sys.path.insert(0, str(KLASOR))
+    import yapi
+    return [s["ad"] for s in yapi.bina_sablonlar()]
 
 
 # ============================================================================
 # Defter içeriği
 # ============================================================================
-def hucreler(kaynak: bytes) -> list:
+def hucreler(kaynaklar: dict, sablonlar: list) -> list:
+    """kaynaklar: {modül adı: bayt} (kurulum hücresine gömülür); sablonlar: bina şablonu adları (Bina modeli formu)."""
     H: list = []
 
     # ------------------------------------------------------------------ 0
@@ -177,9 +254,11 @@ def hucreler(kaynak: bytes) -> list:
     - **Ondalık için nokta kullan:** `2.5` doğrudur. Virgül eleman ayırıcıdır; `2,5` yazarsan `2` ve `5` iki ayrı eleman olarak okunur.
     - Hata yaparsan kırmızı ❌ kutusu Türkçe açıklar (örn. *boyutlar farklı*); düzeltip yeniden çalıştır.
     - Sol taraftaki **İçindekiler** panelinden bölümler arasında atlayabilirsin.
+    - **11) Bina modeli** bölümü uygulamanın bina motorunu (aks–kat ve genel model, temel, tasarım, rapor) defterde çalıştırır:
+      hazır bir şablonu çöz, statik hesap raporunu aç, kesit önerisini gör. Kurulum hücresi bütün modülleri birlikte kurar.
     """))
 
-    H.append(kurulum_hucresi(kaynak))
+    H.append(kurulum_hucresi(kaynaklar))
 
     # ------------------------------------------------------------------ 1
     H.append(md(r"""
@@ -867,8 +946,11 @@ def hucreler(kaynak: bytes) -> list:
     ))
 
     # ------------------------------------------------------------------ 11
+    H += bina_hucreleri(sablonlar)
+
+    # ------------------------------------------------------------------ 12
     H.append(md(r"""
-    ## 11) Serbest çalışma alanı
+    ## 12) Serbest çalışma alanı
 
     Burası normal bir kod hücresi: formlar yetmediğinde fonksiyonları doğrudan çağır. Her fonksiyon bir `Sonuc` döndürür;
     `.deger` (sympy değeri), `.python_kodu`, `.python_ciktisi`, `.anlatim.markdown()` alanları vardır ve bir sonucu
@@ -910,36 +992,193 @@ def hucreler(kaynak: bytes) -> list:
 
 
 # ============================================================================
+# 11) Bina modeli — şablon çöz, rapor, kesit önerisi
+# ============================================================================
+_BINA_ONCE = ('''
+        if "veri" not in globals() or "bina" not in globals():
+            raise mo.MatrisHatasi("Önce '🏢 11.1) Bina şablonunu çöz' hücresini çalıştırın.")''')
+
+
+def bina_hucreleri(sablonlar: list) -> list:
+    """Bina modeli bölümü: açıklama + üç form hücresi (çöz → özet, statik hesap raporu, kesit önerisi)."""
+    varsayilan = "betonarme-2kat-3x2" if "betonarme-2kat-3x2" in sablonlar else sablonlar[0]
+    secenekler = "[" + ", ".join(f'"{a}"' for a in sablonlar) + "]"
+    H = [md(r"""
+    ## 11) Bina modeli: şablonu çöz, raporu ve kesit önerisini gör
+
+    Uygulamanın **Bina** sayfasındaki motor bu deftere de gömülüdür: kurulum hücresi matris modülüyle birlikte sonlu eleman
+    (`sonlu_eleman`), bina (`yapi` aks–kat, `yapi_serbest` genel düğüm–çubuk–panel modeli), temel (`temel`: tekil, mütemadi,
+    radye), tasarım (`tasarim`: TS 500, TBDY 2018, ÇYTHYE), rapor (`rapor`), tablo (`tablolar`) ve alan (`alan`) modüllerini kurar.
+    Üç adım:
+
+    1. **Şablonu çöz** — hazır bir bina şablonunu yükler (`yapi.bina_sablon`), sonlu eleman modelini kurar, bütün yük
+       durumlarını ve birleşimleri çözer, kesit tahkiklerini yapar (`yapi.bina_coz`). Özet: toplam sabit yük ΣG, en büyük
+       talep/kapasite oranı (D/C) ve onu **belirleyen** eleman, kontrol ve birleşim.
+    2. **Statik hesap raporu** — 14 bölümlük raporu (`rapor.statik_rapor`) defterin içinde açar; istersen HTML dosyasına yazar.
+    3. **Kesit önerisi** — her çubuk için yeterli en küçük kesit (`yapi_serbest.kesit_oner`, `yinele=0`: model değişmez,
+       yalnız öneri ve tahmini D/C).
+
+    Çözüm şablona göre birkaç saniye ile yarım dakika arasında sürer. `surum` 1 şablonları aks–kat motoruyla, `surum` 3
+    şablonları (sanayi yapısı, çaprazlı çelik çerçeve) genel modelle çözülür. Kendi modelini kullanmak için uygulamada
+    **💾 Kaydet** ile indirdiğin `.matris` (ya da bina `.json`) dosyasını Colab'ın 📁 Dosyalar paneline yükle ve adını
+    *dosya* kutusuna yaz: şablon yerine o bina çözülür.
+    """)]
+    H.append(form(
+        "🏢 11.1) Bina şablonunu çöz (özet: ΣG, en büyük D/C, belirleyen)",
+        f'''
+        sablon = "{varsayilan}" #@param {secenekler}
+        dosya = "" #@param {{type:"string"}}
+        ''',
+        '''
+        import json
+        import yapi
+        if dosya.strip():                      # .matris projesi ({tur: "matris-proje", bina}) ya da düz bina JSON'u
+            with open(dosya.strip(), encoding="utf-8") as _f:
+                _ham = json.load(_f)
+            bina = _ham["bina"] if isinstance(_ham, dict) and isinstance(_ham.get("bina"), dict) else _ham
+        else:
+            bina = yapi.bina_sablon(sablon)
+        cozum = yapi.bina_coz(bina, goster="yok", anlat=False)
+        veri = cozum.veri
+        _top = (veri.get("yukler") or {}).get("toplam") or {}
+        _el = [e for e in (veri.get("tasarim") or {}).get("elemanlar") or [] if e.get("dc") is not None]
+        _en = max(_el, key=lambda e: e["dc"]) if _el else None
+        _bel = (_en or {}).get("belirleyen") or {}
+        _uy = list((veri.get("ozet") or {}).get("uyarilar") or [])
+        _sat = [("Bina", bina.get("baslik") or sablon),
+                ("Model", "genel (düğüm–çubuk–panel)" if veri.get("model") == "genel" else "aks–kat"),
+                ("Σ G (sabit yük)", f"{_top.get('G', 0.0):.2f} kN"), ("Σ Q (hareketli yük)", f"{_top.get('Q', 0.0):.2f} kN"),
+                ("Tahkik edilen eleman", str(len(_el))),
+                ("En büyük D/C", f"**{_en['dc']:.3f}** " + ("✔" if _en["dc"] <= 1 + 1e-9 else "✘ (yetersiz)") if _en else "–"),
+                ("Belirleyen", f"{_en.get('adres')} — {_bel.get('kontrol') or '–'} ({_bel.get('kombinasyon') or '–'})" if _en else "–"),
+                ("Temel", str((veri.get("temel") or {}).get("tip") or ((bina.get("temeller") or {}).get("tip") or "tekil"))),
+                ("Uyarı", f"{len(_uy)} (ilk: {_uy[0]})" if _uy else "yok")]
+        display(Markdown("| | |\\n|---|---|\\n" + "\\n".join(f"| {a} | {str(b).replace('|', '/')} |" for a, b in _sat)))
+        ''',
+        """
+        Bina motoru her yük durumunu (G, Q, S, W, E) ayrı çözer, birleşimleri süperpozisyonla kurar ve her elemanda en
+        elverişsiz birleşimi arar. D/C ≤ 1 yeterli demektir; belirleyen satırı hangi kontrolün (eğilme, kesme, N–M, burkulma…)
+        ve hangi birleşimin boyutlandırdığını söyler. Ayrıntı için raporu aç.
+        """,
+    ))
+    H.append(form(
+        "📄 11.2) Statik hesap raporu (HTML)",
+        '''
+        yukseklik = 720 #@param {type:"integer"}
+        dosyaya_yaz = True #@param {type:"boolean"}
+        ''',
+        _BINA_ONCE + '''
+        import html as _html
+        import rapor
+        from IPython.display import HTML
+        belge = rapor.statik_rapor(bina, veri)
+        display(HTML(f'<div><iframe srcdoc="{_html.escape(belge, quote=True)}" style="width:100%;height:{max(200, int(yukseklik))}px;'
+                     'border:1px solid #bbb;background:#fff"></iframe></div>'))
+        if dosyaya_yaz:
+            from pathlib import Path as _Yol
+            _ad = _Yol("statik_rapor.html")
+            _ad.write_text(belge, encoding="utf-8")
+            display(Markdown(f"Rapor **{_ad.resolve()}** dosyasına yazıldı ({len(belge):,} bayt): Colab'da soldaki 📁 Dosyalar "
+                             "panelinden indirip tarayıcıda açabilir, yazdırabilirsin."))
+        ''',
+        """
+        Rapor çözümden üretilir: yönetmelikler, malzeme ve kesitler, yükler, deprem parametreleri, birleşimler, analiz
+        sonuçları (Σ tepki = Σ yük korunum denetimiyle), betonarme ve çelik kesit hesapları (formül → yerine konmuş değerler →
+        sonuç), temel ve sonuç bölümleri. Raporu okurken önce 10.1 korunum tablosuna bak: ✔ yoksa model eksiktir.
+        """,
+    ))
+    H.append(form(
+        "🔎 11.3) Kesit önerisi (yinele = 0: yalnız öneri)",
+        '''
+        gosterilecek = 15 #@param {type:"integer"}
+        yalniz_degisenler = False #@param {type:"boolean"}
+        ''',
+        _BINA_ONCE + '''
+        import tablolar
+        import yapi_serbest
+        _g = mo.ayarla().goster
+        mo.ayarla(goster="yok")                # öneri çözümleri sessiz
+        try:
+            oneri = yapi_serbest.kesit_oner(bina, ic=cozum.ic, hedef="hepsi", yinele=0)
+        finally:
+            mo.ayarla(goster=_g)
+        _on = sorted(oneri.get("oneriler") or [], key=lambda o: -(o.get("dc_once") or 0.0))
+        if yalniz_degisenler:
+            _on = [o for o in _on if o.get("degisim") not in (None, "aynı")]
+        _f = lambda x: "–" if x is None else f"{x:.3f}"
+        _tur = lambda t: tablolar.TUR_ADI.get(t, t)              # Türkçe tür adı (kiris → kiriş)
+
+        def _etiket(o):                         # aks–kat kaynaklı çubukta aks–kat elemanı da yazılır: "Ç5 (kiriş 1)"
+            k = o.get("kaynak") or {}
+            return f"Ç{o.get('cubuk')}" + (f" ({_tur(k['aks_kat'])} {k.get('no')})" if k.get("aks_kat") else "")
+        _sat = [f"| {_etiket(o)} | {_tur(o.get('tur'))} | {o.get('kesit')} | **{o.get('oneri')}** | {_f(o.get('dc_once'))} | "
+                f"{_f(o.get('dc_oneri'))} | {o.get('degisim') or '–'} |" for o in _on[:max(1, int(gosterilecek))]]
+        display(Markdown(f"{len(oneri.get('oneriler') or [])} öneri (D/C önce büyükten küçüğe, ilk {len(_sat)}):\\n\\n"
+                         "| Çubuk | Tür | Kesit | Öneri | D/C önce | D/C öneri | Değişim |\\n|---|---|---|---|---|---|---|\\n"
+                         + "\\n".join(_sat)))
+        for _u in oneri.get("uyarilar") or []:
+            display(Markdown("> ⚠️ " + str(_u)))
+        ''',
+        """
+        Öneri, mevcut iç kuvvetlerle her çubuk için yeterli en küçük kesiti arar (betonarmede N–M ve donatı oranı, çelikte
+        profil ailesinde bir sonraki boy). Kesit değişince rijitlik ve iç kuvvetler de değişir: uygulamadaki "Hepsini uygula"
+        öneriyi binaya uygulayıp yeniden çözer (yinele ≥ 1) ve gerçek D/C'yi verir; buradaki "D/C öneri" bir tahmindir.
+        """,
+    ))
+    return H
+
+
+# ============================================================================
 # Defteri kur ve yaz
 # ============================================================================
-def defter_olustur() -> nbformat.NotebookNode:
-    kaynak = MODUL.read_bytes()
-    nb = new_notebook()
-    nb.cells = hucreler(kaynak)
-    # nbformat rastgele hücre kimliği verir; sıra numarasıyla sabitlenir (yeniden üretim aynı dosyayı verir, fark küçük kalır)
-    for i, h in enumerate(nb.cells):
+def _kaynaklar() -> dict:
+    eksik = [ad for ad in MODULLER if not (KLASOR / f"{ad}.py").exists()]
+    if eksik:
+        raise SystemExit("Modül bulunamadı: " + ", ".join(f"{ad}.py" for ad in eksik))
+    return {ad: (KLASOR / f"{ad}.py").read_bytes() for ad in MODULLER}
+
+
+def defter_olustur() -> dict:
+    """Defter sözlüğü (nbformat 4.5 şeması): hücreler, sıra numaralı kimlikler (hucre-00 …), Colab üst verisi."""
+    hucre = hucreler(_kaynaklar(), _sablon_adlari())
+    # sıra numaralı kimlik: yeniden üretim aynı dosyayı verir, fark küçük kalır
+    for i, h in enumerate(hucre):
         h["id"] = f"hucre-{i:02d}"
-    nb.metadata = {
-        "kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
-        "language_info": {"name": "python"},
-        "colab": {"name": "Matris_Ogren.ipynb", "provenance": [], "toc_visible": True},
+    return {
+        "cells": hucre,
+        "metadata": {
+            "kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
+            "language_info": {"name": "python"},
+            "colab": {"name": "Matris_Ogren.ipynb", "provenance": [], "toc_visible": True},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
     }
-    return nb
+
+
+def defter_metni(nb: dict) -> str:
+    """nbformat.write ile aynı JSON metni: hücre kaynağı satır listesi (sonlar korunur), 1 boşluk girinti, sıralı anahtarlar."""
+    kopya = json.loads(json.dumps(nb))
+    for h in kopya["cells"]:
+        if isinstance(h.get("source"), str):
+            h["source"] = h["source"].splitlines(True)
+    metin = json.dumps(kopya, sort_keys=True, indent=1, separators=(",", ": "), ensure_ascii=False)
+    return metin if metin.endswith("\n") else metin + "\n"
 
 
 def main() -> None:
-    if not MODUL.exists():
-        raise SystemExit(f"Modül bulunamadı: {MODUL}")
     nb = defter_olustur()
-    nbformat.validate(nb)
-    with open(DEFTER, "w", encoding="utf-8") as f:
-        nbformat.write(nb, f)
-    n_md = sum(1 for c in nb.cells if c.cell_type == "markdown")
-    n_kod = sum(1 for c in nb.cells if c.cell_type == "code")
-    n_form = sum(1 for c in nb.cells if c.cell_type == "code" and c.metadata.get("cellView") == "form")
-    print(f"✅ {DEFTER.name} yazıldı: {len(nb.cells)} hücre ({n_md} markdown, {n_kod} kod, {n_form} form), "
-          f"{DEFTER.stat().st_size:,} bayt; gömülü modül {len(MODUL.read_bytes()):,} bayt "
-          f"(sha256 {hashlib.sha256(MODUL.read_bytes()).hexdigest()[:12]}…)")
+    if nbformat is not None:          # kuruluysa şema doğrulaması
+        nbformat.validate(nbformat.from_dict(nb))
+    DEFTER.write_text(defter_metni(nb), encoding="utf-8", newline="\n")
+    hucre = nb["cells"]
+    n_md = sum(1 for c in hucre if c["cell_type"] == "markdown")
+    n_kod = sum(1 for c in hucre if c["cell_type"] == "code")
+    n_form = sum(1 for c in hucre if c["cell_type"] == "code" and c["metadata"].get("cellView") == "form")
+    toplam = sum(len((KLASOR / f"{ad}.py").read_bytes()) for ad in MODULLER)
+    print(f"✅ {DEFTER.name} yazıldı: {len(hucre)} hücre ({n_md} markdown, {n_kod} kod, {n_form} form), "
+          f"{DEFTER.stat().st_size:,} bayt; gömülü {len(MODULLER)} modül, {toplam:,} bayt "
+          + ("(nbformat doğrulandı)" if nbformat is not None else "(nbformat kurulu değil: şema doğrulaması atlandı)"))
 
 
 if __name__ == "__main__":
