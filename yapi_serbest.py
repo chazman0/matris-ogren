@@ -4920,10 +4920,15 @@ def _gorunen_dc(gorunen):
     return {(k.get("tur"), k.get("no")): k["dc"] for k in tas.get("elemanlar") or [] if k.get("dc") is not None}
 
 
-def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
+def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None, grup=False):
     """Kesit önerisi (köprü ``bina_kesit_oner``): her hedef çubuk için öneri, gerekçe ve D/C önce/sonra. ``yinele`` > 0 ise öneriler
     binaya uygulanıp yeniden çözülür (rijitlik değişince iç kuvvetler değişir; en çok 3 tur) ve önerilen bina JSON'u döner.
     hedef: "hepsi" | [{"tur": "cubuk"|"kolon"|"kiris"|..., "no": n}].
+
+    ``grup=True`` (K-32, C19): hedef listesindeki üyeler (aynı kesit ve tür) tek öneri alır — grup {kesit, tur, uye}, cubuklar =
+    üye çubukları, uygula = ortak kart (betonarmede _ba_grup_karti / _grup_rho kuralı, çelikte en ağır üye önerisi), dc_oneri =
+    üyelerin bu kartla tahmini D/C'lerinin en büyüğü; yinele ≥ 1'de kart bütün üyelere uygulanıp model yeniden çözülür ve dc_sonra
+    üyelerin gerçek D/C'lerinin en büyüğüdür.
 
     ``ic``: genel model paketi (``ic["serbest"]``) doğrudan kullanılır; aks–kat paketi (``yapi.bina_coz``) verilirse binası genel
     motorla yeniden çözülür (gerçek temel tipiyle) ve D/C önce, kullanıcının gördüğü aks–kat
@@ -4954,6 +4959,9 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
     ic0_kesitler = copy.deepcopy(bina_ham.get("kesitler") or {})
     oteleme0 = ic.get("oteleme_asan")            # öneriden önce göreli kat ötelemesini aşan katlar (genel motor çözümü)
     ot0 = ic.get("oteleme")                      # K-27: öneriden önceki kat öteleme oranları (deprem yoksa None)
+    grup = bool(grup)
+    if grup and (hedef in (None, "hepsi") or not isinstance(hedef, list)):
+        raise MatrisHatasi('Grup kipi (grup: true) için hedef üye listesi verilmeli: [{"tur", "no"}, ...].')
     ot_adim = {}                                 # K-27: kat → öteleme onarımı sayısı
     turlar = []
     sonuc_oneriler = None
@@ -4962,8 +4970,9 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         if T is None:
             raise MatrisHatasi("Kesit tahkik modülü (tasarim.py) yüklenemedi.")
         B = T.B
-        gruplar = _hedef_gruplari(B, hedef)
+        gruplar = _hedef_gruplari(B, hedef, grup=grup)
         hedefler = [c for g in gruplar for c in g]
+        uye_sayisi = len(_hedef_gruplari(B, hedef)) if grup else None
         dc_once = {k["cubuk"]: k["dc"] for k in (ic.get("tas") or _tasarim(ts, T))["elemanlar"] if k.get("dc") is not None}
         dc_maks = max(dc_once.values(), default=0.0)
         if tur_no == 0 and gorunen_dc:
@@ -4990,6 +4999,11 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
                    else None)
             for c in g:
                 dc0 = gor if (gor is not None and len(g) == 1) else dc_once.get(c["no"])     # tek parça: görünen (aks–kat) D/C
+                if grup:                         # grup kipi: her üyenin kendi görünen (aks–kat) D/C'si
+                    kc = c.get("kaynak") or {}
+                    gc = (gorunen_dc.get((kc.get("aks_kat"), kc.get("no"))) if (tur_no == 0 and gorunen_dc and isinstance(kc, dict))
+                          else None)
+                    dc0 = gc if gc is not None else dc_once.get(c["no"])
                 try:
                     parca.append(_oner_cubuk(ts, T, c, dc_kayit=dc0))
                 except MatrisHatasi as h:
@@ -4998,11 +5012,21 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
                                   "degisim": None, "sistem": None, "malzeme": None, "b": None, "h": None})
             if len(g) == 1:
                 o = parca[0]
+                if grup:
+                    o = dict(o, cubuklar=[g[0]["no"]])
+            elif grup:                  # kesit grubu kipi (K-32): üyelerin zarfı tek öneri
+                o = _zarf_onerisi(ts, T, g, parca, (bina_ham.get("kesitler") or {}).get(g[0]["kesit"]), kucultme=tur_no == 0)
+                o["gerekce"] = [f"Kesit grubu {g[0]['kesit']} / {_tur_adi(g[0]['tur'])}, {uye_sayisi} üye ({len(g)} çubuk): ortak kart "
+                                "(betonarmede en büyük b × h, kolonda ρ her üye doğrulanarak; çelikte en ağır üye önerisi), D/C öneri "
+                                "üyelerin bu kartla en büyüğü."] + o["gerekce"]
             else:                       # birden çok parçalı aks–kat elemanı: tek öneri (parçaların zarfı)
                 o = _zarf_onerisi(ts, T, g, parca, (bina_ham.get("kesitler") or {}).get(g[0]["kesit"]), kucultme=tur_no == 0)
                 o["gerekce"] = [f"Aks–kat elemanı {len(g)} parçalı ({', '.join(f'Ç{c['no']}' for c in g)}): öneri parçaların zarfı (en "
                                 "büyük gerekli kesit), D/C öneri parçaların en büyüğü."] + o["gerekce"]
-            if gor is not None:
+            if grup:
+                o["grup"] = {"kesit": g[0]["kesit"], "tur": g[0]["tur"], "uye": uye_sayisi}
+                o["dc_once"] = max((p_["dc_once"] for p_ in parca if p_.get("dc_once") is not None), default=o.get("dc_once"))
+            elif gor is not None:
                 o["dc_once"] = _r5(min(gor, 99.0))        # kullanıcının gördüğü (aks–kat motoru) D/C
             if tur_no == 0:
                 o["uygula"] = _uygula_bilgisi(bina_ham.get("kesitler"), o)
@@ -5015,7 +5039,8 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
             break
         uygulanan = oneriler
         if tur_no > 0 and ihlal:                 # K-27 (b): sınırı yeni aşan katların düşey taşıyıcıları (sonra kirişleri) büyür
-            uygulanan = oneriler + _oteleme_onerileri(ts, B, bina_ham.get("kesitler"), ihlal, ot_adim)
+            uygulanan = oneriler + _oteleme_onerileri(ts, B, bina_ham.get("kesitler"), ihlal, ot_adim,
+                                                      hedef_no={c["no"] for c in hedefler})
             for k in ihlal:
                 ot_adim[k] = ot_adim.get(k, 0) + 1
         yeni, degisen = _oneri_uygula(bina_ham, uygulanan, B, tur_tasarim=(ts, T), kucultme=tur_no == 0)
@@ -5061,7 +5086,11 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         o["dc_sonra"] = _r5(max(son_)) if (yinele and son_) else o.get("dc_oneri")
     if gorunen_dc:
         uyarilar.append("D/C önce, aks–kat motorunun tasarım tablosundan (görünen çözüm); öneri ve D/C sonra genel model motoruyla.")
-    dc_sonra = _r5(max(dc_son.values(), default=0.0)) if yinele else None
+    if grup:                                     # K-32: grup kipinde dc_sonra üyelerin gerçek D/C'lerinin en büyüğü
+        uye_dc = [dc_son[n] for o in sonuc_oneriler for n in (o.get("cubuklar") or [o["cubuk"]]) if n in dc_son]
+        dc_sonra = _r5(max(uye_dc, default=0.0)) if yinele else None
+    else:
+        dc_sonra = _r5(max(dc_son.values(), default=0.0)) if yinele else None
     if yinele and dc_sonra > 1.0 + 1e-9:
         uyarilar.append(_yakinsamadi_uyarisi(son["elemanlar"], sum(1 for t in turlar if t.get("degisen"))))
     if yinele and any(t.get("degisen") for t in turlar):
@@ -5123,11 +5152,11 @@ def _oteleme_ihlali(ot0, ot):
     return [k for i, k in enumerate(ot["katlar"]) if any(ot[y][i] > s + 1e-12 and ot0[y][i] <= s + 1e-12 for y in "XY")]
 
 
-def _oteleme_onerileri(ts, B, kesitler, katlar, adim):
+def _oteleme_onerileri(ts, B, kesitler, katlar, adim, hedef_no=None):
     """Göreli kat ötelemesi onarımı (K-27): sınırı yeni aşan katların düşey taşıyıcı (kolon / çapraz) gruplarına bir adım büyük
     kart — betonarmede b ve h +5 cm (ρ korunur), çelikte ailenin bir sonraki ağır profili —; katın ikinci ve sonraki onarım
-    turlarında kat kirişleri de (betonarmede h +5 cm). ``adim`` {kat: bu kat için yapılmış onarım sayısı}. Dönüş: _oneri_uygula
-    biçiminde öneriler (oteleme: True)."""
+    turlarında kat kirişleri de (betonarmede h +5 cm). ``adim`` {kat: bu kat için yapılmış onarım sayısı}; ``hedef_no``: yalnız bu
+    çubuklar değişir (kesit önerisinin hedefleri; None: hepsi). Dönüş: _oneri_uygula biçiminde öneriler (oteleme: True)."""
     ku = _kat_uyeleri(B)
     gruplar = {}
     for n in katlar:
@@ -5139,7 +5168,9 @@ def _oteleme_onerileri(ts, B, kesitler, katlar, adim):
         ks = B.kesitler.get(kesit) or {}
         if ks.get("tip") == "vute":
             continue
-        uy = [c for c in B.cubuklar if c["kesit"] == kesit and c["tur"] == tur]
+        uy = [c for c in B.cubuklar if c["kesit"] == kesit and c["tur"] == tur and (hedef_no is None or c["no"] in hedef_no)]
+        if not uy:
+            continue
         mal = B.malzemeler.get(str(ks.get("malzeme"))) or {}
         ne = f"göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) kat {', '.join(map(str, sorted(kat_)))}'de aşıldı"
         o = {"cubuk": uy[0]["no"], "cubuklar": [c["no"] for c in uy], "tur": tur, "kesit": kesit, "kaynak": None,

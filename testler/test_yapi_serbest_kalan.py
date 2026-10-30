@@ -567,3 +567,24 @@ def test_oteleme_yardimcilari():
         ks = Bc.kesitler[o["kesit"]]
         liste = [a for a, _ in tasarim._aile_listesi(tasarim._aile_coz(ks["profil"])[0])]
         assert liste.index(o["oneri"]) == [a.replace(" ", "").upper() for a in liste].index(ks["profil"].replace(" ", "").upper()) + 1
+
+
+# ---------------------------------------------------------------------------
+# K-32: grup kipi (çelik: en ağır üye önerisi)
+# ---------------------------------------------------------------------------
+def test_kesit_oner_grup_kipi_celik():
+    ic = YS.genel_cozum(yapi.bina_sablon("celik-cbf-3kat"))
+    uyeler = [c["no"] for c in ic["tasarim"].B.cubuklar if (c["kesit"], c["tur"]) == ("KOLON", "kolon")]
+    hedef = [{"tur": "cubuk", "no": n} for n in uyeler]
+    o = YS.kesit_oner(None, ic=ic, hedef=hedef, grup=True)
+    assert len(o["oneriler"]) == 1
+    g = o["oneriler"][0]
+    tek = YS.kesit_oner(None, ic=ic, hedef=hedef)["oneriler"]
+    en_agir = max((t for t in tek if t.get("oneri")), key=lambda t: t["agirlik_kg_m"])
+    assert g["grup"] == {"kesit": "KOLON", "tur": "kolon", "uye": len(uyeler)} and sorted(g["cubuklar"]) == sorted(uyeler)
+    assert g["oneri"] == en_agir["oneri"] and g["uygula"]["tanim"]["profil"] == en_agir["oneri"]
+    assert g["dc_once"] == pytest.approx(max(t["dc_once"] for t in tek)) and g["dc_oneri"] <= 1.0
+    assert g["gerekce"][0].startswith(f"Kesit grubu KOLON / kolon, {len(uyeler)} üye ({len(uyeler)} çubuk): ortak kart")
+    with pytest.raises(YS.MatrisHatasi, match="aynı olmalı"):
+        YS.kesit_oner(None, ic=ic, hedef=hedef + [{"tur": "cubuk", "no": next(c["no"] for c in ic["tasarim"].B.cubuklar
+                                                                                    if c["tur"] == "kiris")}], grup=True)
