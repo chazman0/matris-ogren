@@ -1663,7 +1663,9 @@ sözleşme işlemesinde gelen uygulamanın durumunu gösterir: **tam** = kullan�
 
 Bir paket YALNIZ kendi dosyalarını değiştirir. Aşağıdaki tablo makinece okunur (`testler/test_op4_sozlesme.py`):
 **ilk eşleşen satır geçerlidir**; `*` klasör ayırıcısını geçmez, `**` geçer. Paketler: **A**, **B**, **C**, **D**; **S** =
-sözleşme dosyası (§24.4 değişiklik kuralı); **-** = değiştirilmez (kullanıcının kimlik dosyaları). Depodaki her op4 dosyası
+sözleşme dosyası (§24.4 değişiklik kuralı); **-** = paket dışı: kurumsal kimlik ve açılış ekranı tasarım dosyaları
+(`op4/kimlik/`; kullanıcının marka dosyaları değiştirilmez, açılış tasarımını kimlik çalışması yürütür; F1 paketleri
+yalnız okur — C, açılış ekranını `acilis.cpp`'de bu dosyalardan çizer). Depodaki her op4 dosyası
 bir satıra uymalıdır; yeni dosya, sahibinin klasörüne ya da adlandırma önekiyle eklenir.
 
 ```sahiplik
