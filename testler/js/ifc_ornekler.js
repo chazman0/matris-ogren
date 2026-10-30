@@ -60,11 +60,18 @@ function serbestBina() {
     { no: 9, i: { X: 0.0, Y: 2.5, Z: 6.5 }, j: { X: 6.0, Y: 2.5, Z: 6.5 }, tur: "kiris", kesit: "IPE200" },
     { no: 10, i: { X: 0.0, Y: 2.5, Z: 6.5 }, j: { dugum: 100001 }, tur: "makas-diyagonal", kesit: "2L60" },
     { no: 11, i: { X: 9.0, Y: 0.0, Z: 0.0 }, j: { X: 9.0, Y: 0.0, Z: 3.5 }, tur: "kolon", kesit: "HEA160", aci: 90 },
+    // üçgen döşeme panelinin (P4) kenar kirişleri: B2 → çıkma ucu → A2 (1. kenarı aks–kat kirişi no 12, A2 → B2)
+    { no: 12, i: { aks: ["B", "2"], kat: 1 }, j: { X: 3.0, Y: 7.0, Z: 3.5 }, tur: "kiris", kesit: "IPE200" },
+    { no: 13, i: { X: 3.0, Y: 7.0, Z: 3.5 }, j: { aks: ["A", "2"], kat: 1 }, tur: "kiris", kesit: "IPE200" },
+    // mafsallı tabanlı tek kolonun (Ç11) başı çerçeveye bağ çubuğuyla tutulur
+    { no: 14, i: { aks: ["B", "1"], kat: 1 }, j: { X: 9.0, Y: 0.0, Z: 3.5 }, tur: "bag", kesit: "KUTU" },
   ];
   b.paneller = [
     { no: 1, kose: [{ aks: ["A", "1"], kat: 2 }, { dugum: 100001 }, { dugum: 100002 }, { aks: ["A", "2"], kat: 2 }], tur: "cati", kalinlik: 0, dagitim: "iki" },
     { no: 2, kose: [{ dugum: 100001 }, { aks: ["B", "1"], kat: 2 }, { aks: ["B", "2"], kat: 2 }, { dugum: 100002 }], tur: "cati", kalinlik: 0.1 },
-    { no: 3, kose: [{ aks: ["A", "1"], kat: 0 }, { aks: ["B", "1"], kat: 0 }, { aks: ["B", "1"], kat: 1 }, { aks: ["A", "1"], kat: 1 }], tur: "cephe", kalinlik: 0 },
+    // cephe: alt kenarı (temel seviyesi, 1 → 21) çubuksuz; tek doğrultulu, yükü kolon kenarlarına (2. ve 4. kenar)
+    { no: 3, kose: [{ aks: ["A", "1"], kat: 0 }, { aks: ["B", "1"], kat: 0 }, { aks: ["B", "1"], kat: 1 }, { aks: ["A", "1"], kat: 1 }], tur: "cephe", kalinlik: 0,
+      dagitim: "tek-24" },
     { no: 4, kose: [{ aks: ["A", "2"], kat: 1 }, { aks: ["B", "2"], kat: 1 }, { X: 3.0, Y: 7.0, Z: 3.5 }], tur: "doseme", kalinlik: 0.15 },
   ];
   b.mesnetler = [{ dugum: { X: 9.0, Y: 0.0, Z: 0.0 }, ux: true, uy: true, uz: true, rx: false, ry: false, rz: false }];
@@ -81,11 +88,13 @@ function radyeBina() {
   return b;
 }
 
-// §13 mütemadi temel yalnız X doğrultusunda, seçili akslarda; dikdörtgen kesit (b_govde = B, h_tabla = 0)
+// §13 mütemadi temel yalnız X doğrultusunda, seçili akslarda (1 ve 2: her zemin kat kolonu bir temel kirişine oturur, motorla
+// çözülür); dikdörtgen kesit (b_govde = B, h_tabla = 0)
 function surekliBina() {
   const b = temelBina();
-  b.baslik = "Mütemadi temel (yalnız 1 aksı)";
-  b.temeller = { tip: "surekli", zemin: { q_em: 200, k0: 20000 }, surekli: { yon: "x", akslar: ["1"], B: 0.8, h_tabla: 0, b_govde: 0.8, h_govde: 0.9, tasma: 0.4 } };
+  b.baslik = "Mütemadi temel (X yönünde 1 ve 2 aksları)";
+  b.temeller = { tip: "surekli", zemin: { q_em: 200, k0: 20000 },
+    surekli: { yon: "x", akslar: ["1", "2"], B: 0.8, h_tabla: 0, b_govde: 0.8, h_govde: 0.9, tasma: 0.4 } };
   return b;
 }
 
@@ -132,14 +141,22 @@ function aksSistemiBina() {
   };
   let n = 0;
   const cb = function (i, j, tur, kesit, ek) { b.cubuklar.push(Object.assign({ no: ++n, i: i, j: j, tur: tur, kesit: kesit }, ek || {})); };
-  ["1", "2", "3"].forEach(function (y) {     // portal çerçeveler: kolonlar ve eğik kirişler (mertek)
+  ["1", "2", "3"].forEach(function (y, k) {     // portal çerçeveler: kolonlar ve eğik kirişler (mertek; A tarafı aşık noktasında bölünmüş)
     cb(z(["A", y], "±0.00"), z(["A", y], "Saçak"), "kolon", "HEA300");
     cb(z(["B", y], "±0.00"), z(["B", y], "Saçak"), "kolon", "HEA300", { aci: 90 });
-    cb(z(["A", y], "Saçak"), z(["M", y], "Mahya"), "kiris", "IPE330");
+    cb(z(["A", y], "Saçak"), { dugum: 100001 + k }, "kiris", "IPE330");
+    cb({ dugum: 100001 + k }, z(["M", y], "Mahya"), "kiris", "IPE330");
     cb(z(["M", y], "Mahya"), z(["B", y], "Saçak"), "kiris", "IPE330");
   });
   cb({ dugum: 100001 }, { dugum: 100002 }, "asik", "IPE200");
   cb({ dugum: 100002 }, { dugum: 100003 }, "asik", "IPE200");
+  // çatı panellerinin kenar çubukları: mahya aşığı (M1 → M2 → M3) ve saçak kirişleri (A ve B aksları); panel yükü kenar zincirlerine
+  cb(z(["M", "1"], "Mahya"), z(["M", "2"], "Mahya"), "asik", "IPE200");
+  cb(z(["M", "2"], "Mahya"), z(["M", "3"], "Mahya"), "asik", "IPE200");
+  ["A", "B"].forEach(function (x) {
+    cb(z([x, "1"], "Saçak"), z([x, "2"], "Saçak"), "kiris", "IPE200");
+    cb(z([x, "2"], "Saçak"), z([x, "3"], "Saçak"), "kiris", "IPE200");
+  });
   // X çaprazı kesişimde bölünmüş: dört çubuk
   cb(z(["A", "1"], "±0.00"), { dugum: 100010 }, "capraz", "BORU", { yalniz_cekme: true });
   cb({ dugum: 100010 }, z(["A", "2"], "Saçak"), "capraz", "BORU", { yalniz_cekme: true });
