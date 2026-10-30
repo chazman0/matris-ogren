@@ -162,7 +162,7 @@ jobs:
             echo "::group::$g.log"
             cat "$g.log"
             echo "::endgroup::"
-            grep -E "BAŞARI|OP4OLCUM" "$g.log" || true
+            grep -E "BAŞARI" "$g.log" || true
           done
           # Günlükteki kopyalar 256 renge indirgenir (≈ 3 kat küçük); asıl PNG'ler yapıt olarak saklanır.
           python op4/araclar/gunluk_png_yaz.py onizleme=onizleme.png sahne=sahne.png acilis=acilis.png || kod=$?
@@ -187,7 +187,8 @@ jobs:
       - name: Sına — gerçek pencere (--test-pencere; açılış + takas zinciri + motor + betikli gezinme)
         run: |
           kod=0
-          ./paket/op4.exe --test-pencere 8 --gunluk pencere.log > /dev/null || kod=$?
+          # Hata ayıklama katmanı varsa (windows-2025'te Graphics Tools kurulu) takas zinciri yolu da 0 hata iletisiyle geçmeli.
+          ./paket/op4.exe --test-pencere 8 --hata-katmani --gunluk pencere.log > /dev/null || kod=$?
           cat pencere.log
           echo "PENCERE=$(tr -d '\r' < pencere.log | sed -n 's/^OP4OLCUM senaryo=pencere //p' | head -1)" >> "$GITHUB_ENV"
           exit "$kod"
@@ -202,7 +203,17 @@ jobs:
           }
           # Lisans doğrulaması (MIMARI D14): kurulu aracın lisans metninin başı ve ticari kullanımdan söz eden satırlar.
           $innoDizin = Split-Path $iscc
-          $innoSurum = (Get-Item $iscc).VersionInfo.ProductVersion
+          # Sürüm: kaldırma kaydındaki DisplayVersion (ISCC.exe'nin sürüm bilgisi 0.0.0.0 döner).
+          $innoSurum = @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1",
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"
+          ) | Where-Object { Test-Path $_ } | ForEach-Object { (Get-ItemProperty $_).DisplayVersion } | Where-Object { $_ } | Select-Object -First 1
+          if (-not $innoSurum) {
+            $innoSurum = @("Compil32.exe", "ISCmplr.dll", "ISCC.exe") | ForEach-Object { Join-Path $innoDizin $_ } | Where-Object { Test-Path $_ } |
+              ForEach-Object { (Get-Item $_).VersionInfo.FileVersion } | Where-Object { $_ -and $_ -ne "0.0.0.0" } | Select-Object -First 1
+          }
+          if (-not $innoSurum) { $innoSurum = "?" }
           $lisans = Join-Path $innoDizin "license.txt"
           Write-Output "::group::Inno Setup $innoSurum lisansı (license.txt, ilk 60 satır)"
           if (Test-Path $lisans) { Get-Content $lisans -TotalCount 60 } else { "license.txt yok: $innoDizin"; Get-ChildItem $innoDizin -Filter *.txt | Select-Object -ExpandProperty Name }

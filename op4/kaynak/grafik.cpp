@@ -445,7 +445,9 @@ bool Grafik::TamponYukle(const void* veri, size_t boyut, ComPtr<ID3D12Resource>&
     D3D12_HEAP_PROPERTIES vy = Yigin(D3D12_HEAP_TYPE_DEFAULT), yy = Yigin(D3D12_HEAP_TYPE_UPLOAD);
     D3D12_RESOURCE_DESC td = TamponTanimi(boyut);
     ComPtr<ID3D12Resource> yukleme;
-    HRESULT hr = aygit_->CreateCommittedResource(&vy, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COPY_DEST,
+    // Tamponlar COMMON durumunda oluşturulur (başka başlangıç durumu yok sayılır; hata ayıklama katmanı uyarısı #1328);
+    // kopyalamada örtük olarak COPY_DEST'e yükselir, ardından aynı listede bariyerle köşe / indis durumuna geçer.
+    HRESULT hr = aygit_->CreateCommittedResource(&vy, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COMMON,
                                                  nullptr, CIK(hedef));
     if (SUCCEEDED(hr))
         hr = aygit_->CreateCommittedResource(&yy, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_GENERIC_READ,
