@@ -321,6 +321,13 @@ op4.exe  (pencere başına bir proje)
   iptal türü, `ayarlar.sd_siniri`, ilerleme kancası, ürün adı parametresi; seyrek çözüm yolu ve genel modelde radye /
   mütemadi temel ilgili fazlarda). `pytest testler` ve `node --test testler/js/*.test.js` değişmeden geçer.
 
+**Faz 1 paket sözleşmeleri** (`op4/MIMARI.md` §24): dört paket (A derleme-motor, B model-cekirdegi, C arayuz-goruntu, D
+dosya-cozum) paralel çalışır; aralarındaki arayüzler `op4/kaynak/cekirdek/` başlıklarında (S1–S27: eleman kimliği, sahne
+anlığı, öznitelik tablosu, seçim ve seçme, model çekirdeği, motor tel protokolü ve hizmeti, proje belgesi ve dosyası,
+ayarlar, sonuç, komut defteri, arayüz kancaları, Hizmetler, uygulama kabuğu) ve `op4/js/` JSDoc'unda sabittir; komut
+kataloğu `op4/veri/komutlar.json`. Kilitleyen: `op4/testler/` (doctest, node, pytest; Linux ve Windows CI),
+`testler/test_op4_sozlesme.py` (dosya sahipliği, komut kataloğu, kod tabloları).
+
 Uygulayan (Faz 0): `op4/kaynak/` (C++ iskeleti; motor şimdilik süreç içi `motor.cpp`, `--test-motor` tanı kipi), `op4/kurulum/op4.iss`,
 `op4/araclar/` (`python_hazirla.py`, `kimlik_uret.py`, `gunluk_png_yaz.py`, `gunluk_png_coz.py`, `ci_bekle.sh`),
 `.github/workflows/op4.yml`. Kilitleyen: `testler/test_op4_araclar.py` (günlük protokolü, iş akışı sözleşmesi, sürüm tek kaynağı,

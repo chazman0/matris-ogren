@@ -1,0 +1,95 @@
+{
+ "bicim": 1,
+ "aciklama": "op4 sahne kod tabloları (F1 paket sözleşmeleri §S4). C++ (kaynak/cekirdek/kimlik.h, sahne.h) ve JS (op4/js/op4_ops.js KODLAR) bu değerleri kullanır; değerler değiştirilmez, yalnız eklenir.",
+ "eleman_turu": {
+  "yok": 0,
+  "cubuk": 1,
+  "panel": 2,
+  "dugum": 3,
+  "mesnet": 4,
+  "yuk": 5,
+  "aks": 6,
+  "aks_sistemi": 7,
+  "temel": 8,
+  "referans": 9,
+  "olcu": 10
+ },
+ "cubuk_turu": {
+  "diger": 0,
+  "kolon": 1,
+  "kiris": 2,
+  "capraz": 3,
+  "makas-ust": 4,
+  "makas-alt": 5,
+  "makas-dikme": 6,
+  "makas-diyagonal": 7,
+  "asik": 8,
+  "kren": 9,
+  "bag": 10
+ },
+ "panel_turu": {
+  "doseme": 0,
+  "cati": 1,
+  "cephe": 2,
+  "diger": 3
+ },
+ "dugum_turu": {
+  "aks_kat": 0,
+  "aks_kesisimi": 1,
+  "bolme": 2,
+  "kesisim": 3,
+  "serbest": 4
+ },
+ "kesit_turu": {
+  "bilinmiyor": 0,
+  "I": 1,
+  "KUTU": 2,
+  "BORU": 3,
+  "DIKDORTGEN": 4,
+  "DAIRE": 5,
+  "L": 6,
+  "2L": 7,
+  "UPN": 8
+ },
+ "mesnet_turu": {
+  "diger": 0,
+  "ankastre": 1,
+  "mafsal": 2,
+  "kayici": 3,
+  "yay": 4
+ },
+ "temel_turu": {
+  "tekil": 0,
+  "surekli": 1,
+  "radye": 2
+ },
+ "cubuk_bayraklari": {
+  "yalniz_cekme": 1,
+  "serbest_dugume_bagli": 2,
+  "vute": 4,
+  "uretecten": 8
+ },
+ "dugum_bayraklari": {
+  "mesnetli": 1,
+  "baglantisiz": 2
+ },
+ "panel_bayraklari": {
+  "duzlemsel_degil": 1
+ },
+ "serbestlik_sirasi": [
+  "N",
+  "Vy",
+  "Vz",
+  "T",
+  "My",
+  "Mz"
+ ],
+ "mesnet_sirasi": [
+  "ux",
+  "uy",
+  "uz",
+  "rx",
+  "ry",
+  "rz"
+ ]
+}

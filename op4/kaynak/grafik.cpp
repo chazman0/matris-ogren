@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "golgelendirici.h"
+#include "grafik/golgelendirici_bayt.h"
 #include "gunluk.h"
 #include "imgui_impl_dx12.h"
 
@@ -70,6 +71,13 @@ D3D12_RESOURCE_DESC DokuTanimi(UINT g, UINT y, DXGI_FORMAT f, UINT ornek, D3D12_
 }
 
 bool Derle(const char* giris, const char* hedef, ComPtr<ID3DBlob>& kod, std::string& hata) {
+    // Derlemede üretilmiş bayt kodu varsa onu kullan (A, F1 iş 1.1; sözleşme S25), yoksa çalışma anında derle.
+    if (const GolgelendiriciBayt b = GomuluGolgelendirici(giris); b.Var()) {
+        if (SUCCEEDED(D3DCreateBlob(b.boyut, kod.ReleaseAndGetAddressOf()))) {
+            std::memcpy(kod->GetBufferPointer(), b.veri, b.boyut);
+            return true;
+        }
+    }
     ComPtr<ID3DBlob> hatalar;
     HRESULT hr = D3DCompile(kGolgelendirici, sizeof(kGolgelendirici) - 1, "op4.hlsl", nullptr, nullptr, giris, hedef,
                             D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, kod.ReleaseAndGetAddressOf(), hatalar.GetAddressOf());

@@ -1,0 +1,909 @@
+{
+ "bicim": 1,
+ "aciklama": "op4 komut kataloğu (MIMARI §12.1; F1 alt kümesi). Şerit, menüler, hızlı erişim, komut satırı tamamlama ve kısayol tablosu bu dosyadan üretilir. 'sahip' alanı işleyiciyi bağlayacak paketi gösterir (F1 paket sözleşmeleri). Yeni komut = yeni kayıt; id değiştirilmez.",
+ "sekmeler": [
+  "Dosya",
+  "Model",
+  "Çizim",
+  "Düzenle",
+  "Seçim",
+  "Yükler",
+  "Mesnet ve Temel",
+  "Analiz",
+  "Sonuçlar",
+  "Tasarım",
+  "Rapor",
+  "Görünüm",
+  "Öğren",
+  "Yardım"
+ ],
+ "komutlar": [
+  {
+   "id": "dosya.yeni",
+   "ad": "YENİ",
+   "etiket": "Yeni",
+   "takma_adlar": [
+    "YN"
+   ],
+   "kisayol": "Ctrl+N",
+   "ikon": "yeni",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Proje",
+    "boyut": "buyuk",
+    "sira": 10
+   },
+   "menu": "Dosya",
+   "menu_sira": 10,
+   "hizli_erisim": true,
+   "ipucu": "Boş model “Adsız N” ile yeni proje (açık proje kirliyse önce sorulur)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.yeni_sablon",
+   "ad": "ŞABLONDAN",
+   "etiket": "Şablondan yeni…",
+   "takma_adlar": [
+    "SB"
+   ],
+   "kisayol": "",
+   "ikon": "sablon",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Proje",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Dosya/Yeni",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "9 hazır yapı şablonundan yeni proje; komut satırında: ŞABLONDAN <şablon adı>",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.ac",
+   "ad": "AÇ",
+   "etiket": "Aç…",
+   "takma_adlar": [
+    "AC"
+   ],
+   "kisayol": "Ctrl+O",
+   "ikon": "ac",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Proje",
+    "boyut": "buyuk",
+    "sira": 30
+   },
+   "menu": "Dosya",
+   "menu_sira": 30,
+   "hizli_erisim": true,
+   "ipucu": "op4 projesi, .matris ya da bina .json aç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.kaydet",
+   "ad": "KAYDET",
+   "etiket": "Kaydet",
+   "takma_adlar": [
+    "KY"
+   ],
+   "kisayol": "Ctrl+S",
+   "ikon": "kaydet",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Proje",
+    "boyut": "buyuk",
+    "sira": 40
+   },
+   "menu": "Dosya",
+   "menu_sira": 40,
+   "hizli_erisim": true,
+   "ipucu": "Projeyi kaydet (.op4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.farkli_kaydet",
+   "ad": "FARKLIKAYDET",
+   "etiket": "Farklı kaydet…",
+   "takma_adlar": [
+    "FK"
+   ],
+   "kisayol": "Ctrl+Shift+S",
+   "ikon": "farkli_kaydet",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Proje",
+    "boyut": "kucuk",
+    "sira": 50
+   },
+   "menu": "Dosya",
+   "menu_sira": 50,
+   "hizli_erisim": false,
+   "ipucu": "Projeyi yeni bir adla kaydet",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.ice_aktar",
+   "ad": "İÇEAKTAR",
+   "etiket": "İçe aktar (.matris, .json)…",
+   "takma_adlar": [
+    "IA"
+   ],
+   "kisayol": "",
+   "ikon": "ice_aktar",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Aktar",
+    "boyut": "kucuk",
+    "sira": 60
+   },
+   "menu": "Dosya/İçe aktar",
+   "menu_sira": 60,
+   "hizli_erisim": false,
+   "ipucu": "Web sürümünün .matris ya da bina .json dosyasını yeni proje olarak aç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.bina_disa",
+   "ad": "BİNADIŞA",
+   "etiket": "Bina JSON olarak dışa aktar…",
+   "takma_adlar": [
+    "BD"
+   ],
+   "kisayol": "",
+   "ikon": "bina_disa",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Aktar",
+    "boyut": "kucuk",
+    "sira": 70
+   },
+   "menu": "Dosya/Dışa aktar",
+   "menu_sira": 70,
+   "hizli_erisim": false,
+   "ipucu": "Modeli web sürümüyle paylaşmak için bina .json olarak yaz",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.ifc_disa",
+   "ad": "IFCDIŞA",
+   "etiket": "IFC olarak dışa aktar…",
+   "takma_adlar": [
+    "IFC"
+   ],
+   "kisayol": "Ctrl+E",
+   "ikon": "ifc",
+   "serit": {
+    "sekme": "Dosya",
+    "grup": "Aktar",
+    "boyut": "kucuk",
+    "sira": 80
+   },
+   "menu": "Dosya/Dışa aktar",
+   "menu_sira": 80,
+   "hizli_erisim": false,
+   "ipucu": "IFC4 dosyası (analiz modeli, yükler ve D/C isteğe bağlı)",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.kurtar",
+   "ad": "KURTAR",
+   "etiket": "Kurtarma dosyaları…",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "kurtar",
+   "menu": "Dosya",
+   "menu_sira": 90,
+   "hizli_erisim": false,
+   "ipucu": "Beklenmedik kapanıştan kalan otomatik kayıtları aç ya da sil",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "dosya.cikis",
+   "ad": "ÇIKIŞ",
+   "etiket": "Çıkış",
+   "takma_adlar": [
+    "CIK"
+   ],
+   "kisayol": "",
+   "ikon": "cikis",
+   "menu": "Dosya",
+   "menu_sira": 100,
+   "hizli_erisim": false,
+   "ipucu": "op4'ü kapat (kaydedilmemiş değişiklik varsa sorulur)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "duzenle.geri_al",
+   "ad": "GERİAL",
+   "etiket": "Geri al",
+   "takma_adlar": [
+    "U"
+   ],
+   "kisayol": "Ctrl+Z",
+   "ikon": "geri_al",
+   "serit": {
+    "sekme": "Düzenle",
+    "grup": "Geçmiş",
+    "boyut": "buyuk",
+    "sira": 10
+   },
+   "menu": "Düzenle",
+   "menu_sira": 10,
+   "hizli_erisim": true,
+   "ipucu": "Son model işlemini geri al",
+   "yardim": "",
+   "kosul": "geri_alinabilir",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "B"
+  },
+  {
+   "id": "duzenle.yinele",
+   "ad": "YİNELE",
+   "etiket": "Yinele",
+   "takma_adlar": [],
+   "kisayol": "Ctrl+Y",
+   "ikon": "yinele",
+   "serit": {
+    "sekme": "Düzenle",
+    "grup": "Geçmiş",
+    "boyut": "buyuk",
+    "sira": 20
+   },
+   "menu": "Düzenle",
+   "menu_sira": 20,
+   "hizli_erisim": true,
+   "ipucu": "Geri alınan işlemi yinele",
+   "yardim": "",
+   "kosul": "yinelenebilir",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "B"
+  },
+  {
+   "id": "model.hizli_aks",
+   "ad": "HIZLIAKS",
+   "etiket": "Hızlı aks…",
+   "takma_adlar": [
+    "HA"
+   ],
+   "kisayol": "Shift+G",
+   "ikon": "hizli_aks",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Akslar",
+    "boyut": "buyuk",
+    "sira": 10
+   },
+   "menu": "Model",
+   "menu_sira": 10,
+   "hizli_erisim": false,
+   "ipucu": "X / Y aks aralıkları ve kat yükseklikleriyle aks düzeni kur (Başlangıç panelinde de)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "model.denetle",
+   "ad": "DENETLE",
+   "etiket": "Modeli denetle",
+   "takma_adlar": [
+    "DN"
+   ],
+   "kisayol": "",
+   "ikon": "denetle",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Denetim",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Model",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "Model tutarlılık denetimi: serbest düğümler, mesnetsiz düğümler, çakışan elemanlar",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "B"
+  },
+  {
+   "id": "secim.tumu",
+   "ad": "TÜMÜNÜSEÇ",
+   "etiket": "Tümünü seç",
+   "takma_adlar": [
+    "TS"
+   ],
+   "kisayol": "Ctrl+A",
+   "ikon": "secim_tumu",
+   "serit": {
+    "sekme": "Seçim",
+    "grup": "Seç",
+    "boyut": "kucuk",
+    "sira": 10
+   },
+   "menu": "Seçim",
+   "menu_sira": 10,
+   "hizli_erisim": false,
+   "ipucu": "Bütün görünür elemanları seç (seçilebilirlik süzgecine göre)",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "secim.temizle",
+   "ad": "SEÇİMİTEMİZLE",
+   "etiket": "Seçimi temizle",
+   "takma_adlar": [
+    "ST"
+   ],
+   "kisayol": "",
+   "ikon": "secim_temizle",
+   "serit": {
+    "sekme": "Seçim",
+    "grup": "Seç",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Seçim",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "Seçimi boşalt (boşta Esc de temizler)",
+   "yardim": "",
+   "kosul": "secim_var",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "secim.ters",
+   "ad": "TERSSEÇ",
+   "etiket": "Seçimi ters çevir",
+   "takma_adlar": [
+    "TERS"
+   ],
+   "kisayol": "",
+   "ikon": "secim_ters",
+   "serit": {
+    "sekme": "Seçim",
+    "grup": "Seç",
+    "boyut": "kucuk",
+    "sira": 30
+   },
+   "menu": "Seçim",
+   "menu_sira": 30,
+   "hizli_erisim": false,
+   "ipucu": "Seçili olmayanları seç, seçilileri bırak",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.sigdir",
+   "ad": "SIĞDIR",
+   "etiket": "Sığdır",
+   "takma_adlar": [
+    "SG",
+    "ZE"
+   ],
+   "kisayol": "Shift+F",
+   "ikon": "sigdir",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Gezinme",
+    "boyut": "buyuk",
+    "sira": 10
+   },
+   "menu": "Görünüm",
+   "menu_sira": 10,
+   "hizli_erisim": false,
+   "ipucu": "Bütün modeli görünüme sığdır (orta çift tık da)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.secime_yakinlas",
+   "ad": "SEÇİMEYAKINLAŞ",
+   "etiket": "Seçime yakınlaş",
+   "takma_adlar": [
+    "SY"
+   ],
+   "kisayol": "",
+   "ikon": "secime_yakinlas",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Gezinme",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Görünüm",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "Seçili elemanları görünüme sığdır",
+   "yardim": "",
+   "kosul": "secim_var",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.3b",
+   "ad": "3B",
+   "etiket": "3B görünüm",
+   "takma_adlar": [],
+   "kisayol": "Alt+1",
+   "ikon": "gorunum_3b",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Görünümler",
+    "boyut": "kucuk",
+    "sira": 30
+   },
+   "menu": "Görünüm/Standart görünümler",
+   "menu_sira": 30,
+   "hizli_erisim": false,
+   "ipucu": "İzometrik 3B görünüm",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.plan",
+   "ad": "PLAN",
+   "etiket": "Plan",
+   "takma_adlar": [],
+   "kisayol": "Alt+2",
+   "ikon": "gorunum_plan",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Görünümler",
+    "boyut": "kucuk",
+    "sira": 40
+   },
+   "menu": "Görünüm/Standart görünümler",
+   "menu_sira": 40,
+   "hizli_erisim": false,
+   "ipucu": "Etkin katın planı (ortografik, döndürme kapalı)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.on",
+   "ad": "ÖN",
+   "etiket": "Ön cephe",
+   "takma_adlar": [],
+   "kisayol": "Alt+3",
+   "ikon": "gorunum_on",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Görünümler",
+    "boyut": "kucuk",
+    "sira": 50
+   },
+   "menu": "Görünüm/Standart görünümler",
+   "menu_sira": 50,
+   "hizli_erisim": false,
+   "ipucu": "Ön cephe (Y doğrultusuna bakış, ortografik)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.yan",
+   "ad": "YAN",
+   "etiket": "Yan cephe",
+   "takma_adlar": [],
+   "kisayol": "Alt+4",
+   "ikon": "gorunum_yan",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Görünümler",
+    "boyut": "kucuk",
+    "sira": 60
+   },
+   "menu": "Görünüm/Standart görünümler",
+   "menu_sira": 60,
+   "hizli_erisim": false,
+   "ipucu": "Yan cephe (X doğrultusuna bakış, ortografik)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.ust_kat",
+   "ad": "ÜSTKAT",
+   "etiket": "Üst kat / düzlem",
+   "takma_adlar": [],
+   "kisayol": "PageUp",
+   "ikon": "ust_kat",
+   "menu": "Görünüm",
+   "menu_sira": 70,
+   "hizli_erisim": false,
+   "ipucu": "Plan ve cephede komşu üst düzleme geç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.alt_kat",
+   "ad": "ALTKAT",
+   "etiket": "Alt kat / düzlem",
+   "takma_adlar": [],
+   "kisayol": "PageDown",
+   "ikon": "alt_kat",
+   "menu": "Görünüm",
+   "menu_sira": 80,
+   "hizli_erisim": false,
+   "ipucu": "Plan ve cephede komşu alt düzleme geç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.kesit_gorunumu",
+   "ad": "KESİTGÖRÜNÜMÜ",
+   "etiket": "Kesit görünümü",
+   "takma_adlar": [
+    "KG"
+   ],
+   "kisayol": "Ctrl+Shift+K",
+   "ikon": "kesit_gorunumu",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Kip",
+    "boyut": "kucuk",
+    "sira": 90
+   },
+   "menu": "Görünüm",
+   "menu_sira": 90,
+   "hizli_erisim": false,
+   "ipucu": "Çubuk ve kesit (katı) görünümü arasında geç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": true,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.izgara",
+   "ad": "IZGARA",
+   "etiket": "Izgara",
+   "takma_adlar": [
+    "IZ"
+   ],
+   "kisayol": "F7",
+   "ikon": "izgara",
+   "serit": {
+    "sekme": "Görünüm",
+    "grup": "Kip",
+    "boyut": "kucuk",
+    "sira": 100
+   },
+   "menu": "Görünüm",
+   "menu_sira": 100,
+   "hizli_erisim": false,
+   "ipucu": "Çalışma ızgarasını aç / kapat",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": true,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.baslangic",
+   "ad": "BAŞLANGIÇ",
+   "etiket": "Başlangıç paneli",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "baslangic",
+   "menu": "Görünüm/Paneller",
+   "menu_sira": 110,
+   "hizli_erisim": false,
+   "ipucu": "Başlangıç panelini göster (boş model, hızlı aks, şablonlar, son dosyalar)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "gorunum.arayuzu_sifirla",
+   "ad": "ARAYÜZÜSIFIRLA",
+   "etiket": "Arayüzü sıfırla",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "arayuzu_sifirla",
+   "menu": "Görünüm",
+   "menu_sira": 120,
+   "hizli_erisim": false,
+   "ipucu": "Panel yerleşimini varsayılana döndür",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "ayarlar.ac",
+   "ad": "AYARLAR",
+   "etiket": "Ayarlar…",
+   "takma_adlar": [
+    "AY"
+   ],
+   "kisayol": "",
+   "ikon": "ayarlar",
+   "menu": "Görünüm",
+   "menu_sira": 130,
+   "hizli_erisim": false,
+   "ipucu": "Grafik, arayüz, dosya ve hesap motoru ayarları",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "analiz.coz",
+   "ad": "ÇÖZ",
+   "etiket": "Çöz",
+   "takma_adlar": [
+    "COZ"
+   ],
+   "kisayol": "F5",
+   "ikon": "coz",
+   "serit": {
+    "sekme": "Analiz",
+    "grup": "Çözüm",
+    "boyut": "buyuk",
+    "sira": 10
+   },
+   "menu": "Analiz",
+   "menu_sira": 10,
+   "hizli_erisim": true,
+   "ipucu": "Modeli hesap motoruyla çöz (eşzamansız; çözüm sürerken arayüz kullanılabilir)",
+   "yardim": "",
+   "kosul": "model_dolu",
+   "secim": "yok",
+   "tekrarlanir": true,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "analiz.iptal",
+   "ad": "İPTAL",
+   "etiket": "Çözümü iptal et",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "iptal",
+   "serit": {
+    "sekme": "Analiz",
+    "grup": "Çözüm",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Analiz",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "Süren çözümü iptal et",
+   "yardim": "",
+   "kosul": "cozum_suruyor",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "analiz.sonuc_ozeti",
+   "ad": "SONUÇÖZETİ",
+   "etiket": "Sonuç özeti",
+   "takma_adlar": [
+    "SO"
+   ],
+   "kisayol": "",
+   "ikon": "sonuc_ozeti",
+   "serit": {
+    "sekme": "Analiz",
+    "grup": "Sonuçlar",
+    "boyut": "kucuk",
+    "sira": 30
+   },
+   "menu": "Analiz",
+   "menu_sira": 30,
+   "hizli_erisim": false,
+   "ipucu": "Son çözümün özeti: SD sayısı, kombinasyonlar, en büyük D/C, uyarılar",
+   "yardim": "",
+   "kosul": "sonuc_var",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "D"
+  },
+  {
+   "id": "analiz.dc_renkleri",
+   "ad": "DCRENKLERİ",
+   "etiket": "D/C renkleri",
+   "takma_adlar": [
+    "DC"
+   ],
+   "kisayol": "",
+   "ikon": "dc_renkleri",
+   "serit": {
+    "sekme": "Analiz",
+    "grup": "Sonuçlar",
+    "boyut": "kucuk",
+    "sira": 40
+   },
+   "menu": "Analiz",
+   "menu_sira": 40,
+   "hizli_erisim": false,
+   "ipucu": "3B görünümde elemanları D/C oranına göre renklendir",
+   "yardim": "",
+   "kosul": "sonuc_var",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": true,
+   "sahip": "D"
+  },
+  {
+   "id": "motor.yeniden_baslat",
+   "ad": "MOTORUYENİDENBAŞLAT",
+   "etiket": "Hesap motorunu yeniden başlat",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "motor",
+   "menu": "Analiz",
+   "menu_sira": 90,
+   "hizli_erisim": false,
+   "ipucu": "Hesap motoru süreçlerini sonlandırıp yeniden başlat (çözüm önbelleği boşalır)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "A"
+  },
+  {
+   "id": "yardim.kisayollar",
+   "ad": "KISAYOLLAR",
+   "etiket": "Kısayollar",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "kisayollar",
+   "serit": {
+    "sekme": "Yardım",
+    "grup": "Yardım",
+    "boyut": "kucuk",
+    "sira": 10
+   },
+   "menu": "Yardım",
+   "menu_sira": 10,
+   "hizli_erisim": false,
+   "ipucu": "Bütün komutların kısayolları ve takma adları",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  },
+  {
+   "id": "yardim.hakkinda",
+   "ad": "HAKKINDA",
+   "etiket": "op4 hakkında",
+   "takma_adlar": [],
+   "kisayol": "",
+   "ikon": "hakkinda",
+   "serit": {
+    "sekme": "Yardım",
+    "grup": "Yardım",
+    "boyut": "kucuk",
+    "sira": 20
+   },
+   "menu": "Yardım",
+   "menu_sira": 20,
+   "hizli_erisim": false,
+   "ipucu": "Sürüm, Opus Fortis, lisanslar",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C"
+  }
+ ]
+}

@@ -1,0 +1,405 @@
+{
+ "bicim": 1,
+ "aciklama": "op4 öznitelik şeması (MIMARI §11.2). Faz 1 alt kümesi: model gezgini ve salt okunur Özellikler paneli. C++ sabitleri kaynak/cekirdek/oznitelik.h oznitelik::*; JS üreticisi op4/js/op4_ops.js oznitelikCikar. Faz 3'te tam şema (sonuç, yük, IFC, kullanıcı alanları) eklenir; id değiştirilmez.",
+ "oznitelikler": [
+  {
+   "id": "tur",
+   "ad": "Tür",
+   "tur": "enum",
+   "grup": "Kimlik",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "eleman",
+    "tip"
+   ],
+   "faz": 1,
+   "degerler": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ]
+  },
+  {
+   "id": "no",
+   "ad": "No",
+   "tur": "sayi",
+   "grup": "Kimlik",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "numara"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "ad",
+   "ad": "Ad",
+   "tur": "metin",
+   "grup": "Kimlik",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "isim"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "alt_tur",
+   "ad": "Alt tür",
+   "tur": "enum",
+   "grup": "Kullanım",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "alttur",
+    "cins"
+   ],
+   "faz": 1,
+   "degerler": [
+    "kolon",
+    "kiris",
+    "doseme",
+    "cati",
+    "cephe",
+    "capraz",
+    "makas-ust",
+    "makas-alt",
+    "makas-dikme",
+    "makas-diyagonal",
+    "asik",
+    "kren",
+    "bag",
+    "temel",
+    "mesnet",
+    "dugum",
+    "diger"
+   ]
+  },
+  {
+   "id": "kullanim_yeri",
+   "ad": "Kullanım yeri",
+   "tur": "enum",
+   "grup": "Kullanım",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum"
+   ],
+   "esanlamlilar": [
+    "konum_sinifi",
+    "yer"
+   ],
+   "faz": 1,
+   "degerler": [
+    "kose",
+    "kenar",
+    "ic",
+    "dis",
+    "konsol",
+    "dis-cephe",
+    "temel",
+    "kolon-ustu",
+    "ara",
+    "+x",
+    "-x",
+    "+y",
+    "-y"
+   ]
+  },
+  {
+   "id": "kat",
+   "ad": "Kat",
+   "tur": "liste",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "katlar"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "seviye",
+   "ad": "Seviye",
+   "tur": "metin",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "kot_adi"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "kesit",
+   "ad": "Kesit",
+   "tur": "metin",
+   "grup": "Kesit ve malzeme",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "profil_adi"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "profil",
+   "ad": "Profil",
+   "tur": "metin",
+   "grup": "Kesit ve malzeme",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "normal_profil"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "malzeme",
+   "ad": "Malzeme",
+   "tur": "metin",
+   "grup": "Kesit ve malzeme",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk",
+    "panel"
+   ],
+   "esanlamlilar": [],
+   "faz": 1
+  },
+  {
+   "id": "sistem",
+   "ad": "Sistem",
+   "tur": "enum",
+   "grup": "Kullanım",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel"
+   ],
+   "esanlamlilar": [],
+   "faz": 1,
+   "degerler": [
+    "celik",
+    "betonarme"
+   ]
+  },
+  {
+   "id": "grup",
+   "ad": "Grup",
+   "tur": "metin",
+   "grup": "Kimlik",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [],
+   "faz": 1
+  },
+  {
+   "id": "uzunluk",
+   "ad": "Uzunluk",
+   "tur": "sayi",
+   "grup": "Geometri",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "boy",
+    "L"
+   ],
+   "faz": 1,
+   "birim": "m"
+  },
+  {
+   "id": "egim",
+   "ad": "Eğim açısı",
+   "tur": "sayi",
+   "grup": "Geometri",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "egim_acisi"
+   ],
+   "faz": 1,
+   "birim": "°"
+  },
+  {
+   "id": "aci",
+   "ad": "Kesit açısı",
+   "tur": "sayi",
+   "grup": "Geometri",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "donukluk"
+   ],
+   "faz": 1,
+   "birim": "°"
+  },
+  {
+   "id": "kalinlik",
+   "ad": "Kalınlık",
+   "tur": "sayi",
+   "grup": "Geometri",
+   "kaynak": "model",
+   "uygulandigi": [
+    "panel"
+   ],
+   "esanlamlilar": [
+    "t"
+   ],
+   "faz": 1,
+   "birim": "m"
+  },
+  {
+   "id": "alan",
+   "ad": "Alan",
+   "tur": "sayi",
+   "grup": "Geometri",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "panel"
+   ],
+   "esanlamlilar": [],
+   "faz": 1,
+   "birim": "m²"
+  },
+  {
+   "id": "serbest_i",
+   "ad": "i ucu serbestlikleri",
+   "tur": "metin",
+   "grup": "Bağlantı",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "mafsal_i"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "serbest_j",
+   "ad": "j ucu serbestlikleri",
+   "tur": "metin",
+   "grup": "Bağlantı",
+   "kaynak": "model",
+   "uygulandigi": [
+    "cubuk"
+   ],
+   "esanlamlilar": [
+    "mafsal_j"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "serbest_dugum",
+   "ad": "Serbest düğüme bağlı",
+   "tur": "bool",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum"
+   ],
+   "esanlamlilar": [
+    "serbest"
+   ],
+   "faz": 1
+  },
+  {
+   "id": "x",
+   "ad": "X",
+   "tur": "sayi",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [],
+   "faz": 1,
+   "birim": "m"
+  },
+  {
+   "id": "y",
+   "ad": "Y",
+   "tur": "sayi",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [],
+   "faz": 1,
+   "birim": "m"
+  },
+  {
+   "id": "z",
+   "ad": "Z",
+   "tur": "sayi",
+   "grup": "Konum",
+   "kaynak": "turetilmis",
+   "uygulandigi": [
+    "cubuk",
+    "panel",
+    "dugum",
+    "mesnet"
+   ],
+   "esanlamlilar": [
+    "kot"
+   ],
+   "faz": 1,
+   "birim": "m"
+  }
+ ]
+}

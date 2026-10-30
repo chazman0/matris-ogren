@@ -44,6 +44,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cekirdek-linux:
+    # F1 paket sözleşmeleri: platformdan bağımsız çekirdek (op4_cekirdek, op4_cekirdek_js) ve sınamaları Linux'ta.
+    # A (derleme-motor) genişletir: CMakePresets (linux-cekirdek, linux-cekirdek-asan), Python 3.13 + 3.14, OP4OLCUM.
+    name: op4 — çekirdek (Linux; ctest, node, pytest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Yapılandır ve derle (clang, uyarılar hata)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          command -v ninja > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q ninja-build; }
+          cmake -S op4 -B op4-linux -G Ninja -DCMAKE_BUILD_TYPE=Debug -DOP4_UYARI_HATA=ON
+          cmake --build op4-linux
+
+      - name: Sına — C++ (ctest)
+        run: ctest --test-dir op4-linux --output-on-failure
+
+      - name: Sına — JS (node --test op4/testler/js)
+        run: node --test op4/testler/js/*.test.js
+
+      - name: Sına — Python (pytest op4/testler/python)
+        run: |
+          python -m pip install --disable-pip-version-check -q "pytest==9.2.0"
+          python -m pytest op4/testler/python -q -p no:cacheprovider
+
   windows:
     name: op4 — derle, sına, paketle
     runs-on: windows-2025
@@ -116,7 +158,10 @@ jobs:
           cmake --build op4-yapi --config Release --parallel -- -nologo -v:minimal  # "-" ile: Git Bash "/x" bağımsız değişkenlerini yola çevirir
           echo "SURE_DERLE=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
 
-      - name: Paket klasörü (op4.exe + kimlik + gömülü Python + hesap motoru)
+      - name: Sına — C++ çekirdek ve sözleşmeler (ctest, doctest)
+        run: ctest --test-dir op4-yapi -C Release --output-on-failure
+
+      - name: Paket klasörü (op4.exe + kimlik + veri + gömülü Python + hesap motoru)
         run: |
           bas=$(date +%s)
           cmake --install op4-yapi --config Release --prefix paket
@@ -128,7 +173,11 @@ jobs:
             echo "BOYUT_MOTOR=$(du -sb paket/motor | cut -f1)"
             echo "BOYUT_PAKET=$(du -sb paket | cut -f1)"
           } >> "$GITHUB_ENV"
-          du -sh paket/op4.exe paket/kimlik paket/python paket/motor paket
+          du -sh paket/op4.exe paket/kimlik paket/veri paket/python paket/motor paket
+          # Veri katalogları (komutlar.json …) kurulu programla gelir; kabuk açılışta okur (F1 paket sözleşmeleri S23).
+          for f in komutlar.json oznitelikler.json sahne_kodlari.json; do
+            [ -f "paket/veri/$f" ] || { echo "::error::paket/veri/$f yok"; exit 1; }
+          done
           echo "::group::paket/python"
           ls paket/python
           echo "::endgroup::"

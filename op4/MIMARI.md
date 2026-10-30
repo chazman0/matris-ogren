@@ -1587,3 +1587,330 @@ Toplam ≈ 32–42 hafta (bir deneyimli geliştirici eşdeğeri). Faz 7 paralel 
 12. **Pencere başına bir proje:** 1.0'da proje sekmeleri yoktur; ikinci proje yeni pencerede açılır.
 13. **Büyük modeller:** seyrek çözücü yolu için scipy (≈ +90 MB, isteğe bağlı bileşen). Seçilmezse op4 ≈ 6000 SD ile sınırlı kalır; gerçek binaların IFC'leri çoğu zaman bunu aşar.
 14. **Geçici düzeltme:** masaüstü (Electron) sürümünde titreşim düzeltmesi ve sol/Shift fare eşlemesi (≈ 1 gün). İstenirse Faz 1'de yapılır.
+
+---
+
+## 24. F1 paket sözleşmeleri
+
+Faz 1 dört paketle **paralel** yürür. Bu bölüm, paketlerin birbirini beklemeden çalışabilmesi için arayüzleri (sözleşme
+katmanı, "S"), dosya sahipliğini, birlikte çalışma kurallarını ve paket başına kabul denetimlerini sabitler. Sözleşme
+katmanı derlenen, sınanan **taslak uygulamalarla** birlikte gelir: program bugün derlenir, Faz 0 davranışı değişmez,
+her paket kendi taslağını gerçeğiyle değiştirir. Bölüm §4, §6–§9, §12–§14 ve §19–§21'e dayanır; çelişkide onlar geçerlidir.
+
+### 24.1 Paketler ve Faz 1 iş listesi
+
+Faz 1 iş listesi önceki bölümlerde numarasızdı; numaralar burada sabitlenir.
+
+| İş | Paket | Kapsam | Dayanak |
+|---|---|---|---|
+| 1.1 | **A** derleme-motor | Derleme yapısı: Windows'suz `op4_cekirdek` (Linux'ta derlenir ve sınanır), CMakePresets (win-surum, win-hata, linux-cekirdek, linux-cekirdek-asan), Linux CI işinin genişletilmesi (Python 3.13 + 3.14, ASan/UBSan, `OP4OLCUM`), gölgelendiricilerin derlemede FXC SM 5.1 ile derlenmesi, `/WX` | §6.1, §19, §20.1, D12 |
+| 1.2 | **A** derleme-motor | Motor süreci: `op4motor.exe`, `op4/motor/op4_sunucu.py`, Win32 ve POSIX C++ istemcisi (çerçeveleme, id, iptal, yeniden başlatma, yönlendirme), `docs/web_kopru.py`'ye eklemeli işlemler (`anlat`, `bina_kimlik`, iptal türü, `sd_siniri`) ve pytest | §8 |
+| 1.3 | **B** model-cekirdegi | QuickJS-ng tümleşimi, ön yükleme, tipli dizi köprüsü; `op4/js/op4_cekirdek.js` cephesi ve `op4/js/op4_ops.js` (`bosModel`, `katUyeligi`, `kullanimYeri`, `profilAdiNormal`, `oznitelikCikar`, `sahneCikar`, `sonucEsle`); node sınamaları ve 1e-12 eşdeğerlik derlemi | §9, §10.2–§10.5 |
+| 1.4 | **C** arayuz-goruntu | Şerit / menü / hızlı erişim (`komutlar.json`'dan), komut satırı, durum çubuğu, Başlangıç paneli (boş "Adsız 1", 9 şablon, hızlı aks), çubuk görünümü çizimi, gezinme (sol sürükle kaydır, Shift+sol döndür, tekerlek imlece, orta kaydır, görünüm küpü, Alt+1…4, PgUp/PgDn), CPU BVH seçme ve pencere seçimi, vurgu, model gezgini (kat → tür → kullanım yeri, sayılarla), salt okunur Özellikler, GPU tercih dışa aktarımları (D26), Ayarlar › Grafik, `--senaryo` | §5, §6.1, §6.5, §6.9, §7 |
+| 1.5 | **D** dosya-cozum | Çözüm: F5 eşzamansız, iptal, sonuç özeti, D/C renkleri, eski işareti; şablon dökümü (`op4/veri/sablonlar/`) | §4 çözüm akışı, §13.4 |
+| 1.6 | **D** dosya-cozum | Dosyalar: `.op4` ZIP (miniz), atomik yazma, kirli işareti, otomatik kayıt ve kurtarma, son dosyalar, `.matris` / `.json` içe aktarma, ilişkilendirme, tek örnek borusu, çökme dökümü, IFC dışa aktarma (JS çekirdek üstünden) | §13, §14.1 |
+| 1.7 | entegratör (+ hepsi) | Bütünleştirme ve kabul: uçtan uca senaryolar, `--oz-sinama`, TASARIM §20 (mimari), §21 (.op4 biçimi; D yazar), §22 (komut çerçevesi; C yazar), `op4-v0.1.0` etiketi | §21, §22 |
+
+### 24.2 Sözleşme katmanı (S)
+
+Bütün C++ sözleşmeleri `op4::` ad alanında, Türkçe ASCII adlarla ve başlık yorumlarında belgelidir. "Taslak" sütunu
+sözleşme işlemesinde gelen uygulamanın durumunu gösterir: **tam** = kullanılabilir, **taslak** = doğru biçimde boş /
+"henüz uygulanmadı" döner.
+
+| Kod | Dosya | Konu | Uygulayan | Kullanan | Taslak |
+|---|---|---|---|---|---|
+| S1 | `kaynak/cekirdek/kimlik.h` | `ElemanKimligi {tur u8, alt u16, no u32}`, tür kodları, metin biçimi `cubuk:12` | S | hepsi | tam |
+| S2 | `kaynak/cekirdek/olay.h` | `Olay<…>` gözlemci listesi (UI iş parçacığı) | S | hepsi | tam |
+| S3 | `kaynak/cekirdek/vektor.h` | `V3d`, `Kutu3d` (double) | S | hepsi | tam |
+| S4 | `kaynak/cekirdek/sahne.h`, `veri/sahne_kodlari.json` | `SahneAnlik` (değişmez, `SahnePtr`): seviyeler, akslar, düğümler, çubuklar, paneller, mesnetler, temeller, kesitler; kod tabloları; `OrnekSahneAnlik()` sınama düzeneği | B üretir | C çizer, BVH | tam |
+| S5 | `kaynak/cekirdek/oznitelik.h`, `veri/oznitelikler.json` | Sütunlu öznitelik tablosu, Faz 1 alan kimlikleri, `OrtakOzellikler` ("(çeşitli)") | B üretir | C gezgin, Özellikler | tam |
+| S6 | `kaynak/cekirdek/turkce.h` | Türkçe harf katlama, ondalık virgül, sayı okuma | C | hepsi | tam |
+| S7 | `kaynak/cekirdek/secim.h` | `Secim` (sıralı, tekrarsız; Yeni / Ekle / Çıkar / Tersle / İçinde süz; sürüm, olay) | C | hepsi | tam |
+| S8 | `kaynak/cekirdek/secme.h` | `GorusIzdusumu` (double), `SecmeDizini` (BVH: EnYakin, Adaylar, Pencere, IsinVurusu, Sinir) | C | C | taslak (izdüşüm tam, BVH boş) |
+| S9 | `kaynak/cekirdek/gorunum.h` | `GorunumDurumu` (kip, renk kipi, ızgara, üzerindeki eleman, `SonucBoyamasi`, çizim / sığdır istekleri) | C | C okur, D sonuç yazar | tam |
+| S10 | `kaynak/cekirdek/gezgin.h` | Model gezgini ağacı (kat → alt tür → kullanım yeri; sayılar, kimlikler) | C | C | taslak |
+| S11 | `kaynak/cekirdek/model_cekirdegi.h` | `ModelCekirdegi`: YeniBos, Yukle, Uygula (beyaz liste), GeriAl, Yinele, GeriAlBilgisi, Sahne, Oznitelikler, Ozet, Denetle, Metin, SonucEsle, IfcDisari; `IslemRaporu` (eklenen / silinen / değişen, C1 geçiş onayı) | B | C, D | taslak (geçici C++ çekirdeği: boş model, yükle, metin) |
+| S12 | `kaynak/cekirdek/motor_protokol.h`, `motor/op4_protokol.py`, `testler/ortak/motor_protokol.json` | Tel protokolü: çerçeve, ileti biçimleri (bağlayıcı alan sırası), Y1–Y4 değişmezleri, süreç komut satırı, çıkış kodları; C++ ve Python kodlayıcıları ortak vektörlerle | S | A | tam |
+| S13 | `kaynak/cekirdek/motor_hizmeti.h` | `MotorHizmeti` (eşzamansız Gonder / Iptal / Pompala; işleyiciler UI iş parçacığında, her istek için tam bir kez), `MotorRoluSec` (§8.3), `MotorIstemcisiOlustur` | A | D, C, A | Windows'ta süreç içi gömülü motor uyarlayıcısı (`motor_modulu.cpp`); süreç istemcisi taslak |
+| S14 | `kaynak/platform/surec.h` | Alt süreç + iki anonim boru (Win32 / POSIX) | A | A | taslak |
+| S15 | `kaynak/cekirdek/proje_belgesi.h` | `ProjeBelgesi`: yol, ad ("Adsız N"), pencere başlığı ("op4 — ad •"), kirli işareti, **kaydetme katkıları** (her modül kendi ZIP girdisini yazar / okur), olaylar | D | C başlık, hepsi katkı | tam |
+| S16 | `kaynak/cekirdek/proje_dosyasi.h` | `.op4` ZIP okuma / yazma, `BicimSapta`, manifest, son dosyalar, kurtarma kayıtları | D | D | taslak (BicimSapta, SonDosyaEkle tam) |
+| S17 | `kaynak/platform/dosya_sistemi.h` | Atomik yazma, okuma, kullanıcı klasörleri (`OP4_KULLANICI_DIZINI` sınama yönlendirmesi) | D | hepsi | taşınabilir tam; Windows sağlamlaştırması D |
+| S18 | `kaynak/cekirdek/ayarlar.h` | `Ayarlar` (grafik → C, arayüz → C, dosya → D, motor → A, çekirdek → B gruplarıyla), JSON gidiş-dönüşü, bilinmeyen anahtarlar korunur | D kalıcılık | hepsi | tam |
+| S19 | `kaynak/cekirdek/sonuc.h` | `SonucOzeti`, `SonucDurumu` (eski işareti, olay), `DcRengi` (web ölçeği: < 0,7 / 0,9 / 1,0 / > 1), `BoyamaKur`, yanıt çözümü | D | C çizer | kısmi (renk, durum tam; yanıt çözümü taslak) |
+| S20 | `kaynak/cekirdek/komut.h`, `veri/komutlar.json` | Komut kataloğu (id, ad, takma adlar, kısayol, şerit / menü yeri, ipucu, **sahip**) ve kayıt defteri: Bagla, Bul (Türkçe katlamalı), Tamamla, Durum (kullanılamama nedeni), Calistir, SatirCalistir, KisayolBul | C | hepsi bağlar | tam |
+| S21 | `kaynak/cekirdek/arayuz_kancalari.h` | Panel, durum öğesi, menü katkısı, ayar sayfası kayıtları; `Bildirimler` (C uygular), `IletisimKutulari` (D uygular); pencere açmayan sınama sürümleri | C defter | hepsi kaydeder | tam (ImGui çizimi C'de) |
+| S22 | `kaynak/cekirdek/hizmetler.h` | `Hizmetler`: paketlerin TEK buluşma noktası (işaretçiler, olaylar `modelDegisti` / `modelYuklendi` / `sahneDegisti`, `kapatmaOnayi`, kare işleri); `ModelIslemiUygula` (C1 onay döngüsü + kirli + seçim ayıklama + sonuç eski), `GeriAlUygula`, `YineleUygula`, `ModelYuklendi` | S | hepsi | tam |
+| S23 | `kaynak/cekirdek/kabuk.h`, `kaynak/moduller_listesi.cpp` | `UygulamaKabugu` (ortak nesnelerin sahibi; ayarlar ve katalog yükleme; boş "Adsız 1"), `ModulOrtami` (sahiplik, ana pencere, test kipi, açılış dosyası), modül sırası A → B → C → D(dosya) → D(çözüm) | S | uygulama | tam; modüller taslak |
+| S24 | `kaynak/secenekler.h`, `kaynak/test_kipleri.h` | F1 komut satırı bayraklarının tamamı (`--senaryo`, `--oz-sinama`, `--yeni-ornek`, `--acilis-yok`, `--grafik-denetim`, `--golgelendirici-dizini` …); test kiplerinin dağılımı | A | hepsi | tam (senaryo ve öz sınama taslak) |
+| S25 | `kaynak/grafik/golgelendirici_bayt.h` | Derlemede üretilmiş gölgelendirici bayt kodu; grafik.cpp önce bunu sorar, yoksa çalışma anında derler | A | C | taslak (boş) |
+| S26 | `js/op4_ops.js` | Yeni saf işlemler; JSDoc imzaları ve dönüş biçimleri; `KODLAR`, `OZNITELIK_IDLERI`, `TASLAK` listesi | B | B cephesi | `bosModel` tam; diğerleri biçimce doğru boş |
+| S27 | `js/op4_cekirdek.js` | QuickJS cephesi (`olustur()` örneği): yöntemler S11 ile birebir; `ISLEMLER` beyaz listesi; hata kuralı; geri al kuralı | B | B'nin C++ köprüsü | yeniBos, yukle, metin, ozet tam; diğerleri taslak |
+
+**Bağlayıcı kurallar (sözleşmeler arası):**
+1. Model değişikliği her zaman `ModelIslemiUygula` / `GeriAlUygula` / `YineleUygula` yolundan geçer; böylece kirli işareti,
+   seçim ayıklama, sonuç eskime ve olaylar tek yerde kalır. Yükleme `ModelYuklendi` ile biter; belge durumunu D
+   `ProjeBelgesi::Acildi` ile kurar.
+2. Hizmetler'e yalnız UI iş parçacığından dokunulur. Motor yanıtları `MotorHizmeti::Pompala`, çekirdek iş parçacığı
+   (ileride) kendi kuyruğuyla UI'ye döner.
+3. Sahne ve öznitelik anlıkları değişmezdir (`shared_ptr<const …>`); iş havuzu (BVH, LOD) kilitsiz okur.
+4. Komutların davranışı yalnız `KomutYoneticisi::Bagla` ile eklenir; menü, şerit, kısayol ve komut satırı aynı defterden
+   geçer. Faz 0 menüsü (`uygulama.cpp` `IstekleriIsle`) bir komut bağlanınca kendiliğinden onu çağırır.
+5. `.op4` içeriği katkılarla toplanır: model → B'nin `Metin()`'i (D katkıyı ekler), `gorunum/` ve `secim/` → C,
+   `sonuc/`, `manifest.json`, `onizleme.png` → D.
+
+### 24.3 Dosya sahipliği
+
+Bir paket YALNIZ kendi dosyalarını değiştirir. Aşağıdaki tablo makinece okunur (`testler/test_op4_sozlesme.py`):
+**ilk eşleşen satır geçerlidir**; `*` klasör ayırıcısını geçmez, `**` geçer. Paketler: **A**, **B**, **C**, **D**; **S** =
+sözleşme dosyası (§24.4 değişiklik kuralı); **-** = değiştirilmez (kullanıcının kimlik dosyaları). Depodaki her op4 dosyası
+bir satıra uymalıdır; yeni dosya, sahibinin klasörüne ya da adlandırma önekiyle eklenir.
+
+```sahiplik
+op4/MIMARI.md                                   S
+op4/README.md                                   S
+op4/kimlik/**                                   -
+op4/cmake/JsGom.cmake                           B
+op4/cmake/bagimlilik_quickjs.cmake              B
+op4/cmake/bagimlilik_miniz.cmake                D
+op4/cmake/**                                    A
+op4/CMakeLists.txt                              A
+op4/CMakePresets.json                           A
+op4/.gitignore                                  A
+op4/golgelendiriciler/**                        A
+op4/kaynak/cekirdek/kimlik.h                    S
+op4/kaynak/cekirdek/kimlik.cpp                  S
+op4/kaynak/cekirdek/olay.h                      S
+op4/kaynak/cekirdek/vektor.h                    S
+op4/kaynak/cekirdek/sahne.h                     S
+op4/kaynak/cekirdek/sahne.cpp                   S
+op4/kaynak/cekirdek/oznitelik.h                 S
+op4/kaynak/cekirdek/secim.h                     S
+op4/kaynak/cekirdek/secme.h                     S
+op4/kaynak/cekirdek/gorunum.h                   S
+op4/kaynak/cekirdek/gezgin.h                    S
+op4/kaynak/cekirdek/model_cekirdegi.h           S
+op4/kaynak/cekirdek/motor_protokol.h            S
+op4/kaynak/cekirdek/motor_protokol.cpp          S
+op4/kaynak/cekirdek/motor_hizmeti.h             S
+op4/kaynak/cekirdek/proje_belgesi.h             S
+op4/kaynak/cekirdek/proje_dosyasi.h             S
+op4/kaynak/cekirdek/ayarlar.h                   S
+op4/kaynak/cekirdek/sonuc.h                     S
+op4/kaynak/cekirdek/komut.h                     S
+op4/kaynak/cekirdek/turkce.h                    S
+op4/kaynak/cekirdek/arayuz_kancalari.h          S
+op4/kaynak/cekirdek/hizmetler.h                 S
+op4/kaynak/cekirdek/hizmetler.cpp               S
+op4/kaynak/cekirdek/kabuk.h                     S
+op4/kaynak/cekirdek/kabuk.cpp                   S
+op4/kaynak/platform/surec.h                     S
+op4/kaynak/platform/dosya_sistemi.h             S
+op4/kaynak/grafik/golgelendirici_bayt.h         S
+op4/kaynak/secenekler.h                         S
+op4/kaynak/test_kipleri.h                       S
+op4/kaynak/moduller_listesi.cpp                 S
+op4/kaynak/cekirdek/motor_*                     A
+op4/kaynak/cekirdek/oznitelik.cpp               B
+op4/kaynak/cekirdek/oznitelik_*                 B
+op4/kaynak/cekirdek/secim.cpp                   C
+op4/kaynak/cekirdek/secme*                      C
+op4/kaynak/cekirdek/bvh*                        C
+op4/kaynak/cekirdek/kamera*                     C
+op4/kaynak/cekirdek/gezinme*                    C
+op4/kaynak/cekirdek/gezgin.cpp                  C
+op4/kaynak/cekirdek/komut.cpp                   C
+op4/kaynak/cekirdek/komut_*                     C
+op4/kaynak/cekirdek/turkce.cpp                  C
+op4/kaynak/cekirdek/arayuz_kancalari.cpp        C
+op4/kaynak/cekirdek/girdi_*                     C
+op4/kaynak/cekirdek/proje_*                     D
+op4/kaynak/cekirdek/ayarlar.cpp                 D
+op4/kaynak/cekirdek/sonuc*                      D
+op4/kaynak/cekirdek/cozum_*                     D
+op4/kaynak/platform/surec_*                     A
+op4/kaynak/platform/dosya_sistemi*              D
+op4/kaynak/cekirdek_js/**                       B
+op4/kaynak/motor_barindirici/**                 A
+op4/kaynak/grafik/golgelendirici_bayt*          A
+op4/kaynak/grafik/**                            C
+op4/kaynak/arayuz/**                            C
+op4/kaynak/dosya/**                             D
+op4/kaynak/cozum/**                             D
+op4/kaynak/ana.cpp                              A
+op4/kaynak/secenekler.cpp                       A
+op4/kaynak/test_motor.cpp                       A
+op4/kaynak/motor.*                              A
+op4/kaynak/motor_modulu.cpp                     A
+op4/kaynak/gunluk.*                             A
+op4/kaynak/golgelendirici.h                     A
+op4/kaynak/op4.manifest                         A
+op4/kaynak/op4.rc.in                            A
+op4/kaynak/proje.*                              D
+op4/kaynak/uygulama.*                           C
+op4/kaynak/test_ekran.cpp                       C
+op4/kaynak/arayuz.*                             C
+op4/kaynak/acilis.*                             C
+op4/kaynak/grafik.*                             C
+op4/kaynak/geometri.*                           C
+op4/kaynak/kamera.h                             C
+op4/kaynak/matematik.h                          C
+op4/kaynak/resim.*                              C
+op4/motor/op4_protokol.py                       S
+op4/motor/**                                    A
+op4/js/**                                       B
+op4/veri/sahne_kodlari.json                     S
+op4/veri/komutlar.json                          C
+op4/veri/oznitelikler.json                      B
+op4/veri/sablonlar/**                           D
+op4/veri/**                                     C
+op4/testler/cekirdek/ana_test.cpp               S
+op4/testler/cekirdek/sinama_yardim.h            S
+op4/testler/cekirdek/sozlesme_*                 S
+op4/testler/cekirdek/motor_*                    A
+op4/testler/cekirdek/cekirdek_js_*              B
+op4/testler/cekirdek/arayuz_*                   C
+op4/testler/cekirdek/secme_*                    C
+op4/testler/cekirdek/kamera_*                   C
+op4/testler/cekirdek/dosya_*                    D
+op4/testler/cekirdek/cozum_*                    D
+op4/testler/js/sozlesme.test.js                 S
+op4/testler/js/**                               B
+op4/testler/derlem/**                           B
+op4/testler/python/test_protokol.py             S
+op4/testler/python/**                           A
+op4/testler/ortak/**                            S
+op4/testler/senaryolar/arayuz_*                 C
+op4/testler/senaryolar/dosya_*                  D
+op4/testler/senaryolar/cozum_*                  D
+op4/testler/altin/**                            C
+op4/araclar/sablon_dok.py                       D
+op4/araclar/kimlik_uret.py                      C
+op4/araclar/yer_tutucu_kimlik.py                C
+op4/araclar/**                                  A
+op4/kurulum/**                                  A
+.github/workflows/op4.yml                       A
+docs/web_kopru.py                               A
+testler/test_web_kopru_op4.py                   A
+testler/test_op4_sozlesme.py                    S
+testler/test_op4_araclar.py                     A
+```
+
+**Ortak dosyalar için kurallar:**
+- `op4/CMakeLists.txt` (A): kaynaklar **klasör deseniyle** toplanır (`*_win.cpp` yalnız Windows, `*_posix.cpp` yalnız diğerleri).
+  B, C ve D yeni `.cpp` dosyalarını kendi klasörlerine koyar; CMake'e dokunmaz. Yeni bağımlılık kendi
+  `cmake/bagimlilik_<ad>.cmake` dosyasında (`op4_bagimlilik_git` / `op4_bagimlilik_url`; işleme özeti ya da SHA256 zorunlu).
+  Sınamalar `op4/testler/cekirdek/<önek>_*.cpp` olarak eklenir; tek doctest yürütücüsüne kendiliğinden girer.
+- `.github/workflows/op4.yml` (A): Linux işi `ctest`, `node --test op4/testler/js/*.test.js` ve `pytest op4/testler/python`'ı
+  desenle çalıştırır; Windows işi `ctest` çalıştırır. Diğer paketler yeni dosya ekleyerek CI'a girer. Windows'a özgü yeni bir
+  CI adımı gerekiyorsa (ör. D'nin şablon dökümü) A'ya §24.6 günlüğüyle istek bırakılır ya da A'nın onayıyla tek adım eklenir.
+- `op4/veri/komutlar.json` (C): F1'in bütün komutları (37) sahipleriyle ÖNCEDEN yazılmıştır; paketler yalnız `Bagla` çağırır.
+  Yeni komut gerekirse komutun sahibi listenin SONUNA kendi kaydını ekler (id, kısayol ve katlanmış ad tekil kalmalı;
+  `sozlesme_komut.cpp` denetler). Kayıt silmek ya da id değiştirmek yasaktır.
+- `kaynak/cekirdek/ayarlar.h` (S): her paket yalnız kendi grubuna alan ekler (`grafik`, `arayuz` → C; `dosya` → D;
+  `motor` → A; `cekirdek` → B); JSON okuma / yazma satırları D'nin `ayarlar.cpp`'sindedir, ekleyen paket aynı işlemede ekler.
+- `kaynak/secenekler.h` (S): F1 bayraklarının hepsi tanımlıdır; yeni bayrak bir alan + `Ayristir` satırı + `ana.cpp`
+  yardım yorumudur (A'ya bildirilir).
+- `kaynak/uygulama.cpp` (C): Faz 0 ana döngüsü. Motor (A) ve dosya komutları (D) buraya **dokunmadan** bağlanır: A
+  `MotorModuluKur`'da `Hizmetler::motor`'u değiştirir, D `dosya.*` komutlarını bağlar. Sığdır, motor durumu ve kare işleri
+  kabuktan okunur.
+- `docs/` (web sürümü): yalnız eklemeli değişiklik (D35). `docs/web_kopru.py` A'nındır; `docs/ifc_disari.js`'e `kesitCoz`
+  eki Faz 2'dir (B). Kök motor modülleri F1'de değişmez.
+- TASARIM.md: §20 (mimari) entegratör, §21 (.op4 biçimi) D, §22 (komut çerçevesi) C yazar; bölüm başlığı dışında
+  birbirinin bölümüne dokunulmaz.
+
+### 24.4 Sözleşme değişiklik kuralı
+
+- S dosyalarında **yalnız eklemeli** değişiklik serbesttir: yeni yapı alanı (varsayılanlı), yeni sanal olmayan yardımcı,
+  yeni enum değeri (sona), yeni ileti türü (bilinmeyen tür hata değildir), yeni komut / öznitelik / kod kaydı.
+- Mevcut bir imzayı, alan anlamını, enum değerini, kod tablosu değerini, ileti alan sırasını değiştirmek ya da silmek
+  **entegratör onayı** ister ve aynı işlemede bütün kullanıcı paketlerin derlemesini ve sınamalarını yeşil tutmalıdır.
+- Her S değişikliği §24.6 günlüğüne bir satır ekler. Sözleşme sınamaları (`sozlesme_*.cpp`, `sozlesme.test.js`,
+  `test_protokol.py`, `testler/test_op4_sozlesme.py`) yalnız güçlendirilebilir; gevşetilmez.
+- Taslak bir uygulamayı gerçeğiyle değiştirmek sözleşme değişikliği değildir (ör. B'nin `gecici_cekirdek.cpp`'yi silip QuickJS
+  çekirdeğini koyması). Taslak listeleri (`Op4Ops.TASLAK`, `Op4Cekirdek.TASLAK`) uygulandıkça kısalır.
+
+### 24.5 İtme ve birleştirme
+
+Bütün paketler aynı dala iter (`claude/dreamy-franklin-nvl0oo`). Her itmeden önce `git fetch origin && git merge --no-edit
+origin/claude/dreamy-franklin-nvl0oo`; zorla itme yok. Sahiplik kuralı nedeniyle birleştirme çatışması yalnız ortak
+dosyalarda beklenir; çatışmada dosyanın sahibinin sürümü esas alınır, diğer paketin değişikliği kendi bloğuna taşınır.
+Her paket kendi işlemesinden sonra Linux (`cekirdek-linux`) ve Windows (`windows`) işlerinin yeşil olduğunu doğrular.
+
+### 24.6 Sözleşme değişiklik günlüğü
+
+| Tarih | Kod | Değişiklik | Paket |
+|---|---|---|---|
+| 2026-10-30 | S1–S27 | İlk sürüm: başlıklar, taslaklar, kabuk, komut kataloğu (37 komut), öznitelik şeması (23 alan), sahne kodları, tel protokolü ve ortak vektörler, sahiplik tablosu | S |
+
+### 24.7 Paket kabul denetimleri
+
+Her denetim bir sınamaya ya da CI ölçümüne bağlıdır; "nerede" sütunu onu gösterir. Bir paket, kendi satırlarının tamamı
+yeşilken teslim eder. Sayısal eşikler §6.13, §7.4, §8.4 ve §9.5'tendir.
+
+**A — derleme-motor (1.1, 1.2)**
+
+| # | Denetim | Nerede |
+|---|---|---|
+| A1 | `op4_cekirdek`, `op4_cekirdek_js` ve sınamaları Linux'ta clang ile `-Werror` derlenir; `ctest` yeşil | `cekirdek-linux` işi |
+| A2 | `CMakePresets.json`: win-surum, win-hata, linux-cekirdek, linux-cekirdek-asan; ASan + UBSan ön ayarıyla `ctest` yeşil | `cekirdek-linux` |
+| A3 | Python 3.13 ve 3.14 ile `pytest op4/testler/python` yeşil | `cekirdek-linux` (matris) |
+| A4 | Gölgelendiriciler derlemede FXC ile SM 5.1'e derlenir, `GomuluGolgelendirici` dolu döner; ekran testi çalışma anı derlemesi olmadan geçer ve `OP4OLCUM` aygıt süresi açılıştan 40 ms'den fazla kısalır | Windows, `--test-ekran` günlüğü |
+| A5 | `OP4_UYARI_HATA` varsayılanı ON: MSVC `/W4 /WX`, bütün hedefler uyarısız | Windows derleme adımı |
+| A6 | `op4motor.exe` (≈ 150 satır): tutamaç temizliği, dosya denetimi (eksikte okunur ileti, çıkış 2), BLAS iş parçacığı ayarı (ana çekirdek − 1, yardımcı 1), `Py_Main(-X utf8 -B -m op4_sunucu …)` | Windows, kurulu programla motor testi |
+| A7 | `op4_sunucu.py`: stdout / stderr ve fd 1–2 günlüğe; `print` protokolü bozmaz; `hazir` iletisi; ana iş parçacığında sıralı `calistir`; okuyucu iş parçacığında `iptal` (`interrupt_main`) ve `kapat`; Y1–Y4 | `op4/testler/python/test_sunucu.py` (Linux) |
+| A8 | C++ istemcisi (Win32 + POSIX) `python3 -m op4_sunucu`'ya karşı: istek / yanıt, kuyruktaki ve çalışan isteğin iptali, 5 s'de yanıt yoksa sonlandırıp yeniden başlatma (bekleyenlere `motor_yeniden`), sunucu çökmesi (`motor_coktu`), 50 MB yanıt, eski id'li yanıtın atılması | `op4/testler/cekirdek/motor_*.cpp` (ctest, Linux ve Windows) |
+| A9 | `docs/web_kopru.py` eklemeli işlemler: `bina_coz` `anlat:false` (veri `anlat:true` ile 1e-9 içinde aynı, `bloklar: []`), `bina_kimlik`, KeyboardInterrupt → `hata_turu: "iptal"`, `ayarlar.sd_siniri`; mevcut `pytest testler` ve node testleri değişmeden yeşil | `testler/test_web_kopru_op4.py` |
+| A10 | `MotorModuluKur` süreç istemcisini bağlar; `--test-motor` soğuk açılış ≤ 1 s (hazır), `--test-pencere` motor hazır; durum çubuğu "Hesap motoru" öğesi; `motor.yeniden_baslat` komutu | Windows CI günlüğü, `OP4OLCUM senaryo=motor` |
+| A11 | Paket: `op4motor.exe`, `motor/op4_sunucu.py`, `motor/op4_protokol.py` kurulumda; `C:\op4 dene ŞĞİı` yoluna kurulu programla motor testi geçer | Windows kurulum adımı |
+
+**B — model-cekirdegi (1.3)**
+
+| # | Denetim | Nerede |
+|---|---|---|
+| B1 | quickjs-ng iki haftadan eski sürüme sabit (`cmake/bagimlilik_quickjs.cmake`, işleme özeti); MSVC ve clang ile uyarısız | Linux + Windows derleme |
+| B2 | Ön yükleme: `self = globalThis`, `window` / `document` tanımsız, `structuredClone` yedeği, `console` → günlük, sınamada deterministik `Date.now`; `docs/` modülleri değişmeden yüklenir; açılış derleme süresi `OP4OLCUM cekirdek_derleme_ms` (beklenen ≈ 50 ms) | ctest `cekirdek_js_*`, Windows günlüğü |
+| B3 | `op4_ops.js`: `TASLAK` boş; `katUyeligi` (§10.2), `kullanimYeri` (§10.3), `profilAdiNormal` (§10.4; `testler/ortak/profil_adlari.json` vektörlerinin hepsi), `oznitelikCikar` (23 Faz 1 alanı), `sahneCikar`, `sonucEsle` node sınamalarıyla | `node --test op4/testler/js/*.test.js` |
+| B4 | Cephe `op4_cekirdek.js`: `TASLAK` boş; `uygula` beyaz listesi (`hizliAks`, `aksSihirbazi`, `baslikDegistir`, `genellestir`), geri al / yinele (100 adım, 512 MB), C1 `gecis_onayi`, kanonik `metin()` (aynı model → aynı bayt) | node |
+| B5 | C++ köprüsü: `ModelCekirdegiOlustur` QuickJS çekirdeğini döndürür; `Sahne()` 9 şablonun her biri için düğüm / çubuk / panel sayıları JS ile aynı; tipli diziler kopyasız | ctest `cekirdek_js_*` |
+| B6 | Eşdeğerlik derlemi (`op4/testler/derlem/`, `derlem_uret.js`): mevcut node test girdileri + 9 şablon; QuickJS çıktıları node ile sayılarda bağıl 1e-12, diğer alanlar birebir; Linux ve Windows | ctest |
+| B7 | Başarım: `celik-sanayi-4hol` ve sentetik 5 bin / 20 bin çubukta `uygula` ≤ 100 / ≤ 300 ms | ctest, `OP4OLCUM senaryo=cekirdek` |
+| B8 | `duzenle.geri_al`, `duzenle.yinele`, `model.denetle` bağlı; GeriAlBilgisi menüde ad gösterir | ctest (kabuk) |
+
+**C — arayuz-goruntu (1.4)**
+
+| # | Denetim | Nerede |
+|---|---|---|
+| C1 | Şerit, menüler, hızlı erişim ve kısayollar `komutlar.json`'dan üretilir; bağsız komut soluk ve nedeni ipucunda; F, K, G tek harf kısayolları kalkar (Shift+F, Ctrl+Shift+K, F7) | senaryo `arayuz_serit`, ekran görüntüsü |
+| C2 | Komut satırı: önek ve alt dizi tamamlama, Türkçe katlama, geçmiş, boşta Enter son komutu yineler, bilinmeyende yakın komut önerisi | ctest `arayuz_*` + senaryo |
+| C3 | Açılış: "Adsız 1", Z = 0 çalışma ızgarası, Başlangıç paneli (Boş model, Hızlı aks, 9 şablon, Aç, Son dosyalar); "Açılışta göster" ayarı | senaryo `arayuz_baslangic`, PNG |
+| C4 | Çubuk görünümü: sabit 2 px (seçili 3 px), tür paleti, mafsal / serbest düğüm / mesnet simgeleri; `OrnekSahneAnlik` ve şablon sahneleri çizilir | WARP PNG (altın) |
+| C5 | Gezinme K1 (300 adım ≤ 0,5 px), K3, K4 Linux'ta `kamera_*` sınamalarıyla; Windows `--test-pencere` kayma ≤ 0,5 px; görünüm küpü, Alt+1…4, PgUp/PgDn | ctest + `--test-pencere` |
+| C6 | BVH: üzerine gelme ≤ 4 px (DPI ölçekli), 100 bin elemanda ≤ 1 ms; pencere seçimi (soldan sağa tam içinde, sağdan sola değen); Ctrl / Shift kipleri; vurgu | ctest `secme_*`, `OP4OLCUM` |
+| C7 | Model gezgini: kat → alt tür → kullanım yeri, sayılarla; tık seçer, Ctrl ekler; Özellikler paneli salt okunur, çoklu seçimde "(çeşitli)" | ctest `arayuz_gezgin`, senaryo |
+| C8 | `NvOptimusEnablement` ve `AmdPowerXpressRequestHighPerformance` dışa aktarılır; Ayarlar › Grafik bağdaştırıcı ve MSAA seçimi; WARP'ta "yazılım işleyici" uyarısı | Windows (dumpbin / günlük) |
+| C9 | `--senaryo` yürütücüsü: komut, olay, bekle, çek adımları, deterministik saat; CI senaryoları PNG ve `OP4OLCUM` basar | Windows CI |
+| C10 | Hata ayıklama katmanında bütün senaryolarda 0 hata iletisi; `gorunum/gorunum.json` katkısı (kameralar .op4'te saklanır) | Windows CI |
+
+**D — dosya-cozum (1.5, 1.6)**
+
+| # | Denetim | Nerede |
+|---|---|---|
+| D1 | `.op4` ZIP (miniz): `mimetype` ilk ve sıkıştırmasız, manifest, katkılarla gidiş-dönüş bayt eşit (aynı yürütücü); bilinmeyen girdiler korunur; daha yeni `bicim_surumu` salt okunur açılır | ctest `dosya_*` (Linux) |
+| D2 | Atomik yazma: geçici dosya + boşaltma + ReplaceFileW / MoveFileExW, paylaşım ihlalinde 5 × 100 ms; yarım yazmada hedef bozulmaz; Türkçe karakterli yol | ctest + Windows senaryo |
+| D3 | Eski biçimler: Faz 0 JSON `.op4` (kamera alınır, model boş), `.matris`, bina `.json`; `BicimSapta` içeriğe bakar | ctest `dosya_*` |
+| D4 | Kirli işareti başlıkta "•"; kapanışta Kaydet / Kaydetme / Vazgeç (`kapatmaOnayi`); otomatik kayıt 5 dk (1–30), kurtarma klasörü, açılışta Kurtar / Sil / Sonra; temiz kapanışta kurtarma silinir | senaryo `dosya_kirli`, `dosya_kurtarma` |
+| D5 | Son dosyalar (10, atlama listesi), `.op4` ilişkilendirmesi, tek örnek borusu `\\.\pipe\OpusFortis.op4.<SID>` (ikinci açılış öne getirir; `--yeni-ornek`), çökme dökümü `cokme\` | Windows senaryo / kurulum adımı |
+| D6 | 9 şablon `op4/veri/sablonlar/` (+ `dizin.json`: ad, başlık, açıklama, dosya) motor hazır olmadan açılır; döküm aracı `araclar/sablon_dok.py` ve "döküm güncel" sınaması | pytest + senaryo `dosya_sablon` |
+| D7 | F5: `bina_coz` (`anlat:false`) eşzamansız, arayüz donmaz; ilerleme ve iptal; sonuç özeti paneli; D/C renkleri (`DcRengi`, web ölçeği); model değişince "Sonuçlar eski" | senaryo `cozum_f5`, PNG |
+| D8 | D/C değerleri Linux pytest'teki doğrudan `web_kopru` çözümüyle bağıl ≤ 1e-9 (`betonarme-3kat-3x3`, `celik-sanayi-4hol`); süreler `OP4OLCUM senaryo=cozum` | Windows senaryo + pytest |
+| D9 | `.op4` açılışında `sonuc/` varsa `bina_kimlik` ile eşleşirse D/C renkleri hemen görünür | senaryo `cozum_acilis` |
+| D10 | IFC dışa aktarma (`Ctrl+E`): `ifc_disari.js` QuickJS'te; `uygulama = {ad:"op4", surum, firma:"Opus Fortis"}`; GlobalId'ler belirlenimci, sınamada zaman damgası sabit; aynı model iki kez → aynı bayt | senaryo `dosya_ifc`, ctest |
+
+**1.7 — Faz 1 bütün kabulü (entegratör)**
+- Kurulu `op4-setup-0.1.0.exe` ile: açılış "Adsız 1" → şablondan yeni → F5 → D/C renkleri → kaydet → kapat → aç → renkler
+  `bina_kimlik` ile geri gelir → IFC dışa aktar; bütün adımlar tek senaryoda, WARP ve hata ayıklama katmanında 0 hata.
+- `--oz-sinama` kurulu programda geçer (motor, çekirdek, şablon, kaydet / aç, ekran).
+- Gezinme bütçeleri ve K1–K4 korunur; etkileşimli boş çalışma alanı ≤ 1,5 s (`OP4OLCUM`).
+- `pytest testler`, `node --test testler/js/*.test.js`, bekçi testi, `cekirdek-linux` ve `windows` işleri yeşil.
+- TASARIM §20–§22 yazılmış; `op4/README.md` güncel; §24.2 "Taslak" sütununda taslak kalmamış.

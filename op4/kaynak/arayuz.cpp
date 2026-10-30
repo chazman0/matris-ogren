@@ -243,7 +243,7 @@ void ArayuzCiz(ArayuzDurumu& d) {
             } else if (ImGui::BeginTable("##motor", 2, tb)) {
                 Satir("Python", d.motor.pythonSurumu.substr(0, d.motor.pythonSurumu.find(' ')).c_str());
                 Satir("Sürüm", d.motor.surumJson.c_str());
-                Satirf("Şablonlar", "%.0f", static_cast<double>(d.motor.sablonSayisi));
+                if (d.motor.sablonSayisi >= 0) Satirf("Şablonlar", "%.0f", static_cast<double>(d.motor.sablonSayisi));
                 Satirf("Açılış", "%.0f ms", d.motor.msToplam);
                 ImGui::EndTable();
             }

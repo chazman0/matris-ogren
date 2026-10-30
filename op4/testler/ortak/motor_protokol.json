@@ -1,0 +1,117 @@
+{
+ "bicim": 1,
+ "aciklama": "Hesap motoru tel protokolü ortak sınama vektörleri (MIMARI §8.2). Üretici: op4/motor/op4_protokol.py; C++ (op4/testler/cekirdek/sozlesme_protokol.cpp) ve Python (op4/testler/python/test_protokol.py) kodlayıcıları 'govde'yi bayt bayt üretmeli, çözücüler 'girdi' alanlarını geri vermelidir.",
+ "hata_yaniti_iptal": "{\"hata\":\"İşlem iptal edildi.\",\"hata_turu\":\"iptal\"}",
+ "vektorler": [
+  {
+   "ad": "istek",
+   "tur": "istek",
+   "girdi": {
+    "id": 17,
+    "islem": "bina_coz",
+    "istek_json": "{\"islem\":\"bina_coz\",\"girdi\":{\"bina\":{\"tur\":\"bina\",\"baslik\":\"Ş\\\"ğ\"}},\"ayarlar\":{\"anlat\":false}}"
+   },
+   "govde": "{\"tur\":\"istek\",\"id\":17,\"islem\":\"bina_coz\",\"istek\":{\"islem\":\"bina_coz\",\"girdi\":{\"bina\":{\"tur\":\"bina\",\"baslik\":\"Ş\\\"ğ\"}},\"ayarlar\":{\"anlat\":false}}}"
+  },
+  {
+   "ad": "istek-kacisli-islem",
+   "tur": "istek",
+   "girdi": {
+    "id": 9007199254740991,
+    "islem": "tuhaf\"ad\\",
+    "istek_json": "{}"
+   },
+   "govde": "{\"tur\":\"istek\",\"id\":9007199254740991,\"islem\":\"tuhaf\\\"ad\\\\\",\"istek\":{}}"
+  },
+  {
+   "ad": "iptal",
+   "tur": "iptal",
+   "girdi": {
+    "id": 17
+   },
+   "govde": "{\"tur\":\"iptal\",\"id\":17}"
+  },
+  {
+   "ad": "kapat",
+   "tur": "kapat",
+   "girdi": {},
+   "govde": "{\"tur\":\"kapat\"}"
+  },
+  {
+   "ad": "hazir",
+   "tur": "hazir",
+   "girdi": {
+    "rol": "ana",
+    "basarili": true,
+    "pid": 4242,
+    "python": "3.14.0",
+    "sure_ms": 412.46,
+    "surum_json": "{\"motor\":\"1.4.0\",\"python\":\"3.14.0\",\"numpy\":\"2.5.3\",\"sympy\":\"1.14.0\"}",
+    "hata": ""
+   },
+   "govde": "{\"tur\":\"hazir\",\"rol\":\"ana\",\"basarili\":true,\"pid\":4242,\"python\":\"3.14.0\",\"sure_ms\":412.5,\"surum\":{\"motor\":\"1.4.0\",\"python\":\"3.14.0\",\"numpy\":\"2.5.3\",\"sympy\":\"1.14.0\"},\"hata\":\"\"}"
+  },
+  {
+   "ad": "hazir-basarisiz",
+   "tur": "hazir",
+   "girdi": {
+    "rol": "yardimci",
+    "basarili": false,
+    "pid": 7,
+    "python": "3.14.0",
+    "sure_ms": 12.0,
+    "surum_json": "",
+    "hata": "web_kopru içe aktarılamadı:\nModuleNotFoundError"
+   },
+   "govde": "{\"tur\":\"hazir\",\"rol\":\"yardimci\",\"basarili\":false,\"pid\":7,\"python\":\"3.14.0\",\"sure_ms\":12.0,\"surum\":{},\"hata\":\"web_kopru içe aktarılamadı:\\nModuleNotFoundError\"}"
+  },
+  {
+   "ad": "durum",
+   "tur": "durum",
+   "girdi": {
+    "metin": "web_kopru yükleniyor",
+    "oran": 44.5
+   },
+   "govde": "{\"tur\":\"durum\",\"metin\":\"web_kopru yükleniyor\",\"oran\":45}"
+  },
+  {
+   "ad": "ilerleme",
+   "tur": "ilerleme",
+   "girdi": {
+    "id": 17,
+    "metin": "Kombinasyonlar\t(3/12)",
+    "oran": 60.0
+   },
+   "govde": "{\"tur\":\"ilerleme\",\"id\":17,\"metin\":\"Kombinasyonlar\\t(3/12)\",\"oran\":60}"
+  },
+  {
+   "ad": "gunluk",
+   "tur": "gunluk",
+   "girdi": {
+    "duzey": "uyari",
+    "metin": "print çıktısı günlüğe yönlendirildi \u0001"
+   },
+   "govde": "{\"tur\":\"gunluk\",\"duzey\":\"uyari\",\"metin\":\"print çıktısı günlüğe yönlendirildi \\u0001\"}"
+  },
+  {
+   "ad": "yanit",
+   "tur": "yanit",
+   "girdi": {
+    "id": 17,
+    "sure_ms": 2891.04,
+    "calistir_metni": "{\"ad\": \"bina\", \"bloklar\": [], \"hata\": null, \"veri\": {\"ozet\": {\"sd_sayisi\": 216}, \"metin\": \"\\\"yanit\\\":}\"}}"
+   },
+   "govde": "{\"tur\":\"yanit\",\"id\":17,\"sure_ms\":2891.0,\"yanit\":{\"ad\": \"bina\", \"bloklar\": [], \"hata\": null, \"veri\": {\"ozet\": {\"sd_sayisi\": 216}, \"metin\": \"\\\"yanit\\\":}\"}}}"
+  },
+  {
+   "ad": "yanit-iptal",
+   "tur": "yanit",
+   "girdi": {
+    "id": 18,
+    "sure_ms": 0.0,
+    "calistir_metni": "{\"hata\":\"İşlem iptal edildi.\",\"hata_turu\":\"iptal\"}"
+   },
+   "govde": "{\"tur\":\"yanit\",\"id\":18,\"sure_ms\":0.0,\"yanit\":{\"hata\":\"İşlem iptal edildi.\",\"hata_turu\":\"iptal\"}}"
+  }
+ ]
+}
