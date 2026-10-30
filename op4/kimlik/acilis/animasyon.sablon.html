@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kemer Çizgisi (açık zemin)</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("../fontlar/inter-Inter%5Bopsz,wght%5D.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+  @font-face { font-family: "Cormorant Garamond"; src: url("../fontlar/cormorantgaramond-CormorantGaramond%5Bwght%5D.ttf") format("truetype"); font-weight: 300 700; font-display: block; }
+  :root {
+    --sahne: #2a2d31; --metin: #c9c3b6; --soluk: #8C8C8C; --altin: #B08950; --dugme: #3a3e43; --dugme-kenar: #4a4f55;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --sahne: #d9d6cf; --metin: #2b2f33; --soluk: #5d5d5d; --altin: #8A6B3C; --dugme: #efece6; --dugme-kenar: #bdb8ae; }
+  }
+  :root[data-theme="light"] { --sahne: #d9d6cf; --metin: #2b2f33; --soluk: #5d5d5d; --altin: #8A6B3C; --dugme: #efece6; --dugme-kenar: #bdb8ae; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; background: var(--sahne); color: var(--metin);
+    font: 13px/1.4 "Inter", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px 16px; gap: 18px; overflow-x: hidden;
+  }
+  .yuva { width: min(960px, 100%); }
+  .olcek { width: 960px; height: 540px; transform-origin: 0 0; }
+  .pencere {
+    position: relative; width: 960px; height: 540px; border-radius: 8px; overflow: hidden;
+    background: #F6F2EA;
+    box-shadow: 0 1px 2px rgba(0,0,0,.25), 0 18px 48px rgba(0,0,0,.30), 0 40px 90px rgba(0,0,0,.18);
+  }
+  canvas { display: block; width: 960px; height: 540px; }
+  .denetim { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; width: min(960px, 100%); }
+  .denetim .ad { margin-right: auto; color: var(--soluk); letter-spacing: .02em; }
+  .denetim .ad b { color: var(--metin); font-weight: 600; }
+  button {
+    font: 500 12.5px "Inter", system-ui, sans-serif; color: var(--metin); background: var(--dugme);
+    border: 1px solid var(--dugme-kenar); border-radius: 6px; padding: 7px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--altin); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--altin); outline-offset: 2px; }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--soluk); cursor: pointer; user-select: none; }
+  input[type=range] { width: 180px; accent-color: var(--altin); }
+  .zaman { font-variant-numeric: tabular-nums; color: var(--soluk); min-width: 64px; text-align: right; }
+  @media (max-width: 640px) { .denetim .ad { width: 100%; margin: 0; text-align: center; } }
+</style>
+</head>
+<body>
+  <div class="yuva" id="yuva">
+    <div class="olcek" id="olcek">
+      <div class="pencere" id="pencere"><canvas id="tuval" width="960" height="540" aria-label="op4 açılış ekranı önizlemesi (açık zemin)"></canvas></div>
+    </div>
+  </div>
+  <div class="denetim">
+    <span class="ad"><b>Kemer Çizgisi</b> · açık zemin · op4 açılış ekranı · 960×540</span>
+    <label><input type="checkbox" id="yavas"> Yavaş (¼×)</label>
+    <input type="range" id="sure" min="0" max="5200" step="10" value="0" aria-label="Zaman çizelgesi">
+    <span class="zaman" id="zaman">0 ms</span>
+    <button id="tekrar" type="button">Tekrar oynat</button>
+  </div>
+
+<script>
+"use strict";
+// Simge PNG'sinin alfasından çıkarılmış kalem yolları (kontur.py üretir)
+const K = __KONTUR__;
+
+// ---------- renkler (kimlik) ----------
+const KAHVE = [0x8A, 0x6B, 0x3C], KREM = [0xED, 0xE6, 0xD8], ALTIN = [0xB0, 0x89, 0x50],
+      ANTRASIT = [0x14, 0x18, 0x1B], GRI = [0x8C, 0x8C, 0x8C];
+// açık zemin: Krem'den türetilmiş kâğıt tonu
+const KAGIT = [0xF6, 0xF2, 0xEA], KAGIT_MERKEZ = [0xFB, 0xF8, 0xF2], KAGIT_KENAR = [0xEF, 0xE9, 0xDD];
+const UC = ALTIN.map((v, i) => Math.round(v * 0.7 + KREM[i] * 0.3));      // ilerleme ucu: Altın %70 + Krem %30 = #C2A579
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a))})`;
+const karisim = (c1, c2, t) => c1.map((v, i) => Math.round(v + (c2[i] - v) * t));
+
+// ---------- çizgi ayarları (DIP; uret.py ile aynı) ----------
+const IZ_KALINLIK = 1.75, KENAR_KALINLIK = 0.9, KENAR_ALFA = 0.70;
+
+// ---------- yerleşim (mantıksal px; uret.py ile aynı) ----------
+const L = { cx: 268, ust: 112, yuk: 256, sagX: 512, sagSon: 904 };
+const BB = K.olcu.bbox, OL = L.yuk / (BB[3] - BB[1]);
+const ex = x => L.cx + (x - K.olcu.cx) * OL, ey = y => L.ust + (y - BB[1]) * OL;
+const ALT = ey(BB[3]), UZ = ey(K.olcu.uzengi_y), SOL = ex(BB[0]), SAG = ex(BB[2]);
+const KALEM = {};
+for (const [ad, v] of Object.entries(K.kalemler)) KALEM[ad] = { p: v.p.map(([x, y]) => [ex(x), ey(y)]), g: v.g };
+const HAYALET = Object.values(K.hayalet).map(p => p.map(([x, y]) => [ex(x), ey(y)]));
+const KEMER_KALEM = ["kemer_sol_dis", "kemer_sol_ic", "kemer_sag_dis", "kemer_sag_ic"];
+const KILIT_KALEM = ["kilit_sol_ust", "kilit_sag_ust", "kilit_sol_alt", "kilit_sag_alt"];
+const KEMER_PAY = 0.86;
+
+// ---------- kilit taşı ışığı ----------
+const KX = 268.0, KY = 136.9;              // kilit taşı ağırlık merkezi
+const ISIK_R = 112, ISIK_TEPE = 0.22, ISIK_KALAN = 0.05;   // yarıçap ≈ 2,25 × taş genişliği (49,5)
+const HALKA_R0 = 28, HALKA_R1 = 150, HALKA_TEPE = 0.035, HALKA_GEN = 26;
+
+// ---------- zaman çizelgesi (ms) ----------
+const ADIM = [   // durum metni, başlangıç zamanı, o ana kadarki ilerleme
+  { s: "Arayüz hazırlanıyor…",              t: 0,    p: 0.00 },
+  { s: "DirectX 12 aygıtı açılıyor…",       t: 700,  p: 0.12 },
+  { s: "Hesap motoru (Python) yükleniyor…", t: 1300, p: 0.30 },
+  { s: "Kesit kütüphanesi okunuyor…",       t: 2400, p: 0.62 },
+  { s: "Son proje açılıyor…",               t: 3050, p: 0.84 },
+  { s: "Hazır",                             t: 3650, p: 1.00 },
+];
+const IZ_BASLA = 250;                         // kalemler bu andan sonra yürür
+const T_HAZIR = ADIM[ADIM.length - 1].t;
+const SON = 5200;
+
+const kis = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const aralik = (t, a, b) => kis((t - a) / (b - a));
+const cikis3 = u => 1 - Math.pow(1 - u, 3);
+const sinus = u => 0.5 - 0.5 * Math.cos(Math.PI * u);
+const yumusak = u => 0.55 * u + 0.45 * sinus(u);   // adım sınırında yavaşlar ama durmaz
+
+function ilerleme(t) {
+  if (t >= T_HAZIR) return 1;
+  for (let i = 0; i < ADIM.length - 1; i++) {
+    const a = ADIM[i], b = ADIM[i + 1];
+    if (t < b.t) {
+      const t0 = i === 0 ? IZ_BASLA : a.t;
+      return a.p + (b.p - a.p) * yumusak(aralik(t, t0, b.t));
+    }
+  }
+  return 1;
+}
+function durumIndeks(t) { let k = 0; ADIM.forEach((a, i) => { if (t >= a.t) k = i; }); return k; }
+// kilit taşı ışığı: 3820–4060 ms'de yükselir (ease-out), 4060–5100 ms'de kalan değere iner
+function isik(t) { return ISIK_TEPE * cikis3(aralik(t, 3820, 4060)) - (ISIK_TEPE - ISIK_KALAN) * cikis3(aralik(t, 4060, 5100)); }
+// bir kez genişleyen yumuşak halka
+function halka(t) { const u = aralik(t, 3900, 4800); return { r: HALKA_R0 + (HALKA_R1 - HALKA_R0) * cikis3(u), a: HALKA_TEPE * Math.min(1, u * 6) * Math.pow(1 - u, 1.5) }; }
+
+// ---------- yol yardımcıları ----------
+function kismi(k, t) {                         // g parametresine göre ilk t kısmı
+  const { p, g } = k;
+  if (t <= 0) return [p[0]];
+  if (t >= 1) return p;
+  let i = 1; while (i < g.length && g[i] <= t) i++;
+  const u = (t - g[i - 1]) / Math.max(g[i] - g[i - 1], 1e-9);
+  return p.slice(0, i).concat([[p[i - 1][0] + (p[i][0] - p[i - 1][0]) * u, p[i - 1][1] + (p[i][1] - p[i - 1][1]) * u]]);
+}
+function yol(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); }
+function cizgi(ctx, pts, w, renk, dash) {
+  if (pts.length < 2) return;
+  ctx.lineWidth = w; ctx.strokeStyle = renk; ctx.setLineDash(dash || []);
+  yol(ctx, pts); ctx.stroke();
+}
+
+// ---------- varlıklar ----------
+function resim(src) { return new Promise((ok, hata) => { const i = new Image(); i.onload = () => ok(i); i.onerror = hata; i.src = src; }); }
+
+const tuval = document.getElementById("tuval");
+const ctx = tuval.getContext("2d");
+let SIMGE, YAZI, OLC = 1;
+
+function boyutla() {
+  const yuva = document.getElementById("yuva"), olcek = document.getElementById("olcek");
+  OLC = Math.min(1, yuva.clientWidth / 960);
+  olcek.style.transform = `scale(${OLC})`;
+  yuva.style.height = (540 * OLC) + "px";
+  const dpr = Math.max(1, window.devicePixelRatio || 1) * OLC;
+  const w = Math.round(960 * Math.max(dpr, 1)), h = Math.round(540 * Math.max(dpr, 1));
+  if (tuval.width !== w) { tuval.width = w; tuval.height = h; }
+}
+
+// ---------- sahne ----------
+function ciz(t) {
+  const s = tuval.width / 960;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+
+  const p = ilerleme(t);
+  const tKemer = kis(p / KEMER_PAY), tKilit = kis((p - KEMER_PAY) / (1 - KEMER_PAY));
+
+  // bitiş evreleri
+  const dKemer = cikis3(aralik(t, T_HAZIR, T_HAZIR + 350));
+  const dKilit = cikis3(aralik(t, T_HAZIR + 150, T_HAZIR + 600));
+  const kilitDy = -12 * (1 - dKilit);
+  const izA = 1 - aralik(t, T_HAZIR + 100, T_HAZIR + 500);
+  const iskeleA = 1 - cikis3(aralik(t, T_HAZIR + 50, T_HAZIR + 550));
+  const yaziU = cikis3(aralik(t, T_HAZIR + 500, T_HAZIR + 1000));
+  const kurulus = cikis3(aralik(t, 80, 680));          // yapı çizgileri uzar
+  const hayaletA = cikis3(aralik(t, 150, 750));
+
+  // 1) zemin: kâğıt tonu, kemerin arkasında hafif aydınlanma, köşelerde hafif vinyet
+  ctx.fillStyle = rgba(KAGIT, 1); ctx.fillRect(0, 0, 960, 540);
+  ctx.save();
+  const gy = L.ust + L.yuk * 0.48;
+  ctx.translate(L.cx, gy); ctx.scale(1, 1 / 1.15);
+  const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, 380);
+  for (let i = 0; i <= 8; i++) { const u = i / 8; rg.addColorStop(u, rgba(karisim(KAGIT, KAGIT_MERKEZ, Math.pow(1 - u, 2)), 1)); }
+  ctx.fillStyle = rg; ctx.fillRect(-500, -500, 1000, 1000);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(480, 270); ctx.scale(560, 360);
+  const vg = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.42);
+  for (let i = 0; i <= 12; i++) { const u = i / 12, d = u * 1.42; vg.addColorStop(u, rgba(KAGIT_KENAR, Math.pow(kis((d - 0.5) / 0.9), 1.5))); }
+  ctx.fillStyle = vg; ctx.fillRect(-1, -1, 2, 2);
+  ctx.restore();
+
+  // 1b) kilit taşı ışığı ve halkası: logonun ARKASINDA (D2D: ID2D1RadialGradientBrush)
+  const isikA = isik(t);
+  if (isikA > 0) {
+    const g = ctx.createRadialGradient(KX, KY, 0, KX, KY, ISIK_R);
+    for (let i = 0; i <= 12; i++) { const u = i / 12; g.addColorStop(u, rgba(ALTIN, isikA * (0.5 + 0.5 * Math.cos(Math.PI * u)))); }
+    ctx.fillStyle = g; ctx.fillRect(KX - ISIK_R, KY - ISIK_R, 2 * ISIK_R, 2 * ISIK_R);
+  }
+  const h = halka(t);
+  if (h.a > 0) {
+    const R = h.r + HALKA_GEN;
+    const g = ctx.createRadialGradient(KX, KY, 0, KX, KY, R);
+    for (let i = 0; i <= 24; i++) { const u = i / 24, d = Math.min(1, Math.abs(u * R - h.r) / HALKA_GEN);
+      g.addColorStop(u, rgba(ALTIN, h.a * Math.pow(0.5 + 0.5 * Math.cos(Math.PI * d), 2))); }
+    ctx.fillStyle = g; ctx.fillRect(KX - R, KY - R, 2 * R, 2 * R);
+  }
+
+  // 2) iskele: eksen, üzengi çizgisi, zemin + tarama, yay merkezi (Antrasit, düşük opaklık)
+  if (iskeleA > 0) {
+    ctx.lineCap = "butt";
+    const g22 = rgba(ANTRASIT, 0.22 * iskeleA), g15 = rgba(ANTRASIT, 0.15 * iskeleA);
+    const eU = L.ust - 26, eA = ALT + 18;
+    cizgi(ctx, [[L.cx, eU], [L.cx, eU + (eA - eU) * kurulus]], 0.75, g22, [14, 3, 1.5, 3]);
+    const yar = (SAG - SOL) / 2 + 30, yz = (SAG - SOL) / 2 + 46;
+    cizgi(ctx, [[L.cx - yar * kurulus, UZ], [L.cx + yar * kurulus, UZ]], 0.75, g15);
+    cizgi(ctx, [[L.cx - yz * kurulus, ALT], [L.cx + yz * kurulus, ALT]], 0.75, g22);
+    ctx.setLineDash([]); ctx.lineWidth = 0.6; ctx.strokeStyle = rgba(ANTRASIT, 0.10 * iskeleA); ctx.beginPath();
+    for (let x = L.cx - yz * kurulus + 3; x < L.cx + yz * kurulus - 6; x += 6) { ctx.moveTo(x + 5, ALT + 0.5); ctx.lineTo(x, ALT + 5.5); }
+    ctx.stroke();
+    const mA = aralik(t, 500, 800);
+    if (mA > 0) { ctx.lineWidth = 0.75; ctx.strokeStyle = rgba(ANTRASIT, 0.30 * iskeleA * mA); ctx.beginPath(); ctx.arc(L.cx, UZ, 3.2, 0, Math.PI * 2); ctx.stroke(); }
+    // gizli çizgi: kesikli hayalet kontur
+    for (const hy of HAYALET) cizgi(ctx, hy, 0.75, rgba(ANTRASIT, 0.20 * iskeleA * hayaletA), [3.5, 3]);
+    ctx.setLineDash([]); ctx.lineCap = "round";
+  }
+
+  // 3) dolgu katmanları (renk sınırından kırpılır; bitince resmî PNG'nin kendisi)
+  const sx0 = SOL - BB[0] * OL, sy0 = L.ust - BB[1] * OL, sw = 1200 * OL, sh = 1397 * OL;
+  if (dKemer >= 1 && dKilit >= 1) {
+    ctx.drawImage(SIMGE, sx0, sy0, sw, sh);
+  } else {
+    if (dKemer > 0) {                       // kemer = her şey eksi kilit taşı
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 960, 540); yolEkle(HAYALET[2]); ctx.clip("evenodd");
+      ctx.globalAlpha = dKemer; ctx.drawImage(SIMGE, sx0, sy0, sw, sh); ctx.restore();
+    }
+    if (dKilit > 0) {                       // kilit taşı = kilit çevresi eksi kemer yarıları
+      ctx.save(); ctx.translate(0, kilitDy);
+      ctx.beginPath(); ctx.rect(ex(480), ey(200), ex(720) - ex(480), ey(470) - ey(200)); ctx.clip();
+      ctx.beginPath(); ctx.rect(-100, -100, 1160, 740); yolEkle(HAYALET[0]); yolEkle(HAYALET[1]); ctx.clip("evenodd");
+      ctx.globalAlpha = dKilit; ctx.drawImage(SIMGE, sx0, sy0, sw, sh); ctx.restore();
+    }
+  }
+
+  // 4) altın iz: dört kalem ayaklardan derze, sonra kilit taşı
+  const uclar = [];
+  if (izA > 0) {
+    const c = rgba(ALTIN, izA);
+    for (const ad of KEMER_KALEM) { const q = kismi(KALEM[ad], tKemer); if (tKemer > 0) cizgi(ctx, q, IZ_KALINLIK, c); if (tKemer < 1) uclar.push(q[q.length - 1]); }
+    if (tKemer >= 1) for (const ad of KILIT_KALEM) { const q = kismi(KALEM[ad], tKilit); if (tKilit > 0) cizgi(ctx, q, IZ_KALINLIK, c); if (tKilit < 1) uclar.push(q[q.length - 1]); }
+    // tamamlanan adımlar: derz çizgisi (bacakta yatay, yayda radyal)
+    for (let i = 1; i < ADIM.length - 1; i++) {
+      const te = Math.min(ADIM[i].p / KEMER_PAY, 1);
+      const a = aralik(t, ADIM[i].t, ADIM[i].t + 220);
+      if (te < 1 && a > 0) for (const [d, ic] of [["kemer_sol_dis", "kemer_sol_ic"], ["kemer_sag_dis", "kemer_sag_ic"]]) {
+        const p1 = kismi(KALEM[d], te).at(-1), p2 = kismi(KALEM[ic], te).at(-1);
+        ctx.lineCap = "butt"; cizgi(ctx, [p1, p2], 0.75, rgba(ALTIN, 0.55 * izA * a)); ctx.lineCap = "round";
+      }
+    }
+  }
+  // 4b) kilit taşı kenarı: taşın kâğıda değen üst ve alt kenarında kalıcı ince altın çizgi (taşla birlikte iner)
+  if (dKilit > 0) {
+    ctx.save(); ctx.translate(0, kilitDy);
+    for (const ad of KILIT_KALEM) cizgi(ctx, KALEM[ad].p, KENAR_KALINLIK, rgba(ALTIN, KENAR_ALFA * dKilit));
+    ctx.restore();
+  }
+  // kalem uçları: altın hale (yumuşak leke) + kahve nokta
+  if (izA > 0) {
+    const uA = izA * hayaletA;
+    for (const [x, y] of uclar) {
+      const hg = ctx.createRadialGradient(x, y, 0, x, y, 13);
+      hg.addColorStop(0, rgba(ALTIN, 0.22 * uA)); hg.addColorStop(0.4, rgba(ALTIN, 0.10 * uA)); hg.addColorStop(1, rgba(ALTIN, 0));
+      ctx.fillStyle = hg; ctx.fillRect(x - 13, y - 13, 26, 26);
+    }
+    ctx.fillStyle = rgba(KAHVE, uA);
+    for (const [x, y] of uclar) { ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  // 5) kurum yazısı (kemerin altında): açık zemin sürümü
+  if (yaziU > 0) {
+    const yg = 232, o = yg / (1902 - 98), dy = 8 * (1 - yaziU);
+    const ust = ALT + 50 - (285 - 86) * o + dy;
+    ctx.globalAlpha = yaziU;
+    ctx.drawImage(YAZI, L.cx - yg / 2 - 98 * o, ust - 86 * o, 2000 * o, 369 * o);
+    ctx.globalAlpha = 1;
+  }
+
+  // 6) sağ sütun metinleri (Antrasit)
+  const giris = (a, b) => { const u = cikis3(aralik(t, a, b)); return [u, 6 * (1 - u)]; };
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  let [a, dy] = giris(120, 620);
+  ctx.font = '300 92px "Inter"'; ctx.fillStyle = rgba(ANTRASIT, a); ctx.fillText("op4", L.sagX - 4, 236 + dy);
+  [a, dy] = giris(220, 720);
+  ctx.font = '500 25px "Cormorant Garamond"'; ctx.fillStyle = rgba(ANTRASIT, 0.80 * a); ctx.fillText("Yapı analizi ve tasarımı", L.sagX, 282 + dy);
+
+  // durum satırı (değişince çapraz geçiş)
+  [a, dy] = giris(320, 820);
+  // eski metin 110 ms'de söner, yenisi 70–250 ms arasında 4 px aşağıdan gelir (çakışma en az)
+  const di = durumIndeks(t), Td = ADIM[di].t;
+  const eskiA = 1 - aralik(t, Td, Td + 110), yeniU = cikis3(aralik(t, Td + 70, Td + 250));
+  ctx.font = '400 12.5px "Inter"';
+  const durumRenk = (i, al) => rgba(ANTRASIT, (i === ADIM.length - 1 ? 0.92 : 0.62) * al);
+  if (di > 0 && eskiA > 0) { ctx.fillStyle = durumRenk(di - 1, a * eskiA); ctx.fillText(ADIM[di - 1].s, L.sagX, 352 + dy); }
+  const yA = di > 0 ? yeniU : 1, yDy = di > 0 ? 4 * (1 - yeniU) : 0;
+  ctx.fillStyle = durumRenk(di, a * yA); ctx.fillText(ADIM[di].s, L.sagX, 352 + dy + yDy);
+  // yüzde (Türkçe yazımı: %50), sağa hizalı
+  ctx.font = '500 12.5px "Inter"'; ctx.fillStyle = rgba(ALTIN, a);
+  ctx.textAlign = "right"; ctx.fillText("%" + Math.round(p * 100), L.sagSon, 352 + dy); ctx.textAlign = "left";
+
+  // ilerleme çizgisi ("Gece" biçimi): 1 px iz, Altın dolgu, son 48 px'te açık uç, hareket ederken parıltı
+  const oy = 368 + dy, w = L.sagSon - L.sagX;
+  ctx.fillStyle = rgba(ANTRASIT, 0.12 * a); ctx.fillRect(L.sagX, oy, w, 1);
+  if (p > 0) {
+    const ux = L.sagX + w * p;
+    ctx.fillStyle = rgba(ALTIN, a); ctx.fillRect(L.sagX, oy, ux - L.sagX, 1);
+    const ucA = Math.min(1, p * 25) * (1 - aralik(t, T_HAZIR, T_HAZIR + 220)) * a;
+    if (ucA > 0) {
+      const g = ctx.createLinearGradient(ux - 48, 0, ux, 0);
+      for (let i = 0; i <= 6; i++) { const u = i / 6; g.addColorStop(u, rgba(UC, u * u * ucA)); }
+      ctx.fillStyle = g; ctx.fillRect(Math.max(L.sagX, ux - 48), oy, Math.min(48, ux - L.sagX), 1);
+      ctx.save(); ctx.filter = "blur(1.5px)"; ctx.fillStyle = rgba(UC, 0.45 * ucA);
+      ctx.fillRect(Math.max(L.sagX, ux - 12), oy - 0.75, Math.min(12, ux - L.sagX), 2.5); ctx.restore();
+    }
+  }
+
+  [a, dy] = giris(420, 920);
+  ctx.font = '400 11px "Inter"'; ctx.fillStyle = rgba(ANTRASIT, 0.55 * a); ctx.fillText("Sürüm 0.1.0", L.sagX, 500 + dy);
+  ctx.textAlign = "right"; ctx.fillStyle = rgba(ANTRASIT, 0.45 * a); ctx.fillText("© 2026 Opus Fortis", L.sagSon, 500 + dy); ctx.textAlign = "left";
+
+  // pencere iç kenarı (Antrasit %8)
+  ctx.lineWidth = 1; ctx.strokeStyle = rgba(ANTRASIT, 0.08); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.roundRect(0.5, 0.5, 959, 539, 7.5); ctx.stroke();
+
+  // pencerenin belirmesi (yerelde: katmanlı pencere / DComp opaklığı)
+  document.getElementById("pencere").style.opacity = cikis3(aralik(t, 0, 220));
+}
+function yolEkle(pts) { ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); }
+
+// ---------- oynatıcı ----------
+const sure = document.getElementById("sure"), zaman = document.getElementById("zaman"), yavas = document.getElementById("yavas");
+let t0 = 0, duraklat = false, anT = 0, son = 0;
+function kare(now) {
+  if (!duraklat) {
+    const hiz = yavas.checked ? 0.25 : 1;
+    anT = Math.min(SON, anT + (now - (son || now)) * hiz);
+    sure.value = anT;
+  }
+  son = now;
+  ciz(anT);
+  zaman.textContent = Math.round(anT) + " ms";
+  requestAnimationFrame(kare);
+}
+function oynat() { anT = 0; son = 0; duraklat = false; }
+document.getElementById("tekrar").addEventListener("click", oynat);
+sure.addEventListener("input", () => { duraklat = true; anT = +sure.value; });
+sure.addEventListener("change", () => { /* sürükleme bitti: duraklatılmış kalır, Tekrar oynat ile baştan */ });
+window.addEventListener("resize", boyutla);
+
+// ?t=1800 ile belirli bir anı dondur (kare karşılaştırması için)
+const sabit = new URLSearchParams(location.search).get("t");
+Promise.all([
+  resim("../kimlik/opus-fortis-simge-renkli.png"),
+  resim("../kimlik/opus-fortis-yazi-acik-zemin.png"),
+  document.fonts.load('300 92px "Inter"'), document.fonts.load('400 12px "Inter"'), document.fonts.load('500 12px "Inter"'),
+  document.fonts.load('500 25px "Cormorant Garamond"'),
+]).then(([s, y]) => {
+  SIMGE = s; YAZI = y; boyutla();
+  if (sabit !== null) { duraklat = true; anT = +sabit; sure.value = anT; }
+  requestAnimationFrame(kare);
+}).catch(e => { console.error("Varlıklar yüklenemedi", e); });
+</script>
+</body>
+</html>
