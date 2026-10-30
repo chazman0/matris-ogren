@@ -3138,11 +3138,31 @@ def _kolon_As(B, kt, ks, c):
     return None
 
 
-# betonarme dayanım satırları (beyaz liste; satır adının son ": " ekinden sonraki kısmında aranır). Geri kalan her satır — donatı
+# betonarme dayanım satırları (beyaz liste; satır adının önekleri atılmış kısmında aranır: _kontrol_kuyrugu). Geri kalan her satır — donatı
 # oranı sınırları, en az etriye, etriye/çubuk aralığı, boyut alt sınırları, |N_d| ≤ 0,1 f_ck A_c eğilme elemanı koşulu — yönetmelik
 # koşuludur (kosul): yalnız sağlanmadığında D/C'yi belirler (aks–kat motoru yapi._kiris_ba / _kolon_ba ile aynı kural).
 _BA_DAYANIM = ("Eğilme taşıma gücü", "Kesme üst sınırı", "Kesme dayanımı", "etkileşim", "İki eksenli", "Nd ≤ 0,9", "Ndm ≤ 0,40",
                "Denk. 7.2")
+_BA_ONEKLER = ("Kesme (", "Açıklık (", "Mesnet (")
+
+
+def _kontrol_kuyrugu(ad_, adlar):
+    """tasarim.betonarme_eleman_kontrol satır adından tahkikin kendi adı (sınıflandırma kuyruğu). Atılan önekler: 'N–M: ' ve onu
+    izleyen kombinasyon adı + ': ' (``adlar`` uzundan kısaya: en uzun eşleşme), 'Kesme (<kombinasyon>): ', 'Açıklık (…): ',
+    'Mesnet (…): '. Tahkik adının kendi içindeki ': ' korunur ('İki eksenli eğilme (Bresler: 1/Nr = …)', 'TBDY: Ndm ≤ …'):
+    eskiden son ': ' ekinden bölünüyordu ve Bresler satırı beyaz listeyi kaçırıp sağlanan bir koşul sayılıyordu (D/C dışı)."""
+    if ad_.startswith("N–M: "):
+        kalan = ad_[len("N–M: "):]
+        a = next((a for a in adlar if kalan.startswith(a + ": ")), None)
+        return kalan[len(a) + 2:] if a is not None else kalan
+    for on in _BA_ONEKLER:
+        if ad_.startswith(on):
+            a = next((a for a in adlar if ad_.startswith(f"{on}{a}): ")), None)
+            if a is not None:
+                return ad_[len(on) + len(a) + 3:]
+            if "): " in ad_:
+                return ad_.split("): ", 1)[1]
+    return ad_
 
 
 def _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N=None, cikti=None):
@@ -3164,7 +3184,7 @@ def _ba_kontroller(ts, r, kuv_tum, ad_komb, tur_ba, kt, mal, gq_N=None, cikti=No
     kont = []
     for x in r["kontroller"]:
         ad_ = x["ad"]
-        kuyruk = ad_.rsplit(": ", 1)[-1]
+        kuyruk = _kontrol_kuyrugu(ad_, adlar)
         if ndm_satiri and "Ndm ≤ 0,40" in kuyruk:
             continue                                   # aşağıda bütün deprem kombinasyonlarından tek satır
         dayanim = any(s in kuyruk for s in _BA_DAYANIM)
