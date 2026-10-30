@@ -8,6 +8,10 @@
 - Genel model: motorun basit kesit adları (``MatrisIFC.basitProfil``; A, Iy, Iz, J ``tasarim.kesit_ozellik`` ile aynı), vute
   (``IfcExtrudedAreaSolidTapered`` + ``Pset_MatrisVute``), kesit uyarılarının tekilliği; G, Q, S yükleri STEP'ten bağımsız olarak
   toplanıp çözümün ``yukler.toplam`` ve çubuk toplamlarıyla karşılaştırılır.
+- Örnekler motorla çözülür (K-11); rüzgâr/deprem/kren eylemleri (K-37, C16 ``veri.yukler.eylemler``: W = rüzgâr toplamı, EX/EY =
+  V_tE, K = tekerlek yükleri, EZ = G_carpani × G; rijit diyafram merkezi ve bağları) ve mütemadi/radye temel öz ağırlığı (K-39, C11
+  ``veri.temel.oz_yuk``: IFC G toplamı = ``veri.yukler.toplam.G``). Bu çıktıları üretmeyen motorda ilgili testler atlanır
+  (``_motor_c16``, ``_motor_c11``, ``_motor_genel_temel``) ve IFC'nin "eski çözüm" notlarına izin verilir (``_uyarisiz``).
 - Her dosyada STEP sözdizimi (her varlık satırı ``#n=IFC...(...);``) ve bütün ``#n`` başvurularının tanımlı olması denetlenir.
 - ``ifcopenshell`` kuruluysa: dosya açılır; kat/eleman sayıları, kat kotları, profil türleri, malzeme ve kat içerme ilişkileri,
   aks ızgaraları; ``ifcopenshell.validate`` (EXPRESS kuralları dahil) hatasız; ``ifcopenshell.geom`` ile eleman sınır kutuları
@@ -97,11 +101,63 @@ def _ornek_ifc(ad):
 ORNEK_ADLARI = ["temel", "serbest", "radye", "surekli", "aks", "genel", "genel_kesit"]
 
 
+# Motor paketinin (paralel geliştirme) çıktıları: C16 veri.yukler.eylemler, C11 veri.temel.oz_yuk ve genel modelde mütemadi/radye.
+# Bunları gerektiren testler motor yokken atlanır (birleştirmeden sonra koşar); motor varken "eski çözüm" notuna izin verilmez.
+def _motor_c16():
+    import yapi
+    return hasattr(yapi, "EYLEMLER_NOTU")
+
+
+def _motor_c11():
+    import temel
+    return hasattr(temel, "oz_yuk")
+
+
+def _motor_genel_temel():
+    import yapi_serbest
+    return hasattr(yapi_serbest, "_temel_gorunum")
+
+
+EYLEM_NOTU = "IFC yükleri: rüzgâr, deprem ve kren etkileri yük durumu/birleşim olarak vardır, eylem olarak yazılmadı ("
+TEMEL_OZ_NOTU = "IFC yükleri: çözümde temel öz ağırlığı yükleri yok (veri.temel.oz_yuk; eski çözüm): "
+
+
+def _uyarisiz(r, veri):
+    """IFC uyarısız. Yalnız bu kurulumun motorunda olmayan çıktılar için (C16 eylemler, C11 oz_yuk) eski çözüm notları kalabilir."""
+    kalan = list(r["uyarilar"])
+    if veri is not None:
+        if "eylemler" not in (veri.get("yukler") or {}) and not _motor_c16():
+            kalan = [u for u in kalan if not u.startswith(EYLEM_NOTU)]
+        if not (veri.get("temel") or {}).get("oz_yuk") and not _motor_c11():
+            kalan = [u for u in kalan if not u.startswith(TEMEL_OZ_NOTU)]
+    assert kalan == []
+
+
+def _diyafram_beklenen(veri):
+    """Eylem taşıyan rijit diyafram efendi düğümleri → (merkez bağlantısı sayısı, rijit bağ üyesi sayısı: efendiyle çakışmayan kat
+    düğümleri)."""
+    ag = veri["ag"]
+    dug = {d["no"]: d for d in ag["dugumler"]}
+    eyl = (veri.get("yukler") or {}).get("eylemler") or {}
+    merkez = {n["dugum"] for e in eyl.values() for n in e.get("dugumler", []) if dug.get(n["dugum"], {}).get("efendi")}
+    bag = 0
+    for d in ag.get("diyaframlar", []):
+        if d["ana"] in merkez:
+            m = dug[d["ana"]]
+            bag += sum(1 for n in d["dugumler"] if math.dist((dug[n]["X"], dug[n]["Y"], dug[n]["Z"]), (m["X"], m["Y"], m["Z"])) > 1e-6)
+    return len(merkez), bag
+
+
 @lru_cache(maxsize=None)
-def _ornek_bina(ad):
+def _ornek_json(ad):
     r = _node("-e", "process.stdout.write(JSON.stringify(require(process.argv[1])[process.argv[2]]()))", str(ORNEKLER), ad)
     assert r.returncode == 0, r.stderr
-    return json.loads(r.stdout)
+    return r.stdout
+
+
+def _ornek_bina(ad):
+    """Örnek model (her çağrıda yeni kopya: testler modeli değiştirebilir)."""
+    return json.loads(_ornek_json(ad))
 
 
 def _genel_beklenen(bina):
@@ -283,6 +339,53 @@ def _yuk_toplamlari(metin):
     return toplam, eylemler, V
 
 
+def _yuk_vektorleri(metin):
+    """Her yük durumunun eylem bileşkesi, bina (global) eksenlerinde: {durum: [FX, FY, FZ, MX, MY, MZ]} (kN, kN·m; moment yalnız
+    nokta eylemlerinin kendi momentleri — konum momenti eklenmez). Yayılı eylemler × üye boyu / yamuk integrali (_yuk_toplamlari gibi)."""
+    V = _varliklar(metin)
+    uye = {_r(a[5]): _r(a[4]) for t, a in V.values() if t == "IFCRELCONNECTSSTRUCTURALACTIVITY"}
+    durum = {}
+    for t, a in V.values():
+        if t == "IFCRELASSIGNSTOGROUP" and V[_r(a[6])][0] == "IFCSTRUCTURALLOADCASE":
+            for o in a[4]:
+                durum[_r(o)] = V[_r(a[6])][1][2][1]
+    toplam = {}
+    for n, (t, a) in V.items():
+        if t not in ("IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALCURVEACTION", "IFCSTRUCTURALPOINTACTION"):
+            continue
+        yk = V[_r(a[7])][1]
+        v = [0.0] * 6
+        if t == "IFCSTRUCTURALPOINTACTION":
+            v = [yk[i] or 0.0 for i in range(1, 7)]
+        elif t == "IFCSTRUCTURALLINEARACTION":
+            L = math.dist(*_uye_uclari(V, uye[n]))
+            v[:3] = [(yk[i] or 0.0) * L for i in (1, 2, 3)]
+        else:
+            x = [p[0] for p in yk[2]]
+            f = [[V[_r(r)][1][i] or 0.0 for r in yk[1]] for i in (1, 2, 3)]
+            v[:3] = [sum((x[i + 1] - x[i]) * (fi[i] + fi[i + 1]) / 2 for i in range(len(x) - 1)) for fi in f]
+        top = toplam.setdefault(durum[n], [0.0] * 6)
+        for i in range(6):
+            top[i] += v[i]
+    return toplam
+
+
+def _eylem_toplami(e):
+    """veri.yukler.eylemler[durum] kaydının bileşkesi [FX, FY, FZ, MX, MY, MZ] (bina eksenleri; q·vek, P·vek, F)."""
+    t = [0.0] * 6
+    for n in e.get("dugumler", []):
+        for i in range(6):
+            t[i] += n["F"][i]
+    for c in e.get("cubuklar", []):
+        for y in c.get("yayili", []):
+            for i in range(3):
+                t[i] += (y["q1"] + y["q2"]) / 2 * (y["x2"] - y["x1"]) * y["vek"][i]
+        for y in c.get("tekil", []):
+            for i in range(3):
+                t[i] += y["P"] * y["vek"][i]
+    return t
+
+
 def test_sozdizimi():
     r = _node("--check", str(MODUL))
     assert r.returncode == 0, r.stderr
@@ -299,7 +402,7 @@ def test_node_birim_testleri():
 def test_sablon_step_ve_sayilar(ad, veri_ile):
     bina, veri, r = _sablon_ifc(ad, veri_ile)
     tip = _step_denetle(r["metin"])
-    assert r["uyarilar"] == []
+    _uyarisiz(r, veri)
     assert tip == Counter(r["sayac"])
     genel = _genel_mi(ad)
     nx, ny = len(bina["akslar"]["x"]), len(bina["akslar"]["y"])
@@ -336,10 +439,11 @@ def test_sablon_step_ve_sayilar(ad, veri_ile):
     else:
         ag = veri["ag"]
         efendi = {d["no"] for d in ag["dugumler"] if d.get("efendi")}
-        assert tip["IFCSTRUCTURALCURVEMEMBER"] == sum(1 for e in ag["elemanlar"] if not set(e["dugumler"]) & efendi)
-        assert tip["IFCSTRUCTURALPOINTCONNECTION"] == len(ag["dugumler"]) - len(efendi)
+        merkez, bag = _diyafram_beklenen(veri)      # eylem taşıyan diyafram merkezleri ve rijit bağları (K-37)
+        assert tip["IFCSTRUCTURALCURVEMEMBER"] == sum(1 for e in ag["elemanlar"] if not set(e["dugumler"]) & efendi) + bag
+        assert tip["IFCSTRUCTURALPOINTCONNECTION"] == len(ag["dugumler"]) - len(efendi) + merkez
         uyg = [k for k in veri["kombinasyonlar"] if k["uygulandi"] and k["tur"] != "drift"]
-        durumlar = set(veri["durumlar"]) | {"G", "Q"} | {d for k in uyg for d in k["katsayilar"]}
+        durumlar = set(veri["durumlar"]) | {"G", "Q"} | {d for k in uyg for d in k["katsayilar"]} | set(veri["yukler"].get("eylemler") or {})
         assert tip["IFCSTRUCTURALLOADCASE"] == len(durumlar)
         assert tip["IFCSTRUCTURALLOADGROUP"] == len(uyg)
         assert tip["IFCRELASSIGNSTOGROUPBYFACTOR"] == sum(len(k["katsayilar"]) for k in uyg)
@@ -390,7 +494,9 @@ def test_program_adi_yalniz_matris_ogren():
 # Genel model (surum 3): motorun kesit dili, vute, G/Q/S yükleri (ifcopenshell gerekmez)
 # ---------------------------------------------------------------------------
 BASIT_ADLAR = ["BORU 168.3x6.3", "BORU 114.3x4", "KUTU 150x8", "KUTU 200x100x6", "L 100x10", "2L 70x7 s=10", "UPN 200",
-               "upn 80", "Kutu 40×40×3", "2L 100x100x10", "BORU 48,3x3,2"]
+               "upn 80", "Kutu 40×40×3", "2L 100x100x10", "BORU 48,3x3,2", "UPN 200.4", "UPN 219.5", "L 100x100x10"]
+# motorun reddettiği adlar (tasarim._ad_coz MatrisHatasi): basitProfil null döner (K-8)
+BASIT_RED = ["L 100x80x8", "2L 100x80x8", "2L 100x80x8 s=10", "UPN 221.5", "UPN 210"]
 
 
 def test_basit_profil_tasarim_ile_ayni():
@@ -408,6 +514,19 @@ def test_basit_profil_tasarim_ile_ayni():
         assert js["Iy"] == pytest.approx(p["Iy"] * 1e-8, rel=0.02), ad
         assert js["Iz"] == pytest.approx(p["Iz"] * 1e-8, rel=0.02), ad
         assert js["J"] == pytest.approx(p["It"] * 1e-8, rel=0.02), ad
+
+
+def test_basit_profil_motorun_reddettigi_adlar():
+    """K-8: motorun kabul etmediği basit kesit adları (farklı kollu korniyer, tablo dışı UPN) basitProfil'de de null."""
+    import tasarim
+    from yapi import MatrisHatasi
+    r = _node("-e", "const M = require(process.argv[1]); process.stdout.write(JSON.stringify(JSON.parse(process.argv[2]).map(M.basitProfil)))",
+              str(MODUL), json.dumps(BASIT_RED))
+    assert r.returncode == 0, r.stderr
+    for ad, js in zip(BASIT_RED, json.loads(r.stdout)):
+        with pytest.raises(MatrisHatasi):
+            tasarim.kesit_ozellik(ad)
+        assert js is None, ad
 
 
 def test_genel_model_cbf_kesit_ve_yukler():
@@ -497,6 +616,204 @@ def test_ornek_genel_kesit_motorla_cozulur():
     assert sum(-float(x) for x in kose) == pytest.approx(panel["G_toplam"], rel=1e-9)
 
 
+def _vute_basit_bina():
+    """K-7: genel kesit örneğinde aşıklar UPN 200 temelli, saçak aşığı KUTU 200x100x6 temelli, çaprazlar BORU 114.3x4 temelli vute."""
+    bina = _ornek_bina("genel_kesit")
+    k = bina["kesitler"]
+    k.update({"V_UPN": {"tip": "vute", "temel": "ASIK", "ek_yukseklik": 0.1, "boy": 2.0},
+              "V_KUTU": {"tip": "vute", "temel": "SACAK", "ek_yukseklik": 0.1, "derin_uc": "j"},
+              "V_BORU": {"tip": "vute", "temel": "CAPRAZ", "ek_yukseklik": 0.05}})
+    for c in bina["cubuklar"]:
+        c["kesit"] = {"ASIK": "V_UPN", "SACAK": "V_KUTU", "CAPRAZ": "V_BORU"}.get(c["kesit"], c["kesit"])
+    return bina
+
+
+@lru_cache(maxsize=None)
+def _vute_basit_cozumlu():
+    import yapi
+    bina = _vute_basit_bina()
+    veri = json.loads(json.dumps(yapi.bina_coz(bina, anlat=False).veri))
+    return bina, veri, _uret(bina, veri)
+
+
+def test_vute_basit_temel_kesit():
+    """K-7: KUTU ve U temelli vute IfcExtrudedAreaSolidTapered (derin uç aynı türde, h + ek); BORU temelli vute düz katı + Pset ve tek
+    uyarı. Motor bu kesitleri çözer (yapi_serbest._derin_kesit); yükler çözümle aynı."""
+    bina, veri, r = _vute_basit_cozumlu()
+    tip = _step_denetle(r["metin"])
+    n = Counter(c["kesit"] for c in bina["cubuklar"])
+    assert tip["IFCEXTRUDEDAREASOLIDTAPERED"] == 4 + n["V_UPN"] + n["V_KUTU"]
+    assert re.search(r"IFCUSHAPEPROFILEDEF\(\.AREA\.,'UPN 200 \(vute derin u\\X2\\00E7\\X0\\, h = 0\.3 m\)',#\d+,0\.3,0\.075,", r["metin"])
+    assert re.search(r"IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 200x100x6 \(vute derin u\\X2\\00E7\\X0\\, h = 0\.3 m\)',#\d+,0\.1,0\.3,"
+                     r"0\.006,0\.006,0\.009\)", r["metin"])
+    assert len(re.findall(r"IFCPROPERTYSET\('[^']{22}',#\d+,'Pset_MatrisVute'", r["metin"])) == 4 + sum(n[a] for a in ("V_UPN", "V_KUTU", "V_BORU"))
+    assert r["uyarilar"] == ["vute temel kesiti CAPRAZ: konik katı yazılmadı (bu kesit için konik profil yok); temel kesitli düz katı ve "
+                             f"Pset_MatrisVute yazıldı ({n['V_BORU']} eleman)."]
+    _cubuk_yuklerini_karsilastir(r["metin"], veri)
+
+
+def test_vute_basit_temel_ifcopenshell(tmp_path):
+    """K-7: KUTU/U temelli konik katılar EXPRESS kurallarıyla geçerli (IfcTaperedSweptAreaProfiles: aynı profil türü); konik katı derin
+    uçta h + ek, ince uçta temel profil yüksekliğinde (üst yüz hizalı)."""
+    _ifc()
+    np = pytest.importorskip("numpy")
+    import ifcopenshell.geom
+    _bina, veri, r = _vute_basit_cozumlu()
+    f = _ac(r["metin"], tmp_path, "vute_basit")
+    assert _dogrula(f, True) == []
+    dug = {d["no"]: np.array([d["X"], d["Y"], d["Z"]]) for d in veri["ag"]["dugumler"]}
+    cub = {c["no"]: c for c in veri["ag"]["cubuklar"]}
+    for e in f.by_type("IfcMember"):
+        if e.ObjectType not in ("V_UPN", "V_KUTU"):
+            continue
+        v = np.array(ifcopenshell.geom.create_shape(_ayarlar(), e).geometry.verts, dtype=float).reshape(-1, 3)
+        c = cub[int(e.Tag[1:])]
+        P0, P1 = dug[c["i"]], dug[c["j"]]
+        L = np.linalg.norm(P1 - P0)
+        t = (P1 - P0) / L
+        s_, z = (v - P0) @ t, v[:, 2] - P0[2]
+        h = 0.2 + 0.1
+        derin, ince = (0.0, L) if e.ObjectType == "V_UPN" else (L, 0.0)
+        for x, hh in ((derin, h), (ince, 0.2)):
+            zz = z[np.abs(s_ - x) < 1e-4]
+            assert zz.max() - zz.min() == pytest.approx(hh, abs=1e-4), (e.ObjectType, x)
+            assert zz.max() == pytest.approx(0.1, abs=1e-4)          # üst yüz temel profille hizalı (+h/2)
+
+
+# ---------------------------------------------------------------------------
+# Örnekler motorla çözülür (K-11); rüzgâr/deprem/kren eylemleri (K-37); temel öz ağırlığı (K-39)
+# ---------------------------------------------------------------------------
+def _yayili_temelli_genel(bina):
+    return int(bina.get("surum", 1)) >= 3 and (bina.get("temeller") or {}).get("tip", "tekil") in ("surekli", "radye")
+
+
+@lru_cache(maxsize=None)
+def _ornek_cozumlu(ad):
+    import yapi
+    bina = _ornek_bina(ad)
+    veri = json.loads(json.dumps(yapi.bina_coz(bina, anlat=False).veri))
+    return bina, veri, _uret(bina, veri)
+
+
+@pytest.mark.parametrize("ad", ORNEK_ADLARI)
+def test_ornekler_cozulur(ad):
+    """K-11: her örnek yapi.bina_coz ile hatasız çözülür; çözüm verisiyle IFC uyarısız, yük eylemleri var ve G/Q (genelde S de)
+    toplamları çözümle aynı. 'serbest' (surum 3, mütemadi temel) motor paketiyle (C11 genel modelde temel) çözülür."""
+    if _yayili_temelli_genel(_ornek_bina(ad)) and not _motor_genel_temel():
+        pytest.skip("genel modelde mütemadi/radye temel motor paketi (C11) ile gelir")
+    bina, veri, r = _ornek_cozumlu(ad)
+    tip = _step_denetle(r["metin"])
+    _uyarisiz(r, veri)
+    assert tip["IFCSTRUCTURALLINEARACTION"] + tip["IFCSTRUCTURALCURVEACTION"] > 0
+    vek = _yuk_vektorleri(r["metin"])
+    temelli = (veri.get("temel") or {}).get("tip") in ("surekli", "radye")
+    for d in ("G", "Q", "S"):
+        if d == "S" and not _genel_mi_bina(bina):
+            continue                                   # aks–kat IFC'si G ve Q yazar
+        if d == "G" and temelli and not _motor_c11():
+            continue                                   # temel öz ağırlığı motorla (oz_yuk) gelir
+        assert -vek.get(d, [0.0] * 6)[2] == pytest.approx(veri["yukler"]["toplam"].get(d, 0.0), abs=0.1), d
+
+
+def _genel_mi_bina(bina):
+    return int(bina.get("surum", 1)) >= 3
+
+
+@pytest.mark.parametrize("ad", ["celik-sanayi-4hol", "betonarme-3kat-3x3", "celik-cbf-3kat"])
+def test_eylem_toplamlari(ad):
+    """K-37 (C16): her rüzgâr / deprem / kren durumunun IFC eylem bileşkesi veri.yukler.eylemler ile aynı (kuvvet ve moment); W =
+    veri.ruzgar.toplam (panel yöntemi) ya da ±toplam_x / ±toplam_y; EX±/EY± ΣF = V_tE; K = tekerlek yükleri (düşey); EZ = G_carpani × G."""
+    if not _motor_c16():
+        pytest.skip("veri.yukler.eylemler motor paketi (C16) ile gelir")
+    bina, veri, r = _sablon_ifc(ad, True)
+    _step_denetle(r["metin"])
+    assert r["uyarilar"] == []
+    eyl = veri["yukler"]["eylemler"]
+    assert {d for d in veri["durumlar"] if d[0] in "WE"} <= set(eyl)
+    vek = _yuk_vektorleri(r["metin"])
+    ruz = veri.get("ruzgar") or {}
+    for d, e in eyl.items():
+        t = vek[d]
+        if e.get("G_carpani"):
+            assert t[:3] == pytest.approx([e["G_carpani"] * x for x in vek["G"][:3]], abs=1e-6), d
+            continue
+        assert t == pytest.approx(_eylem_toplami(e), abs=1e-6), d
+        if d[0] == "W":
+            if ruz.get("toplam"):
+                assert t[:3] == pytest.approx(ruz["toplam"][d], abs=1e-6), d
+            else:
+                i = 0 if d[-1] == "X" else 1
+                assert t[i] == pytest.approx((1 if d[1] == "+" else -1) * ruz["toplam_" + d[-1].lower()], abs=1e-6), d
+        elif d[:2] in ("EX", "EY"):
+            i = 0 if d[1] == "X" else 1
+            assert abs(t[i]) == pytest.approx(veri["deprem"][d[1]]["VtE"], rel=1e-9), d
+            assert t[1 - i] == pytest.approx(0.0, abs=1e-9)
+        elif d[0] == "K":
+            k = next(k for k in veri["kren"]["kopruler"] if d in k["durumlar"])
+            tk = k["tekerlek"]
+            assert -t[2] == pytest.approx((tk["P_maks"] + tk["P_min"]) * tk["adet"] * k["dinamik"], rel=1e-9), d
+    if ad == "celik-sanayi-4hol":
+        assert any(d[0] == "K" for d in eyl)
+
+
+@lru_cache(maxsize=None)
+def _genel_temel_ifc(ad):
+    """Aks–kat şablonunun model_ops.genellestir ile genel modeli (mütemadi/radye temel korunur), motorla çözümü ve IFC'si."""
+    import yapi
+    b = _node("-e", "const MO = require(process.argv[1]); process.stdout.write(JSON.stringify(MO.genellestir(JSON.parse(process.argv[2])).model))",
+              str(PROJE / "docs" / "model_ops.js"), json.dumps(yapi.bina_sablon(ad)))
+    assert b.returncode == 0, b.stderr
+    bina = json.loads(b.stdout)
+    veri = json.loads(json.dumps(yapi.bina_coz(bina, anlat=False).veri))
+    return bina, veri, _uret(bina, veri)
+
+
+_TEMEL_SABLONLARI = ["betonarme-3kat-surekli-temel", "betonarme-4kat-radye"]
+
+
+@pytest.mark.parametrize("ad", _aks_kat_sablonlari() + [f"genel:{a}" for a in _TEMEL_SABLONLARI])
+def test_temel_oz_agirligi_toplami(ad):
+    """K-39 (C11 oz_yuk): IFC G toplamı = veri.yukler.toplam.G (temel öz ağırlığı dahil; 0,1 kN içinde), Q aynı; mütemadi/radye
+    temel elemanlarında ve temel düğümlerinde G eylemleri var (Σq·L + ΣP = W)."""
+    genel = ad.startswith("genel:")
+    kok = ad.split(":", 1)[-1]
+    import yapi
+    tip_ = yapi.BINA_SABLONLARI[kok].get("temeller", {}).get("tip", "tekil")
+    if genel and not _motor_genel_temel():
+        pytest.skip("genel modelde mütemadi/radye temel motor paketi (C11) ile gelir")
+    if tip_ != "tekil" and not _motor_c11():
+        pytest.skip("veri.temel.oz_yuk motor paketi (C11) ile gelir")
+    _bina, veri, r = _genel_temel_ifc(kok) if genel else _sablon_ifc(kok, True)
+    _step_denetle(r["metin"])
+    _uyarisiz(r, veri)
+    vek = _yuk_vektorleri(r["metin"])
+    assert -vek["G"][2] == pytest.approx(veri["yukler"]["toplam"]["G"], abs=0.1)
+    assert -vek["Q"][2] == pytest.approx(veri["yukler"]["toplam"]["Q"], abs=1e-6)
+    if tip_ != "tekil":
+        oz = veri["temel"]["oz_yuk"]
+        assert sum(x["P"] for x in oz["dugumler"]) + sum(
+            x["q"] * next(e["L"] for e in veri["ag"]["elemanlar"] if e["no"] == x["no"]) for x in oz["elemanlar"]) == pytest.approx(oz["W"], abs=0.01)
+        _t, eylemler, V = _yuk_toplamlari(r["metin"])
+        tur = {e["no"]: e["tur"] for e in veri["ag"]["elemanlar"]}
+        no = lambda u: int(re.search(r"\[E(\d+)\]", V[u][1][2][1]).group(1))      # noqa: E731 — analiz üyesi adındaki FE no
+        temel_uye = {no(u) for d, u, _v, _t2 in eylemler if d == "G" and V[u][0] == "IFCSTRUCTURALCURVEMEMBER"
+                     and tur.get(no(u)) in ("temel-kirisi", "radye-serit")}
+        assert temel_uye == {x["no"] for x in oz["elemanlar"] if x["q"]}
+
+
+def test_genel_temel_ifcopenshell(tmp_path):
+    """Genelleştirilmiş mütemadi temelli model (motorla çözülmüş): EXPRESS kurallarıyla geçerli; diyafram merkezleri ve bağları dahil."""
+    _ifc()
+    if not _motor_genel_temel():
+        pytest.skip("genel modelde mütemadi/radye temel motor paketi (C11) ile gelir")
+    _bina, veri, r = _genel_temel_ifc("betonarme-3kat-surekli-temel")
+    f = _ac(r["metin"], tmp_path, "genel_surekli")
+    assert _dogrula(f, True) == []
+    merkez, bag = _diyafram_beklenen(veri)
+    assert len([n for n in f.by_type("IfcStructuralPointConnection") if n.Name.endswith("diyafram merkezi")]) == merkez
+    assert len([u for u in f.by_type("IfcStructuralCurveMember") if "diyafram ba" in u.Name]) == bag
+
+
 def test_genel_model_kesit_uyarisi_tekil():
     """Tabloda olmayan profil: uyarı kesit adı başına bir kez, kullanım sayısıyla (çubuk başına değil)."""
     bina = _ornek_bina("genel_kesit")
@@ -525,7 +842,7 @@ def _ac(metin, tmp_path, ad="model"):
 # şema denetimi (tür, sayı, zorunlu alan, ters ilişki) her dosyada, kural denetimi bütün varlık türlerini kapsayan temsilci
 # dosyalarda yapılır.
 KURALLI_SABLON = {("betonarme-3kat-3x3", True), ("celik-1kat-depo", True), ("betonarme-3kat-surekli-temel", True),
-                  ("betonarme-4kat-radye", True), ("celik-cbf-3kat", True)}
+                  ("betonarme-4kat-radye", True), ("celik-cbf-3kat", True), ("celik-sanayi-4hol", True)}
 KURALLI_ORNEK = {"serbest", "radye", "aks", "genel_kesit"}
 # motorun basit kesit adı öneki → IFC profil sınıfı
 _BASIT_IFC = {"BORU": "IfcCircleHollowProfileDef", "KUTU": "IfcRectangleHollowProfileDef", "L": "IfcLShapeProfileDef",
@@ -633,7 +950,8 @@ def test_sablon_ifcopenshell(ad, veri_ile, tmp_path):
     assert len(model) == 1
     uyeler = [o for rel in model[0].IsGroupedBy for o in rel.RelatedObjects]
     assert sum(1 for o in uyeler if o.is_a("IfcStructuralCurveMember")) == len(f.by_type("IfcStructuralCurveMember"))
-    mesnetli = [n for n in f.by_type("IfcStructuralPointConnection") if n.AppliedCondition]
+    # mesnetli düğümler (diyafram merkezinin uz, rx, ry koşulu mesnet değil: motorda efendi düğümün yalnız ux, uy, rz serbestliği var)
+    mesnetli = [n for n in f.by_type("IfcStructuralPointConnection") if n.AppliedCondition and not n.Name.endswith("diyafram merkezi")]
     if tb["ag"]:
         # temel.py ağı: her temel düğümünde Winkler yayı k_z = k0·A (A: etki alanı); kolon tabanı sabit mesnet değil
         vt = veri["temel"]
@@ -793,12 +1111,9 @@ def test_ornek_aks_sistemi_geometri(tmp_path):
     beklenen += [(5 + 3 * np.cos(np.radians(t)), 18 + 3 * np.sin(np.radians(t)), 0.0, 2.5) for t in (0, 120, 240)]
     for b in beklenen:
         assert any(np.allclose(m, b, atol=TOL) for m in merkezler), b
-    # mahya kirişi (eğik): üst noktası mahya Z aksının üstünde değil; aşıklar mertek ortasında
-    for e in f.by_type("IfcMember"):
-        if e.PredefinedType == "PURLIN":
-            mn, mx = _kutu(e)
-            assert (mn[0] + mx[0]) / 2 == pytest.approx(2.5, abs=TOL)
-            assert (mn[2] + mx[2]) / 2 == pytest.approx(6.75, abs=TOL)
+    # aşıklar: ikisi mertek ortasında (bölme düğümleri), ikisi mahyada (M aksı, Mahya Z aksı)
+    asik = sorted(((mn[0] + mx[0]) / 2, (mn[2] + mx[2]) / 2) for mn, mx in (_kutu(e) for e in f.by_type("IfcMember") if e.PredefinedType == "PURLIN"))
+    assert [x for p in asik for x in p] == pytest.approx([2.5, 6.75, 2.5, 6.75, 5.0, 7.5, 5.0, 7.5], abs=TOL)
     # Z aksları özellik kümesi
     ps = _pset(f.by_type("IfcBuilding")[0], "Pset_MatrisOgren_ZAkslari")
     assert ps == pytest.approx({"±0.00": 0.0, "Saçak": 6.0, "Mahya": 7.5})
