@@ -1,0 +1,214 @@
+# op4 — yerel Windows programı (C++20 + DirectX 12 + Dear ImGui + gömülü CPython hesap motoru).
+# Derler, sınar ve kurulum paketi (op4-setup.exe, Inno Setup) üretir. Sınamalar:
+#   --test-motor    gömülü Python 3.13 + numpy/sympy + web_kopru (surum_json, bina_sablonlar, kuyruk gidiş-dönüşleri)
+#   --test-ekran    WARP (yazılım D3D12) ile ekran dışı kare → PNG; PNG'ler günlüğe base64 olarak da yazılır
+#                   ('-----OP4-PNG-BASLA-----' / '-----OP4-PNG-BITIR-----' arasında) — yapıtlar indirilemeyen ortamlarda
+#                   günlükten çözülüp incelenebilsin diye
+#   --test-acilis   açılış ekranı → PNG
+#   --test-pencere  gerçek pencere + takas zinciri + açılış ekranı + motor; betikli kaydırma / döndürme / yakınlaşma
+#   kurulum         sessiz kur → kurulu programla --test-motor → sessiz kaldır
+# Eylemler değişmez işleme özetleriyle sabitlenmiştir (yorumdaki sürüm bilgi içindir).
+name: op4 (Windows)
+
+on:
+  push:
+    branches:
+      - claude/dreamy-franklin-nvl0oo
+    paths:
+      - "op4/**"
+      - ".github/workflows/op4.yml"
+      - "*.py"
+      - "docs/*.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: op4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: op4 — derle, sına, paketle
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      OP4_SURUM: "0.1.0"
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.13 (x64; pip ve .pyc derlemesi için, gömülü sürümle aynı)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          architecture: x64
+
+      - name: Ortam
+        run: |
+          echo "PY_SURUM=$(python -c 'import platform; print(platform.python_version())')" >> "$GITHUB_ENV"
+          python -c "import platform, sys; print('Python', platform.python_version(), sys.executable)"
+          cmake --version | head -1
+          cmd //c ver
+          powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion | Format-Table -AutoSize | Out-String -Width 200"
+          powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).Name; '{0:N1} GB RAM' -f ((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"
+
+      - name: Önbellek (gömülü Python zip'i, pip tekerlekleri)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: op4/.onbellek
+          key: op4-py-${{ env.PY_SURUM }}-${{ hashFiles('op4/araclar/python_hazirla.py') }}
+          restore-keys: |
+            op4-py-${{ env.PY_SURUM }}-
+
+      - name: Yapılandır (CMake, MSVC x64)
+        run: |
+          bas=$(date +%s)
+          cmake -S op4 -B op4-yapi -A x64
+          echo "SURE_YAPILANDIR=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
+
+      - name: Derle (Release)
+        run: |
+          bas=$(date +%s)
+          cmake --build op4-yapi --config Release --parallel -- /nologo /v:minimal
+          echo "SURE_DERLE=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
+
+      - name: Paket klasörü (op4.exe + kimlik + gömülü Python + hesap motoru)
+        run: |
+          bas=$(date +%s)
+          cmake --install op4-yapi --config Release --prefix paket
+          python op4/araclar/python_hazirla.py --paket paket --onbellek op4/.onbellek
+          echo "SURE_PAKET=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
+          echo "BOYUT_EXE=$(stat -c %s paket/op4.exe)" >> "$GITHUB_ENV"
+          echo "BOYUT_PYTHON=$(du -sb paket/python | cut -f1)" >> "$GITHUB_ENV"
+          echo "BOYUT_MOTOR=$(du -sb paket/motor | cut -f1)" >> "$GITHUB_ENV"
+          echo "BOYUT_PAKET=$(du -sb paket | cut -f1)" >> "$GITHUB_ENV"
+          du -sh paket/op4.exe paket/kimlik paket/python paket/motor paket
+          ls paket/python | head -40
+
+      - name: Sına — hesap motoru (--test-motor; soğuk ve ılık açılış)
+        run: |
+          kod=0
+          ./paket/op4.exe --test-motor --gunluk motor.log > motor.stdout.txt || kod=$?
+          echo "çıkış kodu: $kod; op4'ün standart çıktısına yazdığı satır: $(wc -l < motor.stdout.txt)"
+          cat motor.log
+          [ "$kod" = 0 ] || exit "$kod"
+          ./paket/op4.exe --test-motor --gunluk motor2.log > /dev/null || kod=$?
+          echo "--- ikinci (ılık) açılış ---"
+          grep -E "SÜRELER|BAŞARI" motor2.log || true
+          echo "MOTOR_SOGUK=$(grep -o 'TOPLAM motor açılışı [0-9.]* ms' motor.log | grep -o '[0-9.]* ms')" >> "$GITHUB_ENV"
+          echo "MOTOR_ILIK=$(grep -o 'TOPLAM motor açılışı [0-9.]* ms' motor2.log | grep -o '[0-9.]* ms')" >> "$GITHUB_ENV"
+          exit "$kod"
+
+      - name: Sına — ekran (--test-ekran, WARP) ve açılış ekranı (--test-acilis)
+        run: |
+          kod=0
+          ./paket/op4.exe --test-ekran ekran-960x540.png --boyut 960x540 --gunluk ekran.log > /dev/null || kod=$?
+          cat ekran.log
+          ./paket/op4.exe --test-ekran onizleme.png --boyut 640x360 --gunluk onizleme.log > /dev/null || kod=$?
+          cat onizleme.log
+          ./paket/op4.exe --test-ekran sahne.png --boyut 640x360 --arayuzsuz --gunluk sahne.log > /dev/null || kod=$?
+          cat sahne.log
+          ./paket/op4.exe --test-acilis acilis.png --gunluk acilis.log > /dev/null || kod=$?
+          cat acilis.log
+          # Günlükteki kopyalar 256 renge indirgenir (≈ 3 kat küçük); asıl PNG'ler yapıt olarak saklanır.
+          python -m pip install --disable-pip-version-check -q "pillow==12.3.0" || true
+          for ad in onizleme sahne acilis; do
+            [ -f "$ad.png" ] || continue
+            python -c "import sys; from PIL import Image; Image.open(sys.argv[1]).convert('RGB').quantize(256).save(sys.argv[2], optimize=True)" "$ad.png" "$ad-gunluk.png" 2>/dev/null || cp "$ad.png" "$ad-gunluk.png"
+            echo "OP4-PNG ad=$ad bayt=$(stat -c %s "$ad.png") gunluk_bayt=$(stat -c %s "$ad-gunluk.png")"
+            echo "-----OP4-PNG-BASLA-----"
+            base64 -w 100 "$ad-gunluk.png"
+            echo "-----OP4-PNG-BITIR-----"
+          done
+          exit "$kod"
+
+      - name: Sına — gerçek pencere (--test-pencere; açılış + takas zinciri + motor + betikli gezinme)
+        continue-on-error: true
+        run: |
+          kod=0
+          ./paket/op4.exe --test-pencere 8 --gunluk pencere.log > /dev/null || kod=$?
+          cat pencere.log
+          exit "$kod"
+
+      - name: Kurulum paketi (Inno Setup 6)
+        shell: pwsh
+        run: |
+          $sure = [Diagnostics.Stopwatch]::StartNew()
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Select-Object -Last 3
+          }
+          $simge = if (Test-Path op4\kimlik\op4.ico) { "$PWD\op4\kimlik\op4.ico" } else { "$PWD\op4\kimlik\op4_simge_placeholder.ico" }
+          & $iscc /Q "/DSurum=$env:OP4_SURUM" "/DPaket=$PWD\paket" "/DCikti=$PWD\dagitim" "/DSimge=$simge" op4\kurulum\op4.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $kur = Get-Item dagitim\op4-setup.exe
+          "op4-setup.exe: {0:N1} MB, {1:N0} s" -f ($kur.Length / 1MB), $sure.Elapsed.TotalSeconds
+          "BOYUT_KURULUM=$($kur.Length)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "SURE_KURULUM=$([int]$sure.Elapsed.TotalSeconds)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Sına — sessiz kurulum, kurulu programla motor testi, kaldırma
+        shell: pwsh
+        run: |
+          $hedef = "C:\op4-dene"
+          $sure = [Diagnostics.Stopwatch]::StartNew()
+          $p = Start-Process -FilePath dagitim\op4-setup.exe -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/ALLUSERS", "/DIR=$hedef", "/LOG=$PWD\kurulum.log")
+          "kurulum: çıkış kodu $($p.ExitCode), $([int]$sure.Elapsed.TotalSeconds) s"
+          if ($p.ExitCode -ne 0) { Get-Content kurulum.log -Tail 40; exit 1 }
+          $kisayol = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Opus Fortis\op4.lnk"
+          "Başlat menüsü kısayolu: $(Test-Path $kisayol) ($kisayol)"
+          "Kaldırıcı: $(Test-Path "$hedef\unins000.exe")"
+          $p = Start-Process -FilePath "$hedef\op4.exe" -Wait -PassThru -ArgumentList @("--test-motor", "--gunluk", "$PWD\kurulu-motor.log")
+          Get-Content kurulu-motor.log
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $kisayol)) { exit 1 }
+          $p = Start-Process -FilePath "$hedef\unins000.exe" -Wait -PassThru -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+          for ($i = 0; $i -lt 60 -and (Test-Path "$hedef\op4.exe"); $i++) { Start-Sleep -Seconds 1 }
+          "kaldırma: çıkış kodu $($p.ExitCode); op4.exe kaldı mı: $(Test-Path "$hedef\op4.exe"); kısayol kaldı mı: $(Test-Path $kisayol)"
+          if (Test-Path "$hedef\op4.exe") { exit 1 }
+
+      - name: Özet
+        if: always()
+        run: |
+          mb() { awk -v b="${1:-0}" 'BEGIN { printf "%.1f MB", b / 1048576 }'; }
+          {
+            echo "## op4 (Windows) — özet"
+            echo "| ölçü | değer |"
+            echo "|---|---|"
+            echo "| CMake yapılandırma | ${SURE_YAPILANDIR:-?} s |"
+            echo "| Derleme (Release, MSVC) | ${SURE_DERLE:-?} s |"
+            echo "| Paket hazırlama (gömülü Python + pip + .pyc) | ${SURE_PAKET:-?} s |"
+            echo "| Kurulum paketi derleme (Inno Setup) | ${SURE_KURULUM:-?} s |"
+            echo "| op4.exe | $(mb "$BOYUT_EXE") |"
+            echo "| python/ (gömülü CPython ${PY_SURUM} + numpy + sympy) | $(mb "$BOYUT_PYTHON") |"
+            echo "| motor/ | $(mb "$BOYUT_MOTOR") |"
+            echo "| paket/ toplam | $(mb "$BOYUT_PAKET") |"
+            echo "| op4-setup.exe | $(mb "$BOYUT_KURULUM") |"
+            echo "| Motor açılışı (soğuk / ılık) | ${MOTOR_SOGUK:-?} / ${MOTOR_ILIK:-?} |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Kurulum paketini sakla
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: op4-setup
+          path: dagitim/op4-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Test çıktılarını sakla (PNG, günlükler)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: op4-test-ciktilari
+          path: |
+            *.png
+            *.log
+          if-no-files-found: warn
+          retention-days: 14

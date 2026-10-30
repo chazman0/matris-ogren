@@ -1,0 +1,5 @@
+# İndirme önbelleği (gömülü Python zip'i, pip tekerlekleri) ve yerel derleme / paket klasörleri.
+.onbellek/
+/yapi/
+/paket/
+/dagitim/
