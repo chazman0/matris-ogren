@@ -691,6 +691,19 @@
     return { tum: tum, diger: tum.filter(function (u) { return !/turda yakınsamadı/.test(u); }) };
   }
   /**
+   * "Hepsini uygula" yanıtının açıklamasında ilk yanıtta olmayan ek (motor yinele turlarının özeti — ör. K-27: "0. turda göreli kat
+   * ötelemesi … sınırın %90'ını aşacağından şu gruplar küçültülmedi: …"). Model hiç değişmediyse kullanıcı nedenini buradan öğrenir.
+   * Öteleme satırı (otelemeSatiri) ayrıca yazılıyorsa (otelemeVar) motorun "Göreli kat ötelemesi (…): öneriden önce …; sonra …."
+   * cümlesi tekrar edilmez. Ek yoksa "".
+   */
+  function hepsiAciklamaEki(y2, y, otelemeVar) {
+    const a2 = String((y2 && y2.aciklama) || ""), a1 = String((y && y.aciklama) || "");
+    if (!a2 || !a1 || a2.length <= a1.length || a2.slice(0, a1.length) !== a1) return "";
+    let ek = a2.slice(a1.length);
+    if (otelemeVar) ek = ek.replace(/\s*Göreli kat ötelemesi \([^)]*\): öneriden önce [^;]*; sonra [^.]*\./, "");
+    return ek.trim();
+  }
+  /**
    * "Hepsini uygula" bekleme notu (K-31): "Hesaplanıyor: en çok 4 çözüm, yaklaşık N s" — N = görünen çözümün süresi
    * (veri.ozet.cozum_sure_ms; yoksa yedekMs: ilk öneri yanıtının sure_ms'i) × (yinele + 1) × 1,3 / 1000, yuvarlanmış (en az 1);
    * süre bilinmiyorsa "yaklaşık birkaç saniye".
@@ -701,11 +714,11 @@
     const s = ms != null ? Math.max(1, Math.round(ms * n * 1.3 / 1000)) : null;
     return "Hesaplanıyor: en çok " + n + " çözüm, yaklaşık " + (s != null ? s + " s" : "birkaç saniye");
   }
-  /** Yanıtın motor süresi (K-31, C19 sure_ms): "Süre: 4,2 s" (10 s ve üstü tam saniye); süre yoksa "". */
+  /** Yanıtın motor süresi (K-31, C19 sure_ms): "Süre: 4,2 s" (10 s ve üstü tam saniye; 0,05 s'den kısa "< 0,1 s"); süre yoksa "". */
   function sureMetni(ms) {
     if (ms == null || ms === "" || !isFinite(+ms) || +ms < 0) return "";
     const s = +ms / 1000;
-    return "Süre: " + (s < 10 ? fmt(s, 1) : String(Math.round(s))) + " s";
+    return "Süre: " + (s < 0.05 ? "< " + fmt(0.1, 1) : s < 10 ? fmt(s, 1) : String(Math.round(s))) + " s";
   }
   /**
    * Yinele yanıtının göreli kat ötelemesi satırı (K-27, C19 oteleme {sinir, once: {X: [δ/h], Y}, sonra}): her yönün en büyük δ/h'si
@@ -1322,7 +1335,7 @@
     aksKatOzellikYaz: aksKatOzellikYaz, ENGEL_KODLARI: ENGEL_KODLARI, yeniEngeller: yeniEngeller, tasiyanKenarMi: tasiyanKenarMi, aksSilEngelleri: aksSilEngelleri,
     // kesit önerisi (C4)
     TUR_ADI: TUR_ADI, oneriEtiketi: oneriEtiketi, tasarimEtiketi: tasarimEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri,
-    hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, dcFmt: dcFmt, elemanDc: elemanDc, oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
+    hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, hepsiAciklamaEki: hepsiAciklamaEki, dcFmt: dcFmt, elemanDc: elemanDc, oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
     // kesit önerisi ekleri (C19): parçalı eleman, kesit grubu, süre, öteleme
     sureTahmini: sureTahmini, sureMetni: sureMetni, otelemeSatiri: otelemeSatiri, grupUyeleri: grupUyeleri, grupDugmeMetni: grupDugmeMetni,
     grupDcMaks: grupDcMaks, grupUygula: grupUygula, oneriVurgusu: oneriVurgusu,
@@ -2864,7 +2877,9 @@
             (oz.asiyor ? " — ⚠ D/C maks " + dcFmt(oz.dc) + " > 1, öneriler yetmedi" + (asanMetin ? ": " + asanMetin : "") + "." : ".");
           MB.kaplamaKapat();
           if (MB.binaAyarla(y2.bina, { etiket: etiket }) === false) {
-            S.sonUyari = "Kesit önerileri modeli değiştirmedi." + (ek.tum.length ? " ⚠ " + ek.tum.join(" ") : "") + (son ? " " + son + "." : "");
+            // neden (ör. öteleme koruması küçültmeyi engelledi) motorun yinele açıklamasındadır: ilk yanıtta olmayan kısmı söylenir
+            const neden = hepsiAciklamaEki(y2, y, !!otelemeSatiri(y2 && y2.oteleme));
+            S.sonUyari = "Kesit önerileri modeli değiştirmedi." + (neden ? " " + neden : "") + (ek.tum.length ? " ⚠ " + ek.tum.join(" ") : "") + (son ? " " + son + "." : "");
             toast(S.sonUyari); MB.ipucuYenile(); return;
           }
           S.sonUyari = oz.asiyor ? etiket : "";

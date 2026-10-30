@@ -938,7 +938,16 @@
     const durumlar = durumListesi(c.veri).filter(function (x) { return x.tur !== "zarf"; });
     m.durumlar = durumlar; m.durum = null;
     if (c.veri && c.veri.durumlar) {
-      const sat = [], tsat = [], ysat = [];
+      const sat = [], tsat = [], ysat = [], dsat = [];
+      // düğümün mesnet yaylarının kuvveti (C12 yaylar[].tur; motor → bina eksenleri): {FX…MZ} ya da null
+      const yayKuvveti = function (K, tur_) {
+        const l = (K.yaylar || []).filter(function (q) { return +q.dugum === +no && q.tur === tur_; });
+        if (!l.length) return null;
+        const F = { FX: 0, FY: 0, FZ: 0, MX: 0, MY: 0, MZ: 0 };
+        l.forEach(function (q) { const e = YAY_BINA[q.bilesen]; if (e) F[e[0]] += e[1] * (+q.kuvvet || 0); });
+        return F;
+      };
+      const satirF = function (ad, F) { return [ad, f(F.FX, 2), f(F.FY, 2), f(F.FZ, 2), f(F.MX, 2), f(F.MY, 2), f(F.MZ, 2)]; };
       durumlar.forEach(function (x) {
         const K = kisa(c.veri, x.ad);
         if (!K) return;
@@ -946,21 +955,23 @@
         if (u) sat.push([x.ad, f(u.uX * 1000, 3), f(u.uY * 1000, 3), f(u.uZ * 1000, 3), f(u.rX * 1000, 4), f(u.rY * 1000, 4), f(u.rZ * 1000, 4)]);
         const t = (K.tepkiler || []).find(function (q) { return +q.dugum === +no; });
         if (t) { tsat.push([x.ad, f(t.FX, 2), f(t.FY, 2), f(t.FZ, 2), f(t.MX, 2), f(t.MY, 2), f(t.MZ, 2)]); if (!ham.tepki) ham.tepki = {}; ham.tepki[x.ad] = t; }
-        // yaylı mesnetin yay kuvvetleri (C12 tur "yay-mesnet"; motor → bina eksenleri)
-        const yk_ = (K.yaylar || []).filter(function (q) { return +q.dugum === +no && q.tur === "yay-mesnet"; });
-        if (yk_.length) {
-          const F = { FX: 0, FY: 0, FZ: 0, MX: 0, MY: 0, MZ: 0 };
-          yk_.forEach(function (q) { const e = YAY_BINA[q.bilesen]; if (e) F[e[0]] += e[1] * (+q.kuvvet || 0); });
-          ysat.push([x.ad, f(F.FX, 2), f(F.FY, 2), f(F.FZ, 2), f(F.MX, 2), f(F.MY, 2), f(F.MZ, 2)]);
-          if (!ham.yayKuvveti) ham.yayKuvveti = {};
-          ham.yayKuvveti[x.ad] = F;
-        }
+        // yaylı mesnetin yay kuvvetleri (C12 tur "yay-mesnet")
+        const Fy = yayKuvveti(K, "yay-mesnet");
+        if (Fy) { ysat.push(satirF(x.ad, Fy)); if (!ham.yayKuvveti) ham.yayKuvveti = {}; ham.yayKuvveti[x.ad] = Fy; }
+        // rijit diyafram düğümündeki ux / uy / rz mesnedinin ceza yayı (C12 tur "diyafram-mesnet", C14): bu yönlerin mesnet kuvveti
+        // tepkilerde değil yay kaydındadır
+        const Fd = yayKuvveti(K, "diyafram-mesnet");
+        if (Fd) { dsat.push(satirF(x.ad, Fd)); if (!ham.diyaframKuvveti) ham.diyaframKuvveti = {}; ham.diyaframKuvveti[x.ad] = Fd; }
       });
-      const tb = [];
+      const tb = [], KB = ["Durum", "FX (kN)", "FY (kN)", "FZ (kN)", "MX", "MY", "MZ (kN·m)"];
       if (yayM.length) tb.push({ baslik: "Yaylı mesnet", satirlar: yayM.map(function (t) { return satir("Yay rijitliği", t); }) });
-      if (tsat.length) tb.push({ baslik: "Tepkiler (bina koordinatı)", tablo: { basliklar: ["Durum", "FX (kN)", "FY (kN)", "FZ (kN)", "MX", "MY", "MZ (kN·m)"], satirlar: tsat } });
-      if (ysat.length) tb.push({ baslik: "Yay kuvvetleri (bina koordinatı)", tablo: { basliklar: ["Durum", "FX (kN)", "FY (kN)", "FZ (kN)", "MX", "MY", "MZ (kN·m)"], satirlar: ysat } });
-      if (tsat.length || ysat.length) m.sekmeler.push({ id: "tepki", ad: SEKME_ADI.tepki, bolumler: tb });
+      if (tsat.length) tb.push({ baslik: "Tepkiler (bina koordinatı)", tablo: { basliklar: KB, satirlar: tsat } });
+      if (ysat.length) tb.push({ baslik: "Yay kuvvetleri (bina koordinatı)", tablo: { basliklar: KB, satirlar: ysat } });
+      if (dsat.length) {
+        tb.push({ baslik: "Diyafram bağı kuvvetleri (bina koordinatı)", tablo: { basliklar: KB, satirlar: dsat } });
+        tb.push({ not: "Düğüm rijit diyaframlı bir kat seviyesinde: ux, uy ve rz mesnedi diyafram bağıyla (ceza rijitliği) uygulandı; bu yönlerin mesnet kuvveti Tepkiler tablosunda değil, Diyafram bağı kuvvetleri tablosundadır (toplam mesnet kuvveti = ikisinin toplamı)." });
+      }
+      if (tsat.length || ysat.length || dsat.length) m.sekmeler.push({ id: "tepki", ad: SEKME_ADI.tepki, bolumler: tb });
       m.sekmeler.push({ id: "yer", ad: SEKME_ADI.yer, bolumler: sat.length ? [{ baslik: "Yer değiştirmeler (bina koordinatı)", tablo: { basliklar: ["Durum", "uX (mm)", "uY (mm)", "uZ (mm)", "rX (mrad)", "rY (mrad)", "rZ (mrad)"], satirlar: sat } }] : [{ not: "Bu düğüm çözüm ağında yok." }] });
     } else m.sekmeler.push({ id: "yer", ad: SEKME_ADI.yer, bolumler: [onceCozun("Yer değiştirmeler ve mesnet tepkileri")] });
     if (tur === "mesnet" || mesnet) {   // mesnette tepkiler sekmesi Geometri'den hemen sonra

@@ -940,6 +940,19 @@ test("K-31 süre notu ve K-27 öteleme satırı", function () {
   assert.equal(BC.otelemeSatiri(ot), "Göreli kat ötelemesi (en büyük δ/h ÷ sınır): önce X 0,82 · Y 0,77 → sonra X 0,95 · Y 0,90");
   assert.equal(BC.otelemeSatiri({ sinir: 0.008, once: { X: [0.009] }, sonra: { X: [0.0096], Y: [] } }), "Göreli kat ötelemesi (en büyük δ/h ÷ sınır): önce X 1,13 → sonra X 1,20 ⚠");
   assert.equal(BC.otelemeSatiri(null), ""); assert.equal(BC.otelemeSatiri({ sinir: 0, once: {}, sonra: {} }), "");
+  assert.equal(BC.sureMetni(40), "Süre: < 0,1 s", "çok kısa süre '0,0 s' yazılmaz");
+});
+
+test("K-27 'Hepsini uygula' modeli değiştirmediyse nedeni: yinele açıklamasının ilk yanıtta olmayan kısmı (öteleme cümlesi tekrar edilmez)", function () {
+  const a1 = "D/C (öneri) mevcut iç kuvvetlerle tahmindir. Depremli modelde 'yinele' göreli kat ötelemesini (TBDY 2018 md. 4.9.1) de izler.";
+  const ek = " Göreli kat ötelemesi (TBDY 2018 md. 4.9.1, sınır 0,008): öneriden önce en büyük X 0,0044 (kat 2), Y 0,004 (kat 2); sonra X 0,0044 (kat 2), Y 0,004 (kat 2)." +
+    " 0. turda göreli kat ötelemesi kat 1, 2, 3'de sınırın %90'ını aşacağından şu gruplar küçültülmedi: K25x55 / kiriş, S45x45 / kolon.";
+  const y = { aciklama: a1 }, y2 = { aciklama: a1 + ek };
+  assert.equal(BC.hepsiAciklamaEki(y2, y, true), "0. turda göreli kat ötelemesi kat 1, 2, 3'de sınırın %90'ını aşacağından şu gruplar küçültülmedi: K25x55 / kiriş, S45x45 / kolon.");
+  assert.equal(BC.hepsiAciklamaEki(y2, y, false), ek.trim(), "öteleme satırı yoksa motorun öteleme cümlesi de yazılır");
+  assert.equal(BC.hepsiAciklamaEki(y, y, true), "", "ek yok");
+  assert.equal(BC.hepsiAciklamaEki({ aciklama: "başka metin" }, y, true), "", "ilk yanıtın açıklamasıyla başlamıyorsa ek yok");
+  assert.equal(BC.hepsiAciklamaEki({}, y, true), ""); assert.equal(BC.hepsiAciklamaEki(y2, null, true), "");
 });
 
 test("K-22 makas planı: yanal_tutma seçeneği parametreye ve üreteç formuna geçer", function () {

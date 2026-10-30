@@ -525,6 +525,24 @@ test("K-10 (C13) yaylı mesnet denetçisi: tip 'yaylı mesnet', rijitlikler 'k_z
   assert.ok(!/NaN|undefined/.test(B.tsv(m)));
 });
 
+test("K-15 (C14) rijit diyafram düğümündeki mesnet: ux/uy/rz kuvveti ceza yayında (tur 'diyafram-mesnet') — 'Diyafram bağı kuvvetleri' tablosu ve notu", function () {
+  const d = mini();
+  d.veri.ag.mesnetler = [{ dugum: 1, tip: "ankastre", kaynak: "mesnetler", ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }];
+  // motor ekseni: Fz → −FY, My → MZ (C12); tepkilerde FY / MZ sıfır (yatay kuvvet ceza yayında)
+  d.veri.durumlar.G.yaylar = [{ dugum: 1, sd: 3, bilesen: "Fz", k: 6e11, kuvvet: 16.5, tur: "diyafram-mesnet" }, { dugum: 1, sd: 5, bilesen: "My", k: 1.5e10, kuvvet: 49.5, tur: "diyafram-mesnet" }];
+  d.veri.durumlar.Q.yaylar = [{ dugum: 1, sd: 3, bilesen: "Fz", k: 6e11, kuvvet: 7, tur: "diyafram-mesnet" }, { dugum: 1, sd: 5, bilesen: "My", k: 1.5e10, kuvvet: 20, tur: "diyafram-mesnet" }];
+  const m = B.bilgi({ tur: "mesnet", no: 1 }, d.bina, d.veri);
+  const tp = metin(m, "tepki");
+  assert.match(tp, /Diyafram bağı kuvvetleri \(bina koordinatı\)\nDurum\tFX \(kN\)/);
+  assert.match(tp, /\nG\t0,00\t[-−]16,50\t0,00\t0,00\t0,00\t49,50/);
+  assert.match(tp, /diyafram bağıyla \(ceza rijitliği\) uygulandı/);
+  assert.ok(!/Yay kuvvetleri/.test(tp), "diyafram yayı yaylı mesnet değildir");
+  assert.deepEqual(m.ham.diyaframKuvveti.G, { FX: 0, FY: -16.5, FZ: 0, MX: 0, MY: 0, MZ: 49.5 });
+  yakin(m.ham.diyaframKuvveti["1.4G+1.6Q"].MZ, 1.4 * 49.5 + 1.6 * 20, 1e-9);
+  assert.ok(!m.ham.yayKuvveti);
+  assert.ok(!/NaN|undefined/.test(B.tsv(m)));
+});
+
 test("tasarım kontrolleri: kapasiteye göre sayısal gürültü olan talep (3·10⁻¹⁷) 0 yazılır", function () {
   const d = mini();
   d.veri.tasarim.elemanlar[0].kontroller.push({ ad: "Zayıf eksen eğilmesi", talep: 3e-17, kapasite: 38.04, birim: "kN·m", dc: 0, saglandi: true });

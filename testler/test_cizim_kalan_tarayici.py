@@ -12,7 +12,8 @@ Adımlar:
    dolu; ≤ 0 alanlar reddedilir); kayıt {dugum, kz}; çözüm sonrası mesnet denetçisi "yaylı mesnet" ve "k_z = 10 000 kN/m".
 3. K-15 (C14): celik-cbf-3kat C2/+3.50'ye ankastre: "Rijit diyaframlı kat" penceresi dört seçenek (klavyeyle odaklanan düğmeler);
    Vazgeç modeli değiştirmez; "Yalnız düşey mesnet", "Bu katın diyaframını esnek yap" ve "Olduğu gibi uygula" ile kurulan modeller
-   çözülür.
+   çözülür; "Olduğu gibi uygula"da mesnet denetçisi "Diyafram bağı kuvvetleri" tablosunu gösterir. Aks–kat (depremli)
+   betonarme-3kat-3x3'te soru genel model kapısından önce sorulur, "Yalnız düşey mesnet" modeli genelleştirir ve çözülür.
 4. K-20 (C17): betonarme-2kat-3x2 + B2/Temel açık mesnet (karma model, genel çözüm): döşeme 1 denetçisi "Panel yükleri (çözüm)".
 5. K-32 / K-31 (C19): betonarme-2kat-3x2 kolon 1 kesit önerisinde "Kesit grubuna uygula (12 çubuk)": tek geri al adımı, yeniden
    çözüm, "Grubun gerçek D/C maks"; Hepsini uygula öncesi "Hesaplanıyor: en çok 4 çözüm, yaklaşık …" ve sonrası "Süre: …".
@@ -281,7 +282,38 @@ def test_k15_rijit_diyafram_sorusu(tarayici, sunucu, secim):
             assert pg.evaluate("MatrisBina.bina().analiz.diyafram") == {"1": "esnek"}
         assert _coz(pg), _hata_metni(pg)
         assert not _hata_metni(pg).strip(), _hata_metni(pg)
+        if secim == "aynen":
+            # ux/uy/rz kuvveti ceza yayında (C12 tur 'diyafram-mesnet'): mesnet denetçisi ayrı tabloda gösterir
+            n = pg.evaluate("(() => { const m = (MatrisBina.veri().ag.mesnetler || []).find(s => s.kaynak === 'mesnetler'); return m ? m.dugum : null; })()")
+            assert n is not None
+            d = _denetci_metni(pg, {"tur": "mesnet", "no": n})
+            assert "Diyafram bağı kuvvetleri (bina koordinatı)" in d["tsv"], d["tsv"][:2000]
         _hatasiz(hatalar, "K-15 " + secim)
+    finally:
+        ctx.close()
+
+
+def test_k15_aks_kat_modelinde_once_diyafram_sorusu_sonra_kapi(tarayici, sunucu):
+    """K-15: aks–kat (surum 1, depremli) betonarme-3kat-3x3 C2/+3.20'ye ankastre — soru genelleştirilmiş kopyada sorulur (aks–kat
+    döşemeleri panel olur), sonra genel model kapısı; "Yalnız düşey mesnet" modeli genelleştirir, mesnet uz/rx/ry, model çözülür."""
+    ctx, pg, hatalar = _sayfa_ac(tarayici, sunucu)
+    try:
+        _sablon(pg, "betonarme-3kat-3x3")
+        assert pg.evaluate("MatrisBina.bina().surum || 1") == 1
+        z = pg.evaluate("MatrisBina.bina().akslar.z.map(a => a.ad)")[1]
+        ref = {"aks": ["C", "2"], "z": z}
+        pg.__onaylar.clear()
+        _mesnet_araci(pg, "ankastre", z, ref)
+        k = _kaplama(pg)
+        assert k and k["tur"] == "mesnet-diyafram", k
+        assert not pg.__onaylar, "kapı diyafram sorusundan önce sorulmamalı"
+        pg.click(".bn-kaplama [data-diyafram='dusey']")
+        pg.wait_for_function("MatrisBina.bina().surum === 3")
+        assert pg.__onaylar and pg.__onaylar[-1].startswith("Mesnet — Model genel (surum 3) modele çevrilecek: "), pg.__onaylar
+        s = _mesnet_kaydi(pg, ref)
+        assert s is not None and [s[a] for a in ("ux", "uy", "uz", "rx", "ry", "rz")] == [False, False, True, True, True, False], s
+        assert _coz(pg), _hata_metni(pg)
+        _hatasiz(hatalar, "K-15 aks–kat")
     finally:
         ctx.close()
 
