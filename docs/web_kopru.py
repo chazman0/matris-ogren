@@ -29,7 +29,10 @@ Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_coz":       girdi {"bina": {...} | "JSON metni"} → {"ad": "bina", "bloklar", "veri" (yapi.bina_coz şeması: bina, ag,
                     yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model, deprem, ruzgar, kar, kutle_merkezi,
                     cozum_kimligi), "sonuc_metin", "zincir": false, "hata"}; çözümün iç paketi tembel kombinasyonlar için
-                    önbelleğe alınır
+                    önbelleğe alınır. Genel modelde veri.akis.sankey [{kaynak, hedef, durum (G | Q | S), kN, tur}]: tur
+                    "panel-cubuk" (P{n} → Ç{n}), "cubuk-cubuk" (Ç → Ç), "cubuk-mesnet" (Ç → M{düğüm}), "dugum-cubuk" (D{düğüm} →
+                    Ç), "dugum-mesnet" (D → M); durum başına en çok 600 panel bandı + 600 öteki kenar (atılan sayı
+                    veri.akis.sankey_kesildi {durum: n})
   "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
                     "sablonlar", "dogrulanmamis", ..., "hata": null}
   "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}

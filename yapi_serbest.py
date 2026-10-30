@@ -3164,10 +3164,11 @@ def _akis(B, YK, ag, durumlar_kisa):
         parca["ek"] = YK.toplam[d] - sum(parca.values())
         parca.update({"toplam": YK.toplam[d], "temel": tep, "yay": yay, "kolon_taban": tep + yay})
         korunum[d] = parca
-    # panel → çubuk bantları her düşey yük durumu için (G, Q ve kar varsa S): çubuğa düşen pay = yoğunluk × Σ kenar dağıtım alanı
-    # (veri.yukler.cubuklar[].<durum>.panel ile aynı sayı). Eskiden yalnız G vardı: Yük akışı Q/S 'akış verisi yok', G+Q yalnız G
-    # ve eleman bilgisi Yük yolu Q = 0 gösterirdi (AKIS-QS). Her durumda en çok 600 bant (en büyükler).
-    sankey = []
+    # akış şeması (C15), her düşey yük durumunda (G, Q ve kar varsa S): panel → çubuk bantları (çubuğa düşen pay = yoğunluk × Σ
+    # kenar dağıtım alanı; veri.yukler.cubuklar[].<durum>.panel ile aynı sayı) ve düğüm kuralıyla çubuk → çubuk, çubuk → mesnet,
+    # düğüm yükü → çubuk / mesnet kenarları (_dugum_akimlari). Her durumda en çok 600 panel bandı ve 600 öteki kenar (en büyükler);
+    # atılan kenar sayısı sankey_kesildi'de.
+    sankey, kesildi = [], {}
     for d in ("G", "Q", "S"):
         if d not in durumlar_kisa:
             continue
@@ -3179,11 +3180,70 @@ def _akis(B, YK, ag, durumlar_kisa):
             for cno, parcalar in p["dag"]["cubuklar"]:
                 kN = v * sum((x2 - x1) * (f1 + f2) / 2.0 for x1, x2, f1, f2 in parcalar)
                 if kN > 1e-12:
-                    bantlar.append({"kaynak": f"P{p['no']}", "hedef": f"Ç{cno}", "durum": d, "kN": kN})
-        if len(bantlar) > 600:
-            bantlar = sorted(bantlar, key=lambda s: -s["kN"])[:600]
-        sankey += bantlar
-    return {"kolonlar": kolonlar, "temeller": temeller, "mesnetler": mesnetler, "korunum": korunum, "sankey": sankey}
+                    bantlar.append({"kaynak": f"P{p['no']}", "hedef": f"Ç{cno}", "durum": d, "kN": kN, "tur": "panel-cubuk"})
+        kenar = {}
+        for n, (gir, cik) in _dugum_akimlari(B, YK, ag, durumlar_kisa[d], d).items():
+            top = sum(x for _, x in cik)
+            if top <= 1e-12:
+                continue
+            for a_, x in gir:
+                for b_, y in cik:
+                    kN = x * y / top
+                    if kN >= 1e-9:
+                        anahtar = (a_, b_)
+                        kenar[anahtar] = kenar.get(anahtar, 0.0) + kN
+        oteki = [{"kaynak": a_, "hedef": b_, "durum": d, "kN": kN,
+                  "tur": ("dugum-" if a_.startswith("D") else "cubuk-") + ("mesnet" if b_.startswith("M") else "cubuk")}
+                 for (a_, b_), kN in kenar.items()]
+        atilan = max(0, len(bantlar) - _SANKEY_SINIRI) + max(0, len(oteki) - _SANKEY_SINIRI)
+        if atilan:
+            kesildi[d] = atilan
+        sankey += sorted(bantlar, key=lambda s: -s["kN"])[:_SANKEY_SINIRI] if len(bantlar) > _SANKEY_SINIRI else bantlar
+        sankey += sorted(oteki, key=lambda s: -s["kN"])[:_SANKEY_SINIRI]
+    out = {"kolonlar": kolonlar, "temeller": temeller, "mesnetler": mesnetler, "korunum": korunum, "sankey": sankey}
+    if kesildi:
+        out["sankey_kesildi"] = kesildi
+    return out
+
+
+_SANKEY_SINIRI = 600          # durum başına en çok panel bandı ve en çok öteki kenar (C15)
+
+
+def _dugum_akimlari(B, YK, ag, kisa, d):
+    """Akış şemasının düğüm kuralı (C15), bir yük durumunda: her çubuk ucu düğümü n için {n: (girenler, çıkanlar)}, öğeler
+    (kimlik, kN > 0). f_b: b çubuğunun ucunun düğüme uyguladığı düşey kuvvet (bina Z, aşağı +; eleman uç kuvvetinin λᵀ ile bina
+    eksenine izdüşümü). P_n: düğüm yükü (aşağı +), R_n: mesnet tepkisi + yay kuvveti (yukarı +). Girenler: f_b > 0 çubuklar
+    ('Ç{b}') ve P_n > 0 ise 'D{n}'; çıkanlar: f_b < 0 çubuklar (−f_b) ve R_n > 0 ise 'M{n}'. Mütemadi / radye ağı düğümünde tek
+    çıkan 'M{n}' gelen her şeyi alır (temel elemanları çubuk değildir). Çubuk içi FE düğümleri (vute ara düğümü) atlanır."""
+    el = {e["no"]: e for e in kisa["elemanlar"]}
+    agel = {e["no"]: e for e in ag["elemanlar"]}
+    net = set(ag["temel"].dno) if ag.get("temel") is not None else set()
+    akim = {}
+    for c in B.cubuklar:
+        for n, fe, k in ((c["i"], c["fe"][0], 0), (c["j"], c["fe"][-1], 1)):
+            u = el[fe]["uc_kuvvetleri"]
+            lam = agel[fe]["lam"]
+            f = lam[0][2] * u[6 * k] + lam[1][2] * u[6 * k + 1] + lam[2][2] * u[6 * k + 2]
+            akim.setdefault(n, []).append((c["no"], f))
+    R = {}
+    for t in kisa["tepkiler"]:
+        R[t["dugum"]] = R.get(t["dugum"], 0.0) + t["FZ"]
+    for y in kisa["yaylar"]:
+        if y.get("bilesen") == "Fy":
+            R[y["dugum"]] = R.get(y["dugum"], 0.0) + y["kuvvet"]
+    out = {}
+    for n, lst in akim.items():
+        P = -float((YK.dugum.get(n) or {}).get(d, [0.0] * 6)[2])
+        gir = [(f"Ç{b}", f) for b, f in lst if f > 1e-12] + ([(f"D{n}", P)] if P > 1e-12 else [])
+        cik = [(f"Ç{b}", -f) for b, f in lst if f < -1e-12]
+        if n in net:
+            M = sum(x for _, x in gir) - sum(x for _, x in cik)
+        else:
+            M = R.get(n, 0.0)
+        if M > 1e-12:
+            cik.append((f"M{n}", M))
+        out[n] = (gir, cik)
+    return out
 
 
 # ============================================================================
@@ -4341,6 +4401,7 @@ def _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, z
         "mesnetler": [{a: (_r(v) if isinstance(v, float) else v) for a, v in t.items()} for t in akis["mesnetler"]],
         "korunum": {d: {a: _r(v) for a, v in p.items()} for d, p in akis["korunum"].items()},
         "sankey": [dict(s, kN=_r6(s["kN"])) for s in akis["sankey"]],
+        **({"sankey_kesildi": dict(akis["sankey_kesildi"])} if akis.get("sankey_kesildi") else {}),
     }
     uyarilar = list(dict.fromkeys(B.uyarilar))
     for p in B.paneller:

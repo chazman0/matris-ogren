@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import functools
+import json
+import math
 
 import pytest
 
@@ -310,3 +312,85 @@ def test_rijit_diyafram_mesnedi_ceza_yayi():
     v2 = coz(b).veri
     assert v2["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
     assert not any(y.get("tur") == "diyafram-mesnet" for y in v2["durumlar"]["G"]["yaylar"])
+
+
+# ---------------------------------------------------------------------------
+# K-41: akış şeması çubuk → çubuk / mesnet kenarları (C15)
+# ---------------------------------------------------------------------------
+def _akis_ham(r):
+    """Yuvarlatılmamış akış (iç işlev): paketten G/Q/S KISA'ları."""
+    p = r.ic["paket"]
+    kisa = {d: p.kisa(p.durum[d]) for d in ("G", "Q", "S") if d in p.durum}
+    return YS._akis(r.ic["B"], r.ic["alan"]["Y"], r.ic["alan"]["ag"], kisa), kisa
+
+
+@functools.lru_cache(maxsize=None)
+def _akis_modeli(ad):
+    b = yapi.bina_sablon(ad)
+    if ad != "celik-cbf-3kat":
+        b["surum"] = 3
+    return coz(b)
+
+
+@pytest.mark.parametrize("ad", ["celik-cbf-3kat", "betonarme-2kat-3x2", "betonarme-4kat-radye"])
+def test_akis_dugum_kurali_korunum(ad):
+    r = _akis_modeli(ad)
+    akis, kisa = _akis_ham(r)
+    for d, k in kisa.items():
+        for n, (gir, cik) in YS._dugum_akimlari(r.ic["B"], r.ic["alan"]["Y"], r.ic["alan"]["ag"], k, d).items():
+            a, b = sum(x for _, x in gir), sum(x for _, x in cik)
+            assert a == pytest.approx(b, rel=1e-6, abs=1e-6), (d, n, gir, cik)          # düğümde Σ giren = Σ çıkan
+    turler = {e["tur"] for e in akis["sankey"]}
+    assert {"panel-cubuk", "cubuk-cubuk", "cubuk-mesnet"} <= turler
+    assert all(e["kN"] >= 1e-9 for e in akis["sankey"]) and "sankey_kesildi" not in akis
+    T = r.veri.get("temel") or {}
+    if T.get("tip") in ("surekli", "radye"):          # temel ağı düğümünde tek çıkan M: Σ (G + Q) = yuk_akisi.kolon_N
+        M = sum(e["kN"] for e in akis["sankey"] if e["hedef"].startswith("M") and e["durum"] in ("G", "Q"))
+        assert M == pytest.approx(T["yuk_akisi"]["kolon_N"], rel=1e-6)
+    else:                                             # Σ mesnede giren = Σ düşey tepki + yay kuvveti
+        for d, k in kisa.items():
+            M = sum(e["kN"] for e in akis["sankey"] if e["hedef"].startswith("M") and e["durum"] == d)
+            R = sum(t["FZ"] for t in k["tepkiler"]) + sum(y["kuvvet"] for y in k["yaylar"] if y.get("bilesen") == "Fy")
+            assert M == pytest.approx(R, rel=1e-6), d
+    # yanıt: veri.akis.sankey aynı kenarlar (kN 6 anlamlı basamak), tur alanıyla
+    assert len(r.veri["akis"]["sankey"]) == len(akis["sankey"]) and all("tur" in e for e in r.veri["akis"]["sankey"])
+
+
+def test_akis_kolon_oz_agirligi_ve_kirislerden_gelen():
+    """Açıklık yükü olmayan kolon: Σ çıkan − Σ giren = kendi G öz ağırlığı; kirişin aktardığı kolona gider."""
+    r = _akis_modeli("betonarme-2kat-3x2")
+    akis, _ = _akis_ham(r)
+    B, YK = r.ic["B"], r.ic["alan"]["Y"]
+    say = 0
+    for c in B.cubuklar:
+        if c["tur"] != "kolon":
+            continue
+        k = f"Ç{c['no']}"
+        gir = sum(e["kN"] for e in akis["sankey"] if e["durum"] == "G" and e["hedef"] == k)
+        cik = sum(e["kN"] for e in akis["sankey"] if e["durum"] == "G" and e["kaynak"] == k)
+        oz = YK.cubuk_ozet[c["no"]]["G"]["toplam_kN"]
+        assert cik - gir == pytest.approx(oz, abs=1e-6), (c["no"], gir, cik, oz)
+        say += 1
+    assert say > 0
+    kiris = next(c for c in B.cubuklar if c["tur"] == "kiris")
+    assert any(e["kaynak"] == f"Ç{kiris['no']}" and e["tur"] == "cubuk-cubuk" for e in akis["sankey"])
+
+
+def test_akis_sankey_siniri():
+    v = coz(yapi.bina_sablon("celik-sanayi-4hol")).veri
+    sk = v["akis"]["sankey"]
+    kes = v["akis"].get("sankey_kesildi") or {}
+    for d in {e["durum"] for e in sk}:
+        assert sum(1 for e in sk if e["durum"] == d and e["tur"] == "panel-cubuk") <= 600
+        assert sum(1 for e in sk if e["durum"] == d and e["tur"] != "panel-cubuk") <= 600
+    assert kes and all(n > 0 for n in kes.values())
+
+
+def test_akis_dugum_yuku_kenarlari():
+    v = coz(_yayli_konsol()).veri                     # uç düğüm yükü 10 kN → konsol → yaylı mesnet
+    sk = [e for e in v["akis"]["sankey"] if e["durum"] == "G"]
+    uc = next(d["no"] for d in v["ag"]["dugumler"] if abs(d["X"] - 4.0) < 1e-9)
+    mes = v["akis"]["mesnetler"][0]["dugum"]
+    assert sorted((e["kaynak"], e["hedef"], e["tur"]) for e in sk) == sorted([(f"D{uc}", "Ç1", "dugum-cubuk"),
+                                                                              ("Ç1", f"M{mes}", "cubuk-mesnet")])
+    assert all(e["kN"] == pytest.approx(10.0) for e in sk)

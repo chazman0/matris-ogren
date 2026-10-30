@@ -610,7 +610,7 @@ def test_akis_sankey_g_q_s(sablonlar, ad):
     """AKIS-QS: panel → çubuk bantları her düşey yük durumunda (G, Q, kar varsa S); bir çubuğa gelen bantların toplamı
     veri.yukler.cubuklar[].<durum>.panel ile, durum toplamı korunum 'paneller' (dağıtılan) ile aynı. Eskiden yalnız G vardı."""
     v = sablonlar[ad].veri
-    sk = v["akis"]["sankey"]
+    sk = [e for e in v["akis"]["sankey"] if e.get("tur", "panel-cubuk") == "panel-cubuk"]      # K-41: öteki kenar türleri ayrı
     durumlar = {e["durum"] for e in sk}
     assert durumlar == {"G", "Q", "S"} if v["kar"] else {"G", "Q"}
     assert all(e["kaynak"].startswith("P") and e["hedef"].startswith("Ç") and e["kN"] > 0 for e in sk)
