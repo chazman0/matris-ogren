@@ -263,7 +263,6 @@ jobs:
             }
             if ($pencere) {
               [void][SihirbazPenceresi]::SetForegroundWindow($pencere.MainWindowHandle)
-              Start-Sleep -Milliseconds 1500
               $r = New-Object SihirbazPenceresi+RECT
               [void][SihirbazPenceresi]::GetWindowRect($pencere.MainWindowHandle, [ref]$r)
               "sihirbaz penceresi: '$($pencere.MainWindowTitle)' ($($pencere.ProcessName)) {0}x{1} @ {2},{3}" -f ($r.Sag - $r.Sol), ($r.Alt - $r.Ust), $r.Sol, $r.Ust
@@ -273,11 +272,32 @@ jobs:
               Add-Type -AssemblyName System.Windows.Forms
               $alan = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
             }
-            $bmp = New-Object System.Drawing.Bitmap $alan.Width, $alan.Height
-            $g = [System.Drawing.Graphics]::FromImage($bmp)
-            $g.CopyFromScreen($alan.Location, [System.Drawing.Point]::Empty, $alan.Size)
+            # Pencere görünür olduktan sonra içerik birkaç yüz ms içinde çizilir: karşılama sayfasının sol paneli
+            # (antrasit kimlik görseli) görünene dek yeniden yakalanır.
+            $bmp = $null
+            $koyuOran = 0
+            for ($deneme = 1; $deneme -le 20; $deneme++) {
+              Start-Sleep -Milliseconds 750
+              if ($bmp) { $bmp.Dispose() }
+              $bmp = New-Object System.Drawing.Bitmap $alan.Width, $alan.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($alan.Location, [System.Drawing.Point]::Empty, $alan.Size)
+              $g.Dispose()
+              if (-not $pencere) { break }
+              $koyu = 0; $toplam = 0
+              for ($x = [int]($alan.Width * 0.05); $x -lt [int]($alan.Width * 0.30); $x += 6) {
+                for ($y = [int]($alan.Height * 0.15); $y -lt [int]($alan.Height * 0.85); $y += 6) {
+                  $c = $bmp.GetPixel($x, $y); $toplam++
+                  if (($c.R + $c.G + $c.B) -lt 200) { $koyu++ }
+                }
+              }
+              $koyuOran = if ($toplam) { $koyu / $toplam } else { 0 }
+              if ($koyuOran -gt 0.5) { break }
+            }
+            "yakalama: {0}. deneme, sol panelde koyu piksel oranı {1:P0}" -f $deneme, $koyuOran
+            if ($pencere -and $koyuOran -le 0.5) { "::warning::karşılama sayfasının kimlik paneli görüntüde bulunamadı" }
             $bmp.Save("$PWD\sihirbaz-ekran.png", [System.Drawing.Imaging.ImageFormat]::Png)
-            $g.Dispose(); $bmp.Dispose()
+            $bmp.Dispose()
           } catch {
             "::warning::sihirbaz ekran görüntüsü alınamadı: $_"
           } finally {
