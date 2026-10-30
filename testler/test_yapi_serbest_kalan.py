@@ -492,3 +492,78 @@ def test_hafif_cozum_ayni_tasarim(ad):
                                                                                     else tam.veri["tasarim"]["elemanlar"], sort_keys=True)
     assert haf.ic["kimlik"] == tam.ic["kimlik"] and haf.ic["oteleme_asan"] == tam.ic["oteleme_asan"]
     assert haf.ic["kombinasyonlar"] == tam.ic["kombinasyonlar"]
+
+
+# ---------------------------------------------------------------------------
+# K-27: 'Hepsini uygula' (yinele) göreli kat ötelemesi sınırını yeni aşan kat doğurmaz
+# ---------------------------------------------------------------------------
+def _asan_katlar(v):
+    return {y: {k["kat"] for k in v["deprem"]["katlar"] if k.get(f"uygun_{y}") is False} for y in "xy"}
+
+
+@pytest.mark.parametrize("ad", ["betonarme-3kat-3x3", "betonarme-4kat-radye"])
+def test_kesit_oner_yinele_oteleme_yeni_ihlal_yok(ad):
+    b = yapi.bina_sablon(ad)
+    o = YS.kesit_oner(copy.deepcopy(b), yinele=3)
+    assert o["dc_sonra"] <= 1.0 + 1e-9
+    v0 = coz(dict(copy.deepcopy(b), surum=3)).veri
+    v1 = coz(dict(copy.deepcopy(o["bina"]), surum=3)).veri
+    a0, a1 = _asan_katlar(v0), _asan_katlar(v1)
+    assert all(a1[y] <= a0[y] for y in "xy")                       # yeni aşan kat yok (eskiden X kat 1-3 / 1-4 ...)
+    assert not [u for u in o["uyarilar"] if "göreli kat ötelemesi" in u]
+    ot = o["oteleme"]
+    assert set(ot) == {"sinir", "katlar", "once", "sonra"} and ot["sinir"] == pytest.approx(0.008)
+    assert ot["once"]["X"] == [pytest.approx(k["oran_x"], rel=1e-4) for k in v0["deprem"]["katlar"]]
+    assert ot["sonra"]["Y"] == [pytest.approx(k["oran_y"], rel=1e-4) for k in v1["deprem"]["katlar"]]
+    assert "öneriden önce en büyük X" in o["aciklama"] and "; sonra X" in o["aciklama"]
+    k0 = o["turlar"][0].get("oteleme_kisiti")
+    assert k0 and k0["katlar"] and "küçültülmedi" in o["aciklama"]       # bu şablonlarda 0. turun küçültmesi ötelemeyi aşırırdı
+
+
+def test_kesit_oner_oteleme_onarim_turu(monkeypatch):
+    """K-27 (b): 0. tur kısıtı devre dışıyken (küçültme ötelemeyi aşırır) onarım turları sınırı yeni aşan katların kolon grubunu
+    b ve h +5 cm, sonraki turda kat kirişlerini de büyütür; son çözümde yeni aşan kat kalmaz."""
+    monkeypatch.setattr(YS, "_oteleme_yeni_katlar", lambda *a: [])
+    b = yapi.bina_sablon("betonarme-3kat-3x3")
+    o = YS.kesit_oner(copy.deepcopy(b), yinele=3)
+    t1 = o["turlar"][1]
+    assert t1["oteleme_asan"] and all(d.get("neden") == "öteleme" for d in t1["degisen"])
+    kol = next(d for d in t1["degisen"] if d["tur"] == "kolon")
+    eski = o["turlar"][0]["degisen"]
+    b0 = next(d for d in eski if d["tur"] == "kolon")["oneri"]           # 0. turun kolon önerisi, ör. 35x35
+    bb, hh = (int(x) for x in b0.split("x"))
+    assert kol["oneri"] == f"{bb + 5}x{hh + 5}" and kol["degisim"] == "büyüt"
+    assert any(d["tur"] == "kiris" for t in o["turlar"][2:] for d in t.get("degisen") or [])
+    v0 = coz(dict(copy.deepcopy(b), surum=3)).veri
+    v1 = coz(dict(copy.deepcopy(o["bina"]), surum=3)).veri
+    assert all(_asan_katlar(v1)[y] <= _asan_katlar(v0)[y] for y in "xy") and o["dc_sonra"] <= 1.0 + 1e-9
+
+
+def test_oteleme_yardimcilari():
+    ot0 = {"sinir": 0.008, "katlar": [1, 2, 3], "X": [0.003, 0.0075, 0.009], "Y": [0.002, 0.003, 0.004]}
+    ot1 = {"sinir": 0.008, "katlar": [1, 2, 3], "X": [0.0074, 0.0085, 0.0095], "Y": [0.002, 0.0081, 0.004]}
+    assert YS._oteleme_ihlali(ot0, ot1) == [2]                   # kat 3 önceden de aşıyordu
+    assert YS._oteleme_yeni_katlar(ot0, ot1, 0.9) == [1, 2, 3]   # %90 (0,0072) üstünde ve artmış
+    assert YS._oteleme_ihlali(None, ot1) == [] and YS._oteleme_ozeti(None, ot1) is None
+    oz = YS._oteleme_ozeti(ot0, ot1)
+    assert oz["once"]["X"] == [0.003, 0.0075, 0.009] and oz["sonra"]["Y"][1] == 0.0081
+    assert YS._oteleme_metni(oz) == (" Göreli kat ötelemesi (TBDY 2018 md. 4.9.1, sınır 0,008): öneriden önce en büyük X 0,009 (kat 3), "
+                                     "Y 0,004 (kat 3); sonra X 0,0095 (kat 3), Y 0,0081 (kat 2).")
+    B = YS.bina_coz(dict(yapi.bina_sablon("betonarme-3kat-3x3"), surum=3), anlat=False, hafif=True).ic["B"]
+    ku = YS._kat_uyeleri(B)
+    assert sorted(ku) == [1, 2, 3] and [(len(ku[k]["dusey"]), len(ku[k]["kiris"])) for k in ku] == [(9, 12), (9, 24), (9, 24)]
+    assert all({c["tur"] for c in ku[k]["kiris"]} == {"kiris"} for k in ku)
+    assert YS._oteleme_gruplari(B, [2], kirisler=False) == {("S45x45", "kolon")}
+    on = YS._oteleme_onerileri(None, B, {"S45x45": {"tip": "dikdortgen", "b": 0.45, "h": 0.45, "malzeme": "C30", "donati_orani": 0.015}},
+                               [2], {})
+    assert [(o["kesit"], o["oneri"], o["donati_orani"]) for o in on] == [("S45x45", "50x50", 0.015)]
+    on2 = YS._oteleme_onerileri(None, B, {}, [2], {2: 1})
+    assert {(o["tur"], o["oneri"]) for o in on2} == {("kolon", "50x50"), ("kiris", "25x60")}
+    import tasarim
+    Bc = YS.bina_coz(yapi.bina_sablon("celik-cbf-3kat"), anlat=False, hafif=True).ic["B"]
+    oc = YS._oteleme_onerileri(tasarim, Bc, {}, [1], {})
+    assert oc and all(o["sistem"] == "celik" and o["degisim"] == "büyüt" for o in oc)
+    for o in oc:
+        ks = Bc.kesitler[o["kesit"]]
+        liste = [a for a, _ in tasarim._aile_listesi(tasarim._aile_coz(ks["profil"])[0])]
+        assert liste.index(o["oneri"]) == [a.replace(" ", "").upper() for a in liste].index(ks["profil"].replace(" ", "").upper()) + 1

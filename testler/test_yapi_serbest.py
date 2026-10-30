@@ -477,14 +477,16 @@ def test_kesit_onerisi_yinele_yakinsar_ve_rho_grubu():
     assert o["turlar"][-1]["asan"] == 0
     son = coz(o["bina"]).veri
     assert son["tasarim"]["en_buyuk_dc"] == pytest.approx(o["dc_sonra"], abs=1e-4)
-    # öneriler (0. tur kirişleri küçültür) göreli kat ötelemesini yeni aşan katlar doğurursa yanıt bunu söyler: 'yakınsadı' (D/C ≤ 1)
-    # ötelemeyi kapsamaz (eskiden uyarısızdı)
+    # K-27: 'yinele' göreli kat ötelemesini de izler — öneriler sınırı (TBDY 2018 md. 4.9.1) yeni aşan kat doğurmaz (eskiden 0. tur
+    # kirişleri küçültür ve X/Y yönünde yeni aşan katlar kalırdı; o beklenti hatayı kodluyordu), uyarı da yok; oteleme alanı önce/sonra
     asan = lambda v: {y: {k["kat"] for k in v["deprem"]["katlar"] if k.get(f"uygun_{y}") is False} for y in "xy"}  # noqa: E731
     a0, a1 = asan(coz(_rc_30()).veri), asan(son)
-    yeni = {y: sorted(a1[y] - a0[y]) for y in "xy" if a1[y] - a0[y]}
-    u = [x for x in o["uyarilar"] if "göreli kat ötelemesi" in x]
-    assert yeni and len(u) == 1 and "(öneriden önce bu katlarda sağlanıyordu)" in u[0]
-    assert all(f"{y.upper()} yönü kat {', '.join(map(str, k))}" in u[0] for y, k in yeni.items())
+    assert not {y: a1[y] - a0[y] for y in "xy" if a1[y] - a0[y]}
+    assert not [x for x in o["uyarilar"] if "göreli kat ötelemesi" in x]
+    ot = o["oteleme"]
+    assert ot["katlar"] == [k["kat"] for k in son["deprem"]["katlar"]] and ot["sinir"] == pytest.approx(son["deprem"]["katlar"][0]["sinir"])
+    assert ot["sonra"]["X"] == [pytest.approx(k["oran_x"], rel=1e-4) for k in son["deprem"]["katlar"]]
+    assert "Göreli kat ötelemesi (TBDY 2018 md. 4.9.1, sınır 0,008): öneriden önce en büyük X" in o["aciklama"]
 
 
 def test_oteleme_uyarisi():
@@ -495,7 +497,7 @@ def test_oteleme_uyarisi():
     assert u.startswith("Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: X yönü kat 1, 3; Y yönü kat 3 "
                         "(öneriden önce bu katlarda sağlanıyordu).")
     u = YS._oteleme_uyarisi(None, {"x": [1], "y": []})
-    assert "aşılıyor: X yönü kat 1. Öneriler yalnız eleman D/C'sine göre" in u and "sağlanıyordu" not in u
+    assert "aşılıyor: X yönü kat 1. Onarım turları ötelemeyi sınıra indiremedi" in u and "sağlanıyordu" not in u
     assert YS._oteleme_asan(None) == {"x": [], "y": []}
     assert YS._oteleme_asan({"katlar": [{"kat": 1, "uygun_x": True, "uygun_y": False}, {"kat": 2, "uygun_x": False}]}) == {"x": [2], "y": [1]}
 

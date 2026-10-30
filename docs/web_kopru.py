@@ -61,7 +61,10 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
                     çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
                     kez yeniden çözülüp önbelleğe alınır (gerçek temel tipiyle: tekil, mütemadi ya da radye); dc_once
-                    görünen aks–kat tasarım tablosundandır. "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı).
+                    görünen aks–kat tasarım tablosundandır. "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı). Depremli
+                    modelde yinele > 0 yanıtı "oteleme" {sinir, katlar, once: {X: [δ/h kat sırasıyla], Y}, sonra: {X, Y}} taşır
+                    (TBDY 2018 md. 4.9.1; aciklama önce/sonra en büyük oranları yazar); "turlar"da oteleme_asan (sınırı yeni aşan
+                    katlar) ve oteleme_kisiti ({katlar, gruplar}: 0. turda küçültülmeyen gruplar), degisen[].neden "öteleme".
   "bina_eleman_bilgi": girdi {"cozum_kimligi", "tur": "cubuk" | "kolon" | "kiris" | "fe", "no", "durum"? (yük durumu,
                     kombinasyon, "zarf+"/"zarf-"/"Zarf"; varsayılan "G"), "bina"?} → {"paket": {"sekmeler": {"ic": [bölüm],
                     "yer": [bölüm]}, "sekme_adlari", "uyarilar": [], "durum", "fe"}, "cozum_kimligi", "hata": null}. Eleman bilgi
