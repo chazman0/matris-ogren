@@ -1,0 +1,256 @@
+{
+ "tur": "bina",
+ "surum": 1,
+ "baslik": "Tek açıklıklı betonarme çerçeve (1×1 aks, 1 kat)",
+ "aciklama": "5 × 4 m planlı, 3 m yüksekliğinde dört kolonlu tek katlı betonarme çerçeve; 12 cm döşeme, konut yükü. Yük akışının en küçük örneği: bir döşeme, dört kiriş, dört kolon, dört temel. Tek katta zemin kat duvarları temele oturur; çatı kirişlerinde yalnız 1 m parapet.",
+ "sistem": "betonarme",
+ "birim": {
+  "kuvvet": "kN",
+  "uzunluk": "m"
+ },
+ "akslar": {
+  "x": [
+   {
+    "ad": "A",
+    "konum": 0.0
+   },
+   {
+    "ad": "B",
+    "konum": 5.0
+   }
+  ],
+  "y": [
+   {
+    "ad": "1",
+    "konum": 0.0
+   },
+   {
+    "ad": "2",
+    "konum": 4.0
+   }
+  ]
+ },
+ "katlar": [
+  {
+   "no": 0,
+   "ad": "Temel",
+   "kot": 0.0
+  },
+  {
+   "no": 1,
+   "ad": "Çatı",
+   "kot": 3.0
+  }
+ ],
+ "malzemeler": {
+  "C30": {
+   "kutuphane": "C30/37"
+  },
+  "B420C": {
+   "kutuphane": "B420C"
+  }
+ },
+ "kesitler": {
+  "S30x30": {
+   "tip": "dikdortgen",
+   "b": 0.3,
+   "h": 0.3,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  },
+  "K25x50": {
+   "tip": "dikdortgen",
+   "b": 0.25,
+   "h": 0.5,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  }
+ },
+ "kolonlar": [
+  {
+   "no": 1,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S30x30",
+   "yon": "x"
+  },
+  {
+   "no": 2,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S30x30",
+   "yon": "y"
+  },
+  {
+   "no": 3,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S30x30",
+   "yon": "y"
+  },
+  {
+   "no": 4,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S30x30",
+   "yon": "x"
+  }
+ ],
+ "kirisler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 2,
+   "kat": 1,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 3,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 4,
+   "kat": 1,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  }
+ ],
+ "dosemeler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.12,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  }
+ ],
+ "duvarlar": {
+  "tugla19": {
+   "kutuphane": "tugla-delikli-19"
+  }
+ },
+ "ek_yukler": [],
+ "temeller": {
+  "tip": "tekil",
+  "varsayilan": {
+   "B": 1.6,
+   "L": 1.6,
+   "h": 0.6
+  },
+  "zemin": {
+   "q_em": 200,
+   "k0": 20000
+  },
+  "mesnet": "ankastre",
+  "ozel": []
+ },
+ "yuk_durumlari": {
+  "G": {
+   "acik": true
+  },
+  "Q": {
+   "acik": true
+  },
+  "S": {
+   "acik": false,
+   "bolge": 3,
+   "rakim": 0,
+   "mu": 0.8
+  },
+  "W": {
+   "acik": false,
+   "C": 1.2
+  },
+  "E": {
+   "acik": false
+  }
+ },
+ "deprem": {
+  "etkin": false,
+  "SS": 1.0,
+  "S1": 0.3,
+  "zemin_sinifi": "ZC",
+  "DD": "DD-2",
+  "BKS": 3,
+  "tasiyici": "betonarme-cerceve-yuksek",
+  "periyot": "otomatik",
+  "diyafram": "rijit",
+  "dismerkezlik": 0.05,
+  "dolgu": "bitisik"
+ },
+ "kombinasyon_kumesi": "ts500",
+ "analiz": {
+  "catlamis_rijitlik": true,
+  "diyagram_nokta": 11
+ },
+ "sablon": "betonarme-tek-aciklik"
+}
