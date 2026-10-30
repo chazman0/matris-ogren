@@ -269,7 +269,9 @@ def test_sablon_cozulur_ve_json(cozumler, ad):
         tur[e["no"]] = e["tur"]
     tam = [("G", v["durumlar"]["G"]), ("Q", v["durumlar"]["Q"])] + list(v["sonuclar"].items())
     for ad_, k in tam:
-        assert set(k) == {"u", "diyagram", "dugumler", "tepkiler", "elemanlar", "denge", "yaylar"} and k["diyagram"] is True
+        # yay_ozet (C12): yazılmayan temel düğümü yaylarının toplamı, yalnız mütemadi / radyede
+        assert set(k) == {"u", "diyagram", "dugumler", "tepkiler", "elemanlar", "denge", "yaylar"} | (
+            {"yay_ozet"} if v["temel"]["tip"] != "tekil" else set()) and k["diyagram"] is True
         for e in k["elemanlar"]:
             if tur[e["no"]] == "radye-serit":      # radye şeridi: yalnız enb (taban basıncı ve şerit momentleri veri.temel'de)
                 assert set(e) == {"no", "diyagram", "enb"} and e["diyagram"] is False
@@ -324,6 +326,22 @@ def test_korunum_bes_sayi(cozumler, ad):
     # python betiği aynı toplamı veriyor
     satir = next(s for s in cozumler[ad].python_ciktisi.splitlines() if s.startswith("Σ kolon taban N"))
     assert abs(float(satir.split("=")[1].split()[0]) - v["akis"]["korunum"]["G"]["kolon_taban"]) < 0.02
+
+
+@pytest.mark.parametrize("ad", ["betonarme-4kat-radye", "betonarme-3kat-surekli-temel"])
+def test_yazilmayan_winkler_yaylari_yay_ozet(cozumler, ad):
+    """C12: veri.durumlar'da temel düğümü yayları yazılmaz (boyut); toplamları bina eksenlerinde yay_ozet'te. Σ tepki FZ +
+    yay_ozet.FZ = toplam yük (eskiden rapor korunum denetimi ΣR_Z = 0 görürdü)."""
+    v = cozumler[ad].veri
+    for d in ("G", "Q"):
+        k = v["durumlar"][d]
+        assert not any(y["dugum"] in {n["no"] for n in v["temel"]["dugumler"]} for y in k["yaylar"])
+        oz = k["yay_ozet"]
+        assert set(oz) == {"FX", "FY", "FZ", "MX", "MY", "MZ"}
+        assert sum(t["FZ"] for t in k["tepkiler"]) + oz["FZ"] == pytest.approx(v["yukler"]["toplam"][d], rel=1e-5)
+    for ad_, k in v["sonuclar"].items():
+        assert "yay_ozet" in k
+    assert "yay_ozet" not in cozumler["betonarme-2kat-3x2"].veri["durumlar"]["G"]          # tekil temel: alan yok
 
 
 @pytest.mark.parametrize("ad", SABLONLAR)

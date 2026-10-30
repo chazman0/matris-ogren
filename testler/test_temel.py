@@ -49,6 +49,53 @@ def sablonlar():
 # ---------------------------------------------------------------------------
 # saf yardımcılar
 # ---------------------------------------------------------------------------
+def test_kolon_taban_aks_kat_ve_genel_yolu():
+    """_kolon_taban: aks–kat kolonu (lam yok: N = u[0], |M_X| = |u[4]|, |M_Y| = |u[5]|) ile genel model kolonu (bina λ, uç i/j)
+    düşey kolonda aynı sonucu verir; j ucu altta (ters çizilmiş kolon) N = −u[6], moment j ucundan."""
+    import numpy as np
+    from types import SimpleNamespace
+    import yapi_serbest as YS
+    u = np.array([310.0, 4.0, -7.0, 0.3, 21.0, -13.0, -305.0, -4.0, 7.0, -0.3, 12.0, 9.0])
+    km = SimpleNamespace(uc=lambda kat, eno: u)
+    lam = YS._lam_bina((2.0, 1.0, 0.0), (2.0, 1.0, 3.0), 0)
+    assert np.allclose(lam, [[0, 0, 1], [-1, 0, 0], [0, -1, 0]])            # aks–kat düşey kolonu: [Z; −X; −Y]
+    eski = tm._kolon_taban(km, {"G": 1.0}, {"eleman": 1})
+    yeni = tm._kolon_taban(km, {"G": 1.0}, {"eleman": 1, "uc": "i", "lam": lam})
+    assert eski == pytest.approx((310.0, 21.0, 13.0)) and yeni == pytest.approx(eski)
+    lam_ters = YS._lam_bina((2.0, 1.0, 3.0), (2.0, 1.0, 0.0), 0)             # i ucu üstte: alt uç j
+    N, MX, MY = tm._kolon_taban(km, {"G": 1.0}, {"eleman": 1, "uc": "j", "lam": lam_ters})
+    M = np.asarray(lam_ters).T @ u[9:12]
+    assert N == pytest.approx(305.0) and (MX, MY) == pytest.approx((abs(M[0]), abs(M[1])))
+    lam90 = YS._lam_bina((2.0, 1.0, 0.0), (2.0, 1.0, 3.0), 90)               # yerel eksen 90° dönük (aks–kat yon 'y')
+    N, MX, MY = tm._kolon_taban(km, {"G": 1.0}, {"eleman": 1, "uc": "i", "lam": lam90})
+    assert N == pytest.approx(310.0) and (MX, MY) == pytest.approx((13.0, 21.0))
+
+
+def test_ag_kurucu_ilk_no():
+    """Aks kesişimi dışındaki ağ noktaları ilk_no'dan numaralanır (varsayılan 50001; genel model boş bir blok seçer)."""
+    from types import SimpleNamespace
+    B = SimpleNamespace(xk=[0.0, 4.0], yk=[0.0], xad=["A", "B"], yad=["1"], kolon_key={})
+    info = SimpleNamespace(dugumler=[])
+    dugumler = []
+    K = tm._AgKurucu(B, lambda ix, iy, kat: 20 * ix + iy + 1, dugumler, [], [], 0, 0.0, info)
+    assert K.dugum_al(2.0, 0.0)["no"] == 50001
+    K = tm._AgKurucu(B, lambda ix, iy, kat: 20 * ix + iy + 1, dugumler, [], [], 0, 0.0, info, ilk_no=60001)
+    assert K.dugum_al(2.0, 0.0)["no"] == 60001 and K.dugum_al(3.0, 0.0)["no"] == 60002
+
+
+def test_oz_yuk_iki_tipte(kucuk):
+    """veri.temel.oz_yuk (C11.3): temel.py'nin G'ye eklediği öz ağırlık yükleri; Σ q·L + Σ P = W."""
+    for tip, r in kucuk.items():
+        T = r.veri["temel"]
+        oz = T["oz_yuk"]
+        L = {e["no"]: e["L"] for e in T["elemanlar"]}
+        assert oz["W"] == pytest.approx(T["model"]["W_temel"], rel=1e-6)
+        assert sum(e["q"] * L[e["no"]] for e in oz["elemanlar"]) + sum(d["P"] for d in oz["dugumler"]) == pytest.approx(oz["W"], rel=1e-6)
+        assert all(e["q"] > 0 for e in oz["elemanlar"])
+        if tip == "radye":
+            assert not oz["elemanlar"] and all(d["P"] > 0 for d in oz["dugumler"])
+
+
 def test_tip_oku_ve_es_anlamlar():
     assert tm.tip_oku(None) == "tekil" and tm.tip_oku("Mütemadi") == "surekli" and tm.tip_oku("sürekli") == "surekli"
     assert tm.tip_oku("radye") == "radye"
