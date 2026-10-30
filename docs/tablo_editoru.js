@@ -11,7 +11,9 @@
        raporSecimi: Set,                 // rapora eklenecek tablo adları
        raporSecimiDegisti(set),          // seçim her değişince (yeni Set)
        baslangic?, cozumlu?, dosyaOnEki?, kapat?() // ilk tablo; sonuçlar (Analiz/Tasarım…) var mı; CSV dosya adı öneki; ✕ düğmesi
+       csvIceri?: true                   // açılır açılmaz CSV dosyası içe aktarma (masaüstü Dosya › İçe aktar › Tablolar (.csv)…)
      });
+     ed.csvIceAktar(metin?) → Promise<{degisiklik, uyari, hatalar, tablolar} | null>   // dosya seçtirir (metin verilirse onu okur)
      ed.guncelle({tablolar?, bina?, raporSecimi?, cozumlu?})   // yeni tablolar (ör. yeniden çözümden sonra)
      ed.raporSecimi()      → Set (kopya)
      ed.raporSecenegi()    → {tablolar: [ad...], tablo_filtre: {ad: {satirlar: [indeks...]}}}  (köprü "bina_rapor" secenek'i)
@@ -22,7 +24,10 @@
    değişiklikleri binanın kopyasına uygular (`_ic.degisiklikleriUygula`: tablolar.degisiklikleri_uygula ile aynı anlam) ve
    `duzenle`yi çağırır; "Geri al" önce bekleyenleri, sonra uygulanmış düzenlemeleri (bina anlık görüntüsü) geri alır.
    Hesap tablosu programlarından sekmeyle ayrılmış (TSV) yapıştırma etkin hücreden itibaren yazar; CSV UTF-8 BOM'lu, `;`
-   ayırıcılı ve isteğe bağlı ondalık virgüllüdür (Türkçe hesap tablosu programları için). */
+   ayırıcılı ve isteğe bağlı ondalık virgüllüdür (Türkçe hesap tablosu programları için).
+   "İçe aktar (.csv)…" bir CSV dosyasını (tek tablo ya da "Tablo: başlık;grup;ad" bölümlü bütün tablolar; ayırıcı `;` `,` ya da
+   sekme kendiliğinden bulunur) okur: değişen düzenlenebilir hücreler yapıştırma gibi bekleyen değişiklik olur (`_ic.csvIceAktarPlani`).
+   Masaüstünde yerel "Aç" iletişim kutusu (MatrisDosya.ac), tarayıcıda gizli input[type=file] kullanılır. */
 (function (kok, fabrika) {
   "use strict";
   const api = fabrika(kok);
@@ -560,6 +565,373 @@
     return plan;
   }
 
+  // ---------------------------------------------------------------- CSV dosyası içe aktarma
+  function bomsuz(m) { return String(m === undefined || m === null ? "" : m).replace(/^﻿/, ""); }
+  const SEP_SATIRI = /^sep=([;,\t|])[ \t]*(?:\r\n?|\n|$)/i;     // bazı tablo programlarının yazdığı "sep=;" ilk satırı
+
+  /** Ayırıcı: "sep=X" satırı ya da ilk dolu satırda (tırnak dışında) en sık geçen ";" / sekme / ","; hiçbiri yoksa ";"
+   *  (eşitlikte bu sırayla). */
+  function csvAyiriciBul(metin) {
+    const s = bomsuz(metin);
+    const sep = SEP_SATIRI.exec(s);
+    if (sep) return sep[1];
+    const say = { ";": 0, ",": 0, "\t": 0 };
+    let tirnak = false, dolu = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charAt(i);
+      if (c === '"') { tirnak = !tirnak; dolu = true; continue; }
+      if (tirnak) continue;
+      if (c === "\n" || c === "\r") { if (dolu) break; continue; }
+      if (Object.prototype.hasOwnProperty.call(say, c)) { say[c]++; dolu = true; } else if (!/\s/.test(c)) dolu = true;
+    }
+    let en = ";";
+    ["\t", ","].forEach(function (a) { if (say[a] > say[en]) en = a; });
+    return en;
+  }
+  /** CSV metni → satır × hücre dizisi (metin). BOM ve "sep=" satırı atılır; ayırıcı verilmezse csvAyiriciBul. Tırnaklı alanlar
+   *  (içinde ayırıcı, satır sonu, "" kaçışlı tırnak olabilir), CRLF / LF / CR satır sonları; sondaki tek satır sonu atılır.
+   *  Boş satırlar [""] olarak kalır (bölümlü dosyada bölüm aralığı). */
+  function csvAyristir(metin, secenek) {
+    let s = bomsuz(metin);
+    let ay = secenek && secenek.ayirici ? String(secenek.ayirici) : "";
+    const sep = SEP_SATIRI.exec(s);
+    if (sep) { if (!ay) ay = sep[1]; s = s.slice(sep[0].length); }
+    if (!ay) ay = csvAyiriciBul(s);
+    s = s.replace(/\r\n?/g, "\n");
+    const sonuc = [];
+    let satir = [], alan = "", i = 0, tirnak = false, alanBasi = true;
+    while (i < s.length) {
+      const c = s.charAt(i);
+      if (tirnak) {
+        if (c === '"') {
+          if (s.charAt(i + 1) === '"') { alan += '"'; i += 2; continue; }
+          tirnak = false; i++; continue;
+        }
+        alan += c; i++; continue;
+      }
+      if (c === '"' && alanBasi) { tirnak = true; alanBasi = false; i++; continue; }
+      if (c === ay) { satir.push(alan); alan = ""; alanBasi = true; i++; continue; }
+      if (c === "\n") { satir.push(alan); sonuc.push(satir); satir = []; alan = ""; alanBasi = true; i++; continue; }
+      alan += c; alanBasi = false; i++;
+    }
+    if (alan !== "" || satir.length || !alanBasi) { satir.push(alan); sonuc.push(satir); }
+    return sonuc;
+  }
+  /** Dosya baytları → metin: UTF-8 (BOM'lu ya da BOM'suz); geçerli UTF-8 değilse Türkçe Windows kod sayfası 1254 (bazı tablo
+   *  programlarının "CSV" kaydı). Metin verilirse yalnız BOM atılır. */
+  function csvMetniCoz(baytlar) {
+    if (typeof baytlar === "string") return bomsuz(baytlar);
+    const u = baytlar instanceof Uint8Array ? baytlar : new Uint8Array(baytlar || []);
+    try { return bomsuz(new TextDecoder("utf-8", { fatal: true }).decode(u)); } catch (e) { /* UTF-8 değil */ }
+    try { return new TextDecoder("windows-1254").decode(u); } catch (e) { return bomsuz(new TextDecoder("utf-8").decode(u)); }
+  }
+
+  function bosHucre(m) { return String(m === undefined || m === null ? "" : m).trim() === ""; }
+  function baslikAnahtari(m) { return katla(m).replace(/\s+/g, ""); }
+  /** CSV başlık hücreleri → tablo sütun sırası (bulunamayan −1, boş −2): önce tam "Başlık [birim]" (baslikMetni), sonra büyük/küçük
+   *  harf ve boşluk duyarsız (başlık+birim, yalnız başlık, sütunun makine adı). Aynı sütun ikinci kez gelirse −3. */
+  function basliklariEsle(tablo, baslik) {
+    const ss = tablo.sutunlar || [];
+    const kullanildi = new Set();
+    const kurallar = [
+      function (s, ham) { return baslikMetni(s) === ham; },
+      function (s, ham, k) { return baslikAnahtari(baslikMetni(s)) === k; },
+      function (s, ham, k) { return baslikAnahtari(s.baslik) === k; },
+      function (s, ham, k) { return baslikAnahtari(s.ad) === k; },
+    ];
+    return (baslik || []).map(function (h) {
+      const ham = String(h === undefined || h === null ? "" : h).trim();
+      if (!ham) return -2;
+      const k = baslikAnahtari(ham);
+      for (const kural of kurallar) {
+        for (let j = 0; j < ss.length; j++) {
+          if (!kullanildi.has(j) && kural(ss[j], ham, k)) { kullanildi.add(j); return j; }
+        }
+      }
+      for (const kural of kurallar) for (let j = 0; j < ss.length; j++) if (kural(ss[j], ham, k)) return -3;
+      return -1;
+    });
+  }
+  /** Eşleme anahtarı parçası: sayı biçimli metin sayı olarak (ondalık işaretinden bağımsız), değilse katlanmış metin. */
+  function anahtarParcasi(m) {
+    const t = String(m === undefined || m === null ? "" : m).trim();
+    if (/^[+\-−]?[\d.,  ]*\d[\d.,  ]*(e[+-]?\d+)?$/i.test(t)) {
+      const n = sayiOku(t);
+      if (!isNaN(n)) return "#" + Number(n.toPrecision(12));
+    }
+    return katla(t).replace(/\s+/g, " ");
+  }
+  function satirAnahtari(tablo, ri, sutunSira, ov) {
+    const r = tablo.satirlar[ri], ss = tablo.sutunlar;
+    return sutunSira.map(function (j) { return anahtarParcasi(disaDeger(r.degerler[ss[j].ad], hucreTuru(r, ss[j]), ov)); }).join("\u0001");
+  }
+  /** Satır eşleme sütunları (dosyada bulunanlardan), bütün tablo satırlarında benzersiz ve dolu olan en kısa önek: önce ilk
+   *  düzenlenebilir sütundan önceki salt okunur sütunlar (ör. "no"; çubuklarda "tür + no"), olmazsa tablo sırasıyla en çok 4 sütun
+   *  (akslarda "sistem + doğrultu + ad"; anahtar hücresi değiştirilen satır sırayla eşlenir). Yoksa null: satırlar sırayla eşlenir. */
+  function anahtarSutunlari(tablo, dosyadaki, ov) {
+    const ss = tablo.sutunlar || [], n = (tablo.satirlar || []).length;
+    const salt_ = [], hepsi = [];
+    let onde = true;
+    for (let j = 0; j < ss.length; j++) {
+      if (!dosyadaki.has(j)) continue;
+      if (hepsi.length < 4) hepsi.push(j);
+      if (ss[j].duzenlenebilir) onde = false;
+      if (onde) salt_.push(j);
+    }
+    if (!n) return salt_.length ? salt_.slice(0, 1) : null;
+    const benzersiz = function (on) {
+      const gorulen = new Set();
+      for (let ri = 0; ri < n; ri++) {
+        const a = satirAnahtari(tablo, ri, on, ov);
+        if (!a.replace(/\u0001/g, "") || gorulen.has(a)) return false;
+        gorulen.add(a);
+      }
+      return true;
+    };
+    for (let k = 1; k <= salt_.length; k++) if (benzersiz(salt_.slice(0, k))) return salt_.slice(0, k);
+    for (let k = salt_.length + 1; k <= hepsi.length; k++) if (benzersiz(hepsi.slice(0, k))) return hepsi.slice(0, k);
+    return null;
+  }
+  function degerAyni(a, b) {
+    if (typeof a === "number" && typeof b === "number" && isFinite(a) && isFinite(b)) return Number(a.toPrecision(12)) === Number(b.toPrecision(12));
+    return esit(a, b);
+  }
+  /** Dosyadaki metin hücrenin şimdiki değerini mi gösteriyor? (dışa aktarım metniyle aynı — iki ondalık işaretiyle de — ya da
+   *  çevrilince 12 anlamlı basamakta aynı değer; boş hücre boş değer) */
+  function hucreAyni(metin, deger, tur, ov) {
+    const m = String(metin === undefined || metin === null ? "" : metin).trim();
+    const bos = deger === null || deger === undefined || deger === "";
+    if (m === "") return bos;
+    if (m === disaDeger(deger, tur, ov).trim() || m === disaDeger(deger, tur, !ov).trim()) return true;
+    if (tur && tur.tur === "metin") return !bos && m === String(deger).trim();
+    const cv = degerCevir(m, tur);
+    return !cv.hata && degerAyni(cv.deger, deger);
+  }
+  /** Salt okunur hücre için: dosyadaki sayı, şimdiki değerin dosyanın yazdığı duyarlığa yuvarlanmış hâli mi? Tablo programları
+   *  CSV'yi görünen biçimle yeniden yazar ("-2,454225919E-17" → "-2.45E-17", "0,3333333333" → "0,33333333"); bu fark kullanıcının
+   *  düzenlemesi değildir. Tolerans dosya metninin son basamağının yarısı. Düzenlenebilir hücrelerde kullanılmaz (orada her fark
+   *  değişikliktir). */
+  function gorunenAyni(metin, deger, tur, ov) {
+    if (hucreAyni(metin, deger, tur, ov)) return true;
+    if (typeof deger !== "number" || !isFinite(deger) || (tur && tur.tur && tur.tur !== "sayi")) return false;
+    const t = String(metin === undefined || metin === null ? "" : metin).trim().replace(/[\s  ']/g, "").replace(/−/g, "-");
+    const m = /^[+-]?([\d.,]*\d[\d.,]*)(?:e([+-]?\d+))?$/i.exec(t);
+    // en az 3 anlamlı basamak: "3" ile 3,25 gibi kaba yuvarlamalar eşit sayılmaz (sıra denetimi gevşemesin)
+    if (!m || m[1].replace(/\D/g, "").replace(/^0+/, "").length < 3) return false;
+    const v = sayiOku(t);
+    if (isNaN(v)) return false;
+    // ondalık işareti sayiOku'nun kuralıyla: iki işaret varsa sondaki; tek işaret bir kez geçiyorsa o; birden çok geçiyorsa binlik
+    const g = m[1], nokta = (g.match(/\./g) || []).length, virgul = (g.match(/,/g) || []).length;
+    let isaret = "";
+    if (nokta && virgul) isaret = g.lastIndexOf(",") > g.lastIndexOf(".") ? "," : ".";
+    else if (virgul === 1) isaret = ",";
+    else if (nokta === 1) isaret = ".";
+    const ondalik = isaret ? g.length - g.lastIndexOf(isaret) - 1 : 0;
+    const birim = Math.pow(10, (m[2] ? parseInt(m[2], 10) : 0) - ondalik);
+    return Math.abs(deger - v) <= 0.5 * birim * (1 + 1e-9) + 1e-15 * Math.abs(v);
+  }
+  /** Dosya adının sonundaki tablo adı ("Bina_katlar.csv" → katlar; dışa aktarımın adlandırması); yoksa null. */
+  function dosyaTablosu(tablolar, ad) {
+    const k = katla(String(ad || "").replace(/^.*[\\/]/, "").replace(/\.[^.]*$/, ""));
+    if (!k) return null;
+    let en = null;
+    tablolar.forEach(function (t) {
+      const a = katla(dosyaAdi(t.ad));
+      if ((k === a || k.slice(-(a.length + 1)) === "_" + a) && (!en || a.length > katla(dosyaAdi(en.ad)).length)) en = t;
+    });
+    return en;
+  }
+  function tabloBul(tablolar, ad, etiket) {
+    const a = String(ad === undefined || ad === null ? "" : ad).trim(), e = String(etiket || "").trim();
+    return tablolar.find(function (t) { return a && t.ad === a; }) ||
+      tablolar.find(function (t) { return a && katla(t.ad) === katla(a); }) ||
+      tablolar.find(function (t) { return e && katla(t.baslik) === katla(e); }) || null;
+  }
+
+  /** CSV içe aktarma planı (yapistirmaPlani biçiminde): matris = csvAyristir çıktısı.
+   *  - İlk dolu satırın ilk hücresi "Tablo: " ile başlıyorsa dosya bölümlüdür (tumunuCsv): her bölüm "Tablo: başlık;grup;ad" satırı,
+   *    başlık satırı ve veri satırları; tablo 3. hücredeki ada (yoksa başlığa) göre bulunur. Değilse dosya tek tablodur: etkin tablo
+   *    (aktifTablo: ad ya da tablo), başlıkları ona hiç uymuyorsa başlıkları en çok uyan tablo.
+   *  - Başlık hücreleri sütunlara baslikMetni ile eşlenir (önce tam, sonra büyük/küçük harf ve boşluk duyarsız).
+   *  - Satırlar anahtar sütunlarıyla (anahtarSutunlari: ilk salt okunur sütun(lar), ör. no) eşlenir; anahtar yoksa ya da bulunamazsa
+   *    yalnız dosya tablonun sırasını izliyorsa sırayla; sırayla eşlenen satırların salt okunur hücreleri tablodakiyle uyuşmalıdır.
+   *  - Değerler degerCevir'den geçer; yalnız duzenlenebilir hücreler ve şimdiki değerden farklı olanlar değişiklik olur.
+   *  - Toplam satırı (csvSatirlari) ve boş satırlar atlanır.
+   *  secenek: {ondalikVirgul, dosyaAdi?} (dosya adı, tek tablolu dosyada aynı başlıklı tablolar arasında seçim için)
+   *  → {degisiklikler: [{tablo, satir, sutun, yol, deger, ilk, bag?}], hatalar: [uyarı metni], atlanan: hücre sayısı, tablolar: [ad],
+   *     notlar: [bilgi metni]} */
+  function csvIceAktarPlani(tablolar, aktifTablo, matris, secenek) {
+    const ov = !(secenek && secenek.ondalikVirgul === false);
+    tablolar = (Array.isArray(tablolar) ? tablolar : []).filter(function (t) { return t && Array.isArray(t.sutunlar) && Array.isArray(t.satirlar); });
+    const plan = { degisiklikler: [], hatalar: [], atlanan: 0, tablolar: [], notlar: [] };
+    const satirlar = (matris || []).map(function (r, i) { return { h: Array.isArray(r) ? r : [r], no: i + 1 }; })
+      .filter(function (x) { return x.h.some(function (m) { return !bosHucre(m); }); });
+    if (!satirlar.length) { plan.hatalar.push("CSV dosyasında satır yok."); return plan; }
+    const TABLO = /^Tablo:\s*/;
+    const bolumler = [];
+    if (TABLO.test(String(satirlar[0].h[0]).trim())) {
+      let b = null;
+      satirlar.forEach(function (x) {
+        const ilk = String(x.h[0]).trim();
+        if (TABLO.test(ilk)) {
+          b = { etiket: ilk.replace(TABLO, ""), ad: x.h[2], no: x.no, baslik: null, veri: [] };
+          b.tablo = tabloBul(tablolar, b.ad, b.etiket);
+          bolumler.push(b);
+        } else if (!b.baslik) b.baslik = x;
+        else b.veri.push(x);
+      });
+    } else {
+      let t = typeof aktifTablo === "string" ? tablolar.find(function (x) { return x.ad === aktifTablo; }) : aktifTablo;
+      if (t && tablolar.indexOf(t) < 0) t = tablolar.find(function (x) { return x.ad === t.ad; }) || null;
+      // Hedef: başlık hücrelerinin en çoğunun (en az yarısının) uyduğu tablo; eşitlikte satırları anahtarla en çok bulunan, sonra
+      // dosya adındaki tablo adı ("…_katlar.csv": "Bu tablo" dışa aktarımı), sonra etkin tablo.
+      const etkin = t;
+      const bas = satirlar[0].h, dolu = bas.filter(function (m) { return !bosHucre(m); }).length;
+      const adayS = tablolar.map(function (tb) { return { tb: tb, n: basliklariEsle(tb, bas).filter(function (j) { return j >= 0; }).length }; });
+      const enN = adayS.reduce(function (a, x) { return Math.max(a, x.n); }, 0);
+      if (enN >= Math.max(1, Math.ceil(dolu / 2))) {
+        const ipucu = dosyaTablosu(tablolar, secenek && secenek.dosyaAdi);
+        const puan = function (tb) {
+          const esles = basliklariEsle(tb, bas), dosyadaki = new Set(), kolon = {};
+          esles.forEach(function (j, c) { if (j >= 0) { dosyadaki.add(j); kolon[j] = c; } });
+          const an = anahtarSutunlari(tb, dosyadaki, ov);
+          if (!an) return 0;
+          const h = new Set(tb.satirlar.map(function (_, ri) { return satirAnahtari(tb, ri, an, ov); }));
+          return satirlar.slice(1).filter(function (x) { return h.has(an.map(function (j) { return anahtarParcasi(x.h[kolon[j]]); }).join("\u0001")); }).length;
+        };
+        let en = null, enP = -1;
+        adayS.filter(function (x) { return x.n === enN; }).forEach(function (x) {
+          const p = puan(x.tb) * 4 + (x.tb === ipucu ? 2 : 0) + (x.tb === etkin ? 1 : 0);
+          if (p > enP) { en = x.tb; enP = p; }
+        });
+        t = en;
+        if (etkin && t !== etkin) plan.notlar.push("Dosya “" + t.baslik + "” tablosuna aktarıldı (başlıklar ve satırlar etkin tablo “" + etkin.baslik + "” yerine ona uyuyor).");
+      }
+      if (!t) { plan.hatalar.push("Başlık satırı hiçbir tabloya uymuyor (tanınan sütun yok)."); return plan; }
+      bolumler.push({ tablo: t, baslik: satirlar[0], veri: satirlar.slice(1), tek: true });
+    }
+    bolumler.forEach(function (b) { bolumIsle(b, bolumler.length > 1 || !b.tek); });
+
+    // aynı model alanına farklı değerler (iki tabloda aynı alan): sonuncusu geçerli olur
+    const yollar = new Map();
+    plan.degisiklikler.forEach(function (d) {
+      const k = Duzenleme.anahtar(d.yol), o = yollar.get(k);
+      if (o && !degerAyni(o.deger, d.deger)) plan.hatalar.push("Aynı model alanı (" + yolMetni(d.yol) + ") dosyada iki kez farklı değerle var; sonuncusu kullanıldı.");
+      yollar.set(k, d);
+    });
+    return plan;
+
+    function bolumIsle(b, onEkli) {
+      const t = b.tablo;
+      const dolu = function (x) { return x.h.filter(function (m) { return !bosHucre(m); }).length; };
+      if (!t) {
+        plan.hatalar.push("Satır " + b.no + ": tablo bulunamadı: " + (b.etiket || "") + (bosHucre(b.ad) ? "" : " (" + String(b.ad).trim() + ")"));
+        b.veri.forEach(function (x) { plan.atlanan += dolu(x); });
+        return;
+      }
+      if (plan.tablolar.indexOf(t.ad) < 0) plan.tablolar.push(t.ad);
+      const on = onEkli ? "“" + t.baslik + "”, " : "";
+      const Bas = function (m) { return on ? on + m.charAt(0).toLocaleLowerCase("tr") + m.slice(1) : m; };
+      if (!b.baslik) { if (onEkli) plan.hatalar.push(Bas("Başlık satırı yok.")); return; }
+      const ss = t.sutunlar, esles = basliklariEsle(t, b.baslik.h);
+      const dosyadaki = new Set(), kolon = {};
+      esles.forEach(function (j, c) {
+        const h = String(b.baslik.h[c]).trim();
+        if (j >= 0) { dosyadaki.add(j); kolon[j] = c; } else if (j === -1) plan.hatalar.push(Bas("Sütun bulunamadı: " + h));
+        else if (j === -3) plan.hatalar.push(Bas("Sütun yinelenmiş: " + h + " (yalnız ilki kullanıldı)"));
+      });
+      if (!dosyadaki.size) { b.veri.forEach(function (x) { plan.atlanan += dolu(x); }); return; }
+      let veri = b.veri.slice();
+      const top = t.toplam && Object.keys(t.toplam).length ? t.toplam : null;
+      const son = veri[veri.length - 1];
+      if (top && son && son.h.every(function (m, c) {
+        if (bosHucre(m) || String(m).trim() === "Toplam") return true;
+        const j = esles[c];
+        return j >= 0 && Object.prototype.hasOwnProperty.call(top, ss[j].ad);
+      })) veri.pop();
+      const anahtar = anahtarSutunlari(t, dosyadaki, ov), n = t.satirlar.length;
+      const hucreAl = function (x, j) { return x.h[kolon[j]]; };
+      const anahtarMetni = function (x) {
+        return anahtar.map(function (j) { return ss[j].baslik + " = " + String(hucreAl(x, j) === undefined ? "" : hucreAl(x, j)).trim(); }).join(", ");
+      };
+      // (1) anahtarla eşleme
+      const harita = new Map();
+      if (anahtar) t.satirlar.forEach(function (_, ri) { harita.set(satirAnahtari(t, ri, anahtar, ov), ri); });
+      const es = veri.map(function (x) {
+        if (!anahtar) return -1;
+        const a = anahtar.map(function (j) { return anahtarParcasi(hucreAl(x, j)); }).join("\u0001");
+        return harita.has(a) ? harita.get(a) : -1;
+      });
+      // (2) sırayla eşleme (anahtarı olmayan tablo ya da anahtar hücresi değiştirilmiş satır): yalnız dosya tablonun sırasını izliyorsa
+      //     (anahtarla bulunan her satır kendi sırasında) ve sırayla eşlenen her satırın salt okunur hücreleri tablodakiyle aynıysa.
+      //     Biri bile uymazsa dosyanın sırası güvenilmez: sırayla eşlenecek satırların hiçbiri yazılmaz (yanlış satıra yazmaktansa).
+      const siraTutar = es.every(function (ri, k) { return ri < 0 || ri === k; });
+      const sirali = [];
+      es.forEach(function (ri, k) {
+        if (ri >= 0) return;
+        const x = veri[k];
+        if (!siraTutar || k >= n) {
+          plan.hatalar.push(Bas("Satır " + x.no + ": tabloda karşılığı yok" + (anahtar ? " (" + anahtarMetni(x) + ")." : " (tabloda " + n + " satır var).")));
+          plan.atlanan += dolu(x);
+          es[k] = -2;
+        } else sirali.push(k);
+      });
+      if (sirali.length) {
+        let ilkHata = null;
+        sirali.forEach(function (k) {
+          if (ilkHata) return;
+          const x = veri[k], r = t.satirlar[k], uymayan = [];
+          dosyadaki.forEach(function (j) {
+            if (!ss[j].duzenlenebilir && !bosHucre(hucreAl(x, j)) && !gorunenAyni(hucreAl(x, j), r.degerler[ss[j].ad], hucreTuru(r, ss[j]), ov)) uymayan.push(ss[j].baslik);
+          });
+          if (uymayan.length) ilkHata = "Satır " + x.no + ": salt okunur sütunlar (" + uymayan.join(", ") + ") tablodaki " + (k + 1) + ". satırla uyuşmuyor";
+        });
+        if (ilkHata) {
+          plan.hatalar.push(Bas(ilkHata + "; dosyadaki satır sırası tablodakiyle aynı değil, sırayla eşlenecek " + sirali.length +
+            " satır atlandı (tabloyu süzgeçsiz ve sıralamasız dışa aktarın)."));
+          sirali.forEach(function (k) { plan.atlanan += dolu(veri[k]); es[k] = -2; });
+        } else {
+          sirali.forEach(function (k) { es[k] = k; });
+          if (!anahtar && veri.length !== n) plan.hatalar.push(Bas("Satır sayısı farklı (dosyada " + veri.length + ", tabloda " + n + "); satırlar sırayla eşlendi."));
+        }
+      }
+      const kullanilan = new Set(), saltFark = {};
+      let saltHucre = 0;
+      veri.forEach(function (x, k) {
+        const ri = es[k];
+        if (ri < 0) return;
+        const r = t.satirlar[ri];
+        const hucre = function (j) { return hucreAl(x, j); };
+        if (kullanilan.has(ri)) { plan.hatalar.push(Bas("Satır " + x.no + ": aynı tablo satırı dosyada yineleniyor; yalnız ilki kullanıldı.")); return; }
+        kullanilan.add(ri);
+        dosyadaki.forEach(function (j) {
+          const s = ss[j], tur = hucreTuru(r, s), simdi = r.degerler[s.ad], metin = hucre(j);
+          if (!s.duzenlenebilir && bosHucre(metin)) return;          // salt okunur sütunda boş hücre: bilgi yok, değişiklik değil
+          if (hucreAyni(metin, simdi, tur, ov)) return;
+          // salt okunur hücre: tablo programının görünen duyarlığa yuvarlaması fark sayılmaz (yazılmayacak; yalnız uyarı)
+          if (!s.duzenlenebilir) { if (!gorunenAyni(metin, simdi, tur, ov)) { saltFark[j] = (saltFark[j] || 0) + 1; plan.atlanan++; } return; }
+          if (!duzenlenebilir(r, s)) { if (!gorunenAyni(metin, simdi, tur, ov)) { saltHucre++; plan.atlanan++; } return; }
+          const cv = degerCevir(metin === undefined ? "" : metin, tur);
+          if (cv.hata) { plan.hatalar.push(Bas("Satır " + x.no + ", " + s.baslik + ": " + cv.hata)); return; }
+          if (degerAyni(cv.deger, simdi)) return;
+          const d = { tablo: t.ad, satir: ri, sutun: s.ad, yol: r.yol[s.ad], deger: cv.deger, ilk: simdi };
+          if (r.bag && r.bag[s.ad]) d.bag = r.bag[s.ad];
+          plan.degisiklikler.push(d);
+        });
+      });
+      Object.keys(saltFark).forEach(function (j) {
+        plan.hatalar.push(Bas("Düzenlenemez sütun: " + baslikMetni(ss[j]) + " (" + saltFark[j] + " hücre farklı, atlandı)"));
+      });
+      if (saltHucre) plan.hatalar.push(Bas(saltHucre + " salt okunur hücre farklı, atlandı (hesaplanan değer ya da modelde karşılığı yok)."));
+    }
+  }
+  /** Planın kısa özeti (bildirim): "CSV: N değişiklik bekliyor (Uygula), M uyarı". */
+  function csvOzetMetni(plan) {
+    const n = plan.degisiklikler.length, m = plan.hatalar.length;
+    if (!n) return m ? "CSV: değişiklik yok, " + m + " uyarı" : "CSV: değişiklik yok (dosyadaki değerler tablolarla aynı).";
+    return "CSV: " + n + " değişiklik bekliyor (Uygula), " + m + " uyarı";
+  }
+
   /** Bekleyen (uygulanmamış) düzenlemeler: yol anahtarına göre (aynı alanı gösteren bütün hücreler aynı değeri gösterir),
    *  geri al yığını (her ekleme bir adım). */
   function Duzenleme() {
@@ -648,6 +1020,8 @@
     csvAlan: csvAlan, disaDeger: disaDeger, csvUret: csvUret, tumunuCsv: tumunuCsv, tsvAyristir: tsvAyristir, tsvUret: tsvUret,
     yapistirmaPlani: yapistirmaPlani, Duzenleme: Duzenleme, yolMetni: yolMetni, gruplu: gruplu, sutunGenisligi: sutunGenisligi,
     secenekDeger: secenekDeger, secenekEtiket: secenekEtiket,
+    csvAyiriciBul: csvAyiriciBul, csvAyristir: csvAyristir, csvMetniCoz: csvMetniCoz, basliklariEsle: basliklariEsle,
+    anahtarSutunlari: anahtarSutunlari, csvIceAktarPlani: csvIceAktarPlani, csvOzetMetni: csvOzetMetni,
   };
 
   // ======================================================================
@@ -718,7 +1092,10 @@
       '        <label class="tablo-ed-onay"><input type="checkbox" data-ayar="ondalikVirgul"> Ondalık virgül (3,14)</label>' +
       '        <label class="tablo-ed-onay"><input type="checkbox" data-ayar="virgulAyirici"> Ayırıcı virgül (yoksa ;)</label>' +
       "      </div></div>" +
-      (sec.kapat ? '    <button type="button" class="dugme kucuk tablo-ed-kapat" aria-label="Tablo editörünü kapat">✕</button>' : "") +
+      (salt ? "" :
+        '    <button type="button" class="dugme kucuk tablo-ed-csv-iceri" title="CSV dosyasındaki değerleri tablolara yaz (tek tablo ya da bölümlü bütün tablolar; değişen hücreler sarı, Uygula ile modele geçer)">İçe aktar (.csv)…</button>' +
+        '    <input type="file" class="tablo-ed-csv-dosya" accept=".csv,text/csv" hidden tabindex="-1" aria-hidden="true">') +
+      (sec.kapat ?'    <button type="button" class="dugme kucuk tablo-ed-kapat" aria-label="Tablo editörünü kapat">✕</button>' : "") +
       "  </div>" +
       "</div>" +
       '<div class="tablo-ed-uyari" hidden></div>' +
@@ -752,15 +1129,17 @@
       thead: $("thead"), tbody: $("tbody"), tfoot: $("tfoot"), bilgi: $(".tablo-ed-hucre-bilgi"), mesaj: $(".tablo-ed-mesaj"),
       mliste: $(".tablo-ed-mliste"), mrapor: $(".tablo-ed-mrapor input"), raporSuz: $(".tablo-ed-rapor-suz input"),
       yapKutu: $(".tablo-ed-yapistir-kutu"), yapMetin: $(".tablo-ed-yapistir-kutu textarea"),
+      csvIceri: $(".tablo-ed-csv-iceri"), csvDosya: $(".tablo-ed-csv-dosya"),
     };
     E.raporSuz.checked = D.raporSuz;
     $('[data-ayar="ondalikVirgul"]').checked = !!D.csv.ondalikVirgul;
     $('[data-ayar="virgulAyirici"]').checked = D.csv.ayirici === ",";
 
     let mesajZaman = null;
-    function mesaj(m, tur) {
+    function mesaj(m, tur, ayrinti) {
       E.mesaj.textContent = m || "";
       E.mesaj.className = "tablo-ed-mesaj" + (tur ? " tablo-ed-mesaj-" + tur : "");
+      if (ayrinti) E.mesaj.title = ayrinti; else E.mesaj.removeAttribute("title");
       clearTimeout(mesajZaman);
       if (m && tur !== "hata") mesajZaman = setTimeout(function () { E.mesaj.textContent = ""; }, 6000);
     }
@@ -1352,6 +1731,67 @@
       }
     }
 
+    // ------------------------------------------------------------ CSV dosyası içe aktarma
+    // Dosyadaki değerler yapıştırma gibi bekleyen değişiklik olur (sarı hücreler; tek geri al adımı) ve "Uygula" ile modele geçer.
+    // Masaüstünde yerel "Aç" iletişim kutusu (MatrisDosya.ac), tarayıcıda editörün gizli dosya girdisi kullanılır.
+    let kapandi = false, dosyaBekleyen = null;
+    function csvMetniIceAktar(metin, ad) {
+      if (salt || kapandi) return null;
+      if (!D.tablolar.length) { mesaj("İçe aktarılacak tablo yok.", "hata"); return null; }
+      editorKapat(true, true);
+      const plan = csvIceAktarPlani(D.tablolar, D.ad, csvAyristir(metin), { ondalikVirgul: !!D.csv.ondalikVirgul, dosyaAdi: ad });
+      const n = plan.degisiklikler.length, m = plan.hatalar.length;
+      if (n) {
+        degisiklikEkle(plan.degisiklikler);
+        if (!plan.degisiklikler.some(function (d) { return d.tablo === D.ad; })) sec_(plan.degisiklikler[0].tablo);
+      } else if (plan.tablolar.length === 1 && plan.tablolar[0] !== D.ad) sec_(plan.tablolar[0]);
+      const ozet = csvOzetMetni(plan);
+      const not = plan.notlar.length ? " " + plan.notlar.join(" ") : "";
+      mesaj((ad ? ad + " — " : "") + ozet + (m ? ": " + plan.hatalar.slice(0, 3).join("; ") + (m > 3 ? "…" : "") : (/[.…]$/.test(ozet) ? "" : ".")) + not,
+        m ? "hata" : "tamam", m ? plan.hatalar.join("\n") : "");
+      const A = kok.MatrisApp;
+      if (A && typeof A.toast === "function") { try { A.toast(ozet); } catch (e) { /* bildirim isteğe bağlı */ } }
+      return { degisiklik: n, uyari: m, hatalar: plan.hatalar.slice(), notlar: plan.notlar.slice(), tablolar: plan.tablolar.slice() };
+    }
+    function dosyaSecildi(dosya) {
+      const bekleyen = dosyaBekleyen;
+      dosyaBekleyen = null;
+      const bitir = function (sonuc) { if (bekleyen) bekleyen(sonuc); };
+      if (!dosya) { bitir(null); return; }
+      const okuyucu = new FileReader();
+      okuyucu.onload = function () {
+        let sonuc = null;
+        try { sonuc = csvMetniIceAktar(csvMetniCoz(okuyucu.result), dosya.name); }
+        catch (e) { mesaj("CSV dosyası okunamadı: " + (e && e.message ? e.message : e), "hata"); }
+        bitir(sonuc);
+      };
+      okuyucu.onerror = function () { mesaj("CSV dosyası okunamadı: " + ((okuyucu.error && okuyucu.error.message) || dosya.name), "hata"); bitir(null); };
+      okuyucu.readAsArrayBuffer(dosya);
+    }
+    /** CSV içe aktarma: metin verilirse doğrudan, yoksa dosya seçtirerek. → Promise<{degisiklik, uyari, hatalar, tablolar} | null> */
+    function csvIceAktar(metin) {
+      if (salt || kapandi) return Promise.resolve(null);
+      if (typeof metin === "string") return Promise.resolve(csvMetniIceAktar(csvMetniCoz(metin), ""));
+      const F = kok.MatrisDosya;
+      if (F && F.masaustu && typeof F.ac === "function") {
+        return Promise.resolve(F.ac(["csv"], { ikili: true, baslik: "Tabloları CSV dosyasından içe aktar" })).then(function (r) {
+          return r && r.icerik != null ? csvMetniIceAktar(csvMetniCoz(r.icerik), r.ad || "") : null;
+        }, function (e) { mesaj("CSV dosyası açılamadı: " + (e && e.message ? e.message : e), "hata"); return null; });
+      }
+      if (dosyaBekleyen) { const b = dosyaBekleyen; dosyaBekleyen = null; b(null); }
+      const etkin = kok.navigator && kok.navigator.userActivation;
+      if (etkin && !etkin.isActive) {        // tarayıcı dosya seçiciyi yalnız kullanıcı eylemiyle açar
+        mesaj("CSV dosyasını seçmek için “İçe aktar (.csv)…” düğmesine basın.", "bilgi");
+        try { E.csvIceri.focus(); } catch (e) { /* yoksay */ }
+        return Promise.resolve(null);
+      }
+      return new Promise(function (coz) {
+        dosyaBekleyen = coz;
+        E.csvDosya.value = "";
+        E.csvDosya.click();
+      });
+    }
+
     // ------------------------------------------------------------ olaylar
     const dinleyiciler = [];
     function dinle(el, ad, fn, op) { el.addEventListener(ad, fn, op); dinleyiciler.push([el, ad, fn, op]); }
@@ -1399,6 +1839,9 @@
         E.yapMetin.value = "";
         E.yapMetin.focus();
       });
+      dinle(E.csvIceri, "click", function () { csvIceAktar(); });
+      dinle(E.csvDosya, "change", function () { dosyaSecildi(E.csvDosya.files && E.csvDosya.files[0]); });
+      dinle(E.csvDosya, "cancel", function () { dosyaSecildi(null); });
     }
     dinle(E.yapKutu, "click", function (e) {
       const b = e.target.closest("[data-yap]");
@@ -1589,9 +2032,13 @@
     const ilk = sec.baslangic || depoAl("son", null);
     uyariYaz();
     sec_(D.tablolar.some(function (t) { return t.ad === ilk; }) ? ilk : (D.tablolar[0] || {}).ad);
+    // secenek.csvIceri: editör açılır açılmaz CSV içe aktarma (masaüstü Dosya › İçe aktar › Tablolar (.csv)…; sözleşme C23)
+    if (sec.csvIceri && !salt) setTimeout(function () { if (!kapandi) csvIceAktar(); }, 0);
 
     return {
       kapat: function () {
+        kapandi = true;
+        if (dosyaBekleyen) { const b = dosyaBekleyen; dosyaBekleyen = null; b(null); }
         editorKapat(false, true);
         dinleyiciler.forEach(function (d) { d[0].removeEventListener(d[1], d[2], d[3]); });
         kok_.remove();
@@ -1627,9 +2074,10 @@
         return { tablolar: adlar, tablo_filtre: filtre };
       },
       sec: function (ad) { sec_(ad); },
+      csvIceAktar: csvIceAktar,
       durum: function () { return { ad: D.ad, bekleyen: D.duz.sayi(), gorunur: D.gorunur.length, eski: D.eski, gecmis: D.gecmis.length }; },
     };
   }
 
-  return { ac: ac, _ic: _ic, surum: "1.0.0" };
+  return { ac: ac, _ic: _ic, surum: "1.1.0" };
 });

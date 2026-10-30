@@ -38,16 +38,25 @@ Paketler GitHub'da **Releases** sayfasında (sürüm etiketleri, ör. `v1.0.0`) 
   bilgisayar beklenmedik biçimde kapanırsa bir sonraki açılışta "Kurtar" önerilir; pencere içeriği çökerse yeniden yüklemeden sonra
   son durum geri gelir. Klasör: Dosya → Kurtarma klasörünü göster.
 - **Dışa aktarma** (IFC, CSV, JSON, HTML rapor, resim) yerel "Kaydet" iletişim kutusuyla; **Rapor → PDF olarak kaydet** raporu
-  A4 PDF olarak doğrudan yazar, **Rapor → Yazdır** (Bina sayfasında) statik raporu yazıcıya gönderir. **Tablolar (.csv)** bütün
-  tabloları tek bir CSV dosyasına yazar; tablo verisi dosyadan değil, **Analiz → Tablolar** penceresinde yapıştırarak girilir.
+  A4 PDF olarak doğrudan yazar, **Rapor → Yazdır** (Bina sayfasında) statik raporu yazıcıya gönderir. **Dışa aktar → Tablolar (.csv)**
+  bütün tabloları tek bir CSV dosyasına yazar.
+- **İçe aktar → Tablolar (.csv)** Tablolar penceresini açar ve yerel "Aç" iletişim kutusuyla bir CSV dosyası seçtirir (tek tablo ya
+  da Dışa aktar'ın bölümlü dosyası; ayırıcı `;`, `,` ya da sekme kendiliğinden bulunur, UTF-8 ya da Türkçe Windows kod sayfası).
+  Değeri değişen düzenlenebilir hücreler sarı (bekleyen) olur ve **Uygula** ile modele geçer; tanınmayan / düzenlenemez sütunlar ve
+  okunamayan değerler uyarı olarak yazılır. Aynı iş Tablolar penceresindeki **İçe aktar (.csv)…** düğmesiyle de yapılır; hücreler
+  tablo programından yapıştırılarak da girilebilir.
 - Bağlantılar (web sürümü, kaynak kodu) varsayılan tarayıcıda açılır; program kendisi hiçbir ağ isteği yapmaz.
 - Ayarlar, son dosyalar ve kurtarma kayıtları: Windows `%APPDATA%\Matris Öğren`, macOS `~/Library/Application Support/Matris Öğren`,
   Linux `~/.config/Matris Öğren`.
-- Menü kısayolları: **Yardım → Klavye kısayolları**. En çok kullanılanlar: Ctrl+N yeni, Ctrl+O aç, Ctrl+S kaydet,
-  Ctrl+Z / Ctrl+Y geri al / yinele, F5 çöz, F6 tasarım kontrolleri, F9 statik rapor, Ctrl+T tablolar, Ctrl+E IFC, Ctrl+G aks verisi,
-  F11 tam ekran, Ctrl+1…4 sayfalar (macOS'ta Ctrl yerine ⌘). Bina sayfasının araç kısayolları (S seç, L çubuk çiz, K kolon, R kiriş,
-  X çapraz, Ctrl+Enter çöz, 1–4 görünümler…) uygulamanın **Yardım** sayfasındaki "Klavye kısayolları" kartında ve Bina sayfasında
-  **?** tuşuyla açılan pencerededir; ikisi de araç kutusunun komut kaydından üretilir.
+- **Yardım → Klavye kısayolları** ayrı, kaydırılabilir küçük bir pencere açar (Esc kapatır; yeniden seçilince aynı pencere öne gelir):
+  "Menü" bölümünde menü kısayollarını, Bina sayfası açıldıktan sonra da "Bina sayfası — <grup>" bölümlerinde sayfanın bütün araç
+  kısayollarını ve sayfa tuşlarını (Esc, Shift+F10, Enter, ?, PgUp/PgDn…) gösterir. Liste
+  sayfadaki araç kutusu komut kaydından üretilir (Bina sayfasındaki **?** penceresi ve uygulamanın **Yardım** sayfasındaki "Klavye
+  kısayolları" kartıyla aynı satırlar); Bina sayfası henüz açılmadıysa pencere menü kısayollarını ve oraya yönlendiren bir satırı
+  gösterir. En çok kullanılan menü kısayolları: Ctrl+N yeni, Ctrl+O aç, Ctrl+S kaydet, Ctrl+Z / Ctrl+Y geri al / yinele, F5 çöz,
+  F6 tasarım kontrolleri, F9 statik rapor, Ctrl+T tablolar, Ctrl+E IFC, Ctrl+G aks verisi, F11 tam ekran, Ctrl+1…4 sayfalar
+  (macOS'ta Ctrl yerine ⌘). Bina sayfasının araç kısayolları: S seç, L çubuk çiz, K kolon, R kiriş, X çapraz, Ctrl+Enter çöz,
+  1–4 görünümler…
 
 ## Geliştiriciler için
 
@@ -81,7 +90,7 @@ Notlar:
 | `hazirla.js` | `../docs`'u `uygulama/`ya kopyalar; motorun Pyodide sürümünü (`docs/motor.worker.js` → `PYODIDE_SURUM`) ve yüklediği paketleri (`loadPackage([...])`) okur, bağımlılıkları `pyodide-lock.json`'dan çözer, çekirdek + tekerlekleri SHA-256 denetimiyle `uygulama/pyodide/` altına indirir; sayfalardaki CDN kütüphanelerini (formül dizgisi, markdown) `uygulama/kutuphane/`ye indirip adresleri yerelleştirir; kopyadaki worker'a `self.MATRIS_PYODIDE_URL = "./pyodide/"` ekler; `uygulama/masaustu.json` ve `build/icon.png` yazar. Çıkış kodu 3 = ağ hatası. |
 | `main.js` | Ana süreç: `app://matris/` protokolü, pencereler ve pencere durumu, Türkçe menü, IPC, dosya iletişim kutuları, son dosyalar, otomatik kayıt / kurtarma, tek örnek, dosya ilişkilendirmesi, sürükle-bırak, PDF. |
 | `preload.js` | Yalıtılmış ön yükleme betiği: sayfaya yalnız `window.masaustu` yüzeyini açar; sürükle-bırakı işler. |
-| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler), komut listesi (`komutListesi`, aşağıdaki Komutlar tablosu) ve menü kısayolları penceresinin metni (`kisayolMetni`). |
+| `lib/menu.js` | Menü şablonu (saf veri; testler doğrudan inceler), komut listesi (`komutListesi`, aşağıdaki Komutlar tablosu), Klavye kısayolları penceresinin bölümleri, düz metni ve betiksiz HTML belgesi (`kisayolBolumleri`, `kisayolMetni`, `kisayolHtml(platform, sayfaListesi)`) ve sayfadan gelen kısayol listesinin temizleyicisi (`kisayolListesiTemizle`). |
 | `lib/sunucu.js` | `uygulama/` dosyalarının sunulması: yol denetimi, içerik türleri (`application/wasm` vb.), HTML'e İçerik Güvenliği Politikası. |
 | `lib/yardimci.js` | Saf yardımcılar: atomik yazma, proje okuma, ayar deposu, son dosyalar, komut satırı, pencere sınırı, kurtarma, süzgeçler, PDF bilgi sözlüğü. |
 | `../docs/masaustu_kopru.js` | Sayfa tarafı köprü: `window.MatrisDosya` ve `masaustu-*` olayları (web sürümünde de yüklenir). |
@@ -177,12 +186,20 @@ işlenir, sayfaya komut gelmez.
 
 ² `csv`: Bina sayfasının bütün tablolarını (Tablolar penceresindeki her tablo, `Tablo: başlık;grup;ad` satırıyla başlayan bölümler)
 **tek bir CSV dosyasına** kaydeder: `;` ayırıcı, ondalık virgül, BOM (Türkçe yerel ayarlı tablo programları için). Pencere açılmaz.
-CSV dosyası içe aktarılmaz; tablo verisi Tablolar penceresinde hücreleri tablo programından **yapıştırarak** girilir (⁴).
+Bu dosya düzenlenip `csv-iceri` ile geri okunabilir (⁵).
 
 ³ `yazdir`: Bina sayfasında statik raporu üretir (çözüm yoksa önce çözer) ve rapor penceresinde yazdırma iletişim kutusunu açar;
 başka sayfada sayfa komutu işlemez ve köprünün yerleşik davranışı (`window.print()`) sayfayı yazdırır.
 
 ⁴ `tablolar`: Tablolar ve metraj penceresi (sarı hücreler düzenlenir; sekmeyle ayrılmış hücreler yapıştırılır, Ctrl+Z geri alır).
+
+⁵ `csv-iceri`: Tablolar penceresini açar ve hemen CSV dosyası seçtirir (`MatrisDosya.ac(["csv"])`: "CSV tablosu (*.csv)" ve "Tüm
+dosyalar" süzgeçli yerel "Aç" iletişim kutusu). Dosya tek tablo (başlık satırı + satırlar; etkin tablo, başlıklar başka bir tabloya
+daha çok uyuyorsa o tablo) ya da `Tablo: başlık;grup;ad` bölümlü olabilir. Başlıklar sütunlara "Başlık [birim]" metniyle, satırlar
+tablonun anahtar sütunlarıyla (ör. `no`; yoksa tablodaki sırayla) eşlenir. Değeri değişen düzenlenebilir hücreler bekleyen değişiklik
+olur (sarı; tek geri al adımı) ve **Uygula** ile modele geçer; özet bildirimi "CSV: N değişiklik bekliyor (Uygula), M uyarı".
+Salt okunur (hesaplanan) sütunlarda tablo programının sayıyı görünen duyarlıkla yeniden yazması (ör. `-2.45E-17`) fark sayılmaz.
+Pencere içindeki **İçe aktar (.csv)…** düğmesi aynı işi yapar (tarayıcıda gizli dosya girdisiyle).
 
 | `komut` | ek alanlar | Menü | Kısayol |
 |---|---|---|---|
@@ -190,6 +207,7 @@ başka sayfada sayfa komutu işlemez ve köprünün yerleşik davranışı (`win
 | `kaydet` | | Dosya › Kaydet | `Ctrl+S` |
 | `farkli-kaydet` | | Dosya › Farklı kaydet… | `Ctrl+Shift+S` |
 | `json-iceri` | | Dosya › Bina verisi (.json)… | |
+| `csv-iceri` | | Dosya › Tablolar (.csv)… ⁵ | |
 | `ifc` | | Dosya › IFC yapı modeli (.ifc)… | `Ctrl+E` |
 | `csv` | | Dosya › Tablolar (.csv)… ² | |
 | `json-disari` | | Dosya › Bina verisi (.json)… | |
@@ -309,6 +327,7 @@ başka sayfada sayfa komutu işlemez ve köprünün yerleşik davranışı (`win
 | `klasordeGoster(yol)` | `matris:klasorde-goster` | yalnız bu oturumda kaydedilenler |
 | `degisti(kirli)`, `yeni()`, `otomatikKayit(icerik, ad)`, `hazir()` | `matris:kirli`, `matris:yeni`, `matris:otomatik-kayit`, `matris:hazir` | pencere durumu |
 | `tamEkran()`, `yeniPencere()`, `harici(url)` | `matris:tam-ekran`, `matris:yeni-pencere`, `matris:harici` | pencere işleri, varsayılan tarayıcı |
+| `kisayollar(liste)` | `matris:kisayollar` | Bina sayfasının kısayolları `[{tus, ad, grup}]` (en çok 400 satır, alanlar en çok 120 karakter; uymayan satır atılır). Köprü Bina sayfası hazır olunca ve araç kutusu kaydındaki her olayda (en çok 500 ms'de bir, liste değiştiyse) gönderir; ana süreç pencere başına saklar, Yardım › Klavye kısayolları penceresinde gösterir |
 | `komutDinle(fn)`, `dosyaDinle(fn)` | `matris:komut`, `matris:dosya-acildi` | ana süreçten gelenler; dönen işlev dinleyiciyi bırakır |
 
 ## Dağıtım (GitHub Actions)
@@ -322,7 +341,11 @@ sürümüne eklenir. İş akışının yetkisi yalnız okuma; sürüm işi yaln�
 ## Testler
 
 - `testler/js/masaustu.test.js` (`node --test`): `hazirla.js` yardımcıları, worker'ın yerel Pyodide adresi, ön yükleme yüzeyi (sahte
-  çatı modülüyle), menü şablonu, Komutlar tablosu ↔ `komutListesi()` (iki yönlü), ana süreç yardımcıları, protokol sunucusu.
+  çatı modülüyle; kısayol listesi temizleyicisi `lib/menu.js` ile aynı), köprünün kısayol listesi gönderimi (sahte araç kutusu ve
+  zamanlayıcıyla), menü şablonu ve Klavye kısayolları metni, Komutlar tablosu ↔ `komutListesi()` (iki yönlü), ana süreç yardımcıları,
+  protokol sunucusu.
+- `testler/js/tablo_editoru.test.js`: CSV ayrıştırma ve içe aktarma planı (gidiş-dönüş, tek / bölümlü dosya, eşleme kuralları, uyarılar);
+  `testler/test_tablo_csv_tarayici.py` (tarayıcıda): Tablolar penceresinde **İçe aktar (.csv)…** → sarı hücre → Uygula → model, Ctrl+Z.
 - `testler/test_masaustu.py` (pytest): sözdizimi, `package.json` / kilit dosyası / iş akışı alanları, git'e girmemesi gerekenler,
   `hazirla.js` çıktı yapısı (ağ yoksa atlanır), `MatrisDosya` web yolu ve masaüstü köprüsü (tarayıcıda, sahte `window.masaustu` ile),
   hazırlanan uygulamanın CDN'siz (çevrimdışı) motor yüklemesi ve bir bina şablonunun çözümü.
