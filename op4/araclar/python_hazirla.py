@@ -103,6 +103,10 @@ def budama(site: pathlib.Path) -> int:
 
 
 def main() -> int:
+    # Windows'ta boruya yönlendirilen standart çıktı cp1252'dir; Türkçe karakterler UnicodeEncodeError verir.
+    for akis in (sys.stdout, sys.stderr):
+        if hasattr(akis, "reconfigure"):
+            akis.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--paket", required=True, help="op4.exe'nin bulunduğu (bulunacağı) paket klasörü")
     ap.add_argument("--onbellek", default=str(DEPO / "op4" / ".onbellek"), help="indirme önbelleği")

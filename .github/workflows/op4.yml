@@ -38,6 +38,7 @@ jobs:
         shell: bash
     env:
       OP4_SURUM: "0.1.0"
+      PYTHONUTF8: "1"   # Windows'ta Python'un boru çıktısı varsayılan cp1252; Türkçe metin için UTF-8
     steps:
       - name: Depoyu al
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

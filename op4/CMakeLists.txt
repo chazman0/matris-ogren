@@ -78,7 +78,8 @@ add_executable(op4 WIN32
   kaynak/proje.cpp
   kaynak/resim.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/op4.rc")
-target_compile_definitions(op4 PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN OP4_SURUM="${PROJECT_VERSION}")
+target_compile_definitions(op4 PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS
+                                       OP4_SURUM="${PROJECT_VERSION}")
 target_link_libraries(op4 PRIVATE imgui windowscodecs ole32 shell32 shlwapi uuid msimg32 dwmapi)
 if(MSVC)
   target_compile_options(op4 PRIVATE /utf-8 /W4 /permissive- /Zc:__cplusplus /MP)
