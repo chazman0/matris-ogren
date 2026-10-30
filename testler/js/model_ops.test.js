@@ -549,13 +549,16 @@ test("makasUret: çubuk sayısı formülleri", function () {
   assert.throws(function () { p("kule", 4); }, M.ModelHatasi);
 });
 
-test("makasUret: geometri, mafsallı gövde, sürekli başlık, Pratt/Howe diyagonal yönü", function () {
+test("makasUret: geometri, mafsallı gövde (uç dikmeleri rijit — K-22), sürekli başlık, Pratt/Howe diyagonal yönü", function () {
   const r = M.makasUret({}, { tip: "pratt", bas: [0, 2, 5], son: [12, 2, 5], yukseklik: 1.5, goz: 6, kesitler: {} });
   for (const c of r.model.cubuklar) {
     const u = uclar(r.model, c.no);
     if (c.tur === "makas-ust") { yakin(u[0][2], 6.5); yakin(u[1][2], 6.5); assert.equal(c.serbest, undefined); }
     if (c.tur === "makas-alt") { yakin(u[0][2], 5); assert.equal(c.serbest, undefined); }
-    if (c.tur === "makas-dikme" || c.tur === "makas-diyagonal") assert.deepEqual(c.serbest, M.MAFSAL_IKI_UC);
+    // eski beklenti bütün gövdeyi iki ucu mafsallı istiyordu: üst başlık düzlem dışında mafsallı gövdeye asılı kalır, yapı mekanizma olurdu
+    const ucDikme = c.tur === "makas-dikme" && (Math.abs(u[0][0]) < 1e-9 || Math.abs(u[0][0] - 12) < 1e-9);
+    if (ucDikme) assert.equal(c.serbest, undefined, "uç dikmesi momentli");
+    else if (c.tur === "makas-dikme" || c.tur === "makas-diyagonal") assert.deepEqual(c.serbest, M.MAFSAL_IKI_UC);
     if (c.tur === "makas-diyagonal") {
       // Pratt: diyagonaller ortaya doğru aşağı iner (üst uç dışta, alt uç içte)
       const alt = u[0][2] < u[1][2] ? u[0] : u[1], ust = u[0][2] < u[1][2] ? u[1] : u[0];
@@ -575,6 +578,122 @@ test("makasUret: geometri, mafsallı gövde, sürekli başlık, Pratt/Howe diyag
   // Y doğrultusunda açıklık; makas düzlemi Y–Z
   const y = M.makasUret({}, { tip: "warren", bas: [3, 0, 4], son: [3, 10, 4], yukseklik: 1, goz: 5 });
   assert.ok(y.model.dugumler.every(function (d) { return Math.abs(d.X - 3) < 1e-9; }));
+});
+
+test("makasUret K-22 yanal tutma: uç dikmeleri / Warren'ın ilk-son diyagonali rijit, K makasın ara dikmeleri M'den sürekli; 'yok' eski davranış; öğretici not", function () {
+  const ser = function (r, tur) { return r.model.cubuklar.filter(function (c) { return c.tur === tur; }).map(function (c) { return { u: uclar(r.model, c.no), s: c.serbest || null }; }); };
+  const ucta = function (q, x) { return Math.abs(q.u[0][0] - x) < 1e-9 || Math.abs(q.u[1][0] - x) < 1e-9; };
+  const tip = function (t, ek) { return M.makasUret({}, Object.assign({ tip: t, bas: [0, 0, 6], son: [12, 0, 6], yukseklik: 1.5, goz: 4 }, ek || {})); };
+  // pratt / howe / warren-dikmeli: iki uç dikmesi rijit, ara dikmeler ve diyagonaller iki ucu mafsallı
+  for (const t of ["pratt", "howe", "warren-dikmeli"]) {
+    const r = tip(t);
+    assert.equal(r.yanal_tutma, "uc-dikme");
+    const d = ser(r, "makas-dikme");
+    assert.equal(d.filter(function (q) { return q.s === null; }).length, 2, t);
+    assert.ok(d.filter(function (q) { return q.s === null; }).every(function (q) { return Math.abs(q.u[0][0]) < 1e-9 || Math.abs(q.u[0][0] - 12) < 1e-9; }), t + " uçta");
+    assert.ok(ser(r, "makas-diyagonal").every(function (q) { return JSON.stringify(q.s) === JSON.stringify(M.MAFSAL_IKI_UC); }), t + " diyagonal");
+    assert.ok(r.uyarilar.indexOf(M.MAKAS_BURKULMA_NOTU) >= 0);
+    assert.equal(M.MAKAS_BURKULMA_NOTU, "Üst başlığın düzlem dışı burkulma boyu, aşık ya da düzlem dışı bağ yoksa bütün açıklıktır.");
+  }
+  // warren: ilk ve son diyagonal mesnet (i, alt) ucunda rijit, üst ucu mafsallı
+  const w = tip("warren"), wd = ser(w, "makas-diyagonal");
+  const uc = wd.filter(function (q) { return ucta(q, 0) || ucta(q, 12); });
+  assert.equal(uc.length, 2);
+  uc.forEach(function (q) { assert.deepEqual(q.s, { i: [], j: ["My", "Mz"] }); assert.ok(q.u[0][2] < q.u[1][2], "i ucu alttaki mesnet düğümü"); });
+  assert.ok(wd.filter(function (q) { return uc.indexOf(q) < 0; }).every(function (q) { return JSON.stringify(q.s) === JSON.stringify(M.MAFSAL_IKI_UC); }));
+  // k: uç dikmeleri rijit; ara dikme alt yarısı alt uçta, üst yarısı üst uçta mafsallı (M'den sürekli)
+  const k = tip("k"), kd = ser(k, "makas-dikme");
+  assert.equal(kd.filter(function (q) { return q.s === null; }).length, 2);
+  const ara = kd.filter(function (q) { return q.s !== null; });
+  assert.equal(ara.length, 6);
+  ara.forEach(function (q) {
+    const ortaI = Math.abs(q.u[0][2] - 6.75) < 1e-9, ortaJ = Math.abs(q.u[1][2] - 6.75) < 1e-9;
+    assert.ok(ortaI || ortaJ, "orta düğüme bağlı");
+    // orta düğümdeki uç serbest değil
+    assert.deepEqual(q.s[ortaI ? "i" : "j"], []); assert.deepEqual(q.s[ortaI ? "j" : "i"], ["My", "Mz"]);
+  });
+  // beşik ve fink değişmez (üst başlık mesnette alt başlığa bağlı)
+  const b = tip("besik-pratt", { yukseklik: 2 });
+  assert.ok(ser(b, "makas-dikme").concat(ser(b, "makas-diyagonal")).every(function (q) { return JSON.stringify(q.s) === JSON.stringify(M.MAFSAL_IKI_UC); }));
+  // yok: bütün gövde iki ucu mafsallı (eski davranış) ve mekanizma uyarısı
+  for (const t of ["pratt", "warren", "k"]) {
+    const y = tip(t, { yanal_tutma: "yok" });
+    assert.ok(ser(y, "makas-dikme").concat(ser(y, "makas-diyagonal")).every(function (q) { return JSON.stringify(q.s) === JSON.stringify(M.MAFSAL_IKI_UC); }), t);
+    assert.ok(y.uyarilar.some(function (u) { return /yanal_tutma: yok/.test(u) && /mekanizma/.test(u); }), t);
+    assert.equal(y.model.uretecler[0].yanal_tutma, "yok", "üreteç kaydında");
+  }
+  // mafsalsız gövde: hiçbir gövde çubuğunda serbestlik yok
+  assert.ok(ser(tip("pratt", { mafsalli_govde: false }), "makas-diyagonal").every(function (q) { return q.s === null; }));
+  assert.throws(function () { tip("pratt", { yanal_tutma: "her-yer" }); }, /yanal_tutma/);
+  // üreteç güncellemesi seçeneği korur / değiştirir
+  const g = M.uretecGuncelle(tip("pratt", { yanal_tutma: "yok" }).model, 1, { yanal_tutma: "uc-dikme" });
+  assert.equal(ser(g, "makas-dikme").filter(function (q) { return q.s === null; }).length, 2);
+});
+
+test("mesnetli (C11.7): mütemadi / radye temelde C3 tabanı dönmede rijit sayılır (temeller.mesnet mafsal olsa da); yaylı mesnet de mesnettir", function () {
+  const m = { surum: 3, akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }], y: [{ ad: "1", konum: 0 }], z: [{ ad: "T", konum: 0, kat: 0 }, { ad: "K1", konum: 3, kat: 1 }] },
+    cubuklar: [{ no: 1, tur: "kolon", i: { aks: ["A", "1"], z: "T" }, j: { aks: ["A", "1"], z: "K1" }, serbest: { i: ["My", "Mz"], j: [] } },
+      { no: 2, tur: "kolon", i: { aks: ["B", "1"], z: "T" }, j: { aks: ["B", "1"], z: "K1" }, serbest: { i: ["My", "Mz"], j: [] } },
+      { no: 3, tur: "kiris", i: { aks: ["A", "1"], z: "K1" }, j: { aks: ["B", "1"], z: "K1" } }],
+    temeller: { tip: "tekil", mesnet: "mafsal" } };
+  const kod = function (mm) { return M.denetle(mm).uyarilar.filter(function (u) { return u.kod === "mafsalli-dugum"; }).length; };
+  assert.equal(kod(m), 2, "tekil mafsallı temel: tabanda mafsallı düğüm uyarısı");
+  for (const t of ["surekli", "mütemadi", "radye"]) {
+    const s = JSON.parse(JSON.stringify(m)); s.temeller.tip = t;
+    assert.equal(kod(s), 0, t + ": taban temel kirişine / radyeye rijit bağlı");
+  }
+  // yaylı mesnet kaydı (yalnız kz) mesnettir: 'mesnetsiz' bulgusu yok
+  const y = { surum: 3, cubuklar: [{ no: 1, i: [0, 0, 0], j: [4, 0, 0], tur: "kiris" }], mesnetler: [{ dugum: [0, 0, 0], kz: 1000 }, { dugum: [4, 0, 0], ux: true, uy: true, uz: true }] };
+  assert.ok(!M.denetle(y).uyarilar.some(function (u) { return u.kod === "mesnetsiz"; }));
+  const y2 = { surum: 3, cubuklar: [{ no: 1, i: [0, 0, 0], j: [4, 0, 0], tur: "kiris" }], mesnetler: [{ dugum: [0, 0, 0], kz: 1000 }] };
+  assert.ok(!M.denetle(y2).uyarilar.some(function (u) { return u.kod === "mesnetsiz"; }), "yalnız yaylı mesnet de mesnet");
+});
+
+test("dugumuTasiIc (C11.7): mütemadi / radye temelde aks kesişiminden çıkan taban düğümü Winkler ağı dışında nokta mesnet olur; ek sistem kesişiminde uyarı", function () {
+  const m = { surum: 3, akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 5 }], z: [{ ad: "T", konum: 0, kat: 0 }, { ad: "K1", konum: 3, kat: 1 }] },
+    aks_sistemleri: [{ ad: "EK", tur: "kartezyen", orijin: [1, 1, 0], aci: 0, x: [{ ad: "a", konum: 0 }], y: [{ ad: "b", konum: 0 }] }],
+    cubuklar: [{ no: 1, tur: "kolon", i: { aks: ["A", "1"], z: "T" }, j: { aks: ["A", "1"], z: "K1" } }],
+    temeller: { tip: "surekli", mesnet: "mafsal" } };
+  // serbest noktaya (aks kesişimi değil) taşı: açık nokta mesnet (rijit; mütemadi temelde temeller.mesnet mafsal sayılmaz) ve uyarı
+  let r = M.tasi(m, { cubuklar: [1] }, 0.5, 0.4, 0);
+  assert.equal(r.model.mesnetler.length, 1);
+  const s = r.model.mesnetler[0];
+  assert.deepEqual([s.ux, s.uy, s.uz, s.rx, s.ry, s.rz], [true, true, true, true, true, true]);
+  assert.ok(r.uyarilar.some(function (u) { return /^Taban düğümü A1\/T mütemadi\/radye temel ağından çıktı/.test(u) && /Winkler ağı dışında nokta mesnet/.test(u); }), r.uyarilar.join(" | "));
+  // tekil temelde ağ iletisi yok; mafsal temel dönmeyi serbest bırakır
+  const t = JSON.parse(JSON.stringify(m)); t.temeller.tip = "tekil";
+  r = M.tasi(t, { cubuklar: [1] }, 0.5, 0.4, 0);
+  assert.ok(!r.uyarilar.some(function (u) { return /temel ağından çıktı/.test(u); }));
+  assert.equal(r.model.mesnetler[0].rx, false, "tekil mafsal temel: dönme serbest");
+  // başka bir GLOBAL kesişimine (ağ üstü): mesnet kaydı yok, uyarı yok
+  r = M.tasi(m, { cubuklar: [1] }, 6, 0, 0);
+  assert.equal((r.model.mesnetler || []).length, 0);
+  assert.ok(!r.uyarilar.some(function (u) { return /ağının dışında/.test(u); }));
+  // ek aks sistemi kesişimine (GLOBAL ızgarada değil): C3 tabanı olur ama ağ GLOBAL akslarda — kirişsiz radye dışında mesnet gerekir
+  r = M.tasi(m, { cubuklar: [1] }, 1, 1, 0);
+  assert.equal((r.model.mesnetler || []).length, 0);
+  assert.ok(r.uyarilar.some(function (u) { return u.indexOf("Taban düğümü A1/T GLOBAL aks kesişiminden çıktı: mütemadi/radye ağının dışında kalır (yalnız kirişsiz radyede ağa katılır; ötekilerde 'mesnetler' ile mesnet verin).") >= 0; }), r.uyarilar.join(" | "));
+});
+
+test("dugumTasi (C11.7): mütemadi temelde taban düğümü serbest noktaya taşınınca Winkler ağı dışında nokta mesnet; tekilde eski ileti", function () {
+  const m = { surum: 3, akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }], y: [{ ad: "1", konum: 0 }], z: [{ ad: "T", konum: 0, kat: 0 }, { ad: "K1", konum: 3, kat: 1 }] },
+    cubuklar: [{ no: 1, tur: "kolon", i: { aks: ["A", "1"], z: "T" }, j: { aks: ["A", "1"], z: "K1" } }], temeller: { tip: "radye", mesnet: "ankastre" } };
+  let r = M.dugumTasi(m, { aks: ["A", "1"], z: "T" }, 0.7, 0.3, 0);
+  assert.equal(r.model.mesnetler.length, 1);
+  assert.ok(r.uyarilar.some(function (u) { return /^Taban düğümü A1\/T mütemadi\/radye temel ağından çıktı \(yeni yeri ağın düğümü değil\): Winkler ağı dışında nokta mesnet olarak açık mesnet kaydı yazıldı/.test(u); }), r.uyarilar.join(" | "));
+  const t = JSON.parse(JSON.stringify(m)); t.temeller.tip = "tekil";
+  r = M.dugumTasi(t, { aks: ["A", "1"], z: "T" }, 0.7, 0.3, 0);
+  assert.ok(r.uyarilar.some(function (u) { return /aks–kat temel kuralı yerine açık mesnet kaydı yazıldı/.test(u); }));
+});
+
+test("mesnet dönüşümü: yaylı mesnetin yayları da eksenle döner (90° döndürmede kx ↔ ky)", function () {
+  const m = { surum: 3, cubuklar: [{ no: 1, i: [2, 0, 0], j: [2, 0, 3], tur: "kolon" }], mesnetler: [{ dugum: [2, 0, 0], kx: 500, kz: 1000, uy: true }] };
+  const r = M.dondur(m, { cubuklar: [1] }, { nokta: [0, 0, 0], yon: [0, 0, 1] }, 90, { kopya: true });
+  const yeni = r.model.mesnetler.filter(function (s) { return s.ky != null || s.kx != null; });
+  assert.equal(yeni.length, 2);
+  const kop = yeni.find(function (s) { return s.ky === 500; });
+  assert.ok(kop, JSON.stringify(r.model.mesnetler));
+  assert.equal(kop.kx, undefined); assert.equal(kop.kz, 1000); assert.equal(kop.ux, true); assert.equal(kop.uy, false);
 });
 
 // ---------------------------------------------------------------------------- beşik çerçeve, aşık

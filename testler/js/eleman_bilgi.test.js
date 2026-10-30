@@ -387,36 +387,38 @@ function genelYol(sankey) {
   return d;
 }
 
-test("yük yolu (genel): kenarlar durumlarına göre okunur; Q/S bantları varsa sütun olur, yoksa 'veri yok' notu; giden yoksa Σ giden yazılmaz", function () {
-  // eski motor: genel modelde yalnız G bantları
+test("yük yolu (genel): kenarlar durumlarına göre okunur; Q/S bantları varsa sütun olur, yoksa 'veri yok' notu; çubukta paneller kümesi", function () {
+  // eski motor: genel modelde yalnız G bantları (tur yok = panel-cubuk)
   let d = genelYol([{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }, { kaynak: "P2", hedef: "Ç12", durum: "G", kN: 10.5 }]);
   let m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
   let yol = sekme(m, "yol");
   assert.equal(yol.bolumler[0].baslik, "Akış şeması (G, kN)");
-  let tb = yol.bolumler.find(function (b) { return b.tablo; }).tablo;
-  assert.deepEqual(tb.basliklar, ["Yön", "Eleman", "G"]);
-  assert.ok(!tb.satirlar.some(function (r) { return r[0] === "Σ giden"; }), "giden kenarı yok: Σ giden 0 yazılmaz");
-  assert.match(metin(m, "yol"), /Σ gelen\t\t40,50/);
+  let tb = yol.bolumler.find(function (b) { return b.tablo; });
+  assert.equal(tb.baslik, "Panellerden aktarılan paylar (kN)");
+  assert.deepEqual(tb.tablo.basliklar, ["Panel", "G"]);
+  assert.ok(!yol.bolumler.some(function (b) { return b.baslik === "Aktardığı (kN)"; }), "giden kenarı yok: Aktardığı kümesi yazılmaz");
+  assert.match(metin(m, "yol"), /Σ\t40,50/);
   assert.match(metin(m, "yol"), /yalnız G bantları var; Q ve S payları Yükler sekmesinde/);
-  assert.match(metin(m, "yol"), /çubuk → çubuk \/ mesnet/);
+  // K-41: "çubuktan sonraki aktarımı göstermez" notu kaldırıldı (motor C15 kenarlarını veriyor)
+  assert.doesNotMatch(metin(m, "yol"), /göstermez/);
   // yeni motor: Q ve S bantları da var (G + Q + S)
-  d = genelYol([{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30 }, { kaynak: "P1", hedef: "Ç12", durum: "Q", kN: 12 }, { kaynak: "P1", hedef: "Ç12", durum: "S", kN: 3 },
-    { kaynak: "P2", hedef: "Ç12", durum: "G", kN: 10 }, { kaynak: "P2", hedef: "Ç12", durum: "Q", kN: 4 }]);
+  d = genelYol([{ kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30, tur: "panel-cubuk" }, { kaynak: "P1", hedef: "Ç12", durum: "Q", kN: 12, tur: "panel-cubuk" }, { kaynak: "P1", hedef: "Ç12", durum: "S", kN: 3, tur: "panel-cubuk" },
+    { kaynak: "P2", hedef: "Ç12", durum: "G", kN: 10, tur: "panel-cubuk" }, { kaynak: "P2", hedef: "Ç12", durum: "Q", kN: 4, tur: "panel-cubuk" }]);
   m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
   yol = sekme(m, "yol");
   assert.equal(yol.bolumler[0].baslik, "Akış şeması (G + Q + S, kN)");
   tb = yol.bolumler.find(function (b) { return b.tablo; }).tablo;
-  assert.deepEqual(tb.basliklar, ["Yön", "Eleman", "G", "Q", "S"]);
-  assert.match(metin(m, "yol"), /← gelen\tPanel 1\t30,00\t12,00\t3,00/);
-  assert.match(metin(m, "yol"), /Σ gelen\t\t40,00\t16,00\t3,00/);
-  assert.deepEqual(m.ham.yol, { gelenG: 40, gelenQ: 16, gidenG: 0, gidenQ: 0, gelenS: 3, gidenS: 0 });
+  assert.deepEqual(tb.basliklar, ["Panel", "G", "Q", "S"]);
+  assert.match(metin(m, "yol"), /Panel 1\t30,00\t12,00\t3,00/);
+  assert.match(metin(m, "yol"), /Σ\t40,00\t16,00\t3,00/);
+  assert.deepEqual(m.ham.yol, { gelenG: 40, gelenQ: 16, gidenG: 0, gidenQ: 0, gelenS: 3, gidenS: 0, kumeler: { panel: 40, cubuk: 0, aktardigi: 0 } });
   assert.ok(metin(m, "yol").indexOf("yalnız G bantları") < 0);
-  // kolon: panelden yük gelmez → genel modelde açıklayıcı not
+  // kolon: hiç kenar yok, yalnız panel bantları olan eski çözüm → açıklayıcı not
   const k = B.bilgi({ tur: "kolon", no: 2 }, d.bina, d.veri);
   const ky = sekme(k, "yol");
   assert.ok(ky, "kolonun yük yolu sekmesi");
   assert.match(metin(k, "yol"), /panel → çubuk paylarını gösterir; bu çubuğa panelden yük gelmiyor/);
-  // panel yalnız kaynak: "Σ gelen 0" satırı yazılmaz (çubukta "Σ giden 0" gibi), panel notu verilir; aks–kat döşemesi değişmez
+  // panel yalnız kaynak: "Σ gelen 0" satırı yazılmaz, panel notu verilir; aks–kat döşemesi değişmez
   d.bina.paneller = [{ no: 1, dugumler: [], kalinlik: 0.12 }];
   const pn = B.bilgi({ tur: "panel", no: 1 }, d.bina, d.veri);
   const pt = sekme(pn, "yol").bolumler.find(function (b) { return b.tablo; }).tablo;
@@ -424,6 +426,103 @@ test("yük yolu (genel): kenarlar durumlarına göre okunur; Q/S bantları varsa
   assert.match(metin(pn, "yol"), /Σ giden\t\t30,00\t12,00\t3,00/);
   assert.match(metin(pn, "yol"), /Panel yükü \(alan × yük yoğunluğu\) çubuklarına dağıtılır/);
   assert.doesNotMatch(metin(m, "yol"), /Panel yükü \(alan/);       // çubukta yok
+});
+
+test("K-41 yük yolu (C15): paneller, çubuklardan ve düğüm yüklerinden gelen, aktardığı (Ç… ve Mesnet / temel); Yükler sekmesinde yalnız panel payları", function () {
+  const d = genelYol([
+    { kaynak: "P1", hedef: "Ç12", durum: "G", kN: 30, tur: "panel-cubuk" }, { kaynak: "P1", hedef: "Ç12", durum: "Q", kN: 12, tur: "panel-cubuk" },
+    { kaynak: "Ç20", hedef: "Ç12", durum: "G", kN: 8, tur: "cubuk-cubuk" }, { kaynak: "D1021", hedef: "Ç12", durum: "G", kN: 5, tur: "dugum-cubuk" },
+    { kaynak: "Ç12", hedef: "Ç7", durum: "G", kN: 40, tur: "cubuk-cubuk" }, { kaynak: "Ç12", hedef: "Ç7", durum: "Q", kN: 6, tur: "cubuk-cubuk" },
+    { kaynak: "Ç12", hedef: "M1", durum: "G", kN: 18.6, tur: "cubuk-mesnet" }, { kaynak: "Ç12", hedef: "M1", durum: "Q", kN: 6, tur: "cubuk-mesnet" },
+    { kaynak: "Ç7", hedef: "M21", durum: "G", kN: 40, tur: "cubuk-mesnet" }]);
+  d.veri.tasarim.elemanlar.push({ no: 7, cubuk: 7, tur: "kolon", kaynak: { aks_kat: "kolon", no: 2 }, dc: 0.3, kontroller: [] });
+  const m = B.bilgi({ tur: "kiris", no: 1 }, d.bina, d.veri);
+  const yol = sekme(m, "yol");
+  const tablo = function (bas) { const b = yol.bolumler.find(function (x) { return x.baslik === bas; }); return b ? b.tablo : null; };
+  assert.deepEqual(tablo("Panellerden aktarılan paylar (kN)").satirlar, [["Panel 1", "30,00", "12,00"], ["Σ", "30,00", "12,00"]]);
+  assert.deepEqual(tablo("Çubuklardan ve düğüm yüklerinden gelen (kN)").satirlar, [["Çubuk 20", "8,00", "0,00"], ["Düğüm yükü B1/k1", "5,00", "0,00"], ["Σ", "13,00", "0,00"]]);
+  assert.deepEqual(tablo("Aktardığı (kN)").satirlar, [["Çubuk 7 (kolon 2)", "40,00", "6,00"], ["Mesnet / temel A1/k0", "18,60", "6,00"], ["Σ", "58,60", "12,00"]]);
+  assert.deepEqual(tablo("Aktardığı (kN)").basliklar, ["Hedef", "G", "Q"]);
+  assert.deepEqual(m.ham.yol.kumeler, { panel: 30, cubuk: 13, aktardigi: 58.6 });
+  yakin(m.ham.yol.gelenG, 43); yakin(m.ham.yol.gidenG, 58.6);
+  assert.doesNotMatch(metin(m, "yol"), /göstermez/);
+  // Yükler sekmesinde "Panellerden aktarılan paylar" yalnız panel-cubuk kenarları
+  yakin(m.ham.panelPay, 30, 1e-12);
+  assert.match(metin(m, "yukler"), /Panellerden aktarılan paylar \(kN\)\nPanel\tG\tQ\tS\nP1\t30,00\t12,00\t0,00\n/);
+  assert.doesNotMatch(metin(m, "yukler"), /Ç20|D1021/);
+  // kolon (çubuk 7): yalnız çubuktan gelen ve mesnede aktardığı; panel kümesi yok
+  const k = B.bilgi({ tur: "kolon", no: 2 }, d.bina, d.veri);
+  const kt = metin(k, "yol");
+  assert.match(kt, /Çubuklardan ve düğüm yüklerinden gelen \(kN\)\nKaynak\tG\tQ\nÇubuk 12 \(kiriş 1\)\t40,00\t6,00/);
+  assert.match(kt, /Aktardığı \(kN\)\nHedef\tG\tQ\nMesnet \/ temel B1\/k0\t40,00/);
+  assert.doesNotMatch(kt, /Panellerden/);
+  // yük taşımayan çubuk (yeni motor): kenarsız çubuğa yeni not
+  const c3 = genelYol([{ kaynak: "Ç12", hedef: "M1", durum: "G", kN: 1, tur: "cubuk-mesnet" }]);
+  c3.veri.akis.kolonlar = [];
+  const k3 = B.bilgi({ tur: "kolon", no: 2 }, c3.bina, c3.veri);
+  assert.match(metin(k3, "yol"), /Akış şemasında bu çubuğa gelen ya da bu çubuktan giden yük yok/);
+});
+
+test("K-20 (C17) karma model, genel çözüm: aks–kat döşemesi kaynaklı panel kaydından yük ve kenar payları; kenar çubukları aks–kat kirişiyle adlanır", function () {
+  const d = genelYol([{ kaynak: "P4", hedef: "Ç12", durum: "G", kN: 30, tur: "panel-cubuk" }, { kaynak: "P4", hedef: "Ç13", durum: "G", kN: 20, tur: "panel-cubuk" }]);
+  d.veri.yukler.dosemeler = [];
+  d.veri.tasarim.elemanlar.push({ no: 13, cubuk: 13, tur: "kiris", kaynak: { aks_kat: "kiris", no: 9, parca: 1 }, dc: 0.4, kontroller: [] });
+  d.veri.yukler.paneller = [{ no: 4, tur: "doseme", alan: 20, egim: 0, dagitim: "iki", g: 5, q: 2, s: 0, G_toplam: 100, Q_toplam: 40, S_toplam: 0, q_kaynak: "TS 498",
+    kaynak: { aks_kat: "doseme", no: 1 }, kenarlar: [{ kenar: 1, cubuklar: [12], pay: 6, sekil: "trapez" }, { kenar: 2, cubuklar: [13, 14], pay: 4, sekil: "ucgen" }, { kenar: 3, cubuklar: [], pay: 0, sekil: "yok" }] }];
+  const m = B.bilgi({ tur: "doseme", no: 1 }, d.bina, d.veri);
+  const t = metin(m, "yukler");
+  assert.doesNotMatch(t, /Önce çözün/, "eski: 'Önce çözün: Kirişlere aktarılan paylar'");
+  assert.match(t, /Panel yükleri \(çözüm\)/);
+  assert.match(t, /Toplam G \/ Q \/ S\t100,00 \/ 40,00 \/ 0,00/);
+  assert.match(t, /Taşıyıcı kenarlara paylar\nKenar\tÇubuk\(lar\)\tŞekil\tPay alanı \(m²\)\n1\tkiriş 1 \(Ç12\)\ttrapez\t6,00\n2\tkiriş 9 \(Ç13\), Ç14\tüçgen\t4,00/);
+  yakin(m.ham.yuk.G, 100);
+  // yük yolu: döşemenin paneli (P4) üzerinden
+  assert.match(metin(m, "yol"), /→ giden\tÇubuk 12 \(kiriş 1\)\t30,00/);
+  // kaynak eşleşmezse (başka döşeme) eski davranış
+  const m2 = B.bilgi({ tur: "doseme", no: 1 }, d.bina, Object.assign({}, d.veri, { yukler: Object.assign({}, d.veri.yukler, { paneller: [] }) }));
+  assert.match(metin(m2, "yukler"), /Önce çözün: Kirişlere aktarılan paylar/);
+});
+
+test("K-1 (C11.7) mütemadi temel kirişi, genel çözüm: 'Oturan kolonlar' çubuk numarasıyla", function () {
+  const d = mini();
+  d.bina.temeller = { tip: "surekli", mesnet: "ankastre", zemin: { q_em: 200, k0: 20000 }, surekli: { B: 1.2, h_tabla: 0.3, b_govde: 0.4, h_govde: 0.8, tasma: 0.5 } };
+  d.veri.bina.temeller = d.bina.temeller;
+  d.veri.temel = { tip: "surekli", belirleyen_servis: "G+Q", dugumler: [{ no: 1, X: 0, Y: 0, w_mm: 2, p_kNm2: 40 }],
+    hatlar: [{ ad: "1", yon: "x", L: 6, bas: -0.5, son: 5.5, dugumler: [1], kolonlar: [7, 9] }],
+    kolonlar: [{ kolon_no: 7, adres: "Ç7 (A1)", N_servis: 120 }, { kolon_no: 9, adres: "Ç9 (B1)", N_servis: 95 }], tasarim: [], model: { k0: 20000 } };
+  const h = { tur: "temel", alt: "surekli", no: 1, aks: "1", yon: "x" };
+  d.veri.model = "genel";
+  const g = metin(B.bilgi(h, d.bina, d.veri), "geometri");
+  assert.match(g, /Oturan kolonlar \(2\)\nÇubuk 7\tÇ7 \(A1\) · N = 120,0 kN\t?\nÇubuk 9\tÇ9 \(B1\)/);
+  delete d.veri.model;
+  assert.match(metin(B.bilgi(h, d.bina, d.veri), "geometri"), /\nKolon 7\t/, "aks–kat çözümünde kolon numarası");
+});
+
+test("K-10 (C13) yaylı mesnet denetçisi: tip 'yaylı mesnet', rijitlikler 'k_z = 10 000 kN/m', yay kuvvetleri (bina eksenleri, kombinasyon süperpozisyonu)", function () {
+  const d = mini();
+  d.veri.ag.mesnetler = [{ dugum: 1, tip: "yay", kaynak: "mesnetler", ux: true, uy: true, uz: false, rx: false, ry: false, rz: false, yay: { kz: 10000, kry: 2500.5 } }, { dugum: 21, tip: "ankastre" }];
+  // motor ekseni yay kayıtları: Fy → FZ, Mz → −MY (C12)
+  d.veri.durumlar.G.yaylar = [{ dugum: 1, sd: 1, bilesen: "Fy", k: 10000, kuvvet: 25, tur: "yay-mesnet" }, { dugum: 1, sd: 5, bilesen: "Mz", k: 2500.5, kuvvet: 2, tur: "yay-mesnet" }, { dugum: 1, sd: 6, bilesen: "Fx", k: 5, kuvvet: 99 }];
+  d.veri.durumlar.Q.yaylar = [{ dugum: 1, sd: 1, bilesen: "Fy", k: 10000, kuvvet: 10, tur: "yay-mesnet" }, { dugum: 1, sd: 5, bilesen: "Mz", k: 2500.5, kuvvet: 1, tur: "yay-mesnet" }, { dugum: 1, sd: 6, bilesen: "Fx", k: 5, kuvvet: 1 }];
+  const m = B.bilgi({ tur: "mesnet", no: 1 }, d.bina, d.veri);
+  assert.equal(m.turAdi, "Mesnet");
+  const bg = metin(m, "baglanti");
+  assert.match(bg, /Mesnet\tyaylı mesnet/);
+  assert.match(bg, /Yay rijitliği\tk_z = 10 000 kN\/m/);
+  assert.match(bg, /Yay rijitliği\tk_ry = 2 500,5 kN·m\/rad/);
+  assert.match(bg, /Tutulu yönler\tux, uy/);
+  assert.ok(m.ozet.some(function (o) { return o.ad === "Yay" && o.deger === "k_z = 10 000 kN/m · k_ry = 2 500,5 kN·m/rad"; }));
+  assert.deepEqual(m.ham.yay, { kz: 10000, kry: 2500.5 });
+  const tp = metin(m, "tepki");
+  assert.match(tp, /Yaylı mesnet\nYay rijitliği\tk_z = 10 000 kN\/m/);
+  assert.match(tp, /Yay kuvvetleri \(bina koordinatı\)/);
+  assert.deepEqual(m.ham.yayKuvveti.G, { FX: 0, FY: 0, FZ: 25, MX: 0, MY: -2, MZ: 0 }, "temel yayı (tur yok) sayılmaz");
+  // kombinasyon: 1.4G + 1.6Q süperpozisyonu
+  yakin(m.ham.yayKuvveti["1.4G+1.6Q"].FZ, 1.4 * 25 + 1.6 * 10, 1e-12);
+  assert.equal(m.sekmeler[1].id, "tepki", "mesnette tepki sekmesi Geometri'den sonra");
+  // çubuk denetçisinde uç mesnedi de "yaylı mesnet"
+  assert.match(metin(B.bilgi({ tur: "kolon", no: 1 }, d.bina, d.veri), "baglanti"), /i ucunda mesnet\tyaylı mesnet/);
+  assert.ok(!/NaN|undefined/.test(B.tsv(m)));
 });
 
 test("tasarım kontrolleri: kapasiteye göre sayısal gürültü olan talep (3·10⁻¹⁷) 0 yazılır", function () {
@@ -531,8 +630,17 @@ test("genel (surum 3) çözüm: çubuk, panel ve temel bilgisi motor kayıtları
     // yükler veri.yukler.cubuklar'dan; panel payları sankey'den (P → Ç)
     const y = v.yukler.cubuklar.find(function (x) { return x.no === t.cubuk; });
     if (y) yakin(m.ham.yuk.G, y.G.toplam_kN, 1e-9, ad + " G");
-    const pay = v.akis.sankey.filter(function (e) { return e.hedef === "Ç" + t.cubuk && e.durum === "G"; }).reduce(function (a, e) { return a + e.kN; }, 0);
+    // panel payı yalnız panel → çubuk kenarları (C15 tur panel-cubuk ya da tursuz eski kayıt); motor çubuk → çubuk kenarı da verir
+    const panelMi = function (e) { return !e.tur || e.tur === "panel-cubuk"; };
+    const pay = v.akis.sankey.filter(function (e) { return e.hedef === "Ç" + t.cubuk && e.durum === "G" && panelMi(e); }).reduce(function (a, e) { return a + e.kN; }, 0);
     if (pay > 0) yakin(m.ham.panelPay, pay, 1e-9, ad + " panel payı");
+    // yük yolu kümeleri (C15): panel / çubuk-düğüm gelen ve aktardığı toplamları kenarlarla aynı
+    if (m.ham.yol && m.ham.yol.kumeler) {
+      const gel = v.akis.sankey.filter(function (e) { return e.hedef === "Ç" + t.cubuk && e.durum === "G"; });
+      yakin(m.ham.yol.kumeler.panel, gel.filter(panelMi).reduce(function (a, e) { return a + e.kN; }, 0), 1e-9, ad + " panel kümesi");
+      yakin(m.ham.yol.kumeler.cubuk, gel.filter(function (e) { return !panelMi(e); }).reduce(function (a, e) { return a + e.kN; }, 0), 1e-9, ad + " çubuk kümesi");
+      yakin(m.ham.yol.kumeler.aktardigi, v.akis.sankey.filter(function (e) { return e.kaynak === "Ç" + t.cubuk && e.durum === "G"; }).reduce(function (a, e) { return a + e.kN; }, 0), 1e-9, ad + " aktardığı");
+    }
     assert.ok(!/undefined|NaN/.test(B.tsv(m)), ad + " TSV");
     n++;
   });

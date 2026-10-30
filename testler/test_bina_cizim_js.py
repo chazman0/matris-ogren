@@ -200,16 +200,21 @@ def test_kesit_onerisi_tanimsiz_kesit_atamaz():
     govde = KAYNAK[i:KAYNAK.index("\n    }\n", i)]
     assert "oneriUygula(" in govde and "ozellikAta" not in govde
     assert "oneriUygulanir" in govde, "Uygula yalnız değişiklik varken (degisim ≠ 'aynı')"
-    # K1: Hepsini uygula en çok 3 tur yineler (yinele: 1 tek turda kalıp D/C > 1 bırakıyordu), uygular, yeniden çözer; aşanlar söylenir
-    assert "yinele: 3" in govde and "yinele: 1" not in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
-    assert govde.count("MB.coz()") >= 2, "Hepsini ve tek Uygula sonrası model yeniden çözülür"
+    # K1: Hepsini uygula en çok 3 tur yineler (yinele: 1 tek turda kalıp D/C > 1 bırakıyordu), uygular, yeniden çözer; aşanlar söylenir.
+    # Tek yinele: 1 isteği kesit grubu isteğidir (K-32, C19: grup: true + üye listesi)
+    assert "istek({ yinele: 3 })" in govde and "Hepsini uygula" in govde and "MB.binaAyarla(y2.bina" in govde
+    assert govde.count("yinele: 1") == 1 and "grup: true, yinele: 1" in govde
+    assert govde.count("MB.coz()") >= 3, "Hepsini, tek Uygula ve grup sonrası model yeniden çözülür"
     assert "hepsiOzeti(y2)" in govde and "öneriler yetmedi" in govde
     # motorun yinele uyarıları (öteleme sınırı, yakınsamadı nedeni) kaybolmaz; başarılı yeniden çözümde eski ⚠ ipucu kalmaz
     assert "hepsiEkUyarilari(y2, y)" in govde and "hepsiUygula(y2, y)" in govde
     assert 'S.sonUyari = oz.asiyor ? etiket : ""' in govde
-    saf = KAYNAK[KAYNAK.index("function oneriUygula("):]
+    saf = KAYNAK[KAYNAK.index("function oneriKesitleriEkle("):]
     saf = saf[:saf.index("\n  }\n")]
     assert 'if (!m.kesitler[k.ad]) throw' in saf
+    for ad in ("function oneriUygula(", "function grupUygula("):
+        f = KAYNAK[KAYNAK.index(ad):]
+        assert "oneriKesitleriEkle(m, o)" in f[:f.index("\n  }\n")], ad
     assert "oneriEtiketi(o)" in govde and "oneriSatiri(o" in govde and "uyarilar" in govde
     # motorun açıklaması (öneri mevcut iç kuvvetlerle tahmin) iki kipte de gösterilir; satır etiketi tahmini
     assert "y.aciklama" in govde and "notlar(y)" in govde
@@ -224,7 +229,9 @@ def test_genel_model_kapisi_kablolamasi():
     secimli = KAYNAK[KAYNAK.index("function secimli("):]
     secimli = secimli[:secimli.index("\n    }\n")]
     assert "genelModeleGec(" in secimli and "MOp.genellestir(" not in secimli
-    for etiket in ('genel: tur !== "kaldir" ? "Mesnet" : false', 'genel: "Hızlı çapraz"', 'genel: "Hızlı panel"', "{ genel: baslik }"):
+    # K-23: kapının ön eki işlem adıdır (GENEL_ISLEM_ADLARI), geçmiş zamanlı etiket değil
+    for etiket in ('genel: tur !== "kaldir" ? GENEL_ISLEM_ADLARI.mesnet : false', 'genel: GENEL_ISLEM_ADLARI["hizli-capraz"]', 'genel: GENEL_ISLEM_ADLARI["hizli-panel"]',
+                   "{ genel: duzen ? GENEL_ISLEM_ADLARI.uretec : baslik }"):
         assert etiket in KAYNAK, etiket
     # rapor reddedildiyse notlar bildirilmez (uygula: reddedildi dalı notları eklemez)
     uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
@@ -298,7 +305,7 @@ def test_genel_kapi_degisiklik_yoksa_cevirmez():
     secimli = KAYNAK[KAYNAK.index("function secimli("):]
     secimli = secimli[:secimli.index("\n    }\n")]
     kuru = secimli.index("genellestirHazirla(m).model")
-    assert kuru < secimli.index("genelModeleGec(m, etiket)"), "kuru çalıştırma onaydan önce"
+    assert kuru < secimli.index('genelModeleGec(m, typeof sc.genel === "string" ? sc.genel : null)'), "kuru çalıştırma onaydan önce"
     assert "r0.reddedildi" in secimli and "JSON.stringify(r0.model) === JSON.stringify(m0)" in secimli
     assert "model genel modele çevrilmedi" in secimli and "cevrildi: cevrildi" in secimli
     uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
@@ -320,3 +327,104 @@ def test_aks_sil_kapisi():
     assert "aksSilEngelleri(m0, q.model)" in akis
     assert akis.index("aksSilEngelleri(m0, q.model)") < akis.index("MB.binaAyarla(q.model")
     assert "Elemanlarla birlikte sil" in akis
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# K-23: kapıdan geçen her secimli() / uygula() çağrısı işlem adını (sc.genel) verir; onay metnine etiket (geçmiş zaman) girmez
+def test_kapi_islem_adlari_kablolamasi():
+    uyg = KAYNAK[KAYNAK.index("function uygula(fn, etiket, sc)"):]
+    uyg = uyg[:uyg.index("\n    }\n")]
+    assert 'genelModeleGec(m0, typeof sc.genel === "string" ? sc.genel : (sc.islem || null))' in uyg
+    i = KAYNAK.index("function kur(MB)")
+    arayuz = KAYNAK[i:]
+    cagrilar = []
+    for m in re.finditer(r"(?<!function )\bsecimli\(", arayuz):
+        d, j = 0, m.end() - 1
+        while True:           # dengeli ayraç: çağrının bütün argümanları
+            d += {"(": 1, ")": -1}.get(arayuz[j], 0)
+            if d == 0:
+                break
+            j += 1
+        cagrilar.append(arayuz[m.end():j])
+    assert len(cagrilar) >= 12
+    for c in cagrilar:
+        assert "genel: GENEL_ISLEM_ADLARI" in c, c[:120]
+    assert "genelGecisMetni(m, islemAdi)" in arayuz
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# K-10 / K-15: Mesnet aracının yaylı mesnet penceresi ve rijit diyafram sorusu kablolanmıştır
+def test_mesnet_araci_yay_ve_diyafram_kablolamasi():
+    i = KAYNAK.index("function mesnetYaz(")
+    blok = KAYNAK[i:KAYNAK.index('kip("mesnet", {', i) + 1200]
+    assert 'MB.kaplamaAc("mesnet-yay", "Yaylı mesnet"' in blok and "yayDegerleri(oku(k.govde))" in blok
+    assert "YAY_ANAHTARLARI.map(" in blok and "YAY_VARSAYILAN[a.a]" in blok
+    assert "mesnetDiyaframSorusu(B(), y.ref, tur" in blok and 'MB.kaplamaAc("mesnet-diyafram", q.baslik' in blok
+    assert '<button type="button"' in blok and "data-diyafram" in blok, "seçenekler klavyeyle erişilen düğmeler"
+    assert 'if (s_ === "vazgec")' in blok and "diyafram: s_" in blok
+    assert 'if (tur === "yay") { yayPenceresi(y); return; }' in blok
+    assert "mesnetAta(m, aksRefZ(m, y.ref), tur, sec)" in blok
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# K-22: makas üreteci iki kolon başı arasında her tipte mekanizmasız çözülür (iki portal çerçeve, 12 m, 4 göz, KUTU 80x5,
+# varsayılan mafsallı gövde; eski üreteçte pratt, howe, warren, warren-dikmeli ve k "Yapı mekanizma" veriyordu)
+_MAKAS_BETIGI = r"""
+const O = require(process.argv[1]);
+const out = {};
+for (const tip of O.MAKAS_TIPLERI) {
+  for (const yanal of [null, "yok"]) {
+    const m = {
+      tur: "bina", surum: 3, baslik: "makas " + tip, sistem: "celik",
+      akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 12 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 6 }],
+        z: [{ ad: "±0.00", konum: 0, kat: 0 }, { ad: "+6.00", konum: 6, kat: 1 }] },
+      malzemeler: { S275: { kutuphane: "S275" } },
+      kesitler: { HEA200: { tip: "profil", profil: "HEA200", malzeme: "S275" }, KUTU: { tip: "profil", profil: "KUTU 80x5", malzeme: "S275" } },
+      cubuklar: [], paneller: [], mesnetler: [], temeller: { tip: "tekil", mesnet: "ankastre" },
+    };
+    let n = 1;
+    for (const ay of ["1", "2"]) for (const ax of ["A", "B"]) m.cubuklar.push({ no: n++, tur: "kolon", i: { aks: [ax, ay], z: "±0.00" }, j: { aks: [ax, ay], z: "+6.00" }, kesit: "HEA200" });
+    m.cubuklar.push({ no: n++, tur: "kiris", i: { aks: ["A", "1"], z: "+6.00" }, j: { aks: ["A", "2"], z: "+6.00" }, kesit: "HEA200" });
+    m.cubuklar.push({ no: n++, tur: "kiris", i: { aks: ["B", "1"], z: "+6.00" }, j: { aks: ["B", "2"], z: "+6.00" }, kesit: "HEA200" });
+    let r = { model: m, uyarilar: [] };
+    for (const ay of ["1", "2"]) {
+      const p = { tip: tip, bas: { aks: ["A", ay], z: "+6.00" }, son: { aks: ["B", ay], z: "+6.00" }, goz: 4, kesitler: { ust: "KUTU", alt: "KUTU", dikme: "KUTU", diyagonal: "KUTU" } };
+      if (tip.startsWith("besik") || tip === "fink") p.egim = 15; else p.yukseklik = 1.5;
+      if (yanal) p.yanal_tutma = yanal;
+      r = O.makasUret(r.model, p);
+    }
+    out[tip + (yanal ? "|" + yanal : "")] = { model: r.model, uyarilar: r.uyarilar };
+  }
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+@pytest.fixture(scope="module")
+def makaslar():
+    if NODE is None:
+        pytest.skip("node kurulu değil")
+    r = subprocess.run([NODE, "-e", _MAKAS_BETIGI, str(PROJE / "docs" / "model_ops.js")], capture_output=True, text=True, timeout=120, cwd=PROJE)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+@node_gerekli
+@pytest.mark.parametrize("tip", ["pratt", "howe", "warren", "warren-dikmeli", "k", "fink", "besik-pratt", "besik-howe"])
+def test_makas_tipleri_mekanizmasiz_cozulur(tip, makaslar, kopru):
+    o = makaslar[tip]
+    assert "Üst başlığın düzlem dışı burkulma boyu, aşık ya da düzlem dışı bağ yoksa bütün açıklıktır." in o["uyarilar"]
+    y = json.loads(kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": o["model"]}})))
+    assert y.get("hata") in (None, ""), f"{tip}: {y.get('hata')}"
+    assert "Yapı mekanizma" not in json.dumps(y["veri"].get("uyarilar") or [], ensure_ascii=False), y["veri"].get("uyarilar")
+    assert y["veri"]["model"] == "genel"
+
+
+@node_gerekli
+@pytest.mark.parametrize("tip", ["pratt", "warren", "k"])
+def test_makas_yanal_tutma_yok_eski_mekanizma(tip, makaslar, kopru):
+    # yanal_tutma "yok": bütün gövde mafsallı — aşık / bağ olmadan motor mekanizmayı bildirir; üreteç de uyarır
+    o = makaslar[tip + "|yok"]
+    assert any("yanal_tutma: yok" in u for u in o["uyarilar"])
+    y = json.loads(kopru.calistir(json.dumps({"islem": "bina_coz", "girdi": {"bina": o["model"]}})))
+    assert y.get("hata") and "mekanizma" in y["hata"], y.get("hata")
