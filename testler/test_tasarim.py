@@ -1088,3 +1088,74 @@ def test_kesit_ozellik_sozlugu_cubuga_verilebilir(ad):
     b = ta.celik_cubuk_kontrol(ad, "S275", 3, kuvvetler={"N": 50})
     assert a["profil"] == b["profil"] and a["basinc"]["Pc_kN"] == pytest.approx(b["basinc"]["Pc_kN"])
     assert a["ozellik"]["A"] == pytest.approx(k["A"])
+
+
+# ---------------------------------------------------------------------------
+# K-31: iç (ham) yollar, etkileşim eğrisi önbelleği ve vektörel ışın kesişimi aynı sayıları verir
+# ---------------------------------------------------------------------------
+def test_isin_kesisim_cok_bit_bit_ayni():
+    import random
+    import numpy as np
+    rnd = random.Random(7)
+    for b, h, As, eksen in ((0.3, 0.3, 9.0, "x"), (0.4, 0.6, 30.0, "y"), (0.25, 0.5, 12.5, "x")):
+        e = ta.kolon_etkilesim(b, h, As, 0.05, "C30", "B420C", eksen)
+        eg = [(p["N_kN"], p["M_kNm"]) for p in e["noktalar"]]
+        Ns = [rnd.uniform(-3000, 8000) for _ in range(300)] + [0.0, 0.0, 5.0] + [p[0] for p in eg]
+        Ms = [rnd.uniform(-900, 900) for _ in range(300)] + [0.0, 3.0, 0.0] + [p[1] for p in eg]
+        cok = ta._isin_kesisim_cok(np.array(eg), Ns, Ms)
+        for N, M, r in zip(Ns, Ms, cok):
+            tek = ta._isin_kesisim(eg, N, M)
+            assert r == tek and [type(x) for x in r] == [type(x) for x in tek]
+    assert ta._isin_kesisim_cok(np.array(eg), [], []) == []
+
+
+def test_kolon_kontrol_ham_ayni_sayilar_egrisiz():
+    kw = dict(Nd=[1500, 300, -100, 2500], Mdx=[120, 250, 40, 10], Mdy=[60, 0, 80, 150], b=0.4, h=0.5, As_toplam=30,
+              paspayi=0.05, adlar=["A", "B", "C", "D"], tbdy=True, deprem=[True, False, True, True])
+    tam = ta.kolon_kontrol(**kw)
+    ham = ta.kolon_kontrol(**kw, ham=True)
+    assert "egri_x" in tam and "egri_y" in tam and "egri_x" not in ham and "egri_y" not in ham
+    assert ta._json(ham) == {k: v for k, v in tam.items() if k not in ("egri_x", "egri_y")}
+    # anlatımlı çağrıda ham yok sayılır (anlatım eğrileri kullanır)
+    an = mo.Anlatim()
+    assert "egri_x" in ta.kolon_kontrol(**kw, ham=True, anl=an)
+
+
+def test_kolon_etkilesim_onbellek_paylasilmaz():
+    ta._etkilesim_onbellek.cache_clear()
+    a = ta.kolon_etkilesim(0.35, 0.55, 24, 0.05, "C35", "B420C", "y")
+    a["noktalar"][0]["N_kN"] = 1e9                      # dönen sözlük değiştirilse bile önbellek bozulmaz
+    a["dengeli"]["katmanlar"].clear()
+    b = ta.kolon_etkilesim(0.35, 0.55, 24, 0.05, "C35", "B420C", "y")
+    assert ta._etkilesim_onbellek.cache_info().hits >= 1
+    assert b["noktalar"][0]["N_kN"] != 1e9 and b["dengeli"]["katmanlar"]
+    ta._etkilesim_onbellek.cache_clear()
+    c = ta.kolon_etkilesim(0.35, 0.55, 24, 0.05, "C35", "B420C", "y")
+    assert c == b
+    # sözlük malzeme (tasarim._malzemeler çıktısı) da aynı sonucu verir
+    bm, dm = ta._malzemeler("C35", "B420C")
+    assert ta.kolon_etkilesim(0.35, 0.55, 24, 0.05, bm, dm, "y") == c
+
+
+@pytest.mark.parametrize("tur, kuv, ek", [
+    ("kolon", [{"ad": "K1", "N": 1800, "Mx": 140, "My": 90, "V": 70, "deprem": True},
+               {"ad": "K2", "N": 600, "Mx": 220, "My": 10, "V": 95, "deprem": False}], {}),
+    ("kolon", [{"ad": "K1", "N": 2400, "Mx": 260, "My": 180, "V": 70}], {"As_toplam": 40}),
+    ("egik", [{"ad": "K1", "N": 900, "Mx": 140, "My": 0, "V": 70}, {"ad": "K2", "N": 20, "Mx": -90, "V": 50}], {}),
+    ("kiris", [{"ad": "K1", "N": 0, "Mx": 140, "V": 120}, {"ad": "K2", "Mx": -180, "V": 130}], {}),
+])
+def test_betonarme_eleman_kontrol_ham_ayni_sayilar(tur, kuv, ek):
+    tam = ta.betonarme_eleman_kontrol(0.4, 0.5, 0.05, "C30", "B420C", kuv, tur=tur, tbdy=True, **ek)
+    ham = ta.betonarme_eleman_kontrol(0.4, 0.5, 0.05, "C30", "B420C", kuv, tur=tur, tbdy=True, ham=True, **ek)
+    if tam["kolon"] is not None:
+        tam = dict(tam, kolon={k: v for k, v in tam["kolon"].items() if k not in ("egri_x", "egri_y")})
+        assert "egri_x" not in ham["kolon"]
+    assert ta._json(ham) == tam
+
+
+def test_celik_kontrolleri_ham_ayni_sayilar():
+    kuv = [{"ad": "K1", "N": 300, "Mx": 120, "My": 8, "V": 60}, {"ad": "K2", "N": -150, "Mx": 60, "My": 0, "V": 30}]
+    for f, a, kw in ((ta.celik_eleman_kontrol, ("HEA 200", "S275"), dict(L=4.0, Lb=2.0, K=1.0, kuvvetler=kuv)),
+                     (ta.celik_cubuk_kontrol, ("BORU 114.3x4", "S275"), dict(L=3.0, kuvvetler=[{"N": 100}, {"N": -80}]))):
+        assert ta._json(f(*a, **kw, ham=True)) == f(*a, **kw)
+    assert ta.celik_etkilesim(300, 120, 8, 900, 150, 40) == ta._json(ta._celik_etkilesim(300, 120, 8, 900, 150, 40))

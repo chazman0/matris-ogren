@@ -476,3 +476,19 @@ def test_eylemler_boyut_korumasi():
     v = {"yukler": {"eylemler": {"EZ": {"cubuklar": [], "dugumler": [], "G_carpani": 0.8}}}}
     YS._eylemleri_sinirla(v, 5000, 1000)                               # zaten büyük yanıtta küçük eylem kümesi korunur
     assert "eylemler" in v["yukler"]
+
+
+# ---------------------------------------------------------------------------
+# K-31: kesit önerisinin hafif ara çözümü (bina_coz(hafif=True)) tam çözümle aynı tasarım D/C'lerini verir
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("ad", ["betonarme-2kat-3x2", "celik-cbf-3kat"])
+def test_hafif_cozum_ayni_tasarim(ad):
+    b = yapi.bina_sablon(ad)
+    b["surum"] = 3
+    tam = YS.bina_coz(copy.deepcopy(b), anlat=False)
+    haf = YS.bina_coz(copy.deepcopy(b), anlat=False, hafif=True)
+    assert set(haf.veri) == {"tasarim"} and haf.ic["hafif"] is True
+    assert json.dumps(haf.veri["tasarim"]["elemanlar"], sort_keys=True) == json.dumps(tam.ic["tas_tam"]["elemanlar"] if "tas_tam" in tam.ic
+                                                                                    else tam.veri["tasarim"]["elemanlar"], sort_keys=True)
+    assert haf.ic["kimlik"] == tam.ic["kimlik"] and haf.ic["oteleme_asan"] == tam.ic["oteleme_asan"]
+    assert haf.ic["kombinasyonlar"] == tam.ic["kombinasyonlar"]

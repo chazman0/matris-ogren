@@ -32,7 +32,8 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     önbelleğe alınır. Genel modelde veri.akis.sankey [{kaynak, hedef, durum (G | Q | S), kN, tur}]: tur
                     "panel-cubuk" (P{n} → Ç{n}), "cubuk-cubuk" (Ç → Ç), "cubuk-mesnet" (Ç → M{düğüm}), "dugum-cubuk" (D{düğüm} →
                     Ç), "dugum-mesnet" (D → M); durum başına en çok 600 panel bandı + 600 öteki kenar (atılan sayı
-                    veri.akis.sankey_kesildi {durum: n})
+                    veri.akis.sankey_kesildi {durum: n}). "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı; aynı değer
+                    veri.ozet.cozum_sure_ms)
   "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
                     "sablonlar", "dogrulanmamis", ..., "hata": null}
   "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}
@@ -60,7 +61,7 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
                     çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
                     kez yeniden çözülüp önbelleğe alınır (gerçek temel tipiyle: tekil, mütemadi ya da radye); dc_once
-                    görünen aks–kat tasarım tablosundandır.
+                    görünen aks–kat tasarım tablosundandır. "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı).
   "bina_eleman_bilgi": girdi {"cozum_kimligi", "tur": "cubuk" | "kolon" | "kiris" | "fe", "no", "durum"? (yük durumu,
                     kombinasyon, "zarf+"/"zarf-"/"Zarf"; varsayılan "G"), "bina"?} → {"paket": {"sekmeler": {"ic": [bölüm],
                     "yer": [bölüm]}, "sekme_adlari", "uyarilar": [], "durum", "fe"}, "cozum_kimligi", "hata": null}. Eleman bilgi
@@ -104,6 +105,7 @@ import ast
 import importlib
 import json
 import sys
+import time
 import traceback
 from collections import OrderedDict
 
@@ -519,11 +521,20 @@ def _bina_girdisi(girdi: dict):
     return bina
 
 
+def _sure_ms(t0: float) -> int:
+    """time.perf_counter() başlangıcından bu yana geçen duvar süresi (ms, tam sayı; C19 sure_ms)."""
+    return int(round((time.perf_counter() - t0) * 1000.0))
+
+
 def _bina_coz_yaniti(girdi: dict) -> dict:
+    t0 = time.perf_counter()
     yapi = _yapi_zorunlu()
     bina = _bina_girdisi(girdi)
     r = yapi.bina_coz(bina, goster="yok")
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
+    sure = _sure_ms(t0)
+    if isinstance(veri.get("ozet"), dict):
+        veri["ozet"]["cozum_sure_ms"] = sure
     ic = getattr(r, "ic", None)
     if isinstance(ic, dict):        # rapor/tablolar yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
         if isinstance(bina, str):
@@ -538,7 +549,7 @@ def _bina_coz_yaniti(girdi: dict) -> dict:
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
         "sonuc_metin": f"{veri['ozet']['sd_sayisi']} SD, {veri['ozet']['kombinasyon_sayisi']} kombinasyon; "
                        f"G = {veri['ozet']['toplam_G']} kN, Q = {veri['ozet']['toplam_Q']} kN",
-        "zincir": False, "hata": None, "veri": veri,
+        "zincir": False, "hata": None, "veri": veri, "sure_ms": sure,
     }
 
 
@@ -616,6 +627,7 @@ def _genel_ic(serbest, ic: dict) -> dict:
 def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
     """Kesit önerisi (genel model motoru; aks–kat çözümü genel motorla yeniden çözülür ve önbelleğe alınır, D/C önce görünen
     aks–kat tasarım tablosundan): öneri, gerekçe, D/C önce/sonra, uygula (C4)."""
+    t0 = time.perf_counter()
     _yapi_zorunlu()
     try:
         serbest = importlib.import_module("yapi_serbest")
@@ -640,7 +652,7 @@ def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
         r = serbest.kesit_oner(None, ic=ic, hedef=hedef or "hepsi", yinele=yinele)
     else:
         r = serbest.kesit_oner(bina, hedef=hedef or "hepsi", yinele=yinele)
-    return dict(_sonlu_sayilar(r), hata=None)
+    return dict(_sonlu_sayilar(r), hata=None, sure_ms=_sure_ms(t0))
 
 
 def _bina_rapor_yaniti(girdi: dict) -> dict:

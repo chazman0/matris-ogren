@@ -597,3 +597,13 @@ def test_karma_model_panel_kaynagi(kopru):
     assert pan and all("kaynak" in p for p in pan)
     assert any(p["kaynak"] == {"aks_kat": "doseme", "no": 1} for p in pan)
     assert {p["kaynak"]["no"] for p in pan if p["kaynak"]} == {d["no"] for d in b["dosemeler"]}
+
+
+def test_sure_ms_bina_coz_ve_kesit_oner(kopru, yanit):
+    """K-31 / C19: bina_coz ve bina_kesit_oner yanıtında üst düzey tam sayı sure_ms; bina_coz veri.ozet.cozum_sure_ms'e de yazar."""
+    assert isinstance(yanit["sure_ms"], int) and yanit["sure_ms"] >= 0
+    assert yanit["veri"]["ozet"]["cozum_sure_ms"] == yanit["sure_ms"]
+    y = iste(kopru, "bina_kesit_oner", {"bina": yapi.bina_sablon("betonarme-2kat-3x2"), "hedef": [{"tur": "kolon", "no": 1}]})
+    assert y["hata"] is None and isinstance(y["sure_ms"], int) and y["sure_ms"] >= 0
+    g = iste(kopru, "bina_coz", {"bina": yapi.bina_sablon("celik-cbf-3kat")})
+    assert isinstance(g["sure_ms"], int) and g["veri"]["ozet"]["cozum_sure_ms"] == g["sure_ms"]

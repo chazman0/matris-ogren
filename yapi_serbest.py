@@ -3339,7 +3339,8 @@ def _kolon_on_ele(ts, kuv, kt, d_ust, beton, donati, n=10, en_cok=16, As=None):
     sec = {id(k) for k in _on_ele(kuv, ["N", "Mx", "My", "V"], n=3, en_cok=en_cok)}
     try:
         on = ts.kolon_kontrol([k["N"] for k in kuv], [k["Mx"] for k in kuv], [k["My"] for k in kuv], kt["b"], kt["h"],
-                              As or 0.01 * kt["b"] * kt["h"] * 1e4, d_ust, beton, donati, adlar=[k["ad"] for k in kuv], tbdy=False)
+                              As or 0.01 * kt["b"] * kt["h"] * 1e4, d_ust, beton, donati, adlar=[k["ad"] for k in kuv], tbdy=False,
+                              ham=True)
         sira = sorted(range(len(kuv)), key=lambda i: -on["noktalar"][i]["dc"])[:n]
         sec |= {id(kuv[i]) for i in sira}
     except MatrisHatasi:
@@ -3439,7 +3440,7 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
                 uy.append("K çapraz düzeni (çaprazlar kolon ortasına bağlı): TBDY 2018 md. 9.6.4.2 / 9.7.4.2 uyarınca deprem yükü "
                           "taşıyan sistemde kullanılamaz; yalnız rüzgâr/stabilite bağı olarak kullanın.")
             r = ts.celik_cubuk_kontrol(profil, mal["kutuphane"], L=L, K=tuple(K), kuvvetler=kuv, yalniz_cekme=c["yalniz_cekme"],
-                                       yontem=yontem, tbdy_capraz=tc, anl=anl)
+                                       yontem=yontem, tbdy_capraz=tc, anl=anl, ham=anl is None)
             bilgi.update({"kontrol": "cubuk", "L": L, "K": tuple(K), "kuvvetler": kuv, "yalniz_cekme": c["yalniz_cekme"],
                           "tbdy_capraz": tc, "yontem": yontem})
             en = max(r["kombinasyonlar"], key=lambda x: x["dc"]) if r["kombinasyonlar"] else None
@@ -3474,7 +3475,7 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
 
             def kontrol(Lb_, kuv_, anl_, Cb_=1.0):
                 return ts.celik_eleman_kontrol(profil, mal["kutuphane"], L=L, Lb=Lb_, K=tuple(K), kuvvetler=kuv_, yontem=yontem,
-                                               kren=kren, Cb=Cb_, anl=anl_)
+                                               kren=kren, Cb=Cb_, anl=anl_, ham=anl_ is None)
             if dos:
                 # döşeme yalnız ÜST başlığı tutar: pozitif momentte L_b = 0; negatif momentte L_b = boy, C_b moment diyagramından
                 # (ÇYTHYE Denk. 9.1; yapi._celik ile aynı kural). Pozitif / negatif momentler her kombinasyonda ayrı ayrı.
@@ -3578,8 +3579,9 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
         else:
             kuv = (_on_ele([k for k in kuv if k["Mx"] >= 0], ["Mx", "V", "N"], en_cok=8)
                    + _on_ele([k for k in kuv if k["Mx"] < 0], ["Mx", "V", "N"], en_cok=8))
+        # ham: iç sonuç (_json ve kolon eğrileri yok; anlatımda tam yol) — kayıt satırları _kontrol_kaydi ile yalınlaşır (K-31)
         r = ts.betonarme_eleman_kontrol(kt["b"], kt["h"], pas + Y._PAS_EK, mal["kutuphane"], donati, kuv, tur=tur_ba,
-                                        As_toplam=As_ver, tbdy=bool(B.deprem), anl=anl)
+                                        As_toplam=As_ver, tbdy=bool(B.deprem), anl=anl, ham=anl is None)
         bilgi.update({"kontrol": "betonarme", "tur": "kolon" if tur_ba == "kolon" else "kiris", "kuvvetler": kuv,
                       "malzeme": {"beton": mal["kutuphane"], "donati": donati}, "b": kt["b"], "h": kt["h"], "tur_ba": tur_ba,
                       "pas": pas})
@@ -3605,7 +3607,7 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
             else:                                   # gerekli ρ: 0,01 … 0,04 taraması (yapi._kolon_ba _RHO_TARAMA gibi)
                 try:
                     r2 = ts.betonarme_eleman_kontrol(kt["b"], kt["h"], pas + Y._PAS_EK, mal["kutuphane"], donati, kuv, tur=tur_ba,
-                                                     tbdy=bool(B.deprem))
+                                                     tbdy=bool(B.deprem), ham=True)
                     nm2 = max((x["dc"] for x in r2["kontroller"] if "etkileşim" in x["ad"] or "İki eksenli" in x["ad"]), default=0.0)
                     rho_ger = r2["As_toplam_cm2"] / Ac_cm2 if (r2.get("As_toplam_cm2") and nm2 <= 1.0 + 1e-9) else None
                 except MatrisHatasi:
@@ -4622,11 +4624,15 @@ def _anlatim(B, YK, ag, durumlar_kisa, kombinasyonlar, zarf, akis, deprem, ruzga
 # ============================================================================
 # 16) Ana işlev
 # ============================================================================
-def bina_coz(bina, *, goster=None, anlat=True):
+def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
     """Genel (surum 3) bina modelini çözer. Dönüş ``mo.Sonuc``: ``.veri`` (yapi.bina_coz şemasıyla uyumlu + genel model alanları:
     ag.cubuklar, ag.paneller, yukler.paneller/cubuklar, akis.mesnetler, kren, yalniz_cekme, bina.seviyeler, uyarilar), ``.ic``
     (tembel kombinasyon, eleman tahkiki, kesit önerisi ve ısı haritası — ``alan`` — için paket). Mütemadi / radye temelde
-    veri.temel aks–kat motoruyla aynı şemadadır (temel.py, ``_temel_gorunum`` görünümüyle); tekil temelde temel.tekil_ozet."""
+    veri.temel aks–kat motoruyla aynı şemadadır (temel.py, ``_temel_gorunum`` görünümüyle); tekil temelde temel.tekil_ozet.
+
+    ``hafif=True`` (iç kullanım: kesit önerisinin ``genel_cozum`` ve onarım turu çözümleri, K-31): aynı çözüm ve aynı tasarım
+    D/C'leri, ama yalnız {veri: {tasarim}, ic} döner — zarf, gösterilecek birleşimler, akış, temel sonuçları, eylemler, veri ve
+    anlatım kurulmaz (``_hafif_sonuc``)."""
     B = _oku(bina)
     _parcalar(B)
     YK = _yukleri_hazirla(B)
@@ -4704,6 +4710,8 @@ def bina_coz(bina, *, goster=None, anlat=True):
         with _MekanizmaAtla(ag.get("pozitif_tanimli", False)):
             yalniz = _yalniz_cekme_coz(B, ag, model, durumlar, paket, kombinasyonlar, deprem)
         yol += "; yalnız çekme: birleşimler doğrudan, yinelemeli"
+    if hafif:
+        return _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem)
     zarf = Y._zarf_paket(paket, kombinasyonlar)
     ozetler = {k["ad"]: paket.ozet(paket.birlesim(k["cozum"])) for k in kombinasyonlar if k["uygulandi"]}
     gosterilecek = Y._gosterilecek_sec(B, kombinasyonlar, zarf)
@@ -4750,6 +4758,23 @@ def bina_coz(bina, *, goster=None, anlat=True):
     mo.son_anlatim = anl
     anl.goster(goster)
     return sonuc
+
+
+def _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem):
+    """bina_coz(hafif=True) dönüşü: kesit önerisinin ara çözümleri için tasarım (aynı D/C'ler) ve öteleme paketi (``ic`` tam
+    çözümün paketiyle aynı anahtarlar; veri yalnız {tasarim})."""
+    ts = _tasarim_mod()
+    T = tas = None
+    if ts is not None:
+        T = _tasarim_baglam(B, ag, paket, kombinasyonlar)
+        tas = _tasarim(ts, T)
+    ic = {"kimlik": Y._cozum_kimligi(B), "paket": paket, "durumlar": set(paket.durum), "tasarim": T, "serbest": True,
+          "bina": B.ham, "B": B, "tas": tas, "oteleme_asan": _oteleme_asan(deprem), "deprem": deprem, "hafif": True,
+          "kombinasyonlar": {k["ad"]: k["cozum"] for k in kombinasyonlar if k["uygulandi"]},
+          "temel": _tm().basinc_meta(ag["temel"]) if ag.get("temel") is not None else None,
+          "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas,
+                   "komb_tur": {k["ad"]: k["tur"] for k in kombinasyonlar if k["uygulandi"]}}}
+    return SimpleNamespace(veri={"tasarim": tas}, ic=ic)
 
 
 def _oteleme_asan(deprem):
@@ -4866,7 +4891,7 @@ def genel_cozum(bina):
             raise MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
     if not isinstance(bina, dict):
         raise MatrisHatasi("Kesit önerisi için bina bir sözlük (ya da JSON metni) olmalı.")
-    r = bina_coz(copy.deepcopy(bina), anlat=False)
+    r = bina_coz(copy.deepcopy(bina), anlat=False, hafif=True)
     ic = r.ic
     ic["oner_uyarilari"] = []
     return ic
@@ -4973,7 +4998,7 @@ def kesit_oner(bina=None, *, ic=None, hedef="hepsi", yinele=0, gorunen=None):
         if not degisen:
             break
         bina_ham = yeni
-        r = bina_coz(bina_ham, anlat=False)
+        r = bina_coz(bina_ham, anlat=False, hafif=True)
         ic = r.ic
         ic["tas"] = r.veri.get("tasarim")
     son = ic.get("tas") or (ic["tasarim"] and _tasarim(ts, ic["tasarim"]))
