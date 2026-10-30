@@ -4,14 +4,17 @@
 Çıktı düzeni (--paket DIZIN, op4.exe'nin yanında):
   python/   python3XX.dll, python3XX.zip (standart kitaplık, .pyc), python3XX._pth, *.pyd, vcruntime140*.dll,
             Lib/site-packages/ (numpy, sympy, mpmath; testler ve derleme dosyaları budanmış, .pyc önceden derlenmiş)
-  motor/    hesap motoru: docs/ altındaki motor kopyaları (web_kopru.py köprüsü dahil) + __pycache__/*.pyc
+  motor/    hesap motoru: docs/ altındaki motor kopyaları (web_kopru.py köprüsü dahil), op4/motor/op4_sunucu.py ve
+            op4_protokol.py (op4motor.exe'nin çalıştırdığı sunucu döngüsü ve tel protokolü) + __pycache__/*.pyc
 
 Neden önceden derleme: kurulum klasörü (Program Files) kullanıcı için salt okunurdur; Python orada .pyc yazamaz ve her
 açılışta kaynakları yeniden derler (sympy için saniyeler). Burada derlenen .pyc'ler "unchecked-hash" kipindedir: kaynak
 zaman damgasına bakılmaz (kurulumun dosya tarihlerini değiştirmesi önbelleği bozmaz).
 
-Python sürümü: varsayılan olarak betiği çalıştıran yorumlayıcının sürümü (CI'da actions/setup-python 3.13 x64) —
-gömülü dağıtım aynı sürümden indirilir; böylece pip'in seçtiği tekerlekler (cp313) ve .pyc sihirli sayısı uyar.
+Python sürümü: varsayılan olarak betiği çalıştıran yorumlayıcının sürümü (CI'da actions/setup-python 3.14 x64; MIMARI
+D5) — gömülü dağıtım aynı sürümden indirilir; böylece pip'in seçtiği tekerlekler (cp314) ve .pyc sihirli sayısı uyar.
+Paketler op4/kurulum/motor_gereksinimleri.txt'ten sabit sürüm ve SHA256 karmasıyla (--require-hashes) alınır (win_amd64);
+başka platformla denemede (--platform) karmasız GEREKSINIMLER kullanılır.
 
 Kullanım:
   python op4/araclar/python_hazirla.py --paket paket [--onbellek op4/.onbellek] [--surum 3.13.9] [--zip yerel.zip]
@@ -35,8 +38,11 @@ import urllib.request
 import zipfile
 
 DEPO = pathlib.Path(__file__).resolve().parents[2]
-# testler.yml'deki sürümlerle aynı (motor testleri bu sürümlerle geçiyor).
+# testler.yml'deki sürümlerle aynı (motor testleri bu sürümlerle geçiyor). win_amd64 için karmalı liste:
 GEREKSINIMLER = ["numpy==2.5.3", "sympy==1.14.0"]
+KARMALI_GEREKSINIMLER = DEPO / "op4" / "kurulum" / "motor_gereksinimleri.txt"
+# op4'ün kendi motor dosyaları (sunucu döngüsü + tel protokolü; op4motor.exe `-m op4_sunucu` çalıştırır).
+OP4_MOTOR = ["op4_sunucu.py", "op4_protokol.py"]
 # docs/ altındaki motor kopyaları (web_yap.py ile kaynaklardan üretilir; CI aynılığı denetler).
 MOTOR = ["web_kopru.py", "matris_ogren.py", "sonlu_eleman.py", "yapi.py", "yapi_serbest.py", "yapi_veri.py", "temel.py",
          "tasarim.py", "rapor.py", "tablolar.py", "alan.py"]
@@ -156,9 +162,12 @@ def main() -> int:
     site = py / "Lib" / "site-packages"
     site.mkdir(parents=True, exist_ok=True)
     t = time.time()
+    karmali = args.platform == "win_amd64" and KARMALI_GEREKSINIMLER.is_file()
+    paketler = ["--require-hashes", "-r", str(KARMALI_GEREKSINIMLER)] if karmali else GEREKSINIMLER
     komut = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location",
              "--no-compile", "--target", str(site), "--only-binary=:all:", "--platform", args.platform,
-             "--python-version", xy, "--implementation", "cp", "--cache-dir", str(onbellek / "pip"), *GEREKSINIMLER]
+             "--python-version", xy, "--implementation", "cp", "--cache-dir", str(onbellek / "pip"), *paketler]
+    rapor["karmali"] = karmali
     print("pip:", " ".join(komut[3:]))
     subprocess.run(komut, check=True)
     once = boyut(site)
@@ -167,12 +176,12 @@ def main() -> int:
     rapor["site_packages_budama_once_bayt"] = once
 
     # 3) Hesap motoru.
-    for ad in MOTOR:
-        kaynak = DEPO / "docs" / ad
+    kaynaklar = [DEPO / "docs" / ad for ad in MOTOR] + [DEPO / "op4" / "motor" / ad for ad in OP4_MOTOR]
+    for kaynak in kaynaklar:
         if not kaynak.exists():
             raise SystemExit(f"Motor dosyası yok: {kaynak}")
-        shutil.copy2(kaynak, motor / ad)
-    print(f"motor: {len(MOTOR)} dosya ({mb(boyut(motor))})")
+        shutil.copy2(kaynak, motor / kaynak.name)
+    print(f"motor: {len(kaynaklar)} dosya ({mb(boyut(motor))})")
 
     # 4) Önceden derleme (unchecked-hash .pyc).
     t = time.time()

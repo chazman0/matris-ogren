@@ -1,13 +1,16 @@
 # op4 — yerel Windows programı (C++20 + DirectX 12 + Dear ImGui + gömülü CPython hesap motoru).
 # Derler, sınar ve kurulum paketi (op4-setup-<sürüm>.exe, Inno Setup) üretir; "op4-vX.Y.Z" etiketinde paketi GitHub
 # sürümüne (Release) ekler. Belirtim: op4/MIMARI.md §20. Sınamalar:
-#   --test-motor    gömülü Python + numpy/sympy + web_kopru (surum_json, bina_sablonlar, kuyruk gidiş-dönüşleri)
+#   ctest           C++ çekirdek ve sözleşmeler; motor istemcisi ↔ `python -m op4_sunucu` (Win32 boruları, iptal, yeniden
+#                   başlatma, çökme, 50 MB yanıt; sahte ve gerçek motor)
+#   --test-motor    süreç tabanlı hesap motoru: op4motor.exe → Py_Main → op4_sunucu (tel protokolü): ana / tembel
+#                   yardımcı motor, şablonlar, bina_kimlik, anlatımsız bina_coz, hesap ortasında iptal, yeniden başlatma
 #   --test-ekran    WARP (yazılım D3D12) ile ekran dışı kare → PNG
 #   --test-acilis   açılış ekranı → PNG
 #   --hata-katmani  D3D12 hata ayıklama katmanı yoklaması; katman varsa onunla ekran testi (0 hata iletisi)
 #   --test-pencere  gerçek pencere + takas zinciri + açılış ekranı + motor; betikli kaydırma / döndürme / yakınlaşma
-#   kurulum         sihirbaz ekran görüntüsü → sessiz kur (Türkçe karakterli yol) → kurulu programla --test-motor →
-#                   sessiz kaldır
+#   kurulum         sihirbaz ekran görüntüsü → sessiz kur (Türkçe karakterli yol) → kurulu programla --test-motor ve
+#                   --oz-sinama → sessiz kaldır
 # Ekran görüntüleri günlüğe op4/araclar/gunluk_png_yaz.py ile base64 olarak yazılır (::group:: içinde, sha256 özetli);
 # yapıtların indirilemediği ortamlarda op4/araclar/gunluk_png_coz.py ile günlükten geri çözülür (MIMARI §20.2–§20.3).
 # Ölçümler "OP4OLCUM anahtar=değer" satırlarıdır. Eylemler değişmez işleme özetleriyle sabitlenmiştir (yorumdaki sürüm
@@ -45,46 +48,64 @@ concurrency:
 
 jobs:
   cekirdek-linux:
-    # F1 paket sözleşmeleri: platformdan bağımsız çekirdek (op4_cekirdek, op4_cekirdek_js) ve sınamaları Linux'ta.
-    # A (derleme-motor) genişletir: CMakePresets (linux-cekirdek, linux-cekirdek-asan), Python 3.13 + 3.14, OP4OLCUM.
-    name: op4 — çekirdek (Linux; ctest, node, pytest)
+    # F1 iş 1.1 (A; MIMARI §20.1, kabul A1–A3, A7–A9): platformdan bağımsız çekirdek (op4_cekirdek, op4_cekirdek_js) ve
+    # sınamaları Linux'ta clang + ASan/UBSan ön ayarıyla (linux-cekirdek-asan); motor istemcisi gerçek `python -m op4_sunucu`
+    # süreçlerine karşı; Python 3.13 ve 3.14 matrisi. Motor sınamaları atlanamaz (OP4_MOTOR_SINAMA_ZORUNLU=1).
+    name: op4 — çekirdek (Linux, Python ${{ matrix.python }}; ctest ASan/UBSan, node, pytest)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.13", "3.14"]
+    env:
+      OP4_MOTOR_SINAMA_ZORUNLU: "1"
     steps:
       - name: Depoyu al
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Python 3.13
+      - name: Python ${{ matrix.python }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
 
       - name: Node.js 22
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
-      - name: Yapılandır ve derle (clang, uyarılar hata)
-        env:
-          CC: clang
-          CXX: clang++
+      - name: Araçlar (ninja, clang denetleyici çalışma zamanı) ve Python paketleri
         run: |
-          command -v ninja > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q ninja-build; }
-          cmake -S op4 -B op4-linux -G Ninja -DCMAKE_BUILD_TYPE=Debug -DOP4_UYARI_HATA=ON
-          cmake --build op4-linux
+          eksik=""
+          command -v ninja > /dev/null || eksik="$eksik ninja-build"
+          [ -e "$(clang -print-file-name=libclang_rt.asan-x86_64.a)" ] || eksik="$eksik libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+          if [ -n "$eksik" ]; then sudo apt-get update -q && sudo apt-get install -y -q $eksik; fi
+          python -m pip install --disable-pip-version-check -q "pytest==9.2.0" "numpy==2.5.3" "sympy==1.14.0"
+          python -c "import sys, numpy, sympy; print('Python', sys.version.split()[0], 'numpy', numpy.__version__, 'sympy', sympy.__version__)"
+          clang --version | head -1
+          cmake --version | head -1
 
-      - name: Sına — C++ (ctest)
-        run: ctest --test-dir op4-linux --output-on-failure
+      - name: Yapılandır ve derle (ön ayar linux-cekirdek-asan; clang, -Werror, ASan + UBSan)
+        run: |
+          cmake --preset linux-cekirdek-asan -DPython3_EXECUTABLE="$(command -v python)"
+          cmake --build --preset linux-cekirdek-asan
+
+      - name: Sına — C++ (ctest; motor istemcisi ↔ python -m op4_sunucu)
+        run: |
+          kod=0
+          ctest --preset linux-cekirdek-asan || kod=$?
+          echo "::group::OP4OLCUM (ctest)"
+          grep -h "^OP4OLCUM" op4/yapi/linux-cekirdek-asan/Testing/Temporary/LastTest.log || true
+          echo "::endgroup::"
+          exit "$kod"
 
       - name: Sına — JS (node --test op4/testler/js)
         run: node --test op4/testler/js/*.test.js
 
-      - name: Sına — Python (pytest op4/testler/python)
-        run: |
-          python -m pip install --disable-pip-version-check -q "pytest==9.2.0"
-          python -m pytest op4/testler/python -q -p no:cacheprovider
+      - name: Sına — Python (pytest op4/testler/python; sunucu, protokol; köprü eklemeleri)
+        run: python -m pytest op4/testler/python testler/test_web_kopru_op4.py -q -p no:cacheprovider -s
 
   windows:
     name: op4 — derle, sına, paketle
@@ -121,10 +142,10 @@ jobs:
           echo "surum=$surum" >> "$GITHUB_OUTPUT"
           echo "op4 sürümü: $surum ($kaynak)"
 
-      - name: Python 3.13 (x64; pip ve .pyc derlemesi için, gömülü sürümle aynı)
+      - name: Python 3.14 (x64; pip ve .pyc derlemesi için, gömülü sürümle aynı — MIMARI D5)
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           architecture: x64
 
       - name: Ortam
@@ -146,10 +167,12 @@ jobs:
           restore-keys: |
             op4-py-${{ env.PY_SURUM }}-
 
-      - name: Yapılandır (CMake, MSVC x64)
+      - name: Yapılandır (CMake ön ayarı win-surum; MSVC x64, /W4 /WX, gölgelendiriciler FXC SM 5.1)
         run: |
           bas=$(date +%s)
-          cmake -S op4 -B op4-yapi -A x64 -DOP4_SURUM="$OP4_SURUM"
+          # ctest'teki motor sınamaları bu Python'u çocuk süreç olarak başlatır (ileri eğik çizgili yol).
+          py=$(python -c "import sys; print(sys.executable.replace(chr(92), '/'))")
+          cmake --preset win-surum -B op4-yapi -DOP4_SURUM="$OP4_SURUM" -DPython3_EXECUTABLE="$py"
           echo "SURE_YAPILANDIR=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
 
       - name: Derle (Release)
@@ -158,10 +181,19 @@ jobs:
           cmake --build op4-yapi --config Release --parallel -- -nologo -v:minimal  # "-" ile: Git Bash "/x" bağımsız değişkenlerini yola çevirir
           echo "SURE_DERLE=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
 
-      - name: Sına — C++ çekirdek ve sözleşmeler (ctest, doctest)
-        run: ctest --test-dir op4-yapi -C Release --output-on-failure
+      - name: Sına — C++ çekirdek ve sözleşmeler (ctest, doctest; Win32 motor istemcisi ↔ python -m op4_sunucu)
+        env:
+          OP4_MOTOR_SINAMA_ZORUNLU: "1"
+        run: |
+          python -m pip install --disable-pip-version-check -q --cache-dir op4/.onbellek/pip "numpy==2.5.3" "sympy==1.14.0"
+          kod=0
+          ctest --test-dir op4-yapi -C Release --output-on-failure || kod=$?
+          echo "::group::OP4OLCUM (ctest)"
+          grep -h "^OP4OLCUM" op4-yapi/Testing/Temporary/LastTest.log || true
+          echo "::endgroup::"
+          exit "$kod"
 
-      - name: Paket klasörü (op4.exe + kimlik + veri + gömülü Python + hesap motoru)
+      - name: Paket klasörü (op4.exe + op4motor.exe + kimlik + veri + gömülü Python + hesap motoru)
         run: |
           bas=$(date +%s)
           cmake --install op4-yapi --config Release --prefix paket
@@ -178,6 +210,18 @@ jobs:
           for f in komutlar.json oznitelikler.json sahne_kodlari.json; do
             [ -f "paket/veri/$f" ] || { echo "::error::paket/veri/$f yok"; exit 1; }
           done
+          # Hesap motoru süreci (MIMARI §8.1, kabul A6, A11): op4motor.exe + sunucu döngüsü + tel protokolü.
+          for f in op4motor.exe motor/op4_sunucu.py motor/op4_protokol.py motor/web_kopru.py; do
+            [ -f "paket/$f" ] || { echo "::error::paket/$f yok"; exit 1; }
+          done
+          ./paket/op4motor.exe --denetle --gunluk denetle.log > /dev/null || { cat denetle.log; echo "::error::op4motor.exe --denetle başarısız"; exit 1; }
+          cat denetle.log
+          # Eksik dosyada okunur ileti ve çıkış kodu 2 (Py_FatalError yok).
+          mkdir -p eksik && cp paket/op4motor.exe eksik/
+          kod=0; ./eksik/op4motor.exe --denetle --gunluk eksik.log > /dev/null || kod=$?
+          cat eksik.log
+          [ "$kod" = 2 ] && grep -q "eksik" eksik.log || { echo "::error::eksik dosyada op4motor.exe çıkış kodu $kod (2 beklenirdi)"; exit 1; }
+          echo "BOYUT_MOTOREXE=$(stat -c %s paket/op4motor.exe)" >> "$GITHUB_ENV"
           echo "::group::paket/python"
           ls paket/python
           echo "::endgroup::"
@@ -186,7 +230,7 @@ jobs:
           cat surum.log
           grep -q "op4 $OP4_SURUM\$" <(tr -d '\r' < surum.log) || { echo "::error::op4.exe sürümü $OP4_SURUM değil"; exit 1; }
 
-      - name: Sına — hesap motoru (--test-motor; soğuk ve ılık açılış)
+      - name: Sına — hesap motoru (--test-motor; op4motor.exe süreçleri; soğuk ve ılık açılış)
         run: |
           kod=0
           ./paket/op4.exe --test-motor --gunluk motor.log > motor.stdout.txt || kod=$?
@@ -195,9 +239,10 @@ jobs:
           [ "$kod" = 0 ] || exit "$kod"
           ./paket/op4.exe --test-motor --gunluk motor2.log > /dev/null || kod=$?
           echo "--- ikinci (ılık) açılış ---"
-          grep -E "SÜRELER|BAŞARI|OP4OLCUM" motor2.log || true
+          grep -E "SÜRELER|BAŞARI|OP4OLCUM|✗" motor2.log || true
           echo "MOTOR_SOGUK=$(grep -o 'TOPLAM motor açılışı [0-9.]* ms' motor.log | grep -o '[0-9.]* ms')" >> "$GITHUB_ENV"
           echo "MOTOR_ILIK=$(grep -o 'TOPLAM motor açılışı [0-9.]* ms' motor2.log | grep -o '[0-9.]* ms')" >> "$GITHUB_ENV"
+          echo "MOTOR_OLCUM=$(tr -d '\r' < motor2.log | sed -n 's/^OP4OLCUM senaryo=motor //p' | head -1)" >> "$GITHUB_ENV"
           exit "$kod"
 
       - name: Sına — ekran (--test-ekran, WARP) ve açılış ekranı (--test-acilis)
@@ -213,6 +258,10 @@ jobs:
             echo "::endgroup::"
             grep -E "BAŞARI" "$g.log" || true
           done
+          # Gölgelendiriciler derlemede gömülü (MIMARI D12, kabul A4): çalışma anı derlemesi yok.
+          grep -E "Gölgelendiriciler" ekran.log || true
+          grep -q "gömülü bayt kodu (FXC, SM 5.1" ekran.log || { echo "::error::gölgelendiriciler gömülü bayt kodundan yüklenmedi"; kod=2; }
+          echo "GOLGELENDIRICI=$(tr -d '\r' < ekran.log | grep -o 'Gölgelendiriciler derlendi ([0-9.]* ms)' | head -1); $(tr -d '\r' < ekran.log | grep -o 'aygit_ms=[0-9.]*' | head -1)" >> "$GITHUB_ENV"
           # Günlükteki kopyalar 256 renge indirgenir (≈ 3 kat küçük); asıl PNG'ler yapıt olarak saklanır.
           python op4/araclar/gunluk_png_yaz.py onizleme=onizleme.png sahne=sahne.png acilis=acilis.png || kod=$?
           exit "$kod"
@@ -369,9 +418,17 @@ jobs:
           $kisayol = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Opus Fortis\op4.lnk"
           "Başlat menüsü kısayolu: $(Test-Path $kisayol) ($kisayol)"
           "Kaldırıcı: $(Test-Path "$hedef\unins000.exe")"
+          foreach ($f in @("op4motor.exe", "motor\op4_sunucu.py", "motor\op4_protokol.py")) {
+            if (-not (Test-Path "$hedef\$f")) { "::error::kurulumda $f yok"; exit 1 }
+          }
           $p = Start-Process -FilePath "$hedef\op4.exe" -Wait -PassThru -ArgumentList @("--test-motor", "--gunluk", "`"$PWD\kurulu-motor.log`"")
           Get-Content kurulu-motor.log
           if ($p.ExitCode -ne 0 -or -not (Test-Path $kisayol)) { exit 1 }
+          # Kurulu programın kendi kendini sınaması (motor, çekirdek, şablon, kaydet / aç, ekran; taslak adımlar atlanır).
+          $p = Start-Process -FilePath "$hedef\op4.exe" -Wait -PassThru -ArgumentList @("--oz-sinama", "--gunluk", "`"$PWD\kurulu-oz-sinama.log`"")
+          Get-Content kurulu-oz-sinama.log | Select-String -Pattern "OP4OLCUM|ÖZ SINAMA|[✓✗–] " | ForEach-Object { $_.Line }
+          if ($p.ExitCode -ne 0) { Get-Content kurulu-oz-sinama.log -Tail 80; exit 1 }
+          if (Get-Process -Name op4motor -ErrorAction SilentlyContinue) { "::error::op4motor süreci kapanmadı"; exit 1 }
           $p = Start-Process -FilePath "$hedef\op4.exe" -Wait -PassThru -ArgumentList @("--surum", "--gunluk", "`"$PWD\kurulu-surum.log`"")
           Get-Content kurulu-surum.log
           if (-not (Select-String -Path kurulu-surum.log -Pattern "op4 $env:OP4_SURUM" -SimpleMatch -Quiet)) { "::error::kurulu op4.exe sürümü $env:OP4_SURUM değil"; exit 1 }
@@ -400,11 +457,14 @@ jobs:
             echo "| Kurulum paketi derleme (Inno Setup) | ${SURE_KURULUM:-?} s |"
             echo "| Inno Setup | ${INNO:-?} |"
             echo "| op4.exe | $(mb "$BOYUT_EXE") |"
+            echo "| op4motor.exe | $(mb "$BOYUT_MOTOREXE") |"
             echo "| python/ (gömülü CPython ${PY_SURUM} + numpy + sympy) | $(mb "$BOYUT_PYTHON") |"
             echo "| motor/ | $(mb "$BOYUT_MOTOR") |"
             echo "| paket/ toplam | $(mb "$BOYUT_PAKET") |"
             echo "| op4-setup-${OP4_SURUM}.exe | $(mb "$BOYUT_KURULUM") |"
-            echo "| Motor açılışı (soğuk / ılık) | ${MOTOR_SOGUK:-?} / ${MOTOR_ILIK:-?} |"
+            echo "| Motor açılışı, süreç → hazır (soğuk / ılık) | ${MOTOR_SOGUK:-?} / ${MOTOR_ILIK:-?} |"
+            echo "| Motor ölçümleri (ılık) | ${MOTOR_OLCUM:-?} |"
+            echo "| Gölgelendiriciler (gömülü SM 5.1) | ${GOLGELENDIRICI:-?} |"
             echo "| D3D12 hata ayıklama katmanı | ${HATA_KATMANI:-?} |"
             echo "| Gerçek pencere | ${PENCERE:-?} |"
           } | tee -a "$GITHUB_STEP_SUMMARY"

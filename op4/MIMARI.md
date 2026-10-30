@@ -1844,6 +1844,7 @@ Her paket kendi işlemesinden sonra Linux (`cekirdek-linux`) ve Windows (`window
 | Tarih | Kod | Değişiklik | Paket |
 |---|---|---|---|
 | 2026-10-30 | S1–S27 | İlk sürüm: başlıklar, taslaklar, kabuk, komut kataloğu (37 komut), öznitelik şeması (23 alan), sahne kodları, tel protokolü ve ortak vektörler, sahiplik tablosu | S |
+| 2026-10-30 | S13, S14, S25 (uygulama notu; imza değişmedi) | A'nın uygulaması: `MotorAyari::sunucuDizini` platformun yol ayırıcısıyla (POSIX `:`, Windows `;`) PYTHONPATH'tir; `Iptal` true döndüyse işleyici her zaman `Iptal` görür (iptal ile yanıt yarışırsa sonuç atılır), kuyruktaki iptal hemen çözülür (aynı no için ikinci `Iptal` false); `CalistirBekle` süre dolunca `MotorHatasi` + `hataTuru` "iptal" döner. `--golgelendirici-dizini`, `GomuluGolgelendirici`'nin geliştirici kipidir (`grafik/golgelendirici_bayt_gelistirme.h`). README: A bölümleri (op4motor, ön ayarlar, komut satırı) | A |
 
 ### 24.7 Paket kabul denetimleri
 

@@ -1,0 +1,70 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "temel",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/yapi/${presetName}",
+      "cacheVariables": { "OP4_UYARI_HATA": "ON", "OP4_TESTLER": "ON" }
+    },
+    {
+      "name": "win-surum",
+      "displayName": "Windows x64 — sürüm (MSVC, /W4 /WX, Release)",
+      "description": "op4.exe + op4motor.exe + sınamalar; üretici adı verilmez (varsayılan Visual Studio), yalnız x64",
+      "inherits": "temel",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "win-hata",
+      "displayName": "Windows x64 — hata ayıklama (Debug, D3D12 hata ayıklama katmanı her zaman açık)",
+      "inherits": "win-surum",
+      "cacheVariables": { "OP4_HATA_AYIKLAMA": "ON" }
+    },
+    {
+      "name": "linux-cekirdek",
+      "displayName": "Linux — çekirdek (clang, -Werror; op4_cekirdek, op4_cekirdek_js, sınamalar)",
+      "inherits": "temel",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      },
+      "condition": { "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "linux-cekirdek-asan",
+      "displayName": "Linux — çekirdek, AddressSanitizer + UndefinedBehaviorSanitizer (Debug)",
+      "inherits": "linux-cekirdek",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "OP4_ASAN": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "win-surum", "configurePreset": "win-surum", "configuration": "Release" },
+    { "name": "win-hata", "configurePreset": "win-hata", "configuration": "Debug" },
+    { "name": "linux-cekirdek", "configurePreset": "linux-cekirdek" },
+    { "name": "linux-cekirdek-asan", "configurePreset": "linux-cekirdek-asan" }
+  ],
+  "testPresets": [
+    {
+      "name": "temel",
+      "hidden": true,
+      "output": { "outputOnFailure": true, "verbosity": "default" },
+      "execution": { "noTestsAction": "error", "timeout": 900 }
+    },
+    { "name": "win-surum", "inherits": "temel", "configurePreset": "win-surum", "configuration": "Release" },
+    { "name": "win-hata", "inherits": "temel", "configurePreset": "win-hata", "configuration": "Debug" },
+    { "name": "linux-cekirdek", "inherits": "temel", "configurePreset": "linux-cekirdek" },
+    {
+      "name": "linux-cekirdek-asan",
+      "inherits": "temel",
+      "configurePreset": "linux-cekirdek-asan",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=0:strict_string_checks=1:detect_stack_use_after_return=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    }
+  ]
+}

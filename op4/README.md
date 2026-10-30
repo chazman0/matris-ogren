@@ -10,7 +10,7 @@ ekran testi ve kurulum paketi uçtan uca çalışır; modelleme komutları sonra
 | Dil / derleyici | C++20, MSVC x64 (Visual Studio 2022+), statik CRT | VC++ yeniden dağıtılabilir paketi gerekmez |
 | Grafik | Direct3D 12, donanım GPU'su (yüksek başarım tercihli), yoksa WARP | MSAA (donanımda 8×, WARP'ta 4×) + çözme; D32 **ters-Z** sonsuz perspektif |
 | Arayüz | Dear ImGui (docking dalı, v1.92.9b, işleme özeti doğrulanır) | yerleştirme alanı, ana menü, Özellikler, Komut, durum çubuğu; PerMonitorV2 DPI |
-| Hesap motoru | resmî Windows gömülebilir CPython 3.13 + numpy 2.5.3 + sympy 1.14.0 | `python3XX.dll` çalışma anında yüklenir (bağlama yok); tek işçi iş parçacığı |
+| Hesap motoru | resmî Windows gömülebilir CPython 3.14 + numpy 2.5.3 + sympy 1.14.0 (sürüm + SHA256 sabit) | ayrı süreç `op4motor.exe` (`Py_Main` → `op4_sunucu`); iki boru üstünde tel protokolü; ana + tembel yardımcı motor; iptal, yeniden başlatma |
 | Kurulum | Inno Setup 6 → `op4-setup-<sürüm>.exe` | Başlat menüsü, kaldırıcı, `.op4` ilişkilendirme, kullanıcıya özel kurulum seçeneği, Opus Fortis sihirbaz görselleri |
 
 Belirtim ve aşamalı plan: [`MIMARI.md`](MIMARI.md) (bağlayıcı); özeti `TASARIM.md` §20.
@@ -24,13 +24,17 @@ D dosya-cozum). Sahiplik tablosunu `testler/test_op4_sozlesme.py` denetler.
 ```
 op4/
   CMakeLists.txt          hedefler: op4_cekirdek, op4_cekirdek_js (Windows + Linux), op4_cekirdek_testleri (doctest),
-                          op4.exe (Windows); kaynaklar klasör deseniyle (*_win.cpp / *_posix.cpp platforma göre)
-  cmake/                  Derleyici.cmake (uyarılar, OP4_UYARI_HATA), Bagimliliklar.cmake + bagimlilik_<ad>.cmake
+                          op4.exe ve op4motor.exe (Windows); kaynaklar klasör deseniyle (*_win.cpp / *_posix.cpp platforma göre)
+  CMakePresets.json       ön ayarlar: win-surum, win-hata, linux-cekirdek, linux-cekirdek-asan (ASan + UBSan)
+  cmake/                  Derleyici.cmake (uyarılar, OP4_UYARI_HATA varsayılan AÇIK, OP4_ASAN), Golgelendiriciler.cmake
+                          (FXC SM 5.1), Bagimliliklar.cmake + bagimlilik_<ad>.cmake
                           (imgui, nlohmann/json 3.12.0, doctest 2.5.3; işleme özeti / SHA256 doğrulamalı; OP4_<AD>_DIZINI)
+  golgelendiriciler/      op4.hlsl — tek kaynak: derlemede fxc ile vs_5_1 / ps_5_1 bayt koduna, op4.exe'ye gömülür
   kaynak/                 C++ kaynakları
     cekirdek/             platformdan bağımsız sözleşmeler ve uygulamaları (kimlik, sahne, öznitelik, seçim, seçme, görünüm,
-                          model çekirdeği arayüzü, motor protokolü ve hizmeti, proje belgesi / dosyası, ayarlar, sonuç,
-                          komut defteri, arayüz kancaları, Hizmetler, uygulama kabuğu)
+                          model çekirdeği arayüzü, motor protokolü, hizmeti ve süreç istemcisi (motor_istemci.*), proje
+                          belgesi / dosyası, ayarlar, sonuç, komut defteri, arayüz kancaları, Hizmetler, uygulama kabuğu)
+    motor_barindirici/    op4motor.cpp — hesap motoru süreci: tutamaç temizliği, dosya denetimi, BLAS iş parçacıkları, Py_Main
     cekirdek_js/          model çekirdeği (B): şimdilik geçici C++ çekirdeği; QuickJS-ng cephesi F1 iş 1.3
     platform/             alt süreç (surec_win / surec_posix), dosya sistemi (atomik yazma, kullanıcı klasörleri)
     arayuz/ grafik/       C modülleri (arayuz_modulu.cpp, golgelendirici_bayt.*)
@@ -38,24 +42,25 @@ op4/
     ana.cpp               giriş noktası (komut satırı → kip)          secenekler.*   bayraklar ve test yardımcıları
     uygulama.cpp          açılış → ana pencere → döngü (kabuk + modüller)
     test_motor.cpp        --test-motor, --oz-sinama                    test_ekran.cpp --test-ekran, --test-acilis, --senaryo
-    motor_modulu.cpp      MotorHizmeti: Faz 0 gömülü motor uyarlayıcısı (süreç istemcisi F1 iş 1.2)
+    motor_modulu.cpp      MotorHizmeti = süreç istemcisi; "Hesap motoru" durum öğesi, Ayarlar › Hesap motoru,
+                          motor.yeniden_baslat (OP4_MOTOR=gomulu: Faz 0 süreç içi motor, tanı)
     grafik.*              D3D12 aygıtı, takas zinciri, MSAA/derinlik hedefleri, boru hatları, ekran dışı okuma
-    golgelendirici.h      HLSL (katı, çizgi, arka plan, sonsuz ızgara) — çalışma anında D3DCompile (derlemede FXC: F1 1.1)
+    golgelendirici.h      golgelendiriciler/op4.hlsl metni (gömülü bayt kodu yoksa çalışma anı D3DCompile yedeği)
     geometri.*            kesit (I/H profili, köşe yuvarlatmalı) → uzatılmış katı ağ + kenar çizgileri + çubuk ekseni
     kamera.h              yörünge kamerası; titreşimsiz (mutlak) kaydırma, imlece doğru yakınlaşma
     arayuz.*              ImGui arayüzü (Faz 0)
     acilis.*              açılış (yükleme) ekranı, Opus Fortis logo yuvası
-    motor.*               gömülü CPython köprüsü (web_kopru.calistir), Faz 0
+    motor.*               süreç içi gömülü CPython köprüsü (Faz 0; yalnız OP4_MOTOR=gomulu tanı kipi)
     proje.*               Faz 0 .op4 (JSON; kamera) kaydet / aç, dosya pencereleri
     resim.*               PNG oku / yaz (WIC)
     gunluk.*              günlük
     op4.manifest, op4.rc.in   DPI farkındalığı, UTF-8 kod sayfası, simge, sürüm bilgisi
   js/                     op4_cekirdek.js (QuickJS cephesi), op4_ops.js (yeni saf işlemler) — JSDoc sözleşmeleri
-  motor/                  op4_protokol.py (tel protokolü; op4_sunucu.py F1 iş 1.2)
+  motor/                  op4_sunucu.py (motor süreci sunucu döngüsü), op4_protokol.py (tel protokolü)
   veri/                   komutlar.json (37 F1 komutu, sahipleriyle), oznitelikler.json, sahne_kodlari.json; kurulumda <uygulama>\veri
   testler/                cekirdek/ (doctest), js/ (node), python/ (pytest), ortak/ (motor_protokol.json, profil_adlari.json)
   kimlik/                 Opus Fortis kurumsal kimliği (logolar, palet), op4.ico, yer tutucular (bkz. kimlik/README.md)
-  kurulum/op4.iss         Inno Setup betiği (UTF-8 BOM'lu, CRLF)
+  kurulum/op4.iss         Inno Setup betiği (UTF-8 BOM'lu, CRLF); motor_gereksinimleri.txt (numpy, sympy, mpmath; SHA256)
   araclar/
     python_hazirla.py     gömülü Python + numpy/sympy + motor dosyaları → paket/python, paket/motor
     kimlik_uret.py        kurumsal simgeden op4.ico; --sihirbaz ile kurulum sihirbazı BMP'leri (7 DPI ölçeği)
@@ -66,17 +71,19 @@ op4/
     mingw.cmake           Linux'ta MinGW-w64 ile sözdizimi / bağlama denetimi
 ```
 
-Kurulu program düzeni: `op4.exe`, `kimlik\`, `veri\` (komut kataloğu, öznitelik şeması, sahne kodları), `python\` (python313.dll, python313.zip, `python313._pth`, numpy, sympy),
-`motor\` (web_kopru.py ve motor modülleri, önceden derlenmiş `.pyc`).
+Kurulu program düzeni: `op4.exe`, `op4motor.exe`, `kimlik\`, `veri\` (komut kataloğu, öznitelik şeması, sahne kodları),
+`python\` (python314.dll, python314.zip, `python314._pth`, numpy, sympy), `motor\` (web_kopru.py ve motor modülleri,
+op4_sunucu.py, op4_protokol.py, önceden derlenmiş `.pyc`). Motor sunucu günlükleri:
+`%LOCALAPPDATA%\Opus Fortis\op4\gunluk\motor-ana.log` ve `motor-yardimci.log` (önceki oturumunki `*.onceki.log`).
 
 ## Derleme (Windows)
 
 ```
-cmake -S op4 -B op4-yapi -A x64 [-DOP4_SURUM=X.Y.Z]
+cmake --preset win-surum -B op4-yapi [-DOP4_SURUM=X.Y.Z]          :: ya da: cmake -S op4 -B op4-yapi -A x64
 cmake --build op4-yapi --config Release --parallel
 ctest --test-dir op4-yapi -C Release --output-on-failure
 cmake --install op4-yapi --config Release --prefix paket
-python op4\araclar\python_hazirla.py --paket paket        :: Python 3.13 x64 ile çalıştırın
+python op4\araclar\python_hazirla.py --paket paket        :: Python 3.14 x64 ile çalıştırın
 python op4\araclar\kimlik_uret.py --sihirbaz sihirbaz     :: kurulum sihirbazı görselleri (Pillow)
 "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" /DSurum=X.Y.Z /DPaket=%CD%\paket /DCikti=%CD%\dagitim /DSihirbaz=%CD%\sihirbaz op4\kurulum\op4.iss
 ```
@@ -84,11 +91,15 @@ python op4\araclar\kimlik_uret.py --sihirbaz sihirbaz     :: kurulum sihirbazı 
 **Linux (yalnız çekirdek ve sınamaları):**
 
 ```
-cmake -S op4 -B /tmp/op4-linux -G Ninja -DOP4_UYARI_HATA=ON && cmake --build /tmp/op4-linux
-ctest --test-dir /tmp/op4-linux --output-on-failure
+cmake --preset linux-cekirdek-asan && cmake --build --preset linux-cekirdek-asan     # clang, -Werror, ASan + UBSan
+OP4_MOTOR_SINAMA_ZORUNLU=1 ctest --preset linux-cekirdek-asan                       # motor istemcisi ↔ python3 -m op4_sunucu
 node --test op4/testler/js/*.test.js
-python3 -m pytest op4/testler/python -q -p no:cacheprovider
+python3 -m pytest op4/testler/python testler/test_web_kopru_op4.py -q -p no:cacheprovider
 ```
+
+Motor sınamaları (`motor_*.cpp`, `test_sunucu.py`) sunucuyu `python3 -m op4_sunucu` olarak başlatır; çoğu sahte motorla
+(yalnız standart kitaplık), gerçek `docs/web_kopru.py` sınamaları numpy + sympy ister. `OP4_MOTOR_SINAMA_ZORUNLU=1`
+(CI) iken eksik Python / paket sınamayı düşürür.
 
 Çevrim dışı derlemede bağımlılık klasörleri verilir: `-DOP4_NLOHMANN_JSON_DIZINI=… -DOP4_DOCTEST_DIZINI=… -DOP4_IMGUI_DIZINI=…`.
 
@@ -103,12 +114,16 @@ aynıdır, `testler/test_op4_araclar.py` denetler). CI'da `op4-vX.Y.Z` etiketi i
 | Komut | İş |
 |---|---|
 | `op4.exe [proje.op4]` | açılış ekranı → ana pencere |
-| `op4.exe --test-motor` | gömülü Python + web_kopru: `surum_json()`, `calistir(bina_sablonlar)`, kuyruk üzerinden `determinant` ve `bina_sablon`; süreleri yazar |
+| `op4.exe --test-motor` | hesap motoru süreçleri (`op4motor.exe` → `op4_sunucu`): ana motorun açılışı, tembel yardımcı (`bina_sablonlar`, `determinant`), `bina_sablon`, `bina_kimlik`, anlatımsız `bina_coz`, hesap ortasında iptal, yeniden başlatma, kapanış; sunucu günlüklerini basar |
+| `op4.exe --oz-sinama` | kurulu programın kendi kendini sınaması: motor, model çekirdeği ("Adsız 1", şablon), `.op4` kaydet / aç, ekran (uygulanmamış adımlar "atlandı") |
+| `op4motor.exe --denetle` | kurulumun motor dosyalarını denetler (eksikse okunur ileti, çıkış 2) |
 | `op4.exe --test-ekran a.png [--boyut 960x540] [--arayuzsuz]` | pencere açmadan WARP ile tek kare çizer (arayüz dahil), PNG kaydeder; model piksel oranıyla sağlama |
 | `op4.exe --test-acilis a.png [--olcek 1.5]` | açılış ekranını PNG'ye çizer |
 | `op4.exe --test-pencere 8` | gerçek pencere + takas zinciri + motor; betikli kaydırma (imleç altındaki noktanın kayması), Shift+döndürme, tekerlek |
 | ortak | `--gunluk dosya.log`, `--warp` (donanım yerine WARP), `--motorsuz`, `--surum` |
 | `--hata-katmani` | D3D12 hata ayıklama katmanını (varsa) açar; `--test-ekran` ve `--test-pencere`'de katmanın hata iletisi testi düşürür |
+| `--golgelendirici-dizini <klasör>` | geliştirici: gömülü bayt kodu yerine `<klasör>\op4.hlsl` çalışma anında derlenir |
+| `OP4_MOTOR=gomulu` (ortam) | tanı: süreç yerine Faz 0'ın süreç içi gömülü motoru |
 
 Test kipleri ölçümleri günlüğe `OP4OLCUM anahtar=değer …` satırları olarak da yazar (`senaryo=motor|ekran|pencere`,
 `hata_katmani=var|yok`, `hata_katmani_iletileri hata=… uyari=…`). Her `--test-ekran` katmanın varlığını yoklar.
