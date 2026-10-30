@@ -6,12 +6,19 @@ matris_ogren.py modülünü base64+zlib olarak defterin kurulum hücresine göme
 öğretici Markdown hücreleri ve Colab FORM hücreleriyle (#@title / #@param)
 Matris_Ogren.ipynb dosyasını baştan kurar.
 
-Çalıştırma (proje klasöründen, Windows PowerShell):
-  Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"
-  & "$env:USERPROFILE\\.local\\bin\\uv.exe" run --python 3.13 --with nbformat python defter_yap.py
+Çalıştırma (proje klasöründen; nbformat gerekir):
+  Windows PowerShell:
+    Set-Location "$env:USERPROFILE\\Desktop\\matris_ogren"
+    & "$env:USERPROFILE\\.local\\bin\\uv.exe" run --python 3.13 --with nbformat python defter_yap.py
+  Linux / macOS:
+    uv run --no-project --python 3.13 --with nbformat python3 defter_yap.py   (ya da: pip install nbformat; python3 defter_yap.py)
 
 Modül (matris_ogren.py) değişince bu betiği yeniden çalıştırmak yeterlidir;
-defter her seferinde sıfırdan üretilir (yeniden çalıştırılabilir).
+defter her seferinde sıfırdan üretilir (yeniden çalıştırılabilir). Hücre kimlikleri sıra numarasından gelir: modül
+değişmediyse defter bayt bayt aynı çıkar. testler/test_defter.py gömülü modülün özetini (_SHA256) matris_ogren.py ile
+karşılaştırır; modül değişip defter yeniden üretilmezse test kalır.
+
+Defter yalnız matris modülünü (matris_ogren.py) kapsar; sonlu eleman ve bina modülleri web / masaüstü uygulamasındadır.
 """
 from __future__ import annotations
 
@@ -909,6 +916,9 @@ def defter_olustur() -> nbformat.NotebookNode:
     kaynak = MODUL.read_bytes()
     nb = new_notebook()
     nb.cells = hucreler(kaynak)
+    # nbformat rastgele hücre kimliği verir; sıra numarasıyla sabitlenir (yeniden üretim aynı dosyayı verir, fark küçük kalır)
+    for i, h in enumerate(nb.cells):
+        h["id"] = f"hucre-{i:02d}"
     nb.metadata = {
         "kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
         "language_info": {"name": "python"},

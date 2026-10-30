@@ -52,6 +52,12 @@ Bir binayı ticari bir yapı analiz programında modellemek bir hafta, sonuçlar
 
 Yaygın yapı analiz programlarında model ızgara (grid) çizgileriyle başlar; çubuklar ızgara parçalarına çizilir, düğümler çizimle kendiliğinden oluşur. Bu uygulamada bina bir sözlüktür: **akslar** (X'te A, B, C; Y'de 1, 2, 3), **katlar** (kotlar), kesitler ve elemanların aks adresleri. Motor her aks kesişimi ve her kotta bir düğüm, her kolon ve kiriş parçası için bir **uzay çerçeve elemanı** (12×12, Ders 19) üretir. Ders binasında 3×3 aks ve 4 kot $\Rightarrow$ $9\cdot4=\kutua{36}$ düğüm, $27$ kolon $+\ 36$ kiriş $=\kutub{63}$ eleman ve $36\cdot6=\kutuc{216}$ serbestlik.
 
+### Aks tabanlı genel model
+
+Aks–kat sözlüğü düzenli katlı binalara yeter; çapraz, makas, eğik çatı ya da kren yolu için daha genel bir model gerekir. Genel modelde (`surum: 3`) X, Y ve Z aksları adlandırılmış düzlemlerdir (Z aksları "±0.00", "Saçak", "Mahya" gibi; kat, Z aksının işaretidir) ve gerektiğinde açılı ya da silindirik ek aks sistemleri eklenir. Her düğüm bir aks kesişimi (`{"aks": ["B", "3"], "z": "Saçak"}`) ya da bir çubuğun bölme / kesişim noktasıdır; elemanlar `cubuklar` (kolon, kiriş, çapraz, makas, aşık, kren…), `paneller` (döşeme, çatı, cephe) ve `mesnetler` listelerinde durur. Düğüm konumları her çözümde akslardan yeniden hesaplandığı için aks taşınınca bağlı bütün düğüm ve elemanlar birlikte taşınır.
+
+Bina sayfasındaki akış yaygın programlardakine benzer: Hızlı aks sihirbazıyla ızgara kurulur, Düzlem seçiciyle bir plan ya da cephe düzlemi seçilir, çubuk ve paneller kesişimden kesişime çizilir, üreteçler (makas, beşik çerçeve, aşık, kren yolu) tekrarlayan geometriyi üretir. Aks–kat modeline çubuk, çapraz, panel ya da mesnet eklenince model onayla genel modele çevrilir; aynı binanın iki yoldan çözümü aynı tepkileri ve iç kuvvetleri verir. Genel modelde mütemadi ve radye temel yoktur (en alt Z aksındaki kesişimler tekil temel mesnetidir) ve model en çok 2000 serbestlik olabilir. Hazır örnekler: [çaprazlı çerçeve](#bina/sablon/celik-cbf-3kat) ve [sanayi yapısı](#bina/sablon/celik-sanayi-4hol).
+
 ### Yerel eksenler ve işaretler
 
 Her elemanın iç kuvvetleri kendi **yerel ekseninde** verilir. Yapı analiz programlarında yaygın kural şudur: 1 ekseni I ucundan J ucuna gider; yatay elemanda 2 yukarı, 3 $=1\times2$ yataydır. Düşey elemanda 2 ekseni $+X$, 3 ekseni $+Y$ alınır. Bu uygulamanın motorunda (Ders 19) $x'$ $i\to j$ yönünde, $y'$ elemanı içeren düşey düzlemde yukarı, $z'=x'\times y'$; düşey elemanda $z'$ motorun yatay ekseni seçilir ve yukarı giden kolonda $y'=-X$ çıkar.
@@ -99,7 +105,7 @@ Tasarımdan sonra yapı analiz programları çubukları D/C oranına göre genel
 | Programda zorluk | Belirtisi | Bu uygulamada |
 |---|---|---|
 | birim seti model boyunca değişir (kN·m, N·mm, kgf·cm) | 1000 kat büyük ya da küçük sonuçlar | birimler sabit: kN, m, kN/m²; kesit 30 cm yerine 0.30 yazılmazsa öğretici hata |
-| grid ve snap, çakışık düğüm | eleman bağlanmaz, kararsızlık uyarısı | düğümler aks kesişiminden üretilir; çakışık düğüm oluşmaz |
+| grid ve snap, çakışık düğüm | eleman bağlanmaz, kararsızlık uyarısı | düğümler aks kesişiminden ya da bölme / kesişim noktasından üretilir, motor 1 mm içindeki konumları tek düğümde birleştirir; modeldeki çakışık düğüm kayıtlarını *Düğümleri birleştir* (Shift+J) temizler, aynı iki düğümü bağlayan çubuk uyarılır |
 | yerel eksen ve çizim yönü | ters diyagram, yanlış güçlü eksen | kural sabit; kolonda `yon` alanı |
 | yerçekimi yönü / global Z işareti | yük yukarı bakar | yük durumları ve döşeme yükleri kartlardan; korunum tablosu yönü doğrular |
 | öz ağırlık iki kez (öz ağırlık çarpanı + ayrıca tanımlı kütle ya da yük) | taban tepkisi fazla | öz ağırlık yalnız G'de; $\sum$ yük $=\sum$ tepki satırı |

@@ -404,7 +404,11 @@ test("dondur: kopya ve yerinde döndürme, açı güncellemesi", function () {
   assert.equal(r.model.mesnetler.length, 3, "A düğümü dönme ekseninde (aynı düğüm), B kopyasına mesnet");
   const t = M.dondur(m, [3], "Z", 180);
   yakin(uclar(t.model, 3)[0], [0, 0, 4]); yakin(uclar(t.model, 3)[1], [-6, 0, 4]);
-  assert.equal(cubuk(t.model, 2).i.dugum, 100002, "seçilmeyen kolon düğümü yerinde kalır mı? kiriş düğümü taşındı, kolon uzar");
+  // koparak taşıma: kirişin kolon 2 ile paylaştığı uç düğümü (100003) yerinde kalır, kolon 2 bozulmaz
+  assert.equal(cubuk(t.model, 2).i.dugum, 100002);
+  assert.equal(cubuk(t.model, 2).j.dugum, 100003);
+  yakin(uclar(t.model, 2)[1], [6, 0, 4]);
+  assert.equal(cubuk(t.model, 3).i.dugum, 100004, "dönme merkezindeki uç düğüm numarasını korur");
   const ts = M.tasi(m, { dugumler: [{ dugum: 100003 }] }, 0, 0, 1);
   yakin(M.uzunluk(ts.model, 2), 5);
 });
@@ -688,12 +692,17 @@ test("genellestir: aks–kat modeli çubuk/panel/düğüm kayıtlarına", functi
   // 12 kolon + kat başına (A1→C1: 2 parça, C2→A2: 2 parça, 3 Y kirişi) = 12 + 2·7
   assert.equal(g.cubuklar.length, 26);
   assert.equal(g.paneller.length, 4);
-  assert.equal(g.dugumler.length, 18);
-  // numara kuralı 1000·kat + 20·ix + iy + 1 (akslar konuma göre sıralı: A=0, B=1, C=2)
-  for (const d of g.dugumler) {
-    const ix = ["A", "B", "C"].indexOf(d.aks[0]), iy = ["1", "2"].indexOf(d.aks[1]);
-    assert.equal(d.no, 1000 * d.kat + 20 * ix + iy + 1);
-    yakin(d.X, [0, 5, 9][ix]); yakin(d.Y, [0, 4][iy]); yakin(d.Z, [0, 3, 6][d.kat]);
+  // aks–kat düğümleri için kayıt yazılmaz (başvurular aks REF'i; eski {no, X, Y, Z, aks, kat} kayıtları aks taşınınca izlemiyordu)
+  assert.equal((g.dugumler || []).length, 0);
+  // numara kuralı 1000·kat + 20·ix + iy + 1 (akslar konuma göre sıralı: A=0, B=1, C=2); konum akslardan
+  const refler = [];
+  g.cubuklar.forEach(function (c) { refler.push(c.i, c.j); });
+  g.paneller.forEach(function (p) { p.kose.forEach(function (r) { refler.push(r); }); });
+  assert.equal(new Set(refler.map(function (r) { return dno(g, r); })).size, 18);
+  for (const r of refler) {
+    const ix = ["A", "B", "C"].indexOf(r.aks[0]), iy = ["1", "2"].indexOf(r.aks[1]);
+    assert.equal(dno(g, r), 1000 * r.kat + 20 * ix + iy + 1);
+    yakin(konum(g, r), [[0, 5, 9][ix], [0, 4][iy], [0, 3, 6][r.kat]]);
   }
   const k1 = g.cubuklar.filter(function (c) { return c.kaynak.aks_kat === "kolon" && c.kaynak.no === 1; })[0];
   assert.deepEqual(k1.i, { aks: ["A", "1"], kat: 0 }); assert.deepEqual(k1.j, { aks: ["A", "1"], kat: 1 });
@@ -791,4 +800,221 @@ test("aks–kat modelinde çapraz: önce genelleştirilir, kiriş ortadan bölü
   // kiriş yükü bölünen parçalara geçti (A1→B1 parçası iki parçaya)
   const ky = r.model.ek_yukler.filter(function (y) { return y.tur === "cubuk"; });
   assert.equal(ky.length, 3);
+});
+
+
+// ---------------------------------------------------------------------------- koparak taşıma (paylaşılan düğümler yerinde kalır)
+const ENGEL = ["sifir-boy", "cakisan-cubuk", "panel-geometri"];
+function engeller(model) { return M.denetle(model).uyarilar.filter(function (u) { return ENGEL.indexOf(u.kod) >= 0; }).map(function (u) { return u.mesaj; }); }
+/** İki açıklıklı aks çerçevesi: A–B–C (0, 6, 12) × 1–2 (0, 5) × ±0.00, +3.00, +6.00; her kesişimde kolon, her katta X ve Y kirişleri, döşeme panelleri. */
+function izgaraCerceve() {
+  const z = ["±0.00", "+3.00", "+6.00"], X = { A: 0, B: 6, C: 12 }, Y = { "1": 0, "2": 5 };
+  const m = { tur: "bina", surum: 3, akslar: { x: [{ ad: "A", konum: 0 }, { ad: "B", konum: 6 }, { ad: "C", konum: 12 }], y: [{ ad: "1", konum: 0 }, { ad: "2", konum: 5 }],
+    z: [{ ad: z[0], konum: 0, kat: 0 }, { ad: z[1], konum: 3, kat: 1 }, { ad: z[2], konum: 6, kat: 2 }] },
+    katlar: [{ no: 0, kot: 0 }, { no: 1, kot: 3 }, { no: 2, kot: 6 }], cubuklar: [], paneller: [], mesnetler: [], ek_yukler: [] };
+  const G = function (x, y, k) { return { aks: [x, y], z: z[k] }; };
+  let n = 0;
+  const cb = function (i, j, tur) { m.cubuklar.push({ no: ++n, i: i, j: j, tur: tur, kesit: tur === "kolon" ? "HEB240" : "IPE300", aci: 0 }); };
+  for (const x of Object.keys(X)) for (const y of Object.keys(Y)) for (const k of [1, 2]) cb(G(x, y, k - 1), G(x, y, k), "kolon");
+  for (const k of [1, 2]) {
+    for (const y of Object.keys(Y)) { cb(G("A", y, k), G("B", y, k), "kiris"); cb(G("B", y, k), G("C", y, k), "kiris"); }
+    for (const x of Object.keys(X)) cb(G(x, "1", k), G(x, "2", k), "kiris");
+    m.paneller.push({ no: m.paneller.length + 1, kose: [G("A", "1", k), G("B", "1", k), G("B", "2", k), G("A", "2", k)], tur: "doseme", kalinlik: 0.12, dagitim: "iki" });
+    m.paneller.push({ no: m.paneller.length + 1, kose: [G("B", "1", k), G("C", "1", k), G("C", "2", k), G("B", "2", k)], tur: "doseme", kalinlik: 0.12, dagitim: "iki" });
+  }
+  m.ek_yukler.push({ tur: "cubuk", cubuk: 13, durum: "G", yon: "Z", q1: -4, q2: -4 });
+  return m;
+}
+function kirisBul(m, a, b, z) {
+  return m.cubuklar.find(function (c) { return c.tur === "kiris" && c.i.aks && c.i.aks.join("") === a && c.j.aks.join("") === b && c.i.z === z; }).no;
+}
+test("koparak taşıma: taşı / döndür / ayna (kopyasız) ya geçerli model ya ret — paylaşılan düğümler ve öteki elemanlar yerinde", function () {
+  const ornekler = [];
+  const m = izgaraCerceve(), g = M.genellestir(aksKat()).model;
+  const k = kirisBul(m, "A1", "B1", "+3.00");
+  ornekler.push([m, k, function (x) { return M.tasi(x, { cubuklar: [k] }, 0, 5, 0); }, true, "bir aks aralığı Y: hedefte kiriş var"]);
+  ornekler.push([m, k, function (x) { return M.tasi(x, { cubuklar: [k] }, 0, 0, 3); }, true, "bir kat yukarı: hedefte kiriş var"]);
+  ornekler.push([m, k, function (x) { return M.tasi(x, { cubuklar: [k] }, 6, 0, 0); }, true, "aksı boyunca bir açıklık: komşu kiriş"]);
+  ornekler.push([m, k, function (x) { return M.tasi(x, { cubuklar: [k] }, 0, 2.5, 0); }, false, "aks arasına: yeni düğümler"]);
+  ornekler.push([m, k, function (x) { return M.dondur(x, { cubuklar: [k] }, { nokta: [0, 0, 3], yon: [0, 0, 1] }, 90); }, true, "90° A1 çevresinde: A aksındaki kirişin üstüne"]);
+  ornekler.push([m, k, function (x) { return M.dondur(x, { cubuklar: [k] }, { nokta: [0, 0, 3], yon: [0, 0, 1] }, 180); }, false, "180°: dışarı"]);
+  ornekler.push([m, k, function (x) { return M.ayna(x, { cubuklar: [k] }, { X: 6 }, { kopya: false }); }, true, "B aksına göre ayna: komşu kiriş"]);
+  ornekler.push([m, k, function (x) { return M.ayna(x, { cubuklar: [k] }, { Y: 10 }, { kopya: false }); }, false, "uzak düzleme ayna"]);
+  ornekler.push([m, 1, function (x) { return M.tasi(x, { paneller: [1] }, 0, 0, 3); }, true, "panel bir kat yukarı: aynı köşeli panel var"]);
+  const gk = g.cubuklar.find(function (c) { return c.kaynak && c.kaynak.aks_kat === "kiris" && c.kaynak.no === 1; }).no;
+  ornekler.push([g, gk, function (x) { return M.tasi(x, { cubuklar: [gk] }, 0, 4, 0); }, true, "genelleştirilmiş aks–kat: kiriş A1–B1 → A2–B2"]);
+  ornekler.push([g, gk, function (x) { return M.ayna(x, { cubuklar: [gk] }, { Y: 2 }, { kopya: false }); }, true, "genelleştirilmiş: ayna Y = 2 → A2–B2"]);
+  ornekler.push([g, gk, function (x) { return M.dondur(x, { cubuklar: [gk] }, "Z", 30); }, false, "genelleştirilmiş: 30° (aks dışı)"]);
+  for (const [model, no, f, red, ad] of ornekler) {
+    const r = f(model);
+    assert.equal(!!r.reddedildi, red, ad + ": " + JSON.stringify(r.uyarilar));
+    if (r.reddedildi) { assert.deepEqual(r.model, model, ad + ": ret modeli değiştirmez"); assert.ok(r.uyarilar.length, ad); continue; }
+    assert.deepEqual(engeller(r.model), [], ad);
+    // seçilmeyen çubuklar yerinde (uç konumları aynı); yeni uç düğümü iç noktasına düşen çubuk orada bölünür: i ucu aynı, j ucu
+    // eski doğru parçasının üstünde (kalan parça yeni çubuk)
+    const bolunen = new Set(r.uyarilar.map(function (u) { const x = /^Çubuk (\d+), yeni uç düğümü \d+ üzerine düştüğü için orada bölündü/.exec(u); return x ? +x[1] : null; }).filter(Boolean));
+    for (const c of model.cubuklar) {
+      if (c.no === no) continue;
+      const o = uclar(model, c.no), y = uclar(r.model, c.no);
+      yakin(y[0], o[0], 1e-9, ad + " çubuk " + c.no);
+      if (!bolunen.has(c.no)) { yakin(y[1], o[1], 1e-9, ad + " çubuk " + c.no); continue; }
+      const L = Math.hypot(o[1][0] - o[0][0], o[1][1] - o[0][1], o[1][2] - o[0][2]);
+      const a1 = Math.hypot(y[1][0] - o[0][0], y[1][1] - o[0][1], y[1][2] - o[0][2]), a2 = Math.hypot(o[1][0] - y[1][0], o[1][1] - y[1][1], o[1][2] - y[1][2]);
+      yakin(a1 + a2, L, 1e-9, ad + ": bölünen çubuk " + c.no + " eski doğru parçasında");
+    }
+    assert.equal(r.model.cubuklar.length, model.cubuklar.length + bolunen.size, ad);
+  }
+  // taşınan kirişin yükü numarasıyla birlikte gider; yük kopyalanmaz
+  const t = M.tasi(m, { cubuklar: [13] }, 0, 2.5, 0);
+  assert.equal(t.model.ek_yukler.filter(function (y) { return y.cubuk === 13; }).length, 1);
+  // aks arasına taşınan kirişin uçları A ve B akslarındaki kirişlerin iç noktası: o kirişler bölünür, taşınan kiriş bağlı kalır
+  assert.equal(t.uyarilar.filter(function (u) { return /bölündü \(bağlantı\)/.test(u); }).length, 2, JSON.stringify(t.uyarilar));
+  assert.deepEqual(M.denetle(t.model).uyarilar.filter(function (u) { return u.kod === "bagsiz-parca" || u.kod === "yuzen-dugum"; }), []);
+  // kopya (doğrusal dizi) da aynı: yeni uç mevcut çubuğun iç noktasına düşerse o çubuk bölünür
+  const d = M.dogrusalDizi(m, { cubuklar: [13] }, 0, 2.5, 0, 1);
+  assert.equal(d.uyarilar.filter(function (u) { return /bölündü \(bağlantı\)/.test(u); }).length, 2, JSON.stringify(d.uyarilar));
+  assert.deepEqual(M.denetle(d.model).uyarilar.filter(function (u) { return u.kod === "bagsiz-parca" || u.kod === "yuzen-dugum"; }), []);
+});
+
+test("koparak taşıma: dönme merkezindeki uç numarasını korur; yalnız seçime ait serbest düğüm silinir, mesnedi ve yükü taşınır", function () {
+  const m = izgaraCerceve();
+  const k = kirisBul(m, "A1", "B1", "+3.00");
+  const r = M.dondur(m, { cubuklar: [k] }, { nokta: [0, 0, 3], yon: [0, 0, 1] }, 180);
+  const c = cubuk(r.model, k);
+  assert.deepEqual(c.i, { aks: ["A", "1"], z: "+3.00" }, "merkez A1/+3.00 aynı REF");
+  yakin(konum(r.model, c.j), [-6, 0, 3]);
+  // bağımsız çubuk: uçları yalnız ona ait serbest düğümler → yeni yere taşınır, eski kayıtlar silinir, mesnet ve düğüm yükü izler
+  const s = { tur: "bina", surum: 3, dugumler: [{ no: 100001, X: 0, Y: 0, Z: 0 }, { no: 100002, X: 0, Y: 0, Z: 3 }],
+    cubuklar: [{ no: 1, i: { dugum: 100001 }, j: { dugum: 100002 }, tur: "kolon", kesit: "HEB240" }],
+    mesnetler: [{ dugum: { dugum: 100001 }, ux: true, uy: true, uz: true, rx: true, ry: true, rz: true }],
+    ek_yukler: [{ tur: "dugum", dugum: { dugum: 100002 }, durum: "G", FX: 5 }] };
+  const t = M.tasi(s, { cubuklar: [1] }, 4, 0, 0);
+  assert.equal(t.reddedildi, undefined);
+  yakin(uclar(t.model, 1)[0], [4, 0, 0]); yakin(uclar(t.model, 1)[1], [4, 0, 3]);
+  assert.equal(t.model.dugumler.length, 2, "eski düğüm kayıtları silindi");
+  assert.equal(t.model.mesnetler.length, 1); yakin(konum(t.model, t.model.mesnetler[0].dugum), [4, 0, 0]);
+  assert.equal(t.model.ek_yukler.length, 1); yakin(konum(t.model, t.model.ek_yukler[0].dugum), [4, 0, 3]);
+  // düğüm taşıma: hedef mevcut düğümse (aks kesişimi dahil) başvurular ona yazılır
+  const d = M.dugumTasi(m, { aks: ["C", "2"], z: "+6.00" }, 6, 5, 6);
+  assert.ok(d.uyarilar.some(function (u) { return /birleşti/.test(u); }));
+  assert.equal((d.model.dugumler || []).length, 0, "serbest düğüm açılmadı");
+});
+
+test("temel kuralı (C3): en alt Z seviyesindeki aks kesişimleri mesnetli, bölme düğümü değil; V çaprazın temel seviyesindeki tepesine mafsal mesnet", function () {
+  const m = izgaraCerceve();
+  assert.deepEqual(M.denetle(m).uyarilar.filter(function (u) { return u.kod === "mesnetsiz" || u.kod === "bagsiz-parca"; }), []);
+  // zemin gözünde V: tepe A1–B1 kenarının ortası (temel seviyesi, çubuksuz kenar → bölme / serbest düğüm)
+  const G = function (x, y, z) { return { aks: [x, y], z: z }; };
+  const r = M.caprazUret(m, [G("A", "1", "±0.00"), G("B", "1", "±0.00"), G("B", "1", "+3.00"), G("A", "1", "+3.00")], "V", { kesit: "L" });
+  assert.equal(r.model.mesnetler.length, 1);
+  const s = r.model.mesnetler[0];
+  yakin(konum(r.model, s.dugum), [3, 0, 0]);
+  assert.deepEqual([s.ux, s.uy, s.uz, s.rx, s.ry, s.rz], [true, true, true, false, false, false]);
+  assert.deepEqual(s.kaynak, { uretec: r.uretec });
+  assert.ok(r.uyarilar.some(function (u) { return /temel seviyesinde/.test(u); }));
+  assert.deepEqual(M.uretecSil(r.model, r.uretec).model.mesnetler, [], "üreteç silinince mesnedi de kalkar");
+  // üst kat gözünde V: tepe +3.00'de kiriş üzerinde (bölme) → mesnet yok
+  const u = M.caprazUret(m, [G("A", "1", "+3.00"), G("B", "1", "+3.00"), G("B", "1", "+6.00"), G("A", "1", "+6.00")], "V", { kesit: "L" });
+  assert.equal(u.model.mesnetler.length, 0);
+});
+
+test("özellik ata: duvar ve duvar_h (motor cubuk.duvar / duvar_h okur)", function () {
+  const r = M.ozellikAta(cerceve(), [3], { duvar: "tugla19", duvar_h: 2.8 });
+  assert.equal(cubuk(r.model, 3).duvar, "tugla19"); assert.equal(cubuk(r.model, 3).duvar_h, 2.8);
+  const s = M.ozellikAta(r.model, [3], { duvar: null, duvar_h: null });
+  assert.equal(cubuk(s.model, 3).duvar, undefined); assert.equal(cubuk(s.model, 3).duvar_h, undefined);
+});
+
+test("üreteç güncelle (kren yolu): eski kren kayıtları önce kalkar, yol uyarısı yok", function () {
+  let model = {};
+  for (const x of [0, 6]) for (const y of [0, 10]) model = M.cubukCiz(model, [x, y, 0], [x, y, 8], { tur: "kolon" }).model;
+  const r = M.krenYoluUret(model, [[1, 2], [3, 4]], 5, 0, { kiris: "HEB400" }, { tekerlek: { P_maks: 80, P_min: 25, H_yanal: 8, H_fren: 6, aralik: 3.5, adet: 2 } });
+  const g = M.uretecGuncelle(r.model, r.uretec, { kren: { tekerlek: { P_maks: 100, P_min: 25, H_yanal: 8, H_fren: 6, aralik: 3.5, adet: 2 } } });
+  assert.ok(!g.uyarilar.some(function (u) { return /yolundan çubuk/.test(u); }), g.uyarilar.join(" "));
+  assert.equal(g.model.kren.length, 2);
+  assert.equal(g.model.kren[0].tekerlek.P_maks, 100);
+});
+
+// ---------------------------------------------------------------------------- üretecin elemanları taşınınca kaydı (URETEC-TASI)
+test("taşı / döndür / ayna (kopyasız) üreteç elemanları: hepsi taşınırsa kayıt izler, kısmen taşınırsa elemanlar üreteçten ayrılır", function () {
+  const m = izgaraCerceve();
+  const G = function (x, y, z) { return { aks: [x, y], z: z }; };
+  const goz = [G("A", "1", "±0.00"), G("B", "1", "±0.00"), G("B", "1", "+3.00"), G("A", "1", "+3.00")];
+  const x = M.caprazUret(m, goz, "X", { kesit: "L80" }), b = x.model;
+  const no = b.uretecler[0].no, ciz = x.eklenen.cubuklar.slice();
+  assert.equal(ciz.length, 2);
+  const sahip = function (mm) { return mm.cubuklar.filter(function (c) { return c.kaynak && c.kaynak.uretec === no; }).map(function (c) { return c.no; }); };
+  const uclarY = function (mm, l) { return l.map(function (n) { return uclar(mm, n).map(function (P) { return P[1]; }); }); };
+  // 1) bütün çaprazlar +5 m Y (A1–B1 gözü → A2–B2 gözü): kayıt izler; Üreteci düzenle yeni düzlemde üretir
+  const t = M.tasi(b, { cubuklar: ciz }, 0, 5, 0);
+  assert.ok(!t.reddedildi, JSON.stringify(t.uyarilar));
+  assert.deepEqual(t.model.uretecler[0].goz, [G("A", "2", "±0.00"), G("B", "2", "±0.00"), G("B", "2", "+3.00"), G("A", "2", "+3.00")]);
+  assert.deepEqual(sahip(t.model), ciz, "elemanlar üreteçte kalır");
+  assert.ok(t.uyarilar.some(function (u) { return /kaydı elemanlarıyla birlikte taşındı/.test(u); }), JSON.stringify(t.uyarilar));
+  const g = M.uretecGuncelle(t.model, no, {});
+  const yeni = sahip(g.model);
+  assert.equal(yeni.length, 2);
+  uclarY(g.model, yeni).forEach(function (l) { assert.deepEqual(l, [5, 5], "yeniden üretilen çapraz yeni düzlemde (Y = 5)"); });
+  assert.deepEqual(engeller(g.model), []);
+  // 2) yalnız biri taşınır: taşınan üreteçten ayrılır (kaynak yok), öteki üreteçte; Üreteci düzenle taşınanı geri getirmez
+  const k = M.tasi(b, { cubuklar: [ciz[0]] }, 0, 5, 0);
+  assert.equal(cubuk(k.model, ciz[0]).kaynak, undefined);
+  assert.deepEqual(cubuk(k.model, ciz[1]).kaynak, { uretec: no });
+  assert.deepEqual(k.model.uretecler[0].goz, goz, "kayıt yerinde");
+  assert.ok(k.uyarilar.some(function (u) { return new RegExp("Çubuk " + ciz[0] + " taşındığı için üreteçten \\(kayıt " + no + "\\) ayrıldı").test(u); }), JSON.stringify(k.uyarilar));
+  const kg = M.uretecGuncelle(k.model, no, {});
+  assert.deepEqual(uclar(kg.model, ciz[0]).map(function (P) { return P[1]; }), [5, 5], "ayrılan çubuk yeni yerinde kalır");
+  // 3) 90° döndürme (A1 çevresinde, düşey eksen): X çaprazı simetrik → kayıt izler
+  const d = M.dondur(b, { cubuklar: ciz }, { nokta: [0, 0, 0], yon: [0, 0, 1] }, 90, { kopya: false });
+  assert.ok(!d.reddedildi, JSON.stringify(d.uyarilar));
+  // göz köşeleri döndürülmüş konumda (B1 → (0, 6): aks dışı, taşınan uçların serbest düğümü)
+  yakin(d.model.uretecler[0].goz.map(function (r) { return konum(d.model, r); }), [[0, 0, 0], [0, 6, 0], [0, 6, 3], [0, 0, 3]], 1e-9);
+  // düğüm başka düğüme birleşirse (refDegistir) üreteç REF'i de yeni düğüme yazılır: silinen düğüme başvuru kalmaz
+  const serbest = d.model.uretecler[0].goz[1].dugum;
+  const bir = M.dugumTasi(d.model, serbest, 0, 5, 0);
+  assert.deepEqual(bir.model.uretecler[0].goz[1], G("A", "2", "±0.00"));
+  const dg = M.uretecGuncelle(d.model, no, {});
+  sahip(dg.model).forEach(function (n) { uclar(dg.model, n).forEach(function (P) { assert.equal(P[0], 0, "döndürülen çapraz A aksı düzleminde"); }); });
+  // 4) simetrik olmayan tek çapraz aynası: yeniden üretim aynı geometriyi vermez → elemanlar ayrılır, kayıt (başka elemanı yok) silinir
+  const tk = M.caprazUret(m, goz, "tek-/", { kesit: "L80" }), tno = tk.model.uretecler[0].no, tc = tk.eklenen.cubuklar.slice();
+  const a = M.ayna(tk.model, { cubuklar: tc }, { X: 6 }, { kopya: false });
+  assert.ok(!a.reddedildi, JSON.stringify(a.uyarilar));
+  assert.ok(a.model.uretecler.every(function (u) { return u.no !== tno; }), "aynalanan '/' yeniden üretimde '/' olurdu (taşınan '\\'): kayıt izleyemez");
+  assert.equal(cubuk(a.model, tc[0]).kaynak, undefined);
+  assert.ok(a.uyarilar.some(function (u) { return /ayrıldı/.test(u) && /kaydı silindi/.test(u); }), JSON.stringify(a.uyarilar));
+  // 5) açıkça taşınan düğüm (B1/+3.00 → +3.50): çaprazın şekli değişir, göz köşesi düğümü izler; yeniden üretim aynı şekli verir
+  const n = M.tasi(b, { dugumler: [G("B", "1", "+3.00")] }, 0, 0, 0.5);
+  assert.ok(n.uyarilar.some(function (u) { return /kaydı taşınan düğümü izledi/.test(u); }), JSON.stringify(n.uyarilar));
+  yakin(konum(n.model, n.model.uretecler[0].goz[2]), [6, 0, 3.5], 1e-9);
+  const ng = M.uretecGuncelle(n.model, no, {});
+  assert.deepEqual(sahip(ng.model).map(function (c) { return uclar(ng.model, c).map(function (P) { return P.join(","); }).sort().join(" "); }).sort(),
+    ciz.map(function (c) { return uclar(n.model, c).map(function (P) { return P.join(","); }).sort().join(" "); }).sort());
+  // 6) serbest düğümlü beşik çerçeve ve makas: taşınan uç düğümleri yeniden açılır (eski numara silinir) — kayıt REF'leri taşımadan
+  //    önceki düğümlerinden hedefe yazılır; çoğaltma doğrultusu (yon) ve makas "yukari" da dönüşür; mesnetler üreteçte kalır
+  const imza = function (mm, u) {
+    return mm.cubuklar.filter(function (c) { return c.kaynak && c.kaynak.uretec === u; })
+      .map(function (c) { return uclar(mm, c.no).map(function (P) { return P.map(function (v) { return Math.round(v * 1000); }).join(","); }).sort().join("|"); }).sort().join(";");
+  };
+  const bs = M.besikCerceveUret({}, { taban1: [0, 0, 0], taban2: [20, 0, 0], sacak: 6, mahya: 8, kesitler: { kolon: "HEA300", mertek: "IPE360" }, adet: 2, aralik: 6 });
+  const bno = bs.model.uretecler[0].no;
+  const bc = bs.model.cubuklar.filter(function (c) { return c.kaynak && c.kaynak.uretec === bno; }).map(function (c) { return c.no; });
+  for (const [ad, f] of [["taşı", function (mm) { return M.tasi(mm, { cubuklar: bc }, 0, 12, 0); }], ["ayna", function (mm) { return M.ayna(mm, { cubuklar: bc }, { Y: 10 }, { kopya: false }); }]]) {
+    const r = f(bs.model);
+    assert.ok(r.uyarilar.some(function (u) { return /kaydı elemanlarıyla birlikte taşındı/.test(u); }), ad + ": " + JSON.stringify(r.uyarilar));
+    assert.ok(r.model.mesnetler.every(function (sk) { return sk.kaynak && sk.kaynak.uretec === bno; }), ad + ": taşınan mesnetler üreteçte");
+    const rg = M.uretecGuncelle(r.model, bno, {});
+    assert.equal(imza(rg.model, bno), imza(r.model, bno), ad + ": yeniden üretim taşınan çerçeveyle aynı");
+    assert.equal(rg.model.mesnetler.length, r.model.mesnetler.length, ad + ": mesnet çoğalmaz");
+  }
+  const mk = M.makasUret({}, { tip: "pratt", bas: [0, 0, 5], son: [12, 0, 5], yukseklik: 1.5, goz: 6 });
+  const mno = mk.model.uretecler[0].no, mc = mk.model.cubuklar.map(function (c) { return c.no; });
+  const ma = M.ayna(mk.model, { cubuklar: mc }, { Z: 10 }, { kopya: false });
+  assert.deepEqual(ma.model.uretecler[0].yukari, [0, 0, -1], "makas ters çevrilince 'yukari' de döner");
+  assert.equal(imza(M.uretecGuncelle(ma.model, mno, {}).model, mno), imza(ma.model, mno));
+  // 7) kopyalar (doğrusal dizi) üretece bağlanmaz; kaynağı değişmez
+  const dz = M.dogrusalDizi(b, { cubuklar: ciz }, 0, 5, 0, 1);
+  assert.deepEqual(dz.model.uretecler[0].goz, goz);
+  assert.deepEqual(sahip(dz.model), ciz);
+  // saflık
+  assert.deepEqual(b, x.model);
 });

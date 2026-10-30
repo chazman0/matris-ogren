@@ -44,6 +44,56 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     (tasarim.py anlatımı: kesit şeması, formüller, N–M eğrisi), "sonuc": veri.tasarim.elemanlar[] kaydı (§11) +
                     kolonda "egri_x", "egri_y" [{N, M}] ve "noktalar" [{ad, kombinasyon, uc, N, Mx, My, dc}], çelikte "kuvvetler",
                     "uyarilar"; "cozum_kimligi", "hata": null}. Önbellek bina_kombinasyon ile aynı (tasarim.py yoksa öğretici hata).
+                    Genel (surum 3) modelde "tur": "cubuk" ve "no" çubuk numarasıdır (tam eşleşme; kayıtta "cubuk" alanı varsa
+                    bunu gönderin); "kolon"/"kiris" + no: genel modelde aynı türden çubuk numarası, yalnız aks–kat girdisinin
+                    genel motorla çözümünde aks–kat no'su (kaynak).
+  "bina_kesit_oner": girdi {"cozum_kimligi" | "bina", "hedef": "hepsi" | [{"tur", "no"}], "yinele": 0..3} → {"oneriler":
+                    [{cubuk, tur, kesit, oneri (profil adı ya da "bxh" cm), sistem ("celik" | "betonarme"), malzeme, b, h (m,
+                    betonarme), kaynak ({aks_kat, no} | null), gerekce [metin], dc_once (tasarım tablosundaki D/C), dc_oneri
+                    (önerilen kesitle aynı kural), dc_sonra, degisim ("büyüt" | "küçült" | "aynı" | "donatı": betonarme kolonda b × h aynı, gerekli ρ büyük), uygula ({ad, tanim, yeni,
+                    ek_kesitler?} | null: atanacak kesit adı, yeni ise kesitler'e eklenecek tanım; vute çubuğunda temel profil
+                    kartı ek_kesitler'de; değişiklik yoksa null)}], "turlar": [{tur, dc_maks, oneri_sayisi, degisen}], "dc_once",
+                    "dc_sonra", "donati_azaltma" ([{kesit, yeni, donati_orani, rho_once, cubuklar}]: yakınsamadan sonra en küçük yeterli ρ), "bina" (yinele > 0: öneriler uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır
+                    önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
+                    çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
+                    kez yeniden çözülüp önbelleğe alınır (mütemadi/radye temel tekil temel mesnetleriyle, uyarıyla); dc_once
+                    görünen aks–kat tasarım tablosundandır.
+  "bina_eleman_bilgi": girdi {"cozum_kimligi", "tur": "cubuk" | "kolon" | "kiris" | "fe", "no", "durum"? (yük durumu,
+                    kombinasyon, "zarf+"/"zarf-"/"Zarf"; varsayılan "G"), "bina"?} → {"paket": {"sekmeler": {"ic": [bölüm],
+                    "yer": [bölüm]}, "sekme_adlari", "uyarilar": [], "durum", "fe"}, "cozum_kimligi", "hata": null}. Eleman bilgi
+                    panelinin "Motor ayrıntısı" (docs/eleman_bilgi.js paketBirlestir): alan.eleman_bilgi_alani'ndan parça başına
+                    istasyon iç kuvvetleri, en büyük değerler, uç yer değiştirmeleri (bina ve yerel eksen) ve eğri yer
+                    değiştirmenin en büyüğü. bölüm: {baslik, tablo: {basliklar, satirlar}, satirlar, not, notlar, acilir}.
+                    "kolon"/"kiris" + no genel modelde bina_eleman_tasarim ile aynı kuralla çözülür (çubuk numarası; yalnız
+                    aks–kat girdisinin genel motorla çözümünde aks–kat no'su). Önbellek bina_kombinasyon ile aynı.
+
+Genel model (yapi._serbest_mi: bina "surum" ≥ 3 ya da cubuklar / paneller / dugumler / mesnetler / uretecler dolu ya da REF
+düğüm / çubuk / panel ek yükü; yapi_serbest.py): bina_coz veri'sine ek alanlar — ag.cubuklar, ag.paneller (kenarlar, taşıyan
+kenarlar), ag.dugumler[].tur ("aks" | "bolme" | "kesisim" | "ic" | "efendi"), ag.donme_tutulan, ag.diyafram_seviye,
+yukler.paneller / yukler.cubuklar, akis.temeller (yalnız temel mesnetleri: B, L, h, N_temel) ve akis.mesnetler (açık mesnet
+kayıtları: dugum, adres, tip, N_G, N_Q, MX, MY), bina.seviyeler (kat, kot, diyafram), kren (kopruler, durumlar, zarf),
+yalniz_cekme (var, kombinasyonlar: etkin_degil, yineleme), uyarilar; tasarim.elemanlar[] her çubuk için (tur: kolon, kiris,
+capraz, makas-*, asik, kren, bag, diger; cubuk, grup, L, varsayimlar, kaynak; kontroller[0] D/C'yi belirleyen satır).
+Isı haritası (bina_alan) ve bina_eleman_bilgi genel modelde de çalışır.
+  "bina_rapor":     girdi {"cozum_kimligi" | "bina", "secenek"?} → {"html": tam, kendi içinde HTML statik hesap raporu (rapor.py;
+                    gömülü CSS, A4 yazdırma), "dosya_adi": "statik_rapor_<ad>.html", "cozum_kimligi", "hata": null}. Önbellekteki
+                    çözüm kullanılır (yeniden çözülmez; genel modelde yanıtta kısaltılan tasarım satırlarının tamamı, ic["tas_tam"]);
+                    kimlik önbellekte yoksa "bina" anlatımsız çözülür. "secenek": {"proje": {ad, yer,
+                    il, ilce, ada, parsel, malik, hazirlayan, kontrol, tarih}, "bolumler": [1..14, "A", "B", "C", "metraj"],
+                    "eleman_detay": "kritik" | "hepsi" | "yok", "ek_tablolar": [TABLO...], "tablolar": [tablo adı...],
+                    "tablo_filtre": {ad: {"satirlar": [indeks...]}}}.
+  "bina_tablolar":  girdi {"cozum_kimligi" | "bina"} → {"tablolar": [TABLO...] (tablolar.bina_tablolari şeması: ad, baslik, grup,
+                    sutunlar, satirlar (degerler, yol), toplam, aciklama, kaynak), "cozum_kimligi" (kullanılan çözüm ya da null),
+                    "cozumlu": bool, "hata": null}. Önbellekte bu binanın çözümü varsa (kimlik eşleşir; yapi.cozum_kimligi, genel
+                    modelde de) Analiz/Deprem/Tasarım/Temel tabloları da gelir; yoksa çözmeden Model + Yükler + Metraj (deprem
+                    kartı varsa önizleme) tabloları.
+  "bina_alan":      girdi {"cozum_kimligi" | "bina", "durum" (yük durumu | kombinasyon adı | "zarf+" | "zarf-"), "istasyon"? (2…61,
+                    varsayılan 21), "katsayilar"? ({"G": 1.2, ...} serbest birleşim), "elemanlar"? ([FE no] yalnız bunlar; döşemesiz)}
+                    → {"alan": alan.eleman_alanlari (§16.1: durum, birim, elemanlar [istasyonlarda N, Vy, Vz, T, My, Mz, eğri u,
+                    σ_maks/σ_min, τ, von Mises, kullanım, ekstremum], dugumler, aralik, secenekler, not) + "paneller" (§16.2 Navier
+                    plak ızgarası w/mx/my ve 45° yük payı poligonları) + "radye" (temel modülü varsa Winkler basıncı), "cozum_kimligi",
+                    "hata": null}. Önbellekteki çözümden (yeniden çözmez): kombinasyon = durumların katsayılı toplamı, zarf =
+                    istasyon bazında en büyük / en küçük. alan.py yoksa öğretici hata.
 """
 from __future__ import annotations
 
@@ -287,6 +337,22 @@ def _tasarim_modulu():
         return None
 
 
+def _rapor_modulu():
+    """rapor.py (statik hesap raporu) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("rapor")
+    except ImportError:
+        return None
+
+
+def _alan_modulu():
+    """alan.py (ısı haritası alanları: çubuk boyunca iç kuvvet, gerilme, eğri yer değiştirme; döşeme plakları) varsa; yoksa None."""
+    try:
+        return importlib.import_module("alan")
+    except ImportError:
+        return None
+
+
 def _sonuc_mu(x) -> bool:
     return isinstance(x, mo.Sonuc) or (hasattr(x, "anlatim") and hasattr(x, "deger") and hasattr(x.anlatim, "bloklar"))
 
@@ -415,10 +481,10 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # bina analizi ("bina_coz", "bina_kutuphane", "bina_sablonlar", "bina_sablon", "bina_yuk_yolu", "bina_deprem",
-# "bina_kombinasyon", "bina_eleman_tasarim")
+# "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner", "bina_eleman_bilgi")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim"}
+                 "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner", "bina_eleman_bilgi"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -452,9 +518,18 @@ def _bina_girdisi(girdi: dict):
 
 def _bina_coz_yaniti(girdi: dict) -> dict:
     yapi = _yapi_zorunlu()
-    r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok")
-    _onbellege_koy(getattr(r, "ic", None) or {})
+    bina = _bina_girdisi(girdi)
+    r = yapi.bina_coz(bina, goster="yok")
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
+    ic = getattr(r, "ic", None)
+    if isinstance(ic, dict):        # rapor/tablolar yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
+        if isinstance(bina, str):
+            try:
+                bina = json.loads(bina)
+            except ValueError:
+                pass
+        ic["veri"], ic["bina"] = veri, bina
+        _onbellege_koy(ic)
     return {
         "ad": "bina", "bloklar": _bloklar(r.anlatim),
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
@@ -485,8 +560,10 @@ def _bina_ic(yapi, girdi: dict) -> dict:
     if ic is not None:
         _BINA_ONBELLEK.move_to_end(str(kimlik))
     elif girdi.get("bina") is not None:
-        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        bina = _bina_girdisi(girdi)
+        r = yapi.bina_coz(bina, goster="yok", anlat=False)
         ic = r.ic
+        ic["veri"], ic["bina"] = _sonlu_sayilar(r.veri), bina
         _onbellege_koy(ic)
     else:
         raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
@@ -502,17 +579,269 @@ def _bina_eleman_tasarim_yaniti(girdi: dict) -> dict:
     if not hasattr(yapi, "eleman_tasarim"):
         raise mo.MatrisHatasi("Bu kurulumdaki bina modülü kesit tahkiki içermiyor; uygulamayı yenileyin.")
     tur = str(girdi.get("tur") or "").strip().lower()
-    if tur not in ("kiris", "kolon"):
-        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
     if girdi.get("no") is None:
         raise mo.MatrisHatasi("Eleman numarası (no) verilmedi: bina kirişinin ya da kolonunun no'su.")
     ic = _bina_ic(yapi, girdi)
+    if tur not in ("kiris", "kolon") and not ic.get("serbest"):
+        raise mo.MatrisHatasi("Eleman türü (tur) 'kiris' ya da 'kolon' olmalı.")
     r = yapi.eleman_tasarim(ic, tur, girdi.get("no"), goster="yok")
     return {"ad": r.ad, "bloklar": _bloklar(r.anlatim), "sonuc": _sonlu_sayilar(r.veri), "cozum_kimligi": ic.get("kimlik"),
             "hata": None}
 
 
+_GENEL_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()   # aks–kat çözüm kimliği → genel motorla çözüm (kesit önerisi)
+
+
+def _genel_ic(serbest, ic: dict) -> dict:
+    """Aks–kat çözümünün (önbellekteki ``ic``) kesit önerisi için genel motor paketi: ilk istekte çözülür (büyük binada ~1 s),
+    sonraki tıklamalarda önbellekten (en çok BINA_ONBELLEK_EN_FAZLA kayıt)."""
+    kimlik = str(ic.get("kimlik") or "")
+    g = _GENEL_ONBELLEK.get(kimlik) if kimlik else None
+    if g is not None:
+        _GENEL_ONBELLEK.move_to_end(kimlik)
+        return g
+    if ic.get("bina") is None:
+        raise mo.MatrisHatasi("Bu çözümün bina modeli bellekte yok; binayı yeniden çözün.")
+    g = serbest.genel_cozum(ic["bina"])
+    if kimlik:
+        _GENEL_ONBELLEK[kimlik] = g
+        while len(_GENEL_ONBELLEK) > BINA_ONBELLEK_EN_FAZLA:
+            _GENEL_ONBELLEK.popitem(last=False)
+    return g
+
+
+def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
+    """Kesit önerisi (genel model motoru; aks–kat çözümü genel motorla yeniden çözülür ve önbelleğe alınır, D/C önce görünen
+    aks–kat tasarım tablosundan): öneri, gerekçe, D/C önce/sonra, uygula (C4)."""
+    _yapi_zorunlu()
+    try:
+        serbest = importlib.import_module("yapi_serbest")
+    except ImportError:
+        raise mo.MatrisHatasi("Kesit önerisi için yapi_serbest.py gerekir; uygulamayı yenileyin.") from None
+    kimlik = girdi.get("cozum_kimligi")
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+    bina = girdi.get("bina")
+    if ic is None and bina is None:
+        raise mo.MatrisHatasi("Kesit önerisi için çözüm kimliği (önbellekte) ya da bina gerekir; binayı yeniden çözün.")
+    if bina is not None:
+        bina = _bina_girdisi(girdi)
+    hedef = girdi.get("hedef", "hepsi")
+    if hedef not in (None, "hepsi") and not isinstance(hedef, list):
+        raise mo.MatrisHatasi('hedef "hepsi" ya da [{"tur": "cubuk", "no": 3}] listesi olmalı.')
+    yinele = girdi.get("yinele", 0)
+    if ic is not None and not ic.get("serbest"):          # aks–kat çözümü: genel motor paketi önbellekten, D/C önce görünenden
+        r = serbest.kesit_oner(None, ic=_genel_ic(serbest, ic), hedef=hedef or "hepsi", yinele=yinele, gorunen=ic)
+    elif ic is not None:
+        r = serbest.kesit_oner(None, ic=ic, hedef=hedef or "hepsi", yinele=yinele)
+    else:
+        r = serbest.kesit_oner(bina, hedef=hedef or "hepsi", yinele=yinele)
+    return dict(_sonlu_sayilar(r), hata=None)
+
+
+def _bina_rapor_yaniti(girdi: dict) -> dict:
+    """Statik hesap raporu (rapor.py): önbellekteki çözümün verisinden (yeniden çözmeden); kimlik önbellekte yoksa girdi.bina
+    anlatımsız çözülür. Yanıt: {"html", "dosya_adi", "cozum_kimligi", "hata"}."""
+    yapi = _yapi_zorunlu()
+    rapor = _rapor_modulu()
+    if rapor is None:
+        raise mo.MatrisHatasi("Rapor modülü (rapor.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    secenek = girdi.get("secenek")
+    if secenek is not None and not isinstance(secenek, dict):
+        raise mo.MatrisHatasi("secenek bir sözlük olmalı: {\"proje\": {\"ad\": ...}, \"eleman_detay\": \"kritik\"}.")
+    if not girdi.get("cozum_kimligi") and girdi.get("bina") is None:
+        raise mo.MatrisHatasi("Rapor girdisi boş: önce binayı çözün ve çözüm kimliğini (cozum_kimligi) ya da bina modelini (bina) "
+                              "gönderin.")
+    ic = _bina_ic(yapi, girdi)
+    veri = ic.get("veri")
+    if veri is None:                 # önbellekteki eski paket (veri saklanmamış): model verilmişse yeniden çöz
+        if girdi.get("bina") is None:
+            raise mo.MatrisHatasi("Bu çözümün verisi bellekte yok; binayı yeniden çözün ya da girdide 'bina' modelini de gönderin.")
+        r = yapi.bina_coz(_bina_girdisi(girdi), goster="yok", anlat=False)
+        ic = r.ic
+        ic["veri"], ic["bina"] = _sonlu_sayilar(r.veri), girdi.get("bina")
+        _onbellege_koy(ic)
+        veri = ic["veri"]
+    if ic.get("tas_tam") is not None:        # genel model: yanıtta kısaltılan kontrol satırlarının tamamı raporda
+        veri = dict(veri, tasarim=_sonlu_sayilar(ic["tas_tam"]))
+    bina = girdi.get("bina") if girdi.get("bina") is not None else ic.get("bina")
+    html = rapor.statik_rapor(bina if bina is not None else {}, veri, secenek=secenek)
+    return {"html": html, "dosya_adi": rapor.dosya_adi(bina if bina is not None else {}, veri, secenek),
+            "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
+def _tablolar_modulu():
+    """tablolar.py (tablo editörü ve metraj) varsa (tembel) içe aktarır; yoksa None."""
+    try:
+        return importlib.import_module("tablolar")
+    except ImportError:
+        return None
+
+
+def _bina_tablolar_yaniti(girdi: dict) -> dict:
+    """Tablo editörü: önbellekteki çözüm (kimlik eşleşirse) ile bütün tablolar; yoksa çözmeden model/yük/metraj tabloları."""
+    yapi = _yapi_zorunlu()
+    tb = _tablolar_modulu()
+    if tb is None:
+        raise mo.MatrisHatasi("Tablo modülü (tablolar.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    kimlik = girdi.get("cozum_kimligi")
+    bina = girdi.get("bina")
+    if bina is not None:
+        bina = _bina_girdisi(girdi)
+        if isinstance(bina, str):
+            try:
+                bina = json.loads(bina)
+            except ValueError as e:
+                raise mo.MatrisHatasi(f"Bina JSON olarak okunamadı: {e}") from None
+        try:   # verilen binanın kimliği: önbellekteki çözüm ancak aynı binaya aitse kullanılır (düzenlenmiş binada eski sonuç yok);
+            # genel modelde yapi_serbest okuyucusuyla (yapi.cozum_kimligi: bina_coz ile aynı kimlik)
+            kimlik = (yapi.cozum_kimligi(bina) if hasattr(yapi, "cozum_kimligi")
+                      else yapi._cozum_kimligi(yapi._bina_oku(bina)))
+        except mo.MatrisHatasi:
+            kimlik = None
+    ic = _BINA_ONBELLEK.get(str(kimlik)) if kimlik else None
+    if ic is not None and ic.get("veri") is not None:
+        _BINA_ONBELLEK.move_to_end(str(kimlik))
+        tablolar = tb.bina_tablolari(bina if bina is not None else ic.get("bina"), ic["veri"])
+        return {"tablolar": _sonlu_sayilar(tablolar), "cozum_kimligi": kimlik, "cozumlu": True, "hata": None}
+    if bina is None:
+        raise mo.MatrisHatasi("Bu çözüm bellekte yok (sayfa yenilendi ya da son " + str(BINA_ONBELLEK_EN_FAZLA)
+                              + " çözümün dışında kaldı); tablolar için 'bina' alanını da gönderin ya da binayı yeniden çözün.")
+    return {"tablolar": _sonlu_sayilar(tb.bina_tablolari(bina)), "cozum_kimligi": None, "cozumlu": False, "hata": None}
+
+
+ALAN_ISTASYON = (2, 61)   # bina_alan istasyon sayısı sınırları
+
+
+def _bina_alan_yaniti(girdi: dict) -> dict:
+    """Isı haritası alanı (alan.py §16): önbellekteki çözümden durum / kombinasyon / zarf için eleman ve döşeme alanları."""
+    yapi = _yapi_zorunlu()
+    alan = _alan_modulu()
+    if alan is None:
+        raise mo.MatrisHatasi("Isı haritası modülü (alan.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    durum = str(girdi.get("durum") or "").strip()
+    if not durum:
+        raise mo.MatrisHatasi("Durum (durum) boş: bir yük durumu (G, Q…), kombinasyon adı (örn. \"1.4G+1.6Q\") ya da "
+                              "\"zarf+\" / \"zarf-\" verin.")
+    istasyon = girdi.get("istasyon")
+    try:
+        istasyon = alan.ISTASYON if istasyon is None else int(istasyon)
+    except (TypeError, ValueError):
+        raise mo.MatrisHatasi(f"istasyon bir tamsayı olmalı ({ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]}).") from None
+    if not ALAN_ISTASYON[0] <= istasyon <= ALAN_ISTASYON[1]:
+        raise mo.MatrisHatasi(f"istasyon {ALAN_ISTASYON[0]}…{ALAN_ISTASYON[1]} arasında olmalı (verilen {istasyon}).")
+    katsayilar = girdi.get("katsayilar")
+    if katsayilar is not None and not isinstance(katsayilar, dict):
+        raise mo.MatrisHatasi("katsayilar bir sözlük olmalı: {\"G\": 1.4, \"Q\": 1.6}.")
+    elemanlar = girdi.get("elemanlar")
+    if elemanlar is not None:
+        if not isinstance(elemanlar, list):
+            raise mo.MatrisHatasi("elemanlar bir FE eleman numarası listesi olmalı: [12, 13].")
+        elemanlar = _sayi_listesi(elemanlar)
+    ic = _bina_ic(yapi, girdi)
+    sonuc = alan.eleman_alanlari(ic, durum, istasyon=istasyon, katsayilar=katsayilar, elemanlar=elemanlar,
+                                 paneller=elemanlar is None)
+    return {"alan": _sonlu_sayilar(sonuc), "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
+def _sayi_tr(v, n=2) -> str:
+    """Bilgi paneli hücresi: n ondalık, virgül ve gerçek eksi işareti (eleman_bilgi.js f() ile aynı biçim); sayı değilse '—'."""
+    if not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+        return "—"
+    t = f"{float(v):.{n}f}"
+    if t.lstrip("-").strip("0.") == "":
+        t = t.lstrip("-")
+    return t.replace(".", ",").replace("-", "−")
+
+
+_BILGI_KUVVET = (("N", "kN"), ("Vy", "kN"), ("Vz", "kN"), ("T", "kN·m"), ("My", "kN·m"), ("Mz", "kN·m"))
+_BILGI_EK = (("sigma_max", "σ maks", "MPa", 2), ("sigma_min", "σ min", "MPa", 2), ("von_mises", "von Mises", "MPa", 2),
+             ("tau_max", "τ maks", "MPa", 2), ("kullanim", "Kullanım", "", 3), ("u", "|u| (eğri yer değiştirme)", "mm", 3))
+
+
+def _bina_eleman_bilgi_yaniti(girdi: dict) -> dict:
+    """Eleman bilgi paneli 'Motor ayrıntısı' paketi (alan.eleman_bilgi_alani; önbellekteki çözümden, yeniden çözmeden):
+    ``ic`` sekmesi parça başına istasyon iç kuvvetleri ve en büyük değerler, ``yer`` sekmesi uç yer değiştirmeleri (bina ve yerel
+    eksen) ve eğri yer değiştirmenin (sehim) en büyüğü. Bölümler docs/eleman_bilgi.js biçiminde ({baslik, tablo, satirlar, not})."""
+    yapi = _yapi_zorunlu()
+    alan = _alan_modulu()
+    if alan is None:
+        raise mo.MatrisHatasi("Isı haritası modülü (alan.py) yüklenemedi; uygulamayı yenileyin ya da önbelleği silin.")
+    tur = str(girdi.get("tur") or "").strip().lower()
+    if tur not in ("cubuk", "kolon", "kiris", "fe"):
+        raise mo.MatrisHatasi("Eleman türü (tur) 'cubuk', 'kolon', 'kiris' ya da 'fe' olmalı.")
+    if girdi.get("no") is None:
+        raise mo.MatrisHatasi("Eleman numarası (no) verilmedi.")
+    durum = str(girdi.get("durum") or "G").strip()
+    if durum.lower() == "zarf":
+        durum = "zarf+"
+    ic = _bina_ic(yapi, girdi)
+    p = alan.eleman_bilgi_alani(ic, tur, girdi.get("no"), durum)
+    zarf = durum.startswith("zarf")
+    coklu = len(p["parcalar"]) > 1
+    ic_b, yer_b = [], []
+    for kay in p["parcalar"]:
+        ek = f" — parça {kay.get('parca')}, FE {kay['no']}" if coklu else f" — FE {kay['no']}"
+        sat = []
+        for i, x in enumerate(kay["x"]):
+            sat.append([_sayi_tr(x, 3)] + [_sayi_tr(kay[a][i], 2) for a, _ in _BILGI_KUVVET])
+        ic_b.append({"baslik": f"İstasyon iç kuvvetleri ({p['durum']}){ek}", "acilir": coklu,
+                     "tablo": {"basliklar": ["x (m)"] + [f"{a} ({b})" for a, b in _BILGI_KUVVET], "satirlar": sat}})
+    en = p.get("en_buyuk") or {}
+    sat = []
+    for a, b in _BILGI_KUVVET:
+        e = en.get(a)
+        if e:
+            sat.append([f"{a} ({b})", _sayi_tr(e["deger"], 2), _sayi_tr(e["x"], 3), str(e["fe"])])
+    for a, ad, b, n in _BILGI_EK:
+        e = en.get(a)
+        if e:
+            v = e["deger"] * 1000.0 if a == "u" else e["deger"]
+            sat.append([ad + (f" ({b})" if b else ""), _sayi_tr(v, n), _sayi_tr(e["x"], 3), str(e["fe"])])
+    notlar = [p.get("isaret")] + ([p["not"]] if p.get("not") else [])
+    if zarf:
+        notlar.append("Zarf: her istasyonda uygulanan kombinasyonların en büyüğü (zarf−: en küçüğü); değerler farklı "
+                      "kombinasyonlardan gelebilir.")
+    ic_b.append({"baslik": "En büyük mutlak değerler (bütün parçalar)", "tablo": {"basliklar": ["Büyüklük", "Değer", "x (m)", "FE"],
+                                                                                  "satirlar": sat}, "notlar": [n for n in notlar if n]})
+    if p.get("uclar"):
+        g, y = [], []
+        for u in p["uclar"]:
+            for uc in ("i", "j"):
+                d = u[uc]
+                g.append([f"{uc} ({d['dugum']})"] + [_sayi_tr(v * 1000.0, 3) for v in d["u"]] + [_sayi_tr(v * 1000.0, 4) for v in d["r"]])
+                y.append([f"{uc} ({d['dugum']})"] + [_sayi_tr(v * 1000.0, 3) for v in d["u_yerel"]]
+                         + [_sayi_tr(v * 1000.0, 4) for v in d["r_yerel"]])
+        yer_b.append({"baslik": f"Uç yer değiştirmeleri ({p['durum']}, bina koordinatı)",
+                      "tablo": {"basliklar": ["Uç (düğüm)", "uX (mm)", "uY (mm)", "uZ (mm)", "rX (mrad)", "rY (mrad)", "rZ (mrad)"],
+                                "satirlar": g}})
+        yer_b.append({"baslik": "Uç yer değiştirmeleri (yerel eksen x′, y′, z′)", "acilir": True,
+                      "tablo": {"basliklar": ["Uç (düğüm)", "u_x′ (mm)", "u_y′ (mm)", "u_z′ (mm)", "r_x′ (mrad)", "r_y′ (mrad)", "r_z′ (mrad)"],
+                                "satirlar": y}})
+    else:
+        yer_b.append({"not": "Uç yer değiştirmeleri tek bir yük durumu ya da kombinasyon için verilir (zarf değil)."})
+    eu = en.get("u")
+    if eu:
+        yer_b.append({"baslik": "Eğri yer değiştirme (sehim)", "satirlar": [
+            ["En büyük |u|", _sayi_tr(eu["deger"] * 1000.0, 3), "mm"], ["Yeri (x)", _sayi_tr(eu["x"], 3), "m"], ["FE eleman", str(eu["fe"]), ""]],
+            "not": "Eleman içi biçim M/EI'nin iki kez integraliyle (uç ötelemeleri arasında); düğümler arasındaki sehim dahil."})
+    return {"paket": {"sekmeler": {"ic": ic_b, "yer": yer_b}, "sekme_adlari": {"ic": "İç kuvvetler", "yer": "Yer değiştirme"},
+                      "uyarilar": [], "durum": p["durum"], "fe": p["fe"]},
+            "cozum_kimligi": ic.get("kimlik"), "hata": None}
+
+
 def _bina_islem(islem: str, girdi: dict) -> dict:
+    if islem == "bina_eleman_bilgi":
+        return _bina_eleman_bilgi_yaniti(girdi)
+    if islem == "bina_kesit_oner":
+        return _bina_kesit_oner_yaniti(girdi)
+    if islem == "bina_rapor":
+        return _bina_rapor_yaniti(girdi)
+    if islem == "bina_tablolar":
+        return _bina_tablolar_yaniti(girdi)
+    if islem == "bina_alan":
+        return _bina_alan_yaniti(girdi)
     if islem == "bina_coz":
         return _bina_coz_yaniti(girdi)
     if islem == "bina_kombinasyon":

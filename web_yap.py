@@ -3,11 +3,15 @@
 
 Yaptıkları:
   1. matris_ogren.py motorunu docs\\ altına kopyalar (uygulama bu dosyayı Pyodide içinde çalıştırır);
-     sonlu_eleman.py, yapi.py, yapi_veri.py ve tasarim.py de (varsa) aynı biçimde kopyalanır.
-  2. Matris_Ogren.ipynb defterinin markdown hücrelerini docs\\dersler.json olarak çıkarır (Dersler sekmesi).
+     sonlu_eleman.py, yapi.py, yapi_veri.py, tasarim.py, rapor.py, temel.py, tablolar.py, alan.py ve yapi_serbest.py de (varsa)
+     aynı biçimde kopyalanır. docs\\web_kopru.py (köprü) kopya değil, kaynaktır: yalnız docs\\ altında durur.
+  2. dersler/*.md → docs\\dersler.json (ders_derle; Dersler sekmesi); ders yoksa ya da derlenemezse defterin
+     (Matris_Ogren.ipynb) markdown hücreleri.
   3. İkon PNG'lerini icon.svg / icon-maskable.svg'den üretir (pymupdf varsa; yoksa mevcut PNG'ler kalır).
   4. docs\\ dosyalarının içeriğinden bir sürüm damgası hesaplar, sw.js içindeki SURUM satırına ve surum.json'a yazar
-     (damga değişince servis çalışanı eski önbelleği atar; uygulama güncellenir).
+     (damga değişince servis çalışanı eski önbelleği atar; uygulama güncellenir). git'e girmeyen üretilmiş dosyalar
+     (__pycache__, *.pyc, işletim sistemi artıkları) sayılmaz: aynı kaynaktan her makinede aynı damga çıkar
+     (masaustu/hazirla.js dosya listesiyle aynı kural; ek olarak .gitignore'daki *.bak da sayılmaz).
 
 Çalıştırma (proje klasöründen, yalnız standart kütüphane gerekir):
   python web_yap.py
@@ -45,9 +49,12 @@ def se_kopyala() -> str:
 
 
 def yapi_kopyala() -> str:
-    """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py, varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir."""
+    """Bina analizi modülü (yapi.py + yapi_veri.py + tasarim.py + rapor.py + temel.py + tablolar.py + alan.py + yapi_serbest.py,
+    varsa) docs\\ altına kopyalanır; Pyodide'a ek modül olarak yüklenir (rapor.py: statik hesap raporu, köprü "bina_rapor";
+    temel.py: mütemadi ve radye temel; tablolar.py: tablo editörü ve metraj, köprü "bina_tablolar"; alan.py: ısı haritası
+    alanları, köprü "bina_alan"; yapi_serbest.py: genel düğüm–çubuk–panel modeli (surum 3), köprü "bina_kesit_oner")."""
     bilgi = []
-    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py"):
+    for ad in ("yapi.py", "yapi_veri.py", "tasarim.py", "rapor.py", "temel.py", "tablolar.py", "alan.py", "yapi_serbest.py"):
         kaynak = KOK / ad
         if not kaynak.exists():
             bilgi.append(f"{ad}: yok (atlandı)")
@@ -132,11 +139,28 @@ def ikonlar() -> str:
     return f"{len(isler)} PNG ikon üretildi"
 
 
-def surum_damgala() -> str:
-    h = hashlib.sha256()
+# Sürüm damgasına girmeyen adlar (git'e girmeyen üretilmiş dosyalar ve işletim sistemi artıkları; masaustu/hazirla.js ATLANAN ile aynı;
+# hazirla.js *.pyc'yi de atlar, *.bak'ı atlamaz: .gitignore'da olduğu için burada sayılmaz)
+DAMGA_ATLANAN = {".DS_Store", "Thumbs.db", "desktop.ini", "__pycache__", ".ipynb_checkpoints"}
+
+
+def damga_dosyalari() -> list[Path]:
+    """Sürüm damgasına giren docs dosyaları (sıralı): sw.js ve surum.json (damganın yazıldığı yerler) ile DAMGA_ATLANAN ve
+    *.pyc / *.bak hariç."""
+    sonuc = []
     for yol in sorted(DOCS.rglob("*")):
+        goreli = yol.relative_to(DOCS)
         if yol.is_dir() or yol.name in ("sw.js", "surum.json"):
             continue
+        if DAMGA_ATLANAN.intersection(goreli.parts) or yol.suffix in (".pyc", ".bak"):
+            continue
+        sonuc.append(yol)
+    return sonuc
+
+
+def surum_damgala() -> str:
+    h = hashlib.sha256()
+    for yol in damga_dosyalari():
         h.update(yol.relative_to(DOCS).as_posix().encode("utf-8"))
         h.update(yol.read_bytes())
     damga = h.hexdigest()[:10]

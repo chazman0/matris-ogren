@@ -15,7 +15,7 @@ import sonlu_eleman as se
 import tasarim
 import yapi
 
-SABLONLAR = list(yapi.BINA_SABLONLARI)
+SABLONLAR = [ad for ad, b in yapi.BINA_SABLONLARI.items() if int(b.get("surum", 1)) < 3]   # aks–kat şablonları (surum 3: test_yapi_serbest)
 
 
 @pytest.fixture(scope="module")
@@ -322,7 +322,10 @@ def test_butun_sablonlar_tasarim(cozumler, ad):
     assert len(json.dumps(t, ensure_ascii=False)) < 2_000 * len(t["elemanlar"]) + 5_000     # eleman başına ölçülü
     assert "egri_x" not in json.dumps(t)                                                     # eğri yalnız köprü ayrıntısında
     md = "\n".join(b[1] for b in r.anlatim.bloklar if b[0] == "md")
-    assert "12. Adım: Kesit tahkikleri" in md and "13. Adım: Aynı hesap Python'da" in md
+    if v["bina"]["temeller"]["tip"] == "tekil":
+        assert "12. Adım: Kesit tahkikleri" in md and "13. Adım: Aynı hesap Python'da" in md
+    else:                                  # mütemadi / radye: 13. adım temel ve zemin (temel.py)
+        assert "12. Adım: Kesit tahkikleri" in md and "13. Adım: Temel ve zemin" in md and "14. Adım: Aynı hesap Python'da" in md
     assert "En kritik 10 eleman" in md and "D/C dağılımı" in md and "elemana dokununca" in md
 
 
