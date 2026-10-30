@@ -107,18 +107,78 @@ const char* Grafik::OzellikDuzeyi() const {
     }
 }
 
+HataKatmani Grafik::HataKatmaniYokla() {
+    HataKatmani k;
+    ComPtr<ID3D12Debug> d;
+    const HRESULT hr = D3D12GetDebugInterface(CIK(d));
+    k.var = SUCCEEDED(hr);
+    k.hr = static_cast<long>(hr);
+    return k;
+}
+
+HataKatmani Grafik::HataKatmaniIletileri() const {
+    HataKatmani k;
+    k.var = katmanEtkin_;
+    k.hr = katmanHr_;
+    k.etkin = katmanEtkin_ && iletiKuyrugu_;
+    if (!k.etkin) return k;
+    const UINT64 n = iletiKuyrugu_->GetNumStoredMessages();
+    std::vector<char> tampon;
+    for (UINT64 i = 0; i < n; ++i) {
+        SIZE_T boy = 0;
+        if (FAILED(iletiKuyrugu_->GetMessage(i, nullptr, &boy)) || boy < sizeof(D3D12_MESSAGE)) continue;
+        tampon.assign(boy, 0);
+        auto* m = reinterpret_cast<D3D12_MESSAGE*>(tampon.data());
+        if (FAILED(iletiKuyrugu_->GetMessage(i, m, &boy))) continue;
+        const char* duzey = "bilgi";
+        switch (m->Severity) {
+            case D3D12_MESSAGE_SEVERITY_CORRUPTION:
+            case D3D12_MESSAGE_SEVERITY_ERROR:
+                ++k.hata;
+                duzey = m->Severity == D3D12_MESSAGE_SEVERITY_ERROR ? "HATA" : "BOZULMA";
+                break;
+            case D3D12_MESSAGE_SEVERITY_WARNING:
+                ++k.uyari;
+                duzey = "uyarı";
+                break;
+            default:
+                ++k.bilgi;
+                break;
+        }
+        if (m->Severity <= D3D12_MESSAGE_SEVERITY_WARNING && k.ornekler.size() < 12) {
+            const SIZE_T u = m->DescriptionByteLength > 0 ? m->DescriptionByteLength - 1 : 0;
+            k.ornekler.push_back(std::string(duzey) + " #" + std::to_string(static_cast<int>(m->ID)) + ": " +
+                                 std::string(m->pDescription ? m->pDescription : "", m->pDescription ? u : 0));
+        }
+    }
+    k.dusen = iletiKuyrugu_->GetNumMessagesDiscardedByMessageCountLimit();
+    return k;
+}
+
 bool Grafik::Baslat(bool warpZorla, std::string& hata) {
     UINT fabrikaBayragi = 0;
 #ifdef OP4_HATA_AYIKLAMA
-    {
+    katmanIste_ = true;
+#endif
+    if (katmanIste_) {
         ComPtr<ID3D12Debug> d;
-        if (SUCCEEDED(D3D12GetDebugInterface(CIK(d)))) {
+        const HRESULT h = D3D12GetDebugInterface(CIK(d));
+        katmanHr_ = static_cast<long>(h);
+        if (SUCCEEDED(h)) {
             d->EnableDebugLayer();
+            katmanEtkin_ = true;
             fabrikaBayragi |= DXGI_CREATE_FACTORY_DEBUG;
+            Gunluk("D3D12 hata ayıklama katmanı açıldı");
+        } else {
+            Gunluk("Uyarı: D3D12 hata ayıklama katmanı bu makinede yok (%s); katmansız sürülüyor", HrMetni(h).c_str());
         }
     }
-#endif
     HRESULT hr = CreateDXGIFactory2(fabrikaBayragi, CIK(fabrika_));
+    if (FAILED(hr) && fabrikaBayragi != 0) {
+        // DXGI hata ayıklama bileşeni (dxgidebug.dll) ayrı kurulabilir; yoksa yalnız D3D12 katmanıyla sürülür.
+        Gunluk("Uyarı: DXGI hata ayıklama fabrikası açılamadı (%s)", HrMetni(hr).c_str());
+        hr = CreateDXGIFactory2(0, CIK(fabrika_));
+    }
     if (FAILED(hr)) {
         hata = "DXGI fabrikası oluşturulamadı: " + HrMetni(hr);
         return false;
@@ -160,6 +220,10 @@ bool Grafik::Baslat(bool warpZorla, std::string& hata) {
     if (!aygit_) {
         hata = "Direct3D 12 aygıtı oluşturulamadı (uygun bağdaştırıcı yok)";
         return false;
+    }
+    if (katmanEtkin_ && SUCCEEDED(aygit_.As(&iletiKuyrugu_))) {
+        iletiKuyrugu_->SetMessageCountLimit(4096);
+        iletiKuyrugu_->SetMuteDebugOutput(FALSE);
     }
     DXGI_ADAPTER_DESC1 t{};
     bagdastirici_->GetDesc1(&t);

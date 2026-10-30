@@ -1,9 +1,13 @@
 ﻿; op4 kurulum betiği (Inno Setup 6). UTF-8 (BOM'lu) kaydedilmelidir; Türkçe metinler için gereklidir.
-; Derleme (CI):  ISCC.exe /DSurum=0.1.0 /DPaket=<paket klasörü> /DCikti=<çıktı klasörü> op4\kurulum\op4.iss
+; Derleme (CI):  ISCC.exe /DSurum=0.0.1 /DPaket=<paket> /DCikti=<çıktı> [/DSihirbaz=<klasör>] op4\kurulum\op4.iss
 ; Paket klasörü: op4.exe, kimlik\, python\ (gömülü CPython + numpy/sympy), motor\ (hesap motoru .py + .pyc).
+; Sürüm X.Y.Z: CI'da "op4-vX.Y.Z" etiketinden, etiketsiz derlemede op4/CMakeLists.txt OP4_TABAN_SURUM'dan gelir.
+; Çıktı: op4-setup-<sürüm>.exe.
+; Sihirbaz: op4/araclar/kimlik_uret.py --sihirbaz <klasör> ile Opus Fortis kimliğinden üretilen BMP'ler (yedi DPI
+; ölçeği); verilmezse kurulum aracının varsayılan görselleri kullanılır.
 
 #ifndef Surum
-  #define Surum "0.1.0"
+  #define Surum "0.0.1"
 #endif
 #ifndef Paket
   #define Paket "..\..\paket"
@@ -32,9 +36,15 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\op4.exe
 UninstallDisplayName=op4 {#Surum}
 OutputDir={#Cikti}
-OutputBaseFilename=op4-setup
+OutputBaseFilename=op4-setup-{#Surum}
 SetupIconFile={#Simge}
 WizardStyle=modern
+; Karşılama sayfası açık: sol paneldeki kimlik görseli kurulumun başında görünür.
+DisableWelcomePage=no
+#ifdef Sihirbaz
+WizardImageFile={#Sihirbaz}\sihirbaz-buyuk-100.bmp,{#Sihirbaz}\sihirbaz-buyuk-125.bmp,{#Sihirbaz}\sihirbaz-buyuk-150.bmp,{#Sihirbaz}\sihirbaz-buyuk-175.bmp,{#Sihirbaz}\sihirbaz-buyuk-200.bmp,{#Sihirbaz}\sihirbaz-buyuk-225.bmp,{#Sihirbaz}\sihirbaz-buyuk-250.bmp
+WizardSmallImageFile={#Sihirbaz}\sihirbaz-kucuk-100.bmp,{#Sihirbaz}\sihirbaz-kucuk-125.bmp,{#Sihirbaz}\sihirbaz-kucuk-150.bmp,{#Sihirbaz}\sihirbaz-kucuk-175.bmp,{#Sihirbaz}\sihirbaz-kucuk-200.bmp,{#Sihirbaz}\sihirbaz-kucuk-225.bmp,{#Sihirbaz}\sihirbaz-kucuk-250.bmp
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 LZMANumBlockThreads=4

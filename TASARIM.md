@@ -253,3 +253,75 @@ Aks verisi tablosu (`tablolar.py` "Akslar" / "Aks sistemleri"; ad değişince ba
 Z aksları (kat dışı Saçak, Mahya, Kren dahil), önden cephede Y aksları, yandan kesitte X aksları; PgUp / PgDn komşu düzleme geçer.
 Çizim araçları: `docs/bina_cizim.js` (çubuk çiz, hızlı kolon / kiriş / çapraz / panel, eğik çubuk, makas, beşik çerçeve, aşık,
 kren yolu, mesnet, yük ata, düzenleme ve değiştirme komutları).
+
+## §20 op4 mimarisi (*taslak*; Faz 0)
+
+op4, Opus Fortis için yerel Windows yapısal modelleme ve analiz programıdır (web sayfası değil). Bağlayıcı belirtim, gerekçeler ve
+aşamalı plan [`op4/MIMARI.md`](op4/MIMARI.md)'dedir; bu bölüm onun §1, §4 ve §8'inin özetidir. Çelişkide MIMARI.md geçerlidir.
+Faz 0 iskeleti (`op4/`, `.github/workflows/op4.yml`) CI'da uçtan uca çalışır; aşağıdaki hedef mimari Faz 1'den itibaren kurulur.
+
+### 20.1 Kararlar (MIMARI §1)
+
+| Konu | Karar |
+|---|---|
+| Ürün | `op4.exe` (arayüz; C++20, statik CRT) ve `op4motor.exe` (Python barındırıcısı; ana + tembel yardımcı süreç). Kurulum `op4-setup-<sürüm>.exe` (Inno Setup; lisans doğrulanır, yedek NSIS); sürüm `op4-vX.Y.Z` etiketinden. Açılışta Opus Fortis logolu açılış ekranı. |
+| Arayüz | Dear ImGui (docking) + Win32 kabuk; yerel dosya ve görev pencereleri. Türkçe arayüz, ondalık virgül, kN ve m. |
+| Grafik | Doğrudan Direct3D 12; donanımda MSAA 8×, WARP'ta 4×; ters-Z sonsuz uzak düzlem (D32); kamera-göreli koordinat, örneklenmiş kesit ağları, sabit piksel kalınlıklı çizgiler. |
+| Gezinme | Sol sürükle kaydırır, Shift + sol sürükle döndürür, tekerlek imlece doğru yakınlaştırır; hesap mutlak çapaya göredir (kayma ≤ 0,0001 px ölçüldü). |
+| Hesap motoru | Kökteki Python motoru değişmeden; gömülü CPython ayrı süreçte, protokol `web_kopru.calistir` JSON'u (§20.3). |
+| Model çekirdeği | QuickJS-ng; `docs/` altındaki saf JS modülleri (`model_ops`, `aks_sistemi`, `ifc_disari` …) değişmeden çalışır, model otoritesidir. |
+| Belge içerikleri | Dersler, rapor önizleme ve adım adım matematik ayrı bir "Belge penceresi"nde (yerel dosyalar, ağ yok). |
+| Proje dosyası | `.op4` (ZIP); Kaydet, Farklı kaydet, Aç, otomatik kayıt, kurtarma, son dosyalar. Pencere başına bir proje. |
+| IFC | Dışa aktarma Faz 1 (`ifc_disari.js`), içe aktarma Faz 6 (isteğe bağlı bileşen). |
+| Ağ ±%2 | Görüntü ağı: analitik dış çizgi + LOD; analiz ağı: `ag_eniyile.py` (Richardson, GCI). |
+| CI | Windows işi `windows-2025` (derle, WARP ekran görüntüleri, gerçek pencere, kurulum / kaldırma), etikette Release; ekran görüntüleri ve `OP4OLCUM` ölçümleri günlüğe yazılır. |
+
+### 20.2 Üst düzey yapı (MIMARI §4)
+
+```
+op4.exe  (pencere başına bir proje)
+  UI iş parçacığı : Win32 döngüsü → girdi birleştirme → ImGui → komut yöneticisi → D3D12
+  Çekirdek        : QuickJS-ng bağlamı (model otoritesi, geri al yığını)
+  Motor G/Ç       : boru çiftleri ↔ op4motor süreçleri; yanıtlar UI kuyruğuna
+  İş havuzu       : kesit ağı / LOD, BVH, zip / PNG, öznitelik zenginleştirme, IFC ağı
+      │ boru çifti (4 B uzunluk + UTF-8 JSON)          │                         │ (Faz 5)
+  op4motor "ana": op4_sunucu.py, çözüm önbelleği    op4motor "yardımcı" (tembel)    Belge penceresi
+```
+
+- **Düzenleme:** komut noktaları toplar (yakalama C++ BVH'de) → önizleme yalnız üst katmanda → işlemede çekirdeğe tek işlem
+  (`uygula(islem, parametreler)`) → çekirdek eklenen / silinen / değişen kümeleri döndürür → UI yalnız değişen örnekleri yazar,
+  sonuçları "eski" işaretler, otomatik kaydı kurar.
+- **Çözüm:** F5 → çekirdekten bina metni → ana motora `bina_coz` (`anlat: false`) → `SonucOzeti`; ayrıntılar istendikçe
+  `cozum_kimligi` ile.
+- **Proje durumu:** dosya yolu ve kirli bayrağı, çekirdek bağlamı, değişmez sahne anlığı ve sütunlu öznitelik tablosu, seçim ve
+  süzgeçler, görünümler, sonuç özeti, GPU kaynakları. Eleman kimliği `{tur, no, alt}`.
+
+### 20.3 Hesap motoru tümleşimi (MIMARI §8)
+
+- **Süreç:** `op4motor.exe` (≈ 150 satır C++) geçersiz std tutamaçlarını boşaltır, gömülü Python dosyalarını denetler (eksikse
+  okunur hata, `Py_FatalError` yok), BLAS iş parçacığı sayısını ayarlar (ana: çekirdek − 1, yardımcı: 1) ve
+  `Py_Main(-X utf8 -B -m op4_sunucu --istek … --yanit … --rol ana|yardimci)` çağırır. Yalıtımı `._pth` sağlar.
+- **Sunucu** (`op4/motor/op4_sunucu.py`): stdout / stderr ve fd 1–2 günlüğe yönlendirilir (motordaki `print` protokolü bozmaz);
+  `SIGINT` işleyicisi kurulur; `web_kopru` içe aktarılınca `hazir` gönderilir; istekler ana iş parçacığında sırayla
+  `calistir()` ile işlenir; okuyucu iş parçacığı `iptal`te `_thread.interrupt_main()`, `kapat`ta düzgün çıkış yapar.
+- **Protokol:** miras alınan iki anonim boru; çerçeve 4 bayt küçük-endian uzunluk + UTF-8 JSON (≤ 512 MB). UI → motor
+  `{"tur":"istek","id","istek":{islem, girdi, ayarlar}}`, `{"tur":"iptal","id"}`, `{"tur":"kapat"}`; motor → UI `hazir`,
+  `durum`, `ilerleme` (Faz 5), `yanit` (`calistir` metni olduğu gibi, yeniden ayrıştırılmaz), `gunluk`. İstek gövdesi web
+  isteğiyle birebir aynıdır (§4 ve `docs/web_kopru.py` şemaları bağlayıcıdır).
+- **Yönlendirme:** ana süreç bina çözümü, kombinasyon, tasarım, kesit önerisi, eleman bilgisi, rapor, tablolar, alan, yük yolu,
+  `bina_kimlik`, `bina_ag_eniyile`; yardımcı süreç matris işlemleri, dersler, yardım, sonlu eleman, kütüphane, şablonlar,
+  deprem önizleme, `ifc_iceri`.
+- **İptal ve sınırlar:** iptal yanıtı `{"hata": "İşlem iptal edildi.", "hata_turu": "iptal"}`; 5 s içinde yanıt yoksa süreç
+  sonlandırılıp yeniden başlatılır (≈ 0,5 s). Zaman aşımı yok, ilerleme görünür; bellek tavanı Job Object ile (varsayılan %60);
+  `id` eşlemesiyle eski yanıtlar atılır.
+- **Paket:** `python\` (CPython embeddable, numpy, `._pth`), saf paketler önceden derlenmiş `.pyc` ile, `motor\` (kök motor
+  modülleri, `web_kopru.py`, `op4_sunucu.py`); isteğe bağlı `bilesen\ifc\`, `bilesen\seyrek\`. Kurulum yolu Türkçe karakter ve
+  boşluk içerebilir (CI `C:\op4 dene ŞĞİı` yoluna kurar).
+- **Motorda yalnız eklemeli değişiklik:** varsayılanlar bugünkü davranışı korur (`anlat` varsayılan true, `bina_kimlik`,
+  iptal türü, `ayarlar.sd_siniri`, ilerleme kancası, ürün adı parametresi; seyrek çözüm yolu ve genel modelde radye /
+  mütemadi temel ilgili fazlarda). `pytest testler` ve `node --test testler/js/*.test.js` değişmeden geçer.
+
+Uygulayan (Faz 0): `op4/kaynak/` (C++ iskeleti; motor şimdilik süreç içi `motor.cpp`, `--test-motor` tanı kipi), `op4/kurulum/op4.iss`,
+`op4/araclar/` (`python_hazirla.py`, `kimlik_uret.py`, `gunluk_png_yaz.py`, `gunluk_png_coz.py`, `ci_bekle.sh`),
+`.github/workflows/op4.yml`. Kilitleyen: `testler/test_op4_araclar.py` (günlük protokolü, iş akışı sözleşmesi, sürüm tek kaynağı,
+sihirbaz görselleri), `testler/test_program_adi_yok.py` (op4'ün C++, HLSL, CMake ve kurulum dosyaları dahil), Windows CI.

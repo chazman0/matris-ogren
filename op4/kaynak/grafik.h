@@ -4,6 +4,7 @@
 #pragma once
 
 #include <d3d12.h>
+#include <d3d12sdklayers.h>
 #include <dxgi1_6.h>
 #include <windows.h>
 #include <wrl/client.h>
@@ -28,6 +29,18 @@ struct SahneAyari {
     bool izgara = true;
 };
 
+// D3D12 hata ayıklama katmanı (d3d12SDKLayers.dll: Windows'un isteğe bağlı "Graphics Tools" özelliği ya da Agility SDK).
+// Yoklama: katman bu makinede var mı (`var`, `hr`). Etkin: `--hata-katmani` ile açıldı; ileti kuyruğundaki iletiler
+// önem düzeyine göre sayılır (CORRUPTION + ERROR → hata, WARNING → uyarı, INFO + MESSAGE → bilgi).
+struct HataKatmani {
+    bool var = false;
+    bool etkin = false;
+    long hr = 0;
+    unsigned hata = 0, uyari = 0, bilgi = 0;
+    unsigned long long dusen = 0;  // ileti sınırı yüzünden saklanmayanlar
+    std::vector<std::string> ornekler;  // ilk birkaç hata / uyarı
+};
+
 // Görüş alanı (piksel): sahnenin çizileceği dikdörtgen (arayüz panellerinin dışında kalan merkez alan).
 struct GorusAlani {
     float x = 0, y = 0, g = 0, y2 = 0;  // y2 = yükseklik
@@ -41,6 +54,9 @@ public:
 
     ~Grafik();
 
+    static HataKatmani HataKatmaniYokla();             // katmanı açmadan varlığını denetler
+    void HataKatmaniIste(bool e) { katmanIste_ = e; }  // Baslat'tan önce; OP4_HATA_AYIKLAMA derlemesinde hep açık
+    HataKatmani HataKatmaniIletileri() const;          // etkinse ileti kuyruğunun özeti
     bool Baslat(bool warpZorla, std::string& hata);
     bool SahneYukle(const Ag& ag, std::string& hata);
     bool TakasZinciriKur(HWND pencere, UINT g, UINT y, std::string& hata);
@@ -121,6 +137,11 @@ private:
     // sahne tamponları
     ComPtr<ID3D12Resource> koseTamponu_, indisTamponu_, kenarTamponu_, eksenTamponu_;
     UINT indisSayisi_ = 0, kenarSayisi_ = 0, eksenSayisi_ = 0;
+
+    // hata ayıklama katmanı
+    bool katmanIste_ = false, katmanEtkin_ = false;
+    long katmanHr_ = 0;
+    ComPtr<ID3D12InfoQueue> iletiKuyrugu_;
 
     std::string bagdastiriciAdi_;
     bool warp_ = false;

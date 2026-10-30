@@ -6,7 +6,7 @@ Bu sürüm iki girdiyle hazırlandı: Taslak 1'in bağımsız eleştirel incelem
 
 > **Ürün adı kuralı.** `testler/test_program_adi_yok.py` depoda başka yazılım ürünlerinin adını yasaklar. Bu belge ve op4'ün bütün metinleri (kod yorumları, arayüz, belgeler, katalog JSON'ları) bu kurala uyar. Karşılaştırmalarda "ticari CAD ve çelik detay programları", "yaygın yapı analiz programları" denir. Dil, kütüphane, standart ve platform adları serbesttir.
 >
-> **Şu an kırık:** denemenin `op4/README.md` 4. satırı iki yasak ürün adı içeriyor. `pytest testler/test_program_adi_yok.py` bu dalda başarısız; bu yerelde doğrulandı. `testler.yml` her itmede koştuğu için dalın Testler işi kırmızı olur. Faz 0 kapanışında düzeltilir.
+> **Düzeltildi (Faz 0 kapanışı):** denemenin `op4/README.md` 4. satırındaki iki yasak ürün adı kaldırıldı. Bekçi testi artık op4'ün C++, HLSL, CMake, kaynak, bildirim ve kurulum dosyalarını (`.cpp .h .hpp .hlsl .cmake .iss .nsi .rc .in .manifest .ini .ps1 .sh`) ve `op4/`, `.github/` altındaki bütün metin dosyalarını da tarar.
 
 ---
 

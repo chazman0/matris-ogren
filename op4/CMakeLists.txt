@@ -7,7 +7,21 @@
 #   python op4/araclar/python_hazirla.py --paket paket                # gömülü Python + numpy/sympy + motor/*.py
 # Yerel sözdizimi denetimi (Linux, MinGW-w64): op4/araclar/mingw.cmake araç zinciri dosyasıyla.
 cmake_minimum_required(VERSION 3.24)
-project(op4 VERSION 0.1.0 LANGUAGES C CXX)
+
+# Sürüm X.Y.Z. Etiketsiz derlemede taban sürüm; CI'da "op4-vX.Y.Z" etiketinden -DOP4_SURUM=X.Y.Z ile verilir
+# (op4.exe sürüm bilgisi, açılış ekranı ve op4-setup-<sürüm>.exe aynı değeri taşır). CI taban sürümü bu satırdan okur.
+set(OP4_TABAN_SURUM "0.0.1")
+set(OP4_SURUM "" CACHE STRING "op4 sürümü (X.Y.Z); boşsa taban sürüm")
+if(OP4_SURUM STREQUAL "")
+  set(_op4_surum "${OP4_TABAN_SURUM}")
+else()
+  set(_op4_surum "${OP4_SURUM}")
+endif()
+if(NOT _op4_surum MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "OP4_SURUM X.Y.Z biçiminde olmalı (ör. 0.1.0): '${_op4_surum}'")
+endif()
+project(op4 VERSION ${_op4_surum} LANGUAGES C CXX)
+message(STATUS "op4 sürümü: ${PROJECT_VERSION}")
 
 if(NOT WIN32)
   message(FATAL_ERROR "op4 yalnız Windows için derlenir (MSVC x64; sözdizimi denetimi için MinGW-w64).")

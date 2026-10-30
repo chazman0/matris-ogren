@@ -9,6 +9,8 @@
 //   op4.exe --test-pencere 8                  uygulamayı (açılış + motor + pencere) çalıştırır, betikli kaydırma /
 //                                             döndürme / yakınlaşma uygular, ölçer ve 8 s sonra kapanır
 //   ortak:  --gunluk dosya.log   --warp (uygulamada donanım yerine WARP)   --motorsuz (Python başlatılmaz)   --surum
+//           --hata-katmani (D3D12 hata ayıklama katmanı; varsa açılır; --test-ekran'da hata iletisi testi düşürür)
+// Ölçümler günlüğe "OP4OLCUM anahtar=değer …" satırları olarak da yazılır (MIMARI §20.3).
 // Çıkış kodları: 0 başarılı, 1 kullanım hatası, 2 test hatası, 3 zaman aşımı, 5 çökme.
 #include <windows.h>
 #include <shellapi.h>
@@ -16,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -41,7 +44,7 @@ namespace {
 
 struct Secenekler {
     std::wstring testEkran, testAcilis, gunluk, proje;
-    bool testMotor = false, warp = false, surum = false, arayuzsuz = false, motorsuz = false;
+    bool testMotor = false, warp = false, surum = false, arayuzsuz = false, motorsuz = false, hataKatmani = false;
     int g = 960, y = 540;
     float olcek = 1.0f;
     int testPencere = 0;  // saniye
@@ -90,6 +93,7 @@ bool Ayristir(Secenekler& s, std::string& hata) {
         else if (k == L"--arayuzsuz") s.arayuzsuz = true;
         else if (k == L"--motorsuz") s.motorsuz = true;
         else if (k == L"--surum") s.surum = true;
+        else if (k == L"--hata-katmani") s.hataKatmani = true;
         else if (k == L"--test-pencere") {
             std::wstring v;
             deger(v);
@@ -114,6 +118,20 @@ bool Ayristir(Secenekler& s, std::string& hata) {
     }
     LocalFree(a);
     return tamam;
+}
+
+std::string Bicim(const char* bicim, ...)
+#if defined(__GNUC__)
+    __attribute__((format(gnu_printf, 1, 2)))
+#endif
+    ;
+std::string Bicim(const char* bicim, ...) {
+    va_list a;
+    va_start(a, bicim);
+    char b[1024];
+    const int n = std::vsnprintf(b, sizeof(b), bicim, a);
+    va_end(a);
+    return std::string(b, n < 0 ? 0 : std::min(static_cast<size_t>(n), sizeof(b) - 1));
 }
 
 LONG WINAPI CokmeYakala(EXCEPTION_POINTERS* e) {
@@ -159,6 +177,8 @@ int MotorTesti() {
     Gunluk("SÜRELER: DLL yükleme %.1f ms | Py_InitializeEx %.1f ms | import web_kopru %.1f ms | surum_json %.1f ms | "
            "bina_sablonlar %.1f ms | TOPLAM motor açılışı %.1f ms",
            d.msDll, d.msBaslat, d.msIceAktar, d.msSurum, d.msSablon, d.msToplam);
+    GunlukHam(Bicim("OP4OLCUM senaryo=motor dll_ms=%.1f baslat_ms=%.1f ice_aktar_ms=%.1f sablonlar_ms=%.1f toplam_ms=%.1f "
+                    "sablon=%d", d.msDll, d.msBaslat, d.msIceAktar, d.msSablon, d.msToplam, d.sablonSayisi));
 
     bool tamam = d.sablonSayisi > 0 && d.surumJson.find("\"python\"") != std::string::npos;
     // Kuyruk üzerinden iki gidiş-dönüş daha (arayüz iş parçacığından çağrı yolu).
@@ -192,13 +212,28 @@ void ImGuiBaglamiKur(float olcek, const char* ini) {
     ArayuzYazitipi(olcek);
 }
 
+// D3D12 hata ayıklama katmanının varlığı (MIMARI D13): her ekran testinde yoklanır ve günlüğe yazılır.
+void HataKatmaniYaz(const Grafik* g) {
+    const HataKatmani y = Grafik::HataKatmaniYokla();
+    GunlukHam(Bicim("OP4OLCUM hata_katmani=%s hr=0x%08lX", y.var ? "var" : "yok", static_cast<unsigned long>(y.hr)));
+    if (!g) return;
+    const HataKatmani k = g->HataKatmaniIletileri();
+    if (!k.etkin) return;
+    GunlukHam(Bicim("OP4OLCUM hata_katmani_iletileri hata=%u uyari=%u bilgi=%u dusen=%llu", k.hata, k.uyari, k.bilgi,
+                    k.dusen));
+    for (const std::string& o : k.ornekler) Gunluk("  D3D12 %s", o.c_str());
+}
+
 int EkranTesti(const Secenekler& s) {
     TestKipi(600);
-    Gunluk("--test-ekran: %dx%d, WARP, %s", s.g, s.y, s.arayuzsuz ? "arayüzsüz" : "arayüzlü");
+    Gunluk("--test-ekran: %dx%d, WARP, %s%s", s.g, s.y, s.arayuzsuz ? "arayüzsüz" : "arayüzlü",
+           s.hataKatmani ? ", hata ayıklama katmanı istendi" : "");
     double t0 = GecenMs();
     Grafik g;
+    g.HataKatmaniIste(s.hataKatmani);
     std::string hata;
     if (!g.Baslat(true, hata)) {
+        HataKatmaniYaz(nullptr);
         Gunluk("EKRAN TESTİ BAŞARISIZ: %s", hata.c_str());
         return 2;
     }
@@ -271,9 +306,19 @@ int EkranTesti(const Secenekler& s) {
     }
     ImGui_ImplDX12_Shutdown();
     ImGui::DestroyContext();
+    g.GpuBekle();
     Gunluk("Aygıt + boru hatları %.1f ms; toplam %.1f ms; PNG: %s", tAygit, GecenMs() - t0, Utf8(yol).c_str());
+    GunlukHam(Bicim("OP4OLCUM senaryo=ekran gen=%d yuk=%d arayuz=%d aygit_ms=%.1f toplam_ms=%.1f model_yuzde=%.1f msaa=%u",
+                    s.g, s.y, s.arayuzsuz ? 0 : 1, tAygit, GecenMs() - t0, oran, g.OrnekSayisi()));
+    HataKatmaniYaz(&g);
+    const HataKatmani katman = g.HataKatmaniIletileri();
     bool tamam = oran > 2.0;
-    Gunluk(tamam ? "EKRAN TESTİ BAŞARILI" : "EKRAN TESTİ BAŞARISIZ (model görünmüyor)");
+    if (katman.etkin && katman.hata > 0) {
+        Gunluk("Hata ayıklama katmanı %u hata iletisi verdi", katman.hata);
+        tamam = false;
+    }
+    Gunluk(tamam ? "EKRAN TESTİ BAŞARILI"
+                 : (oran > 2.0 ? "EKRAN TESTİ BAŞARISIZ (hata ayıklama katmanı)" : "EKRAN TESTİ BAŞARISIZ (model görünmüyor)"));
     return tamam ? 0 : 2;
 }
 
@@ -590,6 +635,7 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     std::string hata;
     RECT r;
     GetClientRect(hwnd_, &r);
+    grafik_.HataKatmaniIste(s.hataKatmani);
     if (!grafik_.Baslat(s.warp, hata) || !grafik_.TakasZinciriKur(hwnd_, static_cast<UINT>(r.right), static_cast<UINT>(r.bottom), hata)) {
         acilis.Kapat();
         Gunluk("HATA: %s", hata.c_str());
@@ -695,7 +741,17 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
                yakinTamam ? "✓" : "✗");
         Gunluk("Pencere testi: motor %s", s.motorsuz ? "başlatılmadı (--motorsuz)"
                                                      : (md.basarili ? "hazır ✓" : ("HATA ✗ " + md.hata).c_str()));
-        const bool tamam = kareler > 100 && panTamam && donmeTamam && yakinTamam && (s.motorsuz || md.basarili);
+        GunlukHam(Bicim("OP4OLCUM senaryo=pencere kare=%lld ort_kare_ms=%.2f en_uzun_kare_ms=%.2f kaydirma_olcum=%d "
+                        "kaydirma_kayma_px=%.4f donme_rad=%.4f yakinlasma_kayma_px=%.4f bagdastirici_warp=%d msaa=%u",
+                        kareler, kareler > 0 ? (kareToplamMs_ - ms0) / static_cast<double>(kareler) : 0.0,
+                        kareEnBuyukMs_, betik_.panOlcum, betik_.panHata, betik_.donme, betik_.yakinHata,
+                        grafik_.Warp() ? 1 : 0, grafik_.OrnekSayisi()));
+        bool tamam = kareler > 100 && panTamam && donmeTamam && yakinTamam && (s.motorsuz || md.basarili);
+        if (s.hataKatmani) {
+            HataKatmaniYaz(&grafik_);
+            const HataKatmani k = grafik_.HataKatmaniIletileri();
+            tamam = tamam && !(k.etkin && k.hata > 0);
+        }
         Gunluk(tamam ? "PENCERE TESTİ BAŞARILI" : "PENCERE TESTİ BAŞARISIZ");
         kod = tamam ? 0 : 2;
     }
