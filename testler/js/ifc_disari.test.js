@@ -157,8 +157,8 @@ test("surum 3: çubuklar, paneller, profil türleri, uç serbestlikleri, mütema
   const t = r.tipler;
   assert.deepEqual(r.uyarilar, []);
   assert.equal(t.IFCCOLUMN, 9);              // 8 aks–kat + 1 kolon çubuğu
-  assert.equal(t.IFCBEAM, 9);                // 8 + 1
-  assert.equal(t.IFCMEMBER, 9);
+  assert.equal(t.IFCBEAM, 11);               // 8 + 3 (Ç9 ve üçgen döşeme panelinin iki kenar kirişi)
+  assert.equal(t.IFCMEMBER, 10);             // makas, aşık, çapraz + Ç11'in bağ çubuğu
   assert.equal(t.IFCSLAB, 2 + 2);            // 2 döşeme + çatı paneli (t > 0) + döşeme paneli
   assert.equal(t.IFCCOVERING, 2);            // sac çatı + cephe kaplaması
   assert.equal(t.IFCFOOTING, 4);             // 2 X + 2 Y temel kirişi
@@ -187,8 +187,12 @@ test("§13 temeller: radye (BASESLAB + plak kenarına uzanan FOOTING_BEAM), seç
   assert.match(r.metin, /IFCRECTANGLEPROFILEDEF\(\.AREA\.,'RK 0\.5x1\.2',\$,0\.5,1\.2\)/);
   assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('Kalinlik',\$,IFCPOSITIVELENGTHMEASURE\(0\.8\),\$\)/);
   const s = uret(O.surekli());
-  assert.equal(s.tipler.IFCFOOTING, 1);
+  assert.equal(s.tipler.IFCFOOTING, 2);       // X yönünde seçili 1 ve 2 aksları
   assert.match(s.metin, /IFCFOOTING\('[^']+',#\d+,'TK-1',[^\n]*\.STRIP_FOOTING\.\);/);
+  assert.match(s.metin, /IFCFOOTING\('[^']+',#\d+,'TK-2',[^\n]*\.STRIP_FOOTING\.\);/);
+  const s1 = O.surekli();
+  s1.temeller.surekli.akslar = ["1"];
+  assert.equal(uret(s1).tipler.IFCFOOTING, 1, "seçilmeyen aks atlanır");
   // b_govde = B ve h_tabla = 0 → dikdörtgen kesit
   assert.match(s.metin, /IFCRECTANGLEPROFILEDEF\(\.AREA\.,'TK 0\.8x0\.9',\$,0\.8,0\.9\)/);
   // ters T (serbest örnek: B 1,2, tabla 0,4, gövde 0,5 × 1,0): IfcTShapeProfileDef 180° döndürülmüş (başlık = tabla altta)
@@ -280,12 +284,12 @@ test("§19 aks sistemi: Z aksları, {aks, z} REF'leri, bölme/kesişim düğüml
   assert.equal(t.IFCBUILDINGSTOREY, 2);
   assert.match(r.metin, /IFCBUILDINGSTOREY\('[^']+',#\d+,'Sa\\X2\\00E7\\X0\\ak seviyesi',[^\n]*,6\.\);/, "kat kotu Z aksından (6,0 m)");
   assert.equal(t.IFCCOLUMN, 6 + 4 + 3);
-  assert.equal(t.IFCBEAM, 6 + 4 + 3);
-  assert.equal(t.IFCMEMBER, 2 + 4);
+  assert.equal(t.IFCBEAM, 9 + 4 + 4 + 3);    // mertekler (A tarafı aşık noktasında bölünmüş) + saçak kirişleri + KANAT-B + KUBBE
+  assert.equal(t.IFCMEMBER, 4 + 4);          // aşıklar (2 mertek ortası + 2 mahya) + 4 yarım çapraz
   assert.equal(t.IFCCOVERING, 2);
   assert.equal(t.IFCFOOTING, 13);
   assert.equal(t.IFCSTRUCTURALPOINTCONNECTION, 15 + 3 + 1 + 8 + 6);
-  assert.equal(t.IFCSTRUCTURALCURVEMEMBER, 32);
+  assert.equal(t.IFCSTRUCTURALCURVEMEMBER, 41);
   // ızgaralar: GLOBAL ve KANAT-B üç Z aksında (±0.00, Saçak, Mahya), KUBBE kendi iki Z aksında
   assert.equal(t.IFCGRID, 3 + 3 + 2);
   assert.equal(t.IFCGRIDAXIS, 3 * 6 + 3 * 4 + 2 * 4);
@@ -320,7 +324,7 @@ test("§19: tanımsız sistem/aks REF'i uyarı verir, dosya yine geçerli", func
   const r = uret(m);
   assert.ok(r.uyarilar.some(function (u) { return /YOK/.test(u); }));
   assert.ok(r.uyarilar.some(function (u) { return /Çubuk 99/.test(u); }));
-  assert.equal(r.tipler.IFCBEAM, 13);
+  assert.equal(r.tipler.IFCBEAM, 20);
 });
 
 test("model_ops.genellestir çıktısı (kaynak.aks_kat): aks–kat modeliyle aynı sayılar, D/C kolon no'suyla eşlenir", function () {
@@ -359,6 +363,30 @@ test("veri ile: yük durumları, birleşimler (katsayı ilişkisi), D/C özelli�
   assert.match(r.metin, /IFCSTRUCTURALLOADSINGLEFORCE\('G \/ N1001',0\.,0\.,-15\.75,0\.,0\.,0\.\)/, "kolon öz ağırlığı üst düğümde");
   assert.match(r.metin, /IFCSTRUCTURALCURVEACTION\([^\n]*\.POLYGONAL\.\);/, "döşeme payı üçgen (parçalı doğrusal)");
   assert.match(r.metin, /IFCSTRUCTURALLOADCONFIGURATION\(/);
+});
+
+test("aks–kat kar (S): çatı katı döşeme payı s·lx/2 (veri.kar), kirişin S ek yükü düzgün; alt kat döşemesine kar yok", function () {
+  const pb = [[0, 2.5, 0, 1], [2.5, 5, 1, 0]];
+  const veri = {
+    kombinasyonlar: [], durumlar: { G: {}, Q: {}, S: {} }, kar: { s: 0.6, kat: 2 },
+    yukler: { kirisler: [{ no: 21, L: 6, kN_m: { oz: 3.0, duvar: 0, ek_G: 0, ek_Q: 0 }, S: { doseme: 0, ek: 9, toplam_kN: 9 } }], kolonlar: [],
+      // E10: 1. kat kirişi (kar yok), E14: çatı kirişi 22 (lx = 5 → tepe 0,6·5/2 = 1,5 kN/m; üçgen 5 m → 3,75 kN); E13 = kiriş 21
+      dosemeler: [{ no: 1, kat: 1, lx: 5, paylar: [{ eleman: 10, tepe_g: 5.0, tepe_q: 2.0, parcalar_birim: pb }] },
+        { no: 2, kat: 2, lx: 5, paylar: [{ eleman: 14, tepe_g: 4.0, tepe_q: 1.0, parcalar_birim: pb }] }] },
+  };
+  const r = MatrisIFC.uretAyrintili(O.temel(), veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  const b = bilesenler(r);
+  yakin(b.top.S.slice(0, 3), [0, 0, -(3.75 + 9)], "S");
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('S \/ E13',\$,\$,-1\.5,\$,\$,\$\)/, "kiriş S ek yükü 9 kN / 6 m");
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('S \/ E14 @2\.5',\$,\$,-1\.5,\$,\$,\$\)/, "çatı döşeme payı tepe 1,5 kN/m");
+  assert.doesNotMatch(r.metin, /'S \/ E10/);
+  // motorun tepe_s'i varsa o kullanılır
+  veri.yukler.dosemeler[1].paylar[0].tepe_s = 2;
+  const r2 = MatrisIFC.uretAyrintili(O.temel(), veri, ZAMAN);
+  Object.assign(r2, stepDenetle(r2.metin));
+  yakin(bilesenler(r2).top.S.slice(0, 3), [0, 0, -(5 + 9)], "S (tepe_s)");
 });
 
 test("yük grupları çözümsüz: bina yük durumlarından (G, Q + açık S/W/E)", function () {
@@ -445,11 +473,8 @@ test("basitProfil: motorun ad dilbilgisi (BORU/KUTU/L/2L/UPN; x, X, ×; büyük/
   assert.deepEqual(B("L 100x100x10"), L);
   assert.equal(L.boyutlar.r1, 0.012);           // EN 10056-1 kök yarıçapı, uç r1/2
   assert.equal(L.boyutlar.r2, 0.006);
-  const Le = B("L 100x50x8");                    // farklı kollu (keskin köşe)
-  assert.equal(Le.tur, "L");
-  assert.equal(Le.h, 0.1);
-  assert.equal(Le.b, 0.05);
-  assert.ok(Le.Iy > Le.Iz);
+  // motor (tasarim._ad_coz) yalnız eşit kollu korniyeri kabul eder: farklı kollu ad null (C9)
+  assert.equal(B("L 100x50x8"), null);
   const L2 = B("2L 70x7 s=10");
   assert.equal(L2.tur, "2L");
   assert.equal(L2.ad, "2L 70x70x7 s=10");
@@ -461,9 +486,19 @@ test("basitProfil: motorun ad dilbilgisi (BORU/KUTU/L/2L/UPN; x, X, ×; büyük/
   assert.equal(U.tur, "U");
   assert.deepEqual([U.h, U.b, U.boyutlar.tw, U.boyutlar.tf], [0.2, 0.075, 0.0085, 0.0115]);
   assert.deepEqual(B("upn200"), U);
+  // motor gibi int(round(n)): tamsayı olmayan boy en yakın tablo boyuna (yarımda çifte: Python round)
+  assert.equal(B("UPN 200.4").boyutlar.h, 0.2);
+  assert.deepEqual(B("UPN 200.4"), U);
+  assert.deepEqual(B("UPN 199.6"), U);
+  assert.deepEqual(B("UPN 200.5"), U, "200.5 → 200 (çifte)");
+  assert.equal(B("UPN 219.5").ad, "UPN 220");
+  assert.equal(B("UPN 220.5").ad, "UPN 220");
+  assert.equal(B("UPN 221.5"), null, "221.5 → 222 (çift): tabloda yok");
+  assert.equal(B("L 100x100x10").ad, "L 100x100x10");
+  assert.equal(B("2L 100x100x10").ad, "2L 100x100x10 s=10");
   // tanınmayanlar → null
-  [null, undefined, "", {}, 12, "IPE 300", "HEA 200", "UPN 210", "UPN 200.5", "BORU 100", "BORU 100x60", "KUTU 10x6", "L 20x12",
-    "2L 100x50x8 s=10", "XYZ 1x2", "BORU 168.3.1x6", "KUTU 100x50x5x3", "L 100x0"].forEach(function (a) {
+  [null, undefined, "", {}, 12, "IPE 300", "HEA 200", "UPN 210", "UPN 209.6", "BORU 100", "BORU 100x60", "KUTU 10x6", "L 20x12",
+    "2L 100x50x8 s=10", "L 100x80x8", "2L 100x80x8", "XYZ 1x2", "BORU 168.3.1x6", "KUTU 100x50x5x3", "L 100x0"].forEach(function (a) {
     assert.equal(B(a), null, String(a));
   });
 });
@@ -518,6 +553,41 @@ test("vute: temel I profil + derin uç profili (h + ek, üst yüz hizalı) ile I
   const ry = uret(tekCubuk(ky, "VUTE"));
   assert.equal(ry.uyarilar.length, 1);
   assert.match(ry.uyarilar[0], /Vute kesiti 'VUTE': temel kesit 'YOK' tanımsız/);
+});
+
+test("vute (K-7): KUTU ve U temelli vute konik katılı (derin uç h + ek, kutu köşe yarıçapları aynı); BORU/L/2L temelde düz katı + Pset + uyarı", function () {
+  const kes = {
+    KARE: { tip: "profil", profil: "KUTU 150x8", malzeme: "S275" }, KANAL: { tip: "profil", profil: "UPN 200", malzeme: "S275" },
+    BORU: { tip: "profil", profil: "BORU 114.3x4", malzeme: "S275" }, KOR: { tip: "profil", profil: "L 100x10", malzeme: "S275" },
+    CIFT: { tip: "profil", profil: "2L 70x7 s=10", malzeme: "S275" },
+    VK: { tip: "vute", temel: "KARE", ek_yukseklik: 0.1, boy: 1.0 }, VU: { tip: "vute", temel: "KANAL", ek_yukseklik: 0.15, derin_uc: "j" },
+    VB: { tip: "vute", temel: "BORU", ek_yukseklik: 0.1 }, VB2: { tip: "vute", temel: "BORU", ek_yukseklik: 0.2 },
+    VL: { tip: "vute", temel: "KOR", ek_yukseklik: 0.1 }, V2L: { tip: "vute", temel: "CIFT", ek_yukseklik: 0.1 },
+    VS: { tip: "vute", temel: "BORU", ek_yukseklik: 0 },
+  };
+  const m = tekCubuk(kes, "VK");
+  m.cubuklar = ["VK", "VU", "VB", "VB", "VB2", "VL", "V2L", "VS"].map(function (k, i) {
+    return { no: i + 1, i: { X: 0, Y: i, Z: 3 }, j: { X: 2, Y: i, Z: 3 }, tur: "kiris", kesit: k };
+  });
+  const r = uret(m);
+  // KUTU 150x8 (r_i = 8, r_o = 12 mm): derin uç 0,15 × 0,25, aynı et ve yarıçaplar, −ek/2 kaydırılmış
+  const dk = /#(\d+)=IFCRECTANGLEHOLLOWPROFILEDEF\(\.AREA\.,'KUTU 150x8 \(vute derin u\\X2\\00E7\\X0\\, h = 0\.25 m\)',(#\d+),0\.15,0\.25,0\.008,0\.008,0\.012\)/.exec(r.metin);
+  assert.ok(dk, "kutu derin uç profili");
+  assert.equal(nokta(r.varlik, /^(#\d+)/.exec(r.varlik[dk[2].slice(1)].govde)[1]).join(","), "0,-0.05");
+  assert.match(r.metin, new RegExp("IFCEXTRUDEDAREASOLIDTAPERED\\(#" + dk[1] + ",\\$,#\\d+,1\\.,#\\d+\\)"), "derin uç i: derin → temel");
+  // UPN 200: derin uç Depth 0,35, başlık/gövde/eğim aynı; derin uç j → temel → derin
+  const du = /#(\d+)=IFCUSHAPEPROFILEDEF\(\.AREA\.,'UPN 200 \(vute derin u\\X2\\00E7\\X0\\, h = 0\.35 m\)',(#\d+),0\.35,0\.075,0\.0085,0\.0115,0\.0115,0\.00575,0\.0798/.exec(r.metin);
+  assert.ok(du, "U derin uç profili");
+  assert.equal(nokta(r.varlik, /^(#\d+)/.exec(r.varlik[du[2].slice(1)].govde)[1]).join(","), "0,-0.075");
+  assert.match(r.metin, new RegExp("IFCEXTRUDEDAREASOLIDTAPERED\\(#\\d+,\\$,#\\d+,2\\.,#" + du[1] + "\\)"), "boy yok: çubuk boyunca, temel → derin");
+  assert.equal(r.tipler.IFCEXTRUDEDAREASOLIDTAPERED, 2);
+  // BORU/L/2L temelli vute: düz katı + Pset_MatrisVute; uyarı temel kesiti başına (kullanım sayısıyla); ek 0 → uyarı yok
+  assert.equal(r.tipler.IFCPROPERTYSET && (r.metin.match(/'Pset_MatrisVute'/g) || []).length, 8);
+  assert.deepEqual(r.uyarilar, [
+    "vute temel kesiti BORU: konik katı yazılmadı (bu kesit için konik profil yok); temel kesitli düz katı ve Pset_MatrisVute yazıldı (3 eleman).",
+    "vute temel kesiti KOR: konik katı yazılmadı (bu kesit için konik profil yok); temel kesitli düz katı ve Pset_MatrisVute yazıldı.",
+    "vute temel kesiti CIFT: konik katı yazılmadı (bu kesit için konik profil yok); temel kesitli düz katı ve Pset_MatrisVute yazıldı."]);
+  assert.match(r.metin, /IFCPROPERTYSINGLEVALUE\('DerinUcYuksekligi',\$,IFCPOSITIVELENGTHMEASURE\(0\.2143\),\$\)/, "boru: D + ek");
 });
 
 test("kesit dili: basit kesit adları, {tip, boyutlar (mm)}, 2L → IfcCompositeProfileDef; tanınmayan profil uyarısı ad başına bir kez (adetle)", function () {
@@ -703,4 +773,216 @@ test("genel model yükleri: kenar → çubuk zinciri (ters çubuk, iki FE parça
   assert.ok(Math.abs(dusey(re_).G - 55.4) < 1e-9);
   assert.equal(re_.uyarilar.length, 1);
   assert.match(re_.uyarilar[0], /düzgün yayılı eşdeğer/);
+});
+
+// ---------------------------------------------------------------------------
+// Rüzgâr, deprem, kren eylemleri (K-37, C16) ve temel öz ağırlığı (K-39, C11 oz_yuk)
+// ---------------------------------------------------------------------------
+// Yük durumu → eylem bileşkesi [FX, FY, FZ, MX, MY, MZ] (global; yayılı eylemler üye boyunca integrallenir) ve eylem sayıları
+function bilesenler(r) {
+  const v = r.varlik, top = {}, adet = {};
+  const alan = function (g) { return g.replace(/'(?:[^']|'')*'/g, "''").split(",").map(function (x) { return x === "$" ? 0 : Number(x); }); };
+  const ref = function (x) { return v[x.slice(1)]; };
+  const uyeIcin = {};
+  Object.keys(v).forEach(function (n) {
+    if (v[n].tip !== "IFCRELCONNECTSSTRUCTURALACTIVITY") return;
+    const m = /,(#\d+),(#\d+)$/.exec(v[n].govde);
+    uyeIcin[m[2]] = m[1];
+  });
+  const boy = function (uye) {       // IfcStructuralCurveMember → Reference/Edge → iki IfcVertexPoint
+    const sek = ref(/,(#\d+),\.[A-Z_]+\.,#\d+$/.exec(ref(uye).govde)[1]);
+    const temsil = ref(/\((#\d+)\)$/.exec(sek.govde)[1]);
+    const kenar = ref(/\((#\d+)\)$/.exec(temsil.govde)[1]);
+    const u = kenar.govde.split(",").map(function (t) { return nokta(v, /^(#\d+)$/.exec(ref(t).govde)[1]); });
+    return Math.hypot(u[1][0] - u[0][0], u[1][1] - u[0][1], u[1][2] - u[0][2]);
+  };
+  Object.keys(v).forEach(function (n) {
+    const e = v[n];
+    if (e.tip !== "IFCRELASSIGNSTOGROUP") return;
+    const m = /,\(([^)]*)\),\$,(#\d+)$/.exec(e.govde);
+    if (ref(m[2]).tip !== "IFCSTRUCTURALLOADCASE") return;
+    const durum = /^'[^']+',#\d+,'([^']+)'/.exec(ref(m[2]).govde)[1];
+    const t = top[durum] = top[durum] || [0, 0, 0, 0, 0, 0];
+    m[1].split(",").forEach(function (a) {
+      const x = ref(a), yk = ref(/(#\d+),\.GLOBAL_COORDS\./.exec(x.govde)[1]);
+      adet[durum + "|" + x.tip] = (adet[durum + "|" + x.tip] || 0) + 1;
+      if (x.tip === "IFCSTRUCTURALPOINTACTION") { alan(yk.govde).slice(1, 7).forEach(function (f, i) { t[i] += f; }); return; }
+      const L = boy(uyeIcin[a]);
+      if (x.tip === "IFCSTRUCTURALLINEARACTION") { alan(yk.govde).slice(1, 4).forEach(function (f, i) { t[i] += f * L; }); return; }
+      const k = /^'[^']*',\(([^)]*)\),\((.*)\)$/.exec(yk.govde);
+      const f = k[1].split(",").map(function (q) { return alan(ref(q).govde).slice(1, 4); });
+      const xs = k[2].replace(/[()]/g, "").split(",").map(Number);
+      for (let i = 0; i + 1 < xs.length; i++) for (let c = 0; c < 3; c++) t[c] += (xs[i + 1] - xs[i]) * (f[i][c] + f[i + 1][c]) / 2;
+    });
+  });
+  return { top: top, adet: adet };
+}
+function yakin(a, b, msg) {
+  a.forEach(function (x, i) { assert.ok(Math.abs(x - b[i]) < 1e-9, (msg || "") + " [" + i + "] " + x + " ≠ " + b[i] + " (" + a.join(", ") + ")"); });
+}
+function eylemliSentetik() {
+  const s = genelSentetik();
+  s.veri.durumlar = { G: {}, Q: {}, "W+X": {}, "EX+": {}, EZ: {} };
+  s.veri.kombinasyonlar = [{ ad: "1.2G+1.6K1.1a", katsayilar: { G: 1.2, "K1.1a": 1.6 }, tur: "dayanim", uygulandi: true }];
+  s.veri.ag.dugumler.push({ no: 900001, X: 3, Y: 2, Z: 3, adres: "KM/k1", kat: 1, efendi: true });
+  s.veri.ag.diyaframlar = [{ ad: "Kat 1", ana: 900001, dugumler: [1, 2, 3, 4, 5, 6], X: 3, Y: 2, Z: 3 }];
+  s.veri.yukler.eylemler = {
+    // Ç3 (iki FE parçası) boyunca +X rüzgârı 1,5 kN/m ve emme (+Z) 0,5 kN/m; N6'da 2 kN
+    "W+X": { cubuklar: [{ no: 3, yayili: [{ x1: 0, x2: 6, q1: 1.5, q2: 1.5, vek: [1, 0, 0] }, { x1: 0, x2: 6, q1: 0.5, q2: 0.5, vek: [0, 0, 1] }], tekil: [] }],
+      dugumler: [{ dugum: 6, F: [2, 0, 0, 0, 0, 0] }] },
+    // rijit diyafram: kat kuvveti ve ek dışmerkezlik burulması efendi düğümde
+    "EX+": { cubuklar: [], dugumler: [{ dugum: 900001, F: [10, 0, 0, 0, 0, -4] }] },
+    // kren: Ç1'in i ucundan 1 m'de tekerlek (düşey 75, yanal 6, fren 5 kN) → tek nokta eylemi
+    "K1.1a": { cubuklar: [{ no: 1, yayili: [], tekil: [{ x: 1, P: 75, vek: [0, 0, -1] }, { x: 1, P: 6, vek: [-1, 0, 0] }, { x: 1, P: 5, vek: [0, 1, 0] }] }],
+      dugumler: [] },
+    EZ: { cubuklar: [], dugumler: [], G_carpani: 0.4 },
+  };
+  return s;
+}
+
+test("eylemler (K-37): W çubuk yayılı (FE parçalarına, global q·vek) + düğüm yükü; EX+ diyafram merkezinde; kren tekerleği; EZ = c × G", function () {
+  const s = eylemliSentetik();
+  const r = MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  const b = bilesenler(r);
+  // G ve Q değişmedi
+  assert.ok(Math.abs(b.top.G[2] + 55.4) < 1e-9 && Math.abs(b.top.Q[2] + 74) < 1e-9);
+  // W+X: ΣFX = 1,5·6 + 2 = 11, ΣFZ = +0,5·6 = 3 (emme); E3, E4'te +X ve düşey (−Z'de ters işaretli) iki doğrultu grubu
+  yakin(b.top["W+X"], [11, 0, 3, 0, 0, 0], "W+X");
+  assert.equal(b.adet["W+X|IFCSTRUCTURALLINEARACTION"], 4);
+  assert.equal(b.adet["W+X|IFCSTRUCTURALPOINTACTION"], 1);
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('W\+X \/ E3 \(\+X\)',1\.5,\$,\$,\$,\$,\$\)/);
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('W\+X \/ E4',\$,\$,0\.5,\$,\$,\$\)/);
+  assert.match(r.metin, /IFCSTRUCTURALLINEARACTION\('[^']{22}',#\d+,'W\+X \/ E3 \(\+X\)','D\\X2\\00FC\\X0\\zg\\X2\\00FC\\X0\\n yay\\X2\\0131\\X0\\l\\X2\\0131\\X0\\ y\\X2\\00FC\\X0\\k \(kN\/m\): r\\X2\\00FC\\X0\\zg\\X2\\00E2\\X0\\r'/);
+  // EX+: efendi düğüm kendi bağlantısında ("Kat 1 diyafram merkezi"; uz, rx, ry tutulu), 6 kat düğümüne rijit bağ üyesi
+  yakin(b.top["EX+"], [10, 0, 0, 0, 0, -4], "EX+");
+  const merkez = /#(\d+)=IFCSTRUCTURALPOINTCONNECTION\('[^']{22}',#\d+,'Kat 1 diyafram merkezi',[^\n]*,(#\d+),\$\);/.exec(r.metin);
+  assert.ok(merkez, "diyafram merkezi bağlantısı");
+  assert.match(r.varlik[merkez[2].slice(1)].govde, /^'Diyafram merkezi[^']*',IFCBOOLEAN\(\.F\.\),IFCBOOLEAN\(\.F\.\),IFCBOOLEAN\(\.T\.\),IFCBOOLEAN\(\.T\.\),IFCBOOLEAN\(\.T\.\),IFCBOOLEAN\(\.F\.\)$/);
+  // konum: IfcProductDefinitionShape → Reference/Vertex → IfcVertexPoint → (3, 2, 3)
+  const tek = function (ref) { return r.varlik[ref.slice(1)]; };
+  const sekil = tek(/,(#\d+),#\d+,\$$/.exec(r.varlik[merkez[1]].govde)[1]);
+  const temsil = tek(/\((#\d+)\)$/.exec(sekil.govde)[1]);
+  assert.match(temsil.govde, /,'Reference','Vertex',/);
+  assert.equal(nokta(r.varlik, tek(/\((#\d+)\)$/.exec(temsil.govde)[1]).govde).join(","), "3,2,3");
+  const kacir = function (m) { return MatrisIFC.stepMetin(m).replace(/[\\()+.*?[\]^$|{}]/g, "\\$&"); };
+  const baglar = r.metin.match(new RegExp("IFCSTRUCTURALCURVEMEMBER\\('[^']{22}',#\\d+,'" + kacir("Kat 1 diyafram bağı → ") + "[^\\n]*\\.RIGID_JOINED_MEMBER\\.", "g")) || [];
+  assert.equal(baglar.length, 6);
+  assert.equal(r.tipler.IFCSTRUCTURALCURVEMEMBER, 4 + 6);
+  assert.equal(r.tipler.IFCSTRUCTURALPOINTCONNECTION, 6 + 1);
+  // bağın kat düğümü ucu: N, Vz, My tutulu (yatay öteleme, düşey eksen etrafında dönme); Vy, T, Mz serbest
+  assert.match(r.metin, new RegExp("IFCBOUNDARYNODECONDITION\\('" + kacir("Diyafram bağı ucu (Vy, T, Mz serbest)") + "',IFCBOOLEAN\\(\\.T\\.\\)," +
+    "IFCBOOLEAN\\(\\.F\\.\\),IFCBOOLEAN\\(\\.T\\.\\),IFCBOOLEAN\\(\\.F\\.\\),IFCBOOLEAN\\(\\.T\\.\\),IFCBOOLEAN\\(\\.F\\.\\)\\);"));
+  assert.match(r.metin, new RegExp("IFCRELCONNECTSSTRUCTURALACTIVITY\\([^\\n]*,#" + merkez[1] + ",#\\d+\\);"), "EX+ eylemi merkeze bağlı");
+  // kren: üç kuvvet tek nokta eyleminde (Ç1 = E1, i ucundan 1 m → (1, 0, 3))
+  yakin(b.top["K1.1a"], [-6, 5, -75, 0, 0, 0], "K1.1a");
+  assert.equal(b.adet["K1.1a|IFCSTRUCTURALPOINTACTION"], 1);
+  assert.match(r.metin, /IFCSTRUCTURALLOADSINGLEFORCE\('K1\.1a \/ E1 @1\.',-6\.,5\.,-75\.,0\.,0\.,0\.\)/);
+  assert.match(r.metin, /IFCSTRUCTURALLOADCASE\('[^']{22}',#\d+,'K1\.1a','Kren y\\X2\\00FC\\X0\\k\\X2\\00FC\\X0\\ \(K1\.1a\)'/);
+  // EZ = 0,4 × G: bütün G eylemleri (yayılı, düğüm, çubuk üzerinde tekil) ölçekli, aynı sayıda
+  yakin(b.top.EZ, b.top.G.map(function (x) { return 0.4 * x; }), "EZ");
+  ["IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALCURVEACTION", "IFCSTRUCTURALPOINTACTION"].forEach(function (t) {
+    assert.equal(b.adet["EZ|" + t] || 0, b.adet["G|" + t] || 0, t);
+  });
+  assert.match(r.metin, /IFCSTRUCTURALLINEARACTION\('[^']{22}',#\d+,'EZ \/ E1',[^\n]*\(EZ = 0\.4 \\X2\\00D7\\X0\\ G\)'/);
+});
+
+test("eylemler (K-37): efendi düğüm bir kat düğümüyle çakışırsa merkez o düğüm (aynı yerde ikinci bağlantı ve mesnet koşulu yok)", function () {
+  const s = eylemliSentetik();
+  // simetrik plandaki orta kolon gibi: kütle merkezi N5 (3, 4, 3) üzerinde
+  const ef = s.veri.ag.dugumler.filter(function (d) { return d.efendi; })[0];
+  ef.Y = 4;
+  s.veri.ag.diyaframlar[0].Y = 4;
+  const r = MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  assert.doesNotMatch(r.metin, /diyafram merkezi/);
+  assert.doesNotMatch(r.metin, /IFCBOUNDARYNODECONDITION\('Diyafram merkezi/);
+  assert.equal(r.tipler.IFCSTRUCTURALPOINTCONNECTION, 6);
+  assert.equal(r.tipler.IFCSTRUCTURALCURVEMEMBER, 4 + 5);              // N5 dışındaki beş kat düğümüne rijit bağ
+  const n5 = /#(\d+)=IFCSTRUCTURALPOINTCONNECTION\('[^']{22}',#\d+,'N5',/.exec(r.metin);
+  assert.ok(n5, "N5 bağlantısı");
+  const kacir = function (m) { return MatrisIFC.stepMetin(m).replace(/[\\()+.*?[\]^$|{}]/g, "\\$&"); };
+  const bag = r.metin.match(new RegExp("IFCSTRUCTURALCURVEMEMBER\\('[^']{22}',#\\d+,'" + kacir("Kat 1 diyafram bağı → ") + "[^']*'", "g")) || [];
+  assert.equal(bag.length, 5);
+  assert.ok(bag.every(function (x) { return !/ N5'$/.test(x); }), "merkez düğüme bağ yok");
+  // bağların merkez ucu N5'e (koşulsuz, rijit)
+  const iUclari = Object.keys(r.varlik).filter(function (n) {
+    const m = r.varlik[n].tip === "IFCRELCONNECTSSTRUCTURALMEMBER" && new RegExp(",(#\\d+),#" + n5[1] + ",\\$,\\$,\\$,\\$$").exec(r.varlik[n].govde);
+    return m && /diyafram ba/.test(r.varlik[m[1].slice(1)].govde);
+  });
+  assert.equal(iUclari.length, 5);
+  // EX+ kat kuvveti N5'in bağlantısında, toplam aynı
+  const ex = /#(\d+)=IFCSTRUCTURALPOINTACTION\('[^']{22}',#\d+,'EX\+ \/ N900001','Diyafram merkezinde/.exec(r.metin);
+  assert.ok(ex, "EX+ eylemi");
+  assert.match(r.metin, new RegExp("IFCRELCONNECTSSTRUCTURALACTIVITY\\([^\\n]*,#" + n5[1] + ",#" + ex[1] + "\\);"));
+  yakin(bilesenler(r).top["EX+"], [10, 0, 0, 0, 0, -4], "EX+");
+});
+
+test("eylemler (K-37): eylemler_not ya da eylemler yoksa eski not uyarı olarak; yükler: false → diyafram merkezi yazılmaz", function () {
+  const s = eylemliSentetik();
+  delete s.veri.yukler.eylemler;
+  s.veri.yukler.eylemler_not = "Yanıt boyutu sınırı: rüzgâr/deprem/kren eylemleri yazılmadı.";
+  const r = MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN);
+  stepDenetle(r.metin);
+  assert.deepEqual(r.uyarilar, ["IFC yükleri: rüzgâr, deprem ve kren etkileri yük durumu/birleşim olarak vardır, eylem olarak yazılmadı " +
+    "(Yanıt boyutu sınırı: rüzgâr/deprem/kren eylemleri yazılmadı)."]);
+  assert.doesNotMatch(r.metin, /diyafram merkezi/);
+  delete s.veri.yukler.eylemler_not;
+  assert.match(MatrisIFC.uretAyrintili(s.bina, s.veri, ZAMAN).uyarilar[0], /çözümde eylem kayıtları yok; binayı yeniden çözün\)\.$/);
+  // yalnız G/Q varsa not yok
+  const g = genelSentetik();
+  assert.deepEqual(MatrisIFC.uretAyrintili(g.bina, g.veri, ZAMAN).uyarilar, []);
+  // eylemi eksik durum
+  const e = eylemliSentetik();
+  delete e.veri.yukler.eylemler["EX+"];
+  assert.deepEqual(MatrisIFC.uretAyrintili(e.bina, e.veri, ZAMAN).uyarilar,
+    ["IFC yükleri: EX+ durumunun eylemi çözümde yok; yalnız yük durumu/birleşim olarak yazıldı."]);
+  // yükler: false → eylem ve diyafram merkezi yok, analiz modeli aynı
+  const y = eylemliSentetik();
+  const rn = MatrisIFC.uretAyrintili(y.bina, y.veri, Object.assign({ yukler: false }, ZAMAN));
+  const t = stepDenetle(rn.metin).tipler;
+  assert.equal(t.IFCSTRUCTURALPOINTCONNECTION, 6);
+  assert.equal(t.IFCSTRUCTURALCURVEMEMBER, 4);
+  assert.ok(!t.IFCSTRUCTURALPOINTACTION && !t.IFCSTRUCTURALLINEARACTION);
+});
+
+test("temel öz ağırlığı (K-39): veri.temel.oz_yuk → G'de temel üyelerine q, temel düğümlerine P (Σq·L + ΣP = W); yoksa γ·A + uyarı", function () {
+  const veri = surekliVeri();
+  veri.durumlar = { G: {}, Q: {} };
+  veri.kombinasyonlar = [];
+  // temel kirişi parçaları E64–E67: 0,4 + 3 + 3 + 0,4 = 6,8 m; q = 10 kN/m; uç düğümünde +1,5, A1'de −0,5 (kesişim düzeltmesi)
+  veri.temel.oz_yuk = { elemanlar: [64, 65, 66, 67].map(function (n) { return { no: n, q: 10 }; }),
+    dugumler: [{ dugum: 50001, P: 1.5 }, { dugum: 1, P: -0.5 }], W: 69 };
+  veri.yukler = { kirisler: [], dosemeler: [], kolonlar: [], toplam: { G: 69, Q: 0 } };
+  const r = MatrisIFC.uretAyrintili(surekliTekHat(), veri, ZAMAN);
+  Object.assign(r, stepDenetle(r.metin));
+  assert.deepEqual(r.uyarilar, []);
+  const b = bilesenler(r);
+  yakin(b.top.G.slice(0, 3), [0, 0, -69], "G");
+  assert.equal(b.adet["G|IFCSTRUCTURALLINEARACTION"], 4);
+  assert.equal(b.adet["G|IFCSTRUCTURALPOINTACTION"], 2);
+  assert.match(r.metin, new RegExp("IFCSTRUCTURALLINEARACTION\\('[^']{22}',#\\d+,'G / E64','" + MatrisIFC.stepMetin("Düzgün yayılı yük (kN/m): temel öz ağırlığı")
+    .replace(/[\\()]/g, "\\$&") + "'"));
+  assert.match(r.metin, /IFCSTRUCTURALLOADLINEARFORCE\('G \/ E66',\$,\$,-10\.,\$,\$,\$\)/);
+  assert.match(r.metin, /IFCSTRUCTURALLOADSINGLEFORCE\('G \/ N1',0\.,0\.,0\.5,0\.,0\.,0\.\)/);
+  assert.match(r.metin, /IFCSTRUCTURALLOADSINGLEFORCE\('G \/ N50001',0\.,0\.,-1\.5,0\.,0\.,0\.\)/);
+  // eski çözüm (oz_yuk yok): ters T kesit alanı 1,2·0,3 + 0,4·0,6 = 0,6 m² → q = 25·0,6 = 15 kN/m; toplam 15·6,8 = 102 kN
+  delete veri.temel.oz_yuk;
+  const e = MatrisIFC.uretAyrintili(surekliTekHat(), veri, ZAMAN);
+  Object.assign(e, stepDenetle(e.metin));
+  yakin(bilesenler(e).top.G.slice(0, 3), [0, 0, -102], "G (yaklaşık)");
+  assert.deepEqual(e.uyarilar, ["IFC yükleri: çözümde temel öz ağırlığı yükleri yok (veri.temel.oz_yuk; eski çözüm): 4 temel kirişi analiz " +
+    "üyesine γ·A = 25 kN/m³ × kesit alanı yazıldı; kesişimlerde ortak tabla hacmi iki kez sayılır. Binayı yeniden çözün."]);
+  // EZ: temel öz ağırlığı da ölçeklenir
+  const z = surekliVeri();
+  z.durumlar = { G: {}, Q: {}, EZ: {} };
+  z.kombinasyonlar = [];
+  z.temel.oz_yuk = { elemanlar: [{ no: 65, q: 10 }], dugumler: [], W: 30 };
+  z.yukler = { kirisler: [], dosemeler: [], kolonlar: [], toplam: { G: 30 }, eylemler: { EZ: { cubuklar: [], dugumler: [], G_carpani: 0.5 } } };
+  const rz = MatrisIFC.uretAyrintili(surekliTekHat(), z, ZAMAN);
+  Object.assign(rz, stepDenetle(rz.metin));
+  assert.deepEqual(rz.uyarilar, []);
+  yakin(bilesenler(rz).top.EZ.slice(0, 3), [0, 0, -15], "EZ");
 });

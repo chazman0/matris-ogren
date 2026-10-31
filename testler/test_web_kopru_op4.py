@@ -38,8 +38,11 @@ def iste(kopru, islem, girdi=None, ayarlar=None):
     return json.loads(kopru.calistir(json.dumps(istek)))
 
 
+SURE_ALANLARI = {"cozum_sure_ms", "sure_ms"}   # duvar süresi (ölçüm): karşılaştırılmaz
+
+
 def _yakin(a, b, yol="veri"):
-    """Sayılar bağıl 1e-9 içinde, diğer her şey birebir (MIMARI §2.2.6)."""
+    """Sayılar bağıl 1e-9 içinde, diğer her şey birebir (MIMARI §2.2.6); süre ölçüm alanları hariç."""
     if isinstance(a, bool) or isinstance(b, bool) or a is None or b is None or isinstance(a, str):
         assert a == b, yol
     elif isinstance(a, (int, float)) and isinstance(b, (int, float)):
@@ -47,7 +50,8 @@ def _yakin(a, b, yol="veri"):
     elif isinstance(a, dict):
         assert isinstance(b, dict) and a.keys() == b.keys(), yol
         for k in a:
-            _yakin(a[k], b[k], f"{yol}.{k}")
+            if k not in SURE_ALANLARI:
+                _yakin(a[k], b[k], f"{yol}.{k}")
     elif isinstance(a, list):
         assert isinstance(b, list) and len(a) == len(b), yol
         for i, (x, y) in enumerate(zip(a, b)):

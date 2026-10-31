@@ -894,12 +894,16 @@
   }
 
   // ---------- Yardım: Bina sayfasının klavye kısayolları ----------
-  // Tek kaynak: araç kutusu kayıt defteri (MatrisArac.kisayollar(); bina.js ve bina_cizim.js bağlamaları dahil). Bina sayfası henüz
-  // açılmadıysa kayıt boştur; o zaman katalogdaki kısayollar gösterilir. Sayfanın kendi tuşları (bina.js klavye işleyicisi) aynı
-  // tuştaki kayıttan önce gelir: F / Shift+F bina.js'te tam ekran / sığdır olarak yeniden atanır.
-  const SAYFA_TUSLARI = [
+  // Tek kaynak: araç kutusu kayıt defteri (MatrisArac.kisayollar(); bina.js ve bina_cizim.js bağlamaları dahil) ve sayfa tuşları
+  // (MatrisArac.SAYFA_TUSLARI, sözleşme C22: bina "?" penceresi ve masaüstü "Klavye kısayolları" da aynı listeden yapılır).
+  // Kayıttan (komut kısayolu) zaten listelenen tuşun sayfa satırı atlanır; böylece iki pencere aynı (tuş, komut) satırlarını gösterir.
+  // Bina sayfası henüz açılmadıysa kayıt boştur; o zaman katalogdaki kısayollar gösterilir. Katalog bina.js'in yeniden atamalarını
+  // bilmez (F tam ekran, Shift+F sığdır): bu durumda sayfa tuşu aynı tuştaki katalog satırından önce gelir.
+  // Yerel kopya yalnız araç kutusu modülü SAYFA_TUSLARI vermiyorsa kullanılır (içerik C22 ile aynı).
+  const SAYFA_TUSLARI_YEREL = [
     { kisayol: "Esc", ad: "Kipten çık, seçimi ya da yarım çizimi / ölçümü bırak; tam ekrandan çık", grup: "sayfa" },
     { kisayol: "Shift+F10", ad: "Seçili elemanın bağlam (sağ tık) menüsü", grup: "sayfa" },
+    { kisayol: "Enter", ad: "Bağlam menüsünde: Bilgi", grup: "sayfa" },
     { kisayol: "?", ad: "Kısayol listesini aç", grup: "sayfa" },
     { kisayol: "PgUp", ad: "Düzlem yukarı: bir üst Z aksı ya da sonraki cephe aksı (aks–kat çiziminde üst kat)", grup: "aks" },
     { kisayol: "PgDn", ad: "Düzlem aşağı", grup: "aks" },
@@ -908,6 +912,16 @@
     { kisayol: "Ctrl+Shift+Z", ad: "Yinele", grup: "duzenleme" },
     { kisayol: "Backspace", ad: "Seçileni sil (seçim yoksa Sil aracı)", grup: "duzenleme" },
   ];
+  function sayfaTuslari(M) {
+    const l = M && Array.isArray(M.SAYFA_TUSLARI) && M.SAYFA_TUSLARI.length ? M.SAYFA_TUSLARI : SAYFA_TUSLARI_YEREL;
+    return l.map(function (t) { return { kisayol: t.kisayol, ad: t.ad, grup: t.grup }; });
+  }
+  // grup kimliği → görünen ad (MatrisArac.GRUPLAR; "sayfa" → "Sayfa", bilinmeyen → "Diğer": bina "?" penceresiyle aynı)
+  function kisayolGrupAdi(M, g) {
+    if (M && typeof M.grupAdi === "function") { try { const a = M.grupAdi(g); if (a && a !== g) return a; } catch (e) { /* yoksay */ } }
+    const k = ((M && M.GRUPLAR) || []).find(function (x) { return x.id === g; });
+    return k ? k.ad : g === "sayfa" ? "Sayfa" : "Diğer";
+  }
   function kisayolSatirlari(M) {
     let liste = [];
     try { liste = M.kisayollar() || []; } catch (e) { liste = []; }
@@ -919,14 +933,31 @@
       liste = (M.KATALOG || []).filter(function (k) { return k.kisayol && M.kisayolMetni(k.kisayol); })
         .map(function (k) { return { kisayol: M.kisayolMetni(k.kisayol), ad: k.ad, grup: k.grup }; });
     }
-    const sayfa = {};
-    SAYFA_TUSLARI.forEach(function (t) { sayfa[t.kisayol] = 1; });
-    const satirlar = liste.filter(function (k) { return !sayfa[k.kisayol]; }).concat(SAYFA_TUSLARI);
+    const sayfa = sayfaTuslari(M);
+    let satirlar;
+    if (kaynak === "kayit") {
+      const var_ = {};
+      liste.forEach(function (k) { var_[k.kisayol] = 1; });
+      satirlar = liste.concat(sayfa.filter(function (t) { return !var_[t.kisayol]; }));
+    } else {
+      const st = {};
+      sayfa.forEach(function (t) { st[t.kisayol] = 1; });
+      satirlar = liste.filter(function (k) { return !st[k.kisayol]; }).concat(sayfa);
+    }
+    // aynı (görünen) grupta aynı tuş bir kez (bina "?" penceresiyle aynı kural)
+    const gorulen = {};
+    satirlar = satirlar.filter(function (s) {
+      const a = kisayolGrupAdi(M, s.grup) + "\u0001" + s.kisayol;
+      if (gorulen[a]) return false;
+      gorulen[a] = 1;
+      return true;
+    });
     const sira = {};
     (M.GRUPLAR || []).forEach(function (g, i) { sira[g.id] = i; });
     const siraAl = function (g) { return g === "sayfa" ? 1000 : (sira[g] != null ? sira[g] : 500); };
     satirlar.forEach(function (s, i) { s.i = i; });
     satirlar.sort(function (a, b) { return siraAl(a.grup) - siraAl(b.grup) || a.i - b.i; });
+    satirlar.forEach(function (s) { delete s.i; });
     return { satirlar: satirlar, kaynak: kaynak };
   }
   function kisayolTablosu() {
@@ -940,8 +971,8 @@
       return;
     }
     const s = kisayolSatirlari(M);
-    const grupAd = { sayfa: "Bina sayfası", diger: "Diğer" };
-    (M.GRUPLAR || []).forEach(function (g) { grupAd[g.id] = g.ad; });
+    const grupAd = {};
+    s.satirlar.forEach(function (r) { if (!grupAd[r.grup]) grupAd[r.grup] = kisayolGrupAdi(M, r.grup); });
     tablo.dataset.kaynak = s.kaynak;
     tablo.innerHTML = '<thead><tr><th scope="col">Tuş</th><th scope="col">Komut</th><th scope="col">Araç grubu</th></tr></thead><tbody>' +
       s.satirlar.map(function (r) {

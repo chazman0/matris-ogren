@@ -109,13 +109,14 @@ test("arama: Türkçe harf ve büyük/küçük harf duyarsız, ad başlangıcı 
 
 test("varsayılan yerleşim: her grup bir kutu, katalogdaki her komut tam bir kez", function () {
   const y = D.varsayilan();
-  assert.equal(y.surum, 1);
+  assert.equal(y.surum, 2);
+  assert.equal(A.SURUM, 2);
   assert.equal(y.kutular.length, A.GRUPLAR.length);
   const hepsi = [].concat.apply([], y.kutular.map(function (k) { return k.komutlar; }));
   assert.deepEqual(hepsi.slice().sort(), A.KATALOG.map(function (k) { return k.id; }).sort());
   y.kutular.forEach(function (k) {
     assert.equal(k.konum, null); assert.ok(["ust", "alt", "sol", "sag"].indexOf(k.kenar) >= 0);
-    assert.equal(k.gizli, false);
+    assert.equal(k.gizli, false); assert.equal(k.yer, "kenar"); assert.ok(k.sira >= 1);
   });
   assert.equal(D.kutuBul(y, "k-cizim").yon, "dikey");
 });
@@ -362,42 +363,7 @@ test("kenar payları: yalnız üst kenara değen sütun (tam ekranda uzayan kaps
   assert.deepEqual(D.kenarPaylari([{ x: 8, y: 500, w: 500, h: 40 }], 1000, 600), { sol: 0, ust: 0, sag: 0, alt: 100 });
 });
 
-test("otomatik yerleşim (kw/kh): kutu kenar şeridinde aranır, yer yoksa katlanmış başlığıyla yerleşir", function () {
-  const W = 800, H = 400;
-  const uc = ["a", "b", "c"].map(function (id) { return { id: id, w: 700, h: 42, kenar: "ust", kw: 120, kh: 30 }; });
-  const r = D.otomatikYerlestir(uc, W, H, []);
-  assert.deepEqual(r.get("a"), { x: 8, y: 8 });
-  assert.equal(r.get("b").katla, undefined);
-  assert.ok(r.get("b").y <= 8 + 2 * 42 + 6, "b şeritte");
-  assert.equal(r.get("c").katla, true);
-  const dik = [{ x: r.get("a").x, y: r.get("a").y, w: 700, h: 42 }, { x: r.get("b").x, y: r.get("b").y, w: 700, h: 42 }, { x: r.get("c").x, y: r.get("c").y, w: 120, h: 30 }];
-  dik.forEach(function (a, i) {
-    assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= W && a.y + a.h <= H);
-    dik.slice(i + 1).forEach(function (b) { assert.ok(!D.cakisir(a, b, 0)); });
-  });
-  // kw/kh verilmezse eski davranış: sahnenin içine doğru ilerler, katlanmaz
-  const eski = D.otomatikYerlestir(uc.map(function (u) { return { id: u.id, w: u.w, h: u.h, kenar: u.kenar }; }), W, H, []);
-  assert.equal(eski.get("c").katla, undefined);
-  assert.ok(eski.get("c").y > r.get("b").y);
-});
 
-test("otomatik yerleşim (serbest): az önce açılan kutu şeritte yer yoksa açık boyuyla sahnede boş yer arar; hiç yoksa katlanır", function () {
-  const W = 800, H = 400;
-  const sabit = [{ x: 8, y: 8, w: 700, h: 42 }, { x: 8, y: 56, w: 700, h: 42 }];   // üst şerit dolu
-  const it = { id: "x", w: 600, h: 42, kenar: "ust", kw: 120, kh: 30 };
-  // şerit sınırlı arama: üst şeritte (iki kutu kalınlığı) 600 px yer yok → katlanır
-  assert.equal(D.otomatikYerlestir([it], W, H, sabit).get("x").katla, true);
-  // serbest: açık boyuyla sahnenin içinde (şeridin altında) yer bulunur, katlanmaz, sabitlerle çakışmaz
-  const q = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, sabit).get("x");
-  assert.equal(q.katla, undefined);
-  assert.ok(q.y > 56 + 42, "şeridin altında: " + q.y);
-  sabit.forEach(function (s) { assert.ok(!D.cakisir({ x: q.x, y: q.y, w: 600, h: 42 }, s, 0)); });
-  // hiç yer yoksa serbest kutu da katlanmış başlığıyla yerleşir
-  const dolu = [{ x: 0, y: 0, w: W, h: 330 }, { x: 0, y: 336, w: 300, h: 64 }];   // yalnız sağ altta başlık kadar yer
-  const r = D.otomatikYerlestir([Object.assign({ serbest: true }, it)], W, H, dolu).get("x");
-  assert.equal(r.katla, true);
-  assert.ok(!D.cakisir({ x: r.x, y: r.y, w: 120, h: 30 }, dolu[0], 0));
-});
 
 test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanını korur", function () {
   const y0 = D.varsayilan();
@@ -412,16 +378,247 @@ test("katlı kutu: varsayılan açık, kutuGuncelle ve doğrula 'katli' alanın�
   assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { katli: false }), id).katli, false);
 });
 
-test("kendiliğinden katlanan kutu (otoKatli): doğrula yalnız katlı kutuda korur; kullanıcı katlayınca / açınca işaret düşer", function () {
-  const y0 = D.varsayilan();
-  const id = y0.kutular[0].id;
-  const y1 = D.kutuGuncelle(y0, id, { katli: true });
-  D.kutuBul(y1, id).otoKatli = true;                               // _konumla yer kalmayınca koyar
-  assert.equal(D.kutuBul(D.dogrula(JSON.parse(JSON.stringify(y1))), id).otoKatli, true);
-  const acik = JSON.parse(JSON.stringify(y1));
-  D.kutuBul(acik, id).katli = false;
-  assert.equal("otoKatli" in D.kutuBul(D.dogrula(acik), id), false);   // açık kutuda anlamsız: atılır
-  assert.equal("otoKatli" in D.kutuBul(D.dogrula(y0), id), false);     // başka kutulara alan eklenmez
-  assert.equal("otoKatli" in D.kutuBul(D.kutuGuncelle(y1, id, { katli: true }), id), false);   // kullanıcının kararı
-  assert.equal(D.kutuBul(D.kutuGuncelle(y1, id, { kucuk: false }), id).otoKatli, true);       // başka alan işareti bozmaz
+// ---- rıhtım (kenar şeridi) yerleşimi: tasarım §3 boy tablosu (1920'de ölçülen kutular, px) ve §4 başvuru katmanları
+const BOY = {   // [yt genişlik, yb genişlik, yk genişlik, d1 [w, h], d2 [w, h]]; yt/yb yüksekliği 42, yk 30
+  "k-cizim": [434, 398, 108, [70, 361], [78, 217]], "k-duzenleme": [574, 506, 140, [70, 469], [78, 253]],
+  "k-aks": [424, 398, 98, [70, 361], [78, 217]], "k-gorunum": [563, 506, 129, [70, 469], [78, 253]],
+  "k-analiz": [330, 290, 112, [70, 253], [78, 145]], "k-sonuc": [402, 362, 112, [70, 325], [78, 181]],
+  "k-olcme": [367, 326, 113, [70, 289], [78, 181]], "k-degistirme": [393, 326, 139, [70, 289], [78, 181]],
+  "k-uretec": [373, 290, 155, [70, 253], [78, 145]],
+};
+const VARS = [["k-cizim", "sol", 1], ["k-duzenleme", "ust", 1], ["k-gorunum", "alt", 1], ["k-analiz", "alt", 2], ["k-sonuc", "sag", 1],
+  ["k-aks", "ust", 2], ["k-olcme", "sag", 2], ["k-degistirme", "sag", 3], ["k-uretec", "sol", 2]];
+function olcu(id) {
+  const b = BOY[id];
+  return { yt: [b[0], 42], yb: [b[1], 42], yk: [b[2], 30], d1: b[3], d2: b[4], dk1: [b[3][0], 30], dk2: [b[4][0], 30] };
+}
+function liste(ek) {
+  return VARS.map(function (v, i) { return Object.assign({ id: v[0], kenar: v[1], sira: v[2], oncelik: i, katli: false, olcu: olcu(v[0]) }, (ek || {})[v[0]] || {}); });
+}
+const SEC = { kose: [[34, 34]], tasma: [34, 34] };
+function bicimler(r) { const o = {}; r.kutular.forEach(function (q, id) { o[id] = q.bicim; }); return o; }
+function dikdortgenler(r) { const l = []; r.kutular.forEach(function (q) { l.push(q); }); return l.concat(r.kose, r.tasmaDugme ? [r.tasmaDugme] : []); }
+
+test("rıhtım: başvuru katmanlarında taşanlar ve biçimler (tasarım §4)", function () {
+  const BEKLENEN = [
+    [1466, 701, [], function (r, b) {
+      ["k-duzenleme", "k-aks", "k-gorunum", "k-analiz"].forEach(function (id) { assert.equal(b[id], "yt", id); });
+      ["k-cizim", "k-uretec", "k-sonuc", "k-olcme", "k-degistirme"].forEach(function (id) { assert.equal(b[id], "d2", id); });
+      assert.deepEqual(r.pay, { sol: 86, ust: 50, sag: 86, alt: 50 });
+    }],
+    [1116, 571, ["k-degistirme"]],
+    [1146, 705, []],
+    [1011, 389, ["k-olcme", "k-degistirme", "k-uretec"], function (r, b) { assert.equal(b["k-aks"], "yb"); }],
+    [1041, 523, ["k-degistirme"]],
+    [926, 341, ["k-olcme", "k-degistirme", "k-uretec"], function (r, b) {
+      ["k-duzenleme", "k-aks", "k-gorunum", "k-analiz"].forEach(function (id) { assert.equal(b[id], "yb", id); });
+    }],
+    [670, 347, ["k-analiz", "k-aks", "k-olcme", "k-degistirme", "k-uretec"]],
+    [1496, 835, [], function (r, b) {
+      assert.equal(b["k-cizim"], "d1"); assert.equal(b["k-uretec"], "d1");
+      ["k-sonuc", "k-olcme", "k-degistirme"].forEach(function (id) { assert.equal(b[id], "d2", id); });
+    }],
+    [956, 475, ["k-olcme", "k-degistirme", "k-uretec"], function (r, b) {
+      assert.deepEqual([b["k-cizim"], b["k-sonuc"], b["k-duzenleme"], b["k-aks"], b["k-gorunum"], b["k-analiz"]], ["d1", "d1", "yb", "yt", "yt", "yb"]);
+    }],
+    [700, 523, ["k-analiz", "k-aks", "k-degistirme"]],
+  ];
+  BEKLENEN.forEach(function (c) {
+    const r = D.rihtim(liste(), c[0], c[1], SEC);
+    assert.deepEqual(r.tasma, c[2], c[0] + "×" + c[1]);
+    assert.equal(!!r.tasmaDugme, c[2].length > 0, c[0] + "×" + c[1] + " taşma düğmesi");
+    if (c[3]) c[3](r, bicimler(r));
+    // yönetici düğmesi alt sol köşede (8, H − 42), taşma düğmesi yanında
+    assert.deepEqual(r.kose[0], { x: 8, y: c[1] - 42, w: 34, h: 34 });
+    if (r.tasmaDugme) assert.deepEqual(r.tasmaDugme, { x: 48, y: c[1] - 42, w: 34, h: 34 });
+  });
+  // 1466×701'de konumlar: üst bant soldan, alt bant köşe düğmesinden sonra, sağ sütun sağa yaslı
+  const r = D.rihtim(liste(), 1466, 701, SEC);
+  assert.deepEqual(["k-duzenleme", "k-aks", "k-gorunum", "k-analiz", "k-cizim", "k-uretec", "k-sonuc"].map(function (id) { const q = r.kutular.get(id); return [q.x, q.y]; }),
+    [[8, 8], [588, 8], [48, 651], [617, 651], [8, 56], [8, 279], [1380, 56]]);
+});
+
+test("rıhtım: değişmezler (W 640..2000 × H 200..1100): çakışma yok, sınırlar içinde, iç dikdörtgen boş, belirlenimci, öncelik", function () {
+  const b = 8, g = 6;
+  let n = 0;
+  for (let W = 640; W <= 2000; W += 37) {
+    for (let H = 200; H <= 1100; H += 41) {
+      // katlı kutular da (kullanıcı katladı) aynı kurallara uyar
+      const ek = (W + H) % 3 === 0 ? { "k-sonuc": { katli: true }, "k-aks": { katli: true } } : null;
+      const l = liste(ek), r = D.rihtim(l, W, H, SEC), R = dikdortgenler(r), ad = W + "×" + H;
+      for (let i = 0; i < R.length; i++) {
+        const a = R[i];
+        assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= W && a.y + a.h <= H, ad + " sınır");
+        for (let j = i + 1; j < R.length; j++) assert.ok(!D.cakisir(a, R[j], 0), ad + " çakışma " + i + "/" + j);
+      }
+      const ic = { x: r.pay.sol, y: r.pay.ust, w: W - r.pay.sol - r.pay.sag, h: H - r.pay.ust - r.pay.alt };
+      assert.ok(ic.w > 0 && ic.h > 0, ad + " iç dikdörtgen");
+      R.forEach(function (q) {
+        const ox = Math.min(q.x + q.w, ic.x + ic.w) - Math.max(q.x, ic.x), oy = Math.min(q.y + q.h, ic.y + ic.h) - Math.max(q.y, ic.y);
+        assert.ok(ox <= 0 || oy <= 0, ad + " kutu iç dikdörtgende");
+      });
+      assert.deepEqual(D.rihtim(liste(ek), W, H, SEC), r, ad + " belirlenimci");
+      // her kutu ya bir şeritte ya çekmecede, ikisinde birden değil
+      const yerli = new Set(r.kutular.keys());
+      l.forEach(function (it) { assert.ok(yerli.has(it.id) !== (r.tasma.indexOf(it.id) >= 0), ad + " " + it.id); });
+      // öncelik: şeritte taşan bir kutu varken o şeridin daha düşük öncelikli kendi kutusu yerleşmez (kutu tek başına sığmıyorsa hariç)
+      const tU = r.pay.ust ? r.pay.ust - b : 0, tA = r.pay.alt ? r.pay.alt - b : 0;
+      const L = { ust: W - 2 * b, alt: W - 2 * b - 40 - (r.tasmaDugme ? 40 : 0) }, sL = H - 2 * b - (tU ? tU + g : 0) - (tA ? tA + g : 0);
+      r.tasma.forEach(function (id) {
+        const it = l.find(function (x) { return x.id === id; });
+        const bant = it.kenar === "ust" || it.kenar === "alt";
+        const tekBasina = bant ? (it.katli ? it.olcu.yk[0] : it.olcu.yb[0]) > L[it.kenar] : it.olcu[it.katli ? "dk2" : "d2"][1] > sL;
+        if (tekBasina) return;
+        l.forEach(function (o_) {
+          const q = r.kutular.get(o_.id);
+          if (o_.kenar === it.kenar && o_.oncelik > it.oncelik && q && q.kenar === it.kenar && !q.yedek) assert.fail(ad + ": " + id + " taşarken " + o_.id + " şeritte");
+        });
+      });
+      n++;
+    }
+  }
+  assert.ok(n > 800);
+});
+
+test("rıhtım: iki geçiş — taşma varsa taşma düğmesi köşeye eklenip yeniden yerleşilir; en küçük sahne kuralları", function () {
+  // taşma yoksa tek geçiş (taşma düğmesi yok), varsa ikinci geçiş köşe listesine düğmeyi ekleyen geçişin aynısı
+  const r0 = D.rihtim(liste(), 1466, 701, SEC);
+  assert.equal(r0.tasmaDugme, null);
+  assert.deepEqual(r0, D.rihtim(liste(), 1466, 701, { kose: [[34, 34]] }));
+  const r1 = D.rihtim(liste(), 926, 341, SEC), r2 = D.rihtim(liste(), 926, 341, { kose: [[34, 34], [34, 34]] });
+  assert.deepEqual(r1.tasma, r2.tasma); assert.deepEqual(r1.pay, r2.pay);
+  assert.deepEqual(r1.tasmaDugme, r2.kose[1]); assert.deepEqual(r1.kose, [r2.kose[0]]);
+  r1.kutular.forEach(function (q, id) { assert.deepEqual(q, r2.kutular.get(id), id); });
+  // tasmaZorla: taşan yokken de düğmeye yer açılır (yüzen kutu sahnede yer bulamadı)
+  assert.deepEqual(D.rihtim(liste(), 1466, 701, Object.assign({ tasmaZorla: true }, SEC)).tasmaDugme, { x: 48, y: 701 - 42, w: 34, h: 34 });
+  // yönetici yok (sec.kose []): alt bant köşeden başlar, alt pay yalnız kutulardan
+  const ry = D.rihtim(liste(), 1466, 701, {});
+  assert.equal(ry.kutular.get("k-gorunum").x, 8);
+  // en küçük sahne yüksekliği: H = 220'de üst bant kalkar (kutuları başka şeride ya da çekmeceye), alt bant ve köşe kalır
+  const rh = D.rihtim(liste(), 1466, 220, SEC);
+  assert.equal(rh.pay.ust, 0);
+  rh.kutular.forEach(function (q, id) { assert.notEqual(q.kenar, "ust", id); });
+  assert.ok(rh.tasma.indexOf("k-duzenleme") >= 0);
+  assert.ok(rh.pay.alt >= 42);
+  assert.ok(220 - rh.pay.ust - rh.pay.alt - 2 * 6 >= D.SAHNE_MIN_H - 16);
+  // en küçük sahne genişliği: dar ve yüksek katmanda sağ sütun kalkar
+  const rw = D.rihtim(liste(), 300, 900, SEC);
+  assert.ok(300 - (rw.pay.sol ? rw.pay.sol + 6 : 8) - (rw.pay.sag ? rw.pay.sag + 6 : 8) >= D.SAHNE_MIN_W);
+  assert.equal(rw.pay.sag, 0);
+  // geri düşme: sağ sütuna sığmayan kutu öteki şeride kalınlığı değişmeden girer (yedek), kendi kutularından sonra dizilir
+  const rf = D.rihtim(liste(), 1600, 520, SEC), f = [];
+  rf.kutular.forEach(function (q, id) { if (q.yedek) f.push([id, q.kenar]); });
+  f.forEach(function (x) { const it = liste().find(function (o_) { return o_.id === x[0]; }); assert.notEqual(it.kenar, x[1]); });
+});
+
+test("rıhtım: katlı kutu bantta katlı başlık (yk), sütunda sütun genişliğinde çip (dk); kenar sırası (sira) görünür sırayı belirler", function () {
+  const r = D.rihtim(liste({ "k-aks": { katli: true }, "k-sonuc": { katli: true } }), 1116, 571, SEC);
+  assert.equal(r.kutular.get("k-aks").bicim, "yk");
+  const q = r.kutular.get("k-sonuc");
+  assert.equal(q.bicim, "dk2"); assert.equal(q.w, q.sutunW); assert.equal(q.h, 30); assert.equal(q.x, 1116 - 8 - q.sutunW);
+  // katlanan Sonuç yer açar: Değiştirme artık sığar
+  assert.deepEqual(r.tasma, []);
+  // sira: alt bantta Analiz önce (sira 1), Görünüm sonra; öncelik değişmez
+  const r2 = D.rihtim(liste({ "k-analiz": { sira: 0 } }), 1466, 701, SEC);
+  assert.ok(r2.kutular.get("k-analiz").x < r2.kutular.get("k-gorunum").x);
+});
+
+test("kenaraAl / serbestBirak: şeridin en öncelikli kutusu, sira yeniden numaralanır; yüzen kutu çapasıyla", function () {
+  const y0 = { surum: 2, ad: "t", kutular: VARS.map(function (v) { return { id: v[0], ad: v[0], komutlar: [], kenar: v[1], sira: v[2] }; }) };
+  const y = D.dogrula(y0);
+  const ids = function (yy) { return yy.kutular.map(function (k) { return k.id; }); };
+  // Ölçme sağ şeridin önüne: dizide k-sonuc'un önüne; görünür sırası yerinde (2)
+  const a = D.kenaraAl(y, "k-olcme", "sag");
+  assert.deepEqual(ids(a).slice(0, 6), ["k-cizim", "k-duzenleme", "k-gorunum", "k-analiz", "k-olcme", "k-sonuc"]);
+  assert.deepEqual(["k-sonuc", "k-olcme", "k-degistirme"].map(function (id) { return D.kutuBul(a, id).sira; }), [1, 2, 3]);
+  assert.equal(JSON.stringify(D.dogrula(y0)), JSON.stringify(y), "girdi değişmez");
+  // Analiz sol sütuna, Üreteç'in önüne (yuva): en öncelikli sol kutusu, sira 2; Görünüm alt bantta yeniden 1
+  const b = D.kenaraAl(y, "k-analiz", "sol", { once: "k-uretec" });
+  assert.equal(ids(b)[0], "k-analiz");
+  const ka = D.kutuBul(b, "k-analiz");
+  assert.deepEqual([ka.kenar, ka.yer, ka.sira, D.kutuBul(b, "k-cizim").sira, D.kutuBul(b, "k-uretec").sira], ["sol", "kenar", 2, 1, 3]);
+  // yüzdür: konum ve yön; öncelik ve dönülecek kenar korunur; kenara alınınca konum silinir
+  const c = D.serbestBirak(y, "k-analiz", { x: 300, y: 200, yx: "sol", yy: "ust" }, "dikey");
+  const kc = D.kutuBul(c, "k-analiz");
+  assert.deepEqual([kc.yer, kc.yon, kc.kenar, kc.konum], ["serbest", "dikey", "alt", { x: 300, y: 200, yx: "sol", yy: "ust" }]);
+  assert.deepEqual(ids(c), ids(y));
+  const geri = D.dogrula(JSON.stringify(c));
+  assert.deepEqual(D.kutuBul(geri, "k-analiz").konum, kc.konum, "yüzen kutu JSON gidiş-dönüş");
+  const dd = D.kenaraAl(c, "k-analiz", "ust", { once: null });
+  const kd = D.kutuBul(dd, "k-analiz");
+  assert.deepEqual([kd.yer, kd.kenar, kd.konum, kd.sira], ["kenar", "ust", null, 3]);
+  assert.equal(ids(dd)[1], "k-analiz");
+  assert.throws(function () { D.kenaraAl(y, "yok", "sol"); }, /bulunamadı/);
+  assert.throws(function () { D.serbestBirak(y, "k-aks", null); }, /konum/);
+  // kutuGuncelle: çapasız kutu yüzemez; kenara alınan kutunun çapası düşer
+  assert.equal(D.kutuBul(D.kutuGuncelle(y, "k-aks", { yer: "serbest" }), "k-aks").yer, "kenar");
+  assert.equal(D.kutuBul(D.kutuGuncelle(c, "k-analiz", { yer: "kenar" }), "k-analiz").konum, null);
+  // yeni kutu: konumsuzsa şeridin sonuna (dizinin sonunda), konumluysa yüzer
+  const e = D.kutuEkle(y, { kenar: "sag" }), ke = D.kutuBul(e.yerlesim, e.id);
+  assert.deepEqual([ke.yer, ke.sira, ids(e.yerlesim).length - 1], ["kenar", 4, ids(e.yerlesim).indexOf(e.id)]);
+  const e2 = D.kutuEkle(y, { konum: { x: 5, y: 5, yx: "sol", yy: "ust" } });
+  assert.equal(D.kutuBul(e2.yerlesim, e2.id).yer, "serbest");
+});
+
+test("doğrula: sürüm 1 → 2 geçişi (otoKatli açılır, kenar çapadan, sıra çapalardan, konum düşer)", function () {
+  const v1 = { surum: 1, ad: "bina", kutular: [
+    { id: "k-cizim", ad: "Çizim", komutlar: ["sec"], yon: "dikey", kenar: "sol", konum: { x: 48, y: 8, yx: "sol", yy: "ust" } },
+    { id: "k-duzenleme", ad: "Düzenleme", komutlar: ["sil"], kenar: "ust", konum: { x: 124, y: 8, yx: "sol", yy: "ust" } },
+    { id: "k-aks", ad: "Aks", komutlar: ["aks-ekle"], kenar: "ust", katli: true, otoKatli: true, otoKonum: { x: 700, y: 8, yx: "sol", yy: "ust" },
+      konum: { x: 20, y: 8, yx: "sag", yy: "ust" } },
+    { id: "k-gorunum", ad: "Görünüm", komutlar: ["gor-3b"], kenar: "alt", konum: { x: 400, y: 8, yx: "sag", yy: "alt" } },
+    { id: "k-analiz", ad: "Analiz", komutlar: ["coz"], kenar: "alt", konum: { x: 124, y: 8, yx: "sol", yy: "alt" } },
+    { id: "k-sonuc", ad: "Sonuç", komutlar: ["rapor"], yon: "dikey", kenar: "sag", katli: true, konum: { x: 8, y: 8, yx: "sag", yy: "ust" } },
+    { id: "k-olcme", ad: "Ölçme", komutlar: ["olc-aci"], yon: "dikey", kenar: "sag", konum: { x: 8, y: 120, yx: "sag", yy: "alt" } },
+    { id: "k-yuzen", ad: "Benim", komutlar: ["sec"], yon: "dikey", kenar: "ust", konum: { x: 300, y: 300, yx: "sol", yy: "ust" } },
+    { id: "k-sol-yatay", ad: "Yatay", komutlar: ["sec"], kenar: "alt", konum: { x: 8, y: 16, yx: "sol", yy: "ust" } },
+  ] };
+  const rapor = {};
+  const y = D.dogrula(JSON.stringify(v1), rapor);
+  assert.equal(rapor.goc, true);
+  assert.equal(y.surum, 2);
+  y.kutular.forEach(function (k) {
+    assert.equal(k.yer, "kenar", k.id); assert.equal(k.konum, null, k.id);
+    assert.ok(!("otoKatli" in k) && !("otoKonum" in k), k.id);
+  });
+  const k = function (id) { return D.kutuBul(y, id); };
+  assert.equal(k("k-aks").katli, false, "otoKatli → açık");
+  assert.equal(k("k-sonuc").katli, true, "kullanıcının katlaması korunur");
+  // kenar: dikey kutu yan kenara değiyorsa (≤ 22 px) o kenar; Çizim yönetici düğmesinin yanına itilmişti (x = 48): eski kenarı (sol)
+  assert.equal(k("k-cizim").kenar, "sol");
+  assert.equal(k("k-sonuc").kenar, "sag");
+  assert.equal(k("k-yuzen").kenar, "ust", "kenara değmeyen kutu eski kenarında");
+  // yatay kutu üst/alt kenara değiyorsa o kenar: üst kenara değen (y = 16) "alt" tercihli kutu üst şeride geçer
+  assert.equal(k("k-sol-yatay").kenar, "ust");
+  // sıra: bantta soldan çapalılar soldan sağa, sonra sağdan çapalılar (sağ uzaklığı büyük olan önce); sütunda üstten, sonra alttan
+  assert.deepEqual(["k-sol-yatay", "k-duzenleme", "k-yuzen", "k-aks"].map(function (id) { return k(id).sira; }), [1, 2, 3, 4]);
+  assert.deepEqual(["k-analiz", "k-gorunum"].map(function (id) { return k(id).sira; }), [1, 2]);
+  assert.deepEqual(["k-sonuc", "k-olcme"].map(function (id) { return k(id).sira; }), [1, 2]);
+  // sürüm 2 gidiş-dönüş: geçiş yok
+  const r2 = {};
+  assert.deepEqual(D.dogrula(JSON.parse(JSON.stringify(y)), r2), y);
+  assert.equal(r2.goc, undefined);
+  assert.throws(function () { D.dogrula({ surum: 3, kutular: [] }); }, /daha yeni bir sürüm/);
+});
+
+test("sayfa tuşları (C22): donmuş liste, 10 satır sırasıyla, Enter dahil; grup adları", function () {
+  const S = A.SAYFA_TUSLARI;
+  assert.ok(Object.isFrozen(S) && S.every(function (x) { return Object.isFrozen(x); }));
+  assert.deepEqual(S.map(function (x) { return x.kisayol; }), ["Esc", "Shift+F10", "Enter", "?", "PgUp", "PgDn", "F", "Shift+F", "Ctrl+Shift+Z", "Backspace"]);
+  assert.deepEqual(S.map(function (x) { return x.grup; }), ["sayfa", "sayfa", "sayfa", "sayfa", "aks", "aks", "gorunum", "gorunum", "duzenleme", "duzenleme"]);
+  assert.equal(S[2].ad, "Bağlam menüsünde: Bilgi");
+  assert.equal(S[0].ad, "Kipten çık, seçimi ya da yarım çizimi / ölçümü bırak; tam ekrandan çık");
+  S.forEach(function (x) { assert.deepEqual(Object.keys(x), ["kisayol", "ad", "grup"]); assert.ok(x.ad.length > 3); });
+  assert.equal(A.grupAdi("sayfa"), "Sayfa"); assert.equal(A.grupAdi("gorunum"), "Görünüm"); assert.equal(A.grupAdi("aks"), "Aks");
+  assert.throws(function () { "use strict"; S.push({}); });
+});
+
+test("en yakın boş yer (yüzen kutu geri düşmesi): engellerden ARALIK uzakta, sınırlar içinde; yer yoksa null", function () {
+  const dolu = [{ x: 8, y: 8, w: 500, h: 42 }, { x: 8, y: 56, w: 70, h: 300 }];
+  const p = D.yakinBos({ x: 20, y: 20, w: 100, h: 40 }, 800, 400, dolu);
+  assert.ok(p && !dolu.some(function (d) { return D.cakisir({ x: p.x, y: p.y, w: 100, h: 40 }, d); }));
+  assert.ok(p.x >= 8 && p.y >= 8 && p.x + 100 <= 792 && p.y + 40 <= 392);
+  assert.ok(Math.hypot(p.x - 20, p.y - 20) < 120, JSON.stringify(p));
+  assert.deepEqual(D.yakinBos({ x: 300, y: 200, w: 100, h: 40 }, 800, 400, dolu), { x: 300, y: 200 });
+  assert.equal(D.yakinBos({ x: 0, y: 0, w: 100, h: 40 }, 800, 400, [{ x: 0, y: 0, w: 800, h: 400 }]), null);
 });

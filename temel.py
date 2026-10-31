@@ -19,7 +19,8 @@ taşır). Mütemadi temelde tabla genişliği boyunca zemin, kiriş ekseni etraf
 Değerler ve madde numaraları araştırma dosyasından (``arastirma_kar_ruzgar_temel.json``: TBDY 2018 Bölüm 16, TS 500
 md. 8.1.3, 8.3.1, 10.1–10.4) ve TS 500 metninden alınmıştır; bkz. ``KAYNAK``.
 
-Kullanım (``yapi.bina_coz`` çağırır)::
+Kullanım (``yapi.bina_coz`` çağırır; genel modelde ``yapi_serbest.bina_coz`` aynı işlevleri aks–kat görünümüyle —
+``yapi_serbest._temel_gorunum``: GLOBAL X/Y aksları, taban kolonları, kot_0 — çağırır)::
 
     temel.oku(B, t)                     # bina.temeller → doğrulanmış yapılandırma (öğretici hatalar)
     info = temel.ag_kur(B, dugum, ...)  # ağ: düğümler, elemanlar, yaylar, yatay mesnetler, öz ağırlık (G)
@@ -405,15 +406,15 @@ def _yarim_boylar(pts):
 
 class _AgKurucu:
     """Temel düğümü/elemanı kaydı: aks kesişimindeki noktalar bina düğüm numarasını (1000·0 + 20·ix + iy + 1) alır, öteki
-    noktalar 50001'den sıralı numaralanır."""
+    noktalar ``ilk_no``'dan (varsayılan 50001) sıralı numaralanır."""
 
-    def __init__(self, B, dugum, dugumler, elemanlar, model_el, eno, kot0, info):
+    def __init__(self, B, dugum, dugumler, elemanlar, model_el, eno, kot0, info, ilk_no=50001):
         self.B, self.dugum, self.dugumler, self.elemanlar, self.model_el = B, dugum, dugumler, elemanlar, model_el
         self.eno, self.kot0, self.info = eno, kot0, info
         self.xidx = {round(x, 6): i for i, x in enumerate(B.xk)}
         self.yidx = {round(y, 6): i for i, y in enumerate(B.yk)}
         self.nokta = {}
-        self.sonraki = 50001
+        self.sonraki = ilk_no
 
     def dugum_al(self, X, Y):
         key = (round(X, 6), round(Y, 6))
@@ -470,10 +471,12 @@ def _ag_secimi(cfg, n_ust, en_fazla, sayac):
     return ag, None
 
 
-def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno, en_fazla=1500):
+def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno, en_fazla=1500, ilk_no=50001):
     """Mütemadi ya da radye temel ağını bina ağına ekler. ``dugum(ix, iy, kat)`` yapi.py'nin düğüm kayıt işlevi (aks
     kesişiminde bina numarası); ``dugumler``, ``elemanlar`` (ag, bina koordinatı), ``model_el`` (motor) listelerine ekler.
-    ``ag`` verilmemişse (otomatik) toplam serbestlik ``en_fazla``yı aşmayacak biçimde seçilir.
+    ``ag`` verilmemişse (otomatik) toplam serbestlik ``en_fazla``yı aşmayacak biçimde seçilir. Aks kesişimi dışındaki ağ
+    noktaları ``ilk_no``'dan numaralanır (genel model, yapi_serbest: modelde boş bir blok seçer). ``B`` aks–kat binasıdır ya da
+    genel modelin aynı alanları taşıyan görünümü (yapi_serbest._temel_gorunum: GLOBAL akslar, taban kolonları, kat 0 kotu).
     Dönüş (yeni eno, info). info: tip, dugumler [{no, X, Y, A (etki alanı), k, kolon, aks}], elemanlar, hatlar / plak,
     model_mesnet, model_yay, yuk_G {"yayili", "yukler"} (motor), W (öz ağırlık, kN), k0."""
     tem = B.temeller
@@ -484,8 +487,8 @@ def ag_kur(B, dugum, dugumler, elemanlar, model_el, eno, en_fazla=1500):
     kot0 = B.kat[0]["kot"]
     info = SimpleNamespace(tip=tip, dugumler=[], elemanlar=[], hatlar=[], plak=None, model_mesnet=[], model_yay=[],
                            yuk_G={"yayili": [], "yukler": []}, W=0.0, k0=k0, E=E, G=G, gamma=gam, varsayim=list(tem.get("varsayim", [])),
-                           notlar=[], uyarilar=[])
-    K = _AgKurucu(B, dugum, dugumler, elemanlar, model_el, eno, kot0, info)
+                           notlar=[], uyarilar=[], ilk_no=ilk_no)
+    K = _AgKurucu(B, dugum, dugumler, elemanlar, model_el, eno, kot0, info, ilk_no=ilk_no)
     taban = [c for c in B.kolonlar if c["kat"] == 1]
     n_ust = 6 * sum(1 for d in dugumler if d["kat"] != 0)      # temel dışı serbestlikler (kat 0 kolon tabanları temel düğümü olur)
     if tip == "surekli":
@@ -1062,6 +1065,19 @@ def _kolon_yuzu_serbest(B, hat, kol_no_listesi):
     return en
 
 
+def _kolon_taban(km, kat, c):
+    """Kolonun temel düğümündeki ucu: (N basınç +, |M_X|, |M_Y|) bina eksenlerinde. Aks–kat kolonu (i ucu altta, eksen takası yok):
+    N = u[0], |M_X| = |u[4]|, |M_Y| = |u[5]|. Genel model kolonu (``uc`` 'i' | 'j', ``lam`` bina koordinatında yerel eksenler): j
+    ucu altta ise N = −u[6]; momentler yerel → bina dönüşümüyle (çubuk yerel ekseni dönükse — aci — de doğru)."""
+    u = km.uc(kat, c["eleman"])
+    if c.get("lam") is None:
+        return float(u[0]), abs(float(u[4])), abs(float(u[5]))
+    j = c.get("uc") == "j"
+    N = -float(u[6]) if j else float(u[0])
+    M = np.asarray(c["lam"], dtype=float).T @ np.asarray(u[9:12] if j else u[3:6], dtype=float)
+    return N, abs(float(M[0])), abs(float(M[1]))
+
+
 def _kontrol(ad, talep, kapasite, kaynak, birim="", kombinasyon=None, kosul=False, bilgi=False):
     talep, kapasite = float(talep), float(kapasite)
     dc = 99.0 if kapasite <= 0 else min(max(talep / kapasite, 0.0), 99.0)
@@ -1122,7 +1138,7 @@ def sonuclar(B, ag, paket, kombinasyonlar):
         if r["kolon"] is None:
             continue
         c = B.kolon_no[r["kolon"]]
-        N = float(km.uc(kat_gq, c["eleman"])[0])          # kolon alt ucu eksenel kuvveti (basınç +)
+        N = _kolon_taban(km, kat_gq, c)[0]                # kolon alt ucu eksenel kuvveti (basınç +)
         N_kolon += N
         kolonlar.append({"kolon_no": c["no"], "aks": c["aks"], "adres": c["adres"], "dugum": r["no"], "N_servis": _r(N, 6),
                          "w_mm": _r(w[i] * 1000.0, 5), "p_kNm2": _r(p[i], 5)})
@@ -1317,12 +1333,11 @@ def sonuclar(B, ag, paket, kombinasyonlar):
                     kenar = {k: (v if v < 5.0 * d else None) for k, v in kenar.items()}
                     en = None
                     for i, (ad, kat, _) in enumerate(tas):
-                        u = km.uc(kat, c["eleman"])
-                        N = float(u[0])
+                        N, MX, MY = _kolon_taban(km, kat, c)
                         if N <= 0:
                             continue
-                        ex = 0.4 * abs(float(u[5])) / N
-                        ey = 0.4 * abs(float(u[4])) / N
+                        ex = 0.4 * MY / N
+                        ey = 0.4 * MX / N
                         z = zimbalama(N, c["bX"], c["bY"], d, beton_ad, p_d=max(float(P[i, j_n]), 0.0), kenar=kenar, ex=ex, ey=ey)
                         if en is None or z["dc"] > en["dc"]:
                             en = dict(z, kombinasyon=ad)
@@ -1407,10 +1422,18 @@ def sonuclar(B, ag, paket, kombinasyonlar):
         "hatlar": [{a: (_r(v) if isinstance(v, float) else v) for a, v in hh.items()} for hh in info.hatlar],
         "model": model, "tasarim": tasarim, "en_buyuk_dc": _r(en_dc, 5), "dc_dagilimi": dc_dagilim,
         "uyarilar": uyarilar, "oneriler": oneriler, "notlar": notlar, "varsayimlar": list(info.varsayim),
-        "kaynaklar": dict(KAYNAK),
+        "kaynaklar": dict(KAYNAK), "oz_yuk": oz_yuk(info),
     }
     ic.update({"zimbalama": zimb, "kritik_zimbalama": max(zimb, key=lambda z: z["dc"]) if zimb else None})
     return veri, ic
+
+
+def oz_yuk(info):
+    """Temel öz ağırlığı yükleri (G; ag_kur'un yuk_G kayıtları, bina eksenleri): elemanlar [{no, q}] yerel düzgün yayılı yük
+    (kN/m, aşağı +), dugumler [{dugum, P}] düğüm yükü (kN, aşağı +; xy kesişim düzeltmeleri eksi olabilir), W = Σ q·L + Σ P."""
+    return {"elemanlar": [{"no": y["eleman"], "q": _r(-y["q"], 6)} for y in info.yuk_G["yayili"]],
+            "dugumler": [{"dugum": y["dugum"], "P": _r(-y["Fy"], 6)} for y in info.yuk_G["yukler"]],
+            "W": _r(info.W, 6)}
 
 
 def veri_farkli_metin(oran):

@@ -131,6 +131,7 @@ import io
 import json
 import math
 import re
+import sys
 import warnings
 from types import SimpleNamespace
 
@@ -2107,10 +2108,30 @@ def _diyafram_kur(M):
         for q, c in terimler:
             T[i, M.kol[q]] += c
     M.T = T
-    M.K_r = T.T @ M.K @ T
+    M.K_r = _TKT(M, bag) if (M.sayisal and isinstance(M.K, np.ndarray) and not _BLAS_VAR) else T.T @ M.K @ T
     M.sabit_r = [M.kol[i] for i in M.sabit if i in M.kol]   # sanal efendinin sıfır SD'leri zaten sistem dışıdır
     ks = set(M.sabit_r)
     M.serbest_r = [a for a in range(M.n_r) if a not in ks]
+
+
+_BLAS_VAR = sys.platform != "emscripten"     # Pyodide (WebAssembly) numpy'si BLAS'sızdır: yoğun matris çarpımı çok yavaş
+
+
+def _TKT(M, bag):
+    """K_r = Tᵀ K T, T'nin yapısıyla (bağımsız SD'ler birim sütun, köle SD'ler efendi SD'lerine katsayılı bağ): sütun / satır
+    toplama — yoğun n × n_r matris çarpımı yok. Sonuç yoğun çarpımla yuvarlama düzeyinde aynıdır (toplama sırası farklı). Yalnız
+    BLAS'sız numpy'de (Pyodide) kullanılır: orada yoğun çarpım binlerce SD'de dakikalar sürer (betonarme-4kat-radye: 144 s);
+    masaüstü CPython'da (BLAS) yoğun çarpım hem hızlı hem de önceki sonuçlarla bayt bayt aynıdır."""
+    K, ind, kol = M.K, M.ind, M.kol
+    A = K[:, ind]                                  # K T: bağımsız SD sütunları (kopya)
+    for i, terimler in bag.items():
+        for q, c in terimler:
+            A[:, kol[q]] += c * K[:, i]
+    Kr = A[ind, :]                                 # Tᵀ (K T)
+    for i, terimler in bag.items():
+        for q, c in terimler:
+            Kr[kol[q], :] += c * A[i, :]
+    return Kr
 
 
 def _F_indirgenmis(M):
