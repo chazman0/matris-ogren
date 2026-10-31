@@ -3,30 +3,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
-#include <limits>
 
 #include <nlohmann/json.hpp>
 
 namespace op4 {
-namespace {
-
-// "… G = 2714.76 kN" içinde "<ad> = <sayı>" değerini bulur.
-double Toplam(std::string_view m, std::string_view ad) {
-    const std::string anahtar = std::string(ad) + " = ";
-    for (size_t i = m.find(anahtar); i != std::string_view::npos; i = m.find(anahtar, i + 1)) {
-        if (i > 0 && m[i - 1] != ' ' && m[i - 1] != ';' && m[i - 1] != ',') continue;
-        const std::string sayi(m.substr(i + anahtar.size(), 32));
-        char* son = nullptr;
-        const double v = std::strtod(sayi.c_str(), &son);
-        if (son != sayi.c_str()) return v;
-    }
-    return std::numeric_limits<double>::quiet_NaN();
-}
-
-}  // namespace
-
-CozumToplamlari OzetToplamlari(const SonucOzeti& o) { return {Toplam(o.ozetMetni, "G"), Toplam(o.ozetMetni, "Q")}; }
 
 DcDagilimi DcDagilimiHesapla(const SonucOzeti& o) {
     DcDagilimi d;

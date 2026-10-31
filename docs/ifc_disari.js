@@ -11,7 +11,8 @@
    veri: yapi.bina_coz(...).veri (isteğe bağlı): ag (motor düğüm/eleman ağı), yukler, durumlar, kombinasyonlar, tasarim (D/C).
    secenek: {analiz: true (yapısal analiz modeli), yukler: true (G/Q yükleri, veri gerekir), sonuclar: true (D/C özellikleri),
              izgara: "kat" | "tek" | false (aks ızgaraları), zaman: "YYYY-MM-DDTHH:MM:SS" (UTC; verilirse dosya belirlenimci),
-             tohum (GlobalId kökü; varsayılan proje adı/başlık), dosya_adi, proje: {ad, yer, il, ilce, ada, parsel, hazirlayan, kurum}}
+             tohum (GlobalId kökü; varsayılan proje adı/başlık), dosya_adi, proje: {ad, yer, il, ilce, ada, parsel, hazirlayan, kurum},
+             uygulama: {ad, surum, firma, tam_ad} (dosyayı yazan uygulama; verilmezse "Matris Öğren" — web çıktısı değişmez)}
 
    Bina koordinatı (X sağa, Y derinlik, Z yukarı) doğrudan IFC'ye gider (IFC de Z yukarı); motor (cerceve3b, Y yukarı) eksenine DEĞİL.
    Uzunluk metre, açı radyan, kuvvet kN.
@@ -47,7 +48,10 @@
      Analiz üyesi ↔ fiziksel eleman (IfcRelAssignsToProduct) ve D/C (Pset_MatrisOgren) surum 3'te motorun çubuk no'suyla eşlenir.
    - Düğüm başvuruları (REF): §12.1 {"dugum"} | {"aks", "kat"} | {"X", "Y", "Z"}; §19.2 {"aks", "z"} | {"sistem", "aks", "z"} ve
      dugumler kayıtlarında "bolme" (cubuk_i, cubuk_j, oran) ve "kesisim" (a, b doğruları) düğümleri. Aynı konumdaki (1 mm) REF'ler tek düğüm.
-   - Sahiplik: IfcOwnerHistory + IfcApplication (uygulama adı yalnız "Matris Öğren").
+   - Sahiplik: IfcOwnerHistory + IfcApplication. Uygulama kimliği varsayılan "Matris Öğren" (SURUM); secenek.uygulama.ad
+     verilirse (op4 yerel programı) IfcApplication (Version = surum, ApplicationFullName = tam_ad || ad,
+     ApplicationIdentifier = ad), geliştirici IfcOrganization (firma || ad) ve FILE_NAME (ön işlemci "ad surum",
+     kaynak sistem tam_ad || ad) onu taşır.
    - GlobalId: 22 karakter IFC base64, (proje tohumu + nesne anahtarı) özetinden — aynı modelden aynı kimlikler. */
 (function (kok, fabrika) {
   "use strict";
@@ -863,6 +867,18 @@
     return this.w.ekle("IFCEXTRUDEDAREASOLID", [profil, konum2 || null, this.yon([0, 0, 1]), uzunluk]);
   };
 
+  // Dosyayı yazan uygulama: secenek.uygulama {ad, surum, firma, tam_ad} (ad verilmişse), yoksa "Matris Öğren" + SURUM.
+  // onislemci = FILE_NAME preprocessor_version ("ad surum"), tam_ad = originating_system ve ApplicationFullName.
+  Uretici.prototype.uygulamaKimligi = function () {
+    const u = sozluk(this.s.uygulama);
+    if (u.ad == null || String(u.ad) === "") {
+      return { ad: UYGULAMA_AD, surum: SURUM, firma: UYGULAMA_AD, tam_ad: UYGULAMA_AD, onislemci: UYGULAMA };
+    }
+    const ad = String(u.ad), surum = u.surum == null ? "" : String(u.surum);
+    return { ad: ad, surum: surum, firma: u.firma ? String(u.firma) : ad, tam_ad: u.tam_ad ? String(u.tam_ad) : ad,
+      onislemci: ad + (surum ? " " + surum : "") };
+  };
+
   // ---- başlangıç: proje, birimler, bağlamlar, mekânsal yapı ----
   Uretici.prototype.basla = function () {
     const w = this.w, Bm = this.Bm, proje = sozluk(this.s.proje);
@@ -881,9 +897,10 @@
     const kdon = tureyen([tur(kN, 1), tur(m, 1), tur(rad, -1)], "ROTATIONALSTIFFNESSUNIT");
     const kyatak = tureyen([tur(kN, 1), tur(m, -3)], "MODULUSOFSUBGRADEREACTIONUNIT");     // zemin yatak katsayısı k0 (kN/m³)
     const birimler = w.ekle("IFCUNITASSIGNMENT", [[m, m2, m3, rad, kN, kNm, kNm2, kNxm, kNmm, kyay, kdon, kyatak]]);
-    // Sahiplik geçmişi: uygulama yalnız "Matris Öğren" adını taşır
-    const gelistirici = w.ekle("IFCORGANIZATION", [null, UYGULAMA_AD, null, null, null]);
-    const uygulama = w.ekle("IFCAPPLICATION", [gelistirici, SURUM, UYGULAMA_AD, UYGULAMA_AD]);
+    // Sahiplik geçmişi: uygulama kimliği (varsayılan "Matris Öğren"; secenek.uygulama verilirse o)
+    const uk = this.uygulamaKimligi();
+    const gelistirici = w.ekle("IFCORGANIZATION", [null, uk.firma, null, null, null]);
+    const uygulama = w.ekle("IFCAPPLICATION", [gelistirici, uk.surum, uk.tam_ad, uk.ad]);
     const kisi = w.ekle("IFCPERSON", [null, proje.hazirlayan ? String(proje.hazirlayan) : "Kullanıcı", null, null, null, null, null, null]);
     const kurum = proje.kurum ? w.ekle("IFCORGANIZATION", [null, String(proje.kurum), null, null, null]) : gelistirici;
     const kullanici = w.ekle("IFCPERSONANDORGANIZATION", [kisi, kurum, null]);
@@ -2559,6 +2576,7 @@
 
   Uretici.prototype.metin = function () {
     const proje = sozluk(this.s.proje);
+    const uk = this.uygulamaKimligi();
     const zaman = this.zamanMetni();
     const ad = this.s.dosya_adi || dosyaAdi(this.Bm.bina);
     const bas = [
@@ -2566,7 +2584,7 @@
       "HEADER;",
       "FILE_DESCRIPTION(('ViewDefinition [ReferenceView_V1.2, StructuralAnalysisView]'),'2;1');",
       "FILE_NAME(" + [S(ad), S(String(zaman).slice(0, 19)), "(" + S(proje.hazirlayan || "") + ")", "(" + S(proje.kurum || "") + ")",
-        S(UYGULAMA), S(UYGULAMA_AD), S("")].join(",") + ");",
+        S(uk.onislemci), S(uk.tam_ad), S("")].join(",") + ");",
       "FILE_SCHEMA(('IFC4'));",
       "ENDSEC;",
       "DATA;",

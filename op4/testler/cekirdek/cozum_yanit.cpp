@@ -60,11 +60,35 @@ TEST_CASE("S19 CozumYanitiniCoz: üç şablonun gerçek bina_coz yanıtı") {
         // veri metni yeniden kodlanmadan ham alt metin olarak çıkar ve aynı JSON'dur.
         CHECK(yanit.find(veri) != std::string::npos);
         CHECK(json::parse(veri) == v);
-        // ΣG, ΣQ (sonuc_metin'den) = veri.ozet.toplam_G / toplam_Q.
-        const CozumToplamlari t = OzetToplamlari(o);
-        CHECK(t.G == doctest::Approx(v["ozet"]["toplam_G"].get<double>()).epsilon(1e-12));
-        CHECK(t.Q == doctest::Approx(v["ozet"]["toplam_Q"].get<double>()).epsilon(1e-12));
+        // ΣG, ΣQ doğrudan veri.ozet.toplam_G / toplam_Q'dan (birebir; özet metninden ayrıştırılmaz).
+        CHECK(o.toplamG == v["ozet"]["toplam_G"].get<double>());
+        CHECK(o.toplamQ == v["ozet"]["toplam_Q"].get<double>());
+        CHECK(o.toplamG > 0);
     }
+}
+
+TEST_CASE("S19 toplamG / toplamQ: özet metni değil veri.ozet; yoksa NaN") {
+    json j = json::parse(Fikstur("betonarme-tek-aciklik.yanit.json"));
+    const double g = j["veri"]["ozet"]["toplam_G"].get<double>();
+    j["sonuc_metin"] = "1 SD, 1 kombinasyon; G = 1.5 kN, Q = 2.5 kN";  // metin ayrıştırılmaz
+    SonucOzeti o;
+    std::string veri, hata;
+    REQUIRE(CozumYanitiniCoz(j.dump(), o, veri, hata));
+    CHECK(o.toplamG == g);
+    CHECK(o.toplamQ == j["veri"]["ozet"]["toplam_Q"].get<double>());
+    j["veri"]["ozet"].erase("toplam_G");
+    j["veri"]["ozet"]["toplam_Q"] = "çok";
+    REQUIRE(CozumYanitiniCoz(j.dump(), o, veri, hata));
+    CHECK(std::isnan(o.toplamG));
+    CHECK(std::isnan(o.toplamQ));
+    CHECK(SayiMetni(o.toplamG, 2) == "—");
+    // Kayıtta NaN → null → NaN; varsayılan NaN.
+    const json k = json::parse(SonucOzetiJson(o));
+    CHECK(k["ozet"]["toplam_G"].is_null());
+    CHECK(k["ozet"]["toplam_Q"].is_null());
+    SonucOzeti b;
+    CHECK(std::isnan(b.toplamG));
+    CHECK(std::isnan(b.toplamQ));
 }
 
 TEST_CASE("S19 yedek eşleme (genel model): tasarım satırları çubuk kimliğine, en büyük D/C elemanı") {
@@ -138,6 +162,8 @@ TEST_CASE("S19 sonuc/ozet.json gidiş-dönüşü") {
     CHECK(g.enBuyukDc == o.enBuyukDc);
     CHECK(g.enBuyukDcElemani == o.enBuyukDcElemani);
     CHECK(g.asanSayisi == o.asanSayisi);
+    CHECK(g.toplamG == o.toplamG);
+    CHECK(g.toplamQ == o.toplamQ);
     CHECK(g.ozetMetni == o.ozetMetni);
     CHECK(g.uyarilar == o.uyarilar);
     REQUIRE(g.elemanlar.size() == o.elemanlar.size());

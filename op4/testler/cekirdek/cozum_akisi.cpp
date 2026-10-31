@@ -259,6 +259,8 @@ TEST_CASE("D9 .op4 sonuc/: kaydet → aç, model aynıysa D/C hemen güncel; de�
     CHECK(oz["model_karmasi"] == MetinKarmasi(o.cekirdek.Metin()));
     CHECK(oz["eski"] == false);
     CHECK(oz["dc_dizisi"].size() == once.elemanlar.size());
+    CHECK(oz["ozet"]["toplam_G"] == once.toplamG);
+    CHECK(oz["ozet"]["toplam_Q"] == once.toplamQ);
     CHECK(*r.icerik.Al(proje_yolu::SONUC_VERISI) == *o.sonuc.Veri());
 
     // Aç: aynı model → hemen güncel, boyama var (motor isteği yok).
@@ -271,6 +273,8 @@ TEST_CASE("D9 .op4 sonuc/: kaydet → aç, model aynıysa D/C hemen güncel; de�
     CHECK(o.sonuc.Ozet().cozumKimligi == once.cozumKimligi);
     CHECK(o.sonuc.Ozet().elemanlar.size() == once.elemanlar.size());
     CHECK(o.sonuc.Ozet().enBuyukDcElemani == once.enBuyukDcElemani);
+    CHECK(o.sonuc.Ozet().toplamG == once.toplamG);  // ΣG / ΣQ kayıttan (özet paneli açılışta da dolu)
+    CHECK(o.sonuc.Ozet().toplamQ == once.toplamQ);
     REQUIRE(o.gorunum.sonuc);
     CHECK(o.gorunum.renkKipi == RenkKipi::Sonuc);
     CHECK_FALSE(o.gorunum.sonuc->eski);

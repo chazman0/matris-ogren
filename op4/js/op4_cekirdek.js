@@ -384,8 +384,9 @@
       },
       /**
        * IFC4 dışa aktarma (docs/ifc_disari.js uretAyrintili; MIMARI §14.1). zaman verilmezse çekirdek saati (sınamada
-       * deterministik) kullanılır; uygulama verilirse dosya başlığı ve IfcApplication / IfcOrganization onu taşır.
-       * @param {{analiz?: boolean, yukler?: boolean, dc?: boolean, uygulama?: {ad: string, surum: string, firma: string}, zaman?: string,
+       * deterministik) kullanılır; uygulama verilirse dosya başlığı ve IfcApplication / IfcOrganization onu taşır
+       * (docs/ifc_disari.js secenek.uygulama; tam_ad verilmezse ad).
+       * @param {{analiz?: boolean, yukler?: boolean, dc?: boolean, uygulama?: {ad: string, surum: string, firma: string, tam_ad?: string}, zaman?: string,
        *          tohum?: string, proje?: Object, izgara?: string|boolean}} secenek
        * @param {Object|null} veri son bina_coz "veri"si (D/C için) ya da null
        * @returns {{basarili: boolean, hata?: string, metin?: string, dosya_adi?: string, uyarilar: string[]}}
@@ -394,14 +395,12 @@
         const s = secenek || {};
         const zaman = s.zaman || new Date(saat()).toISOString().slice(0, 19);
         const q = { zaman: zaman, analiz: s.analiz !== false, yukler: !!s.yukler && !!veri, sonuclar: !!s.dc && !!veri };
-        for (const k of ["tohum", "proje", "izgara", "dosya_adi"]) if (s[k] != null) q[k] = s[k];
+        for (const k of ["tohum", "proje", "izgara", "dosya_adi", "uygulama"]) if (s[k] != null) q[k] = s[k];
         let r;
         try { r = IFC.uretAyrintili(model, veri || null, q); } catch (e) {
           return { basarili: false, hata: "IFC dışa aktarılamadı: " + e.message, uyarilar: [] };
         }
-        let metin = r.metin;
-        if (s.uygulama && s.uygulama.ad) metin = uygulamaKimligi(IFC, metin, s.uygulama);
-        return { basarili: true, metin: metin, dosya_adi: r.dosya_adi, uyarilar: r.uyarilar || [] };
+        return { basarili: true, metin: r.metin, dosya_adi: r.dosya_adi, uyarilar: r.uyarilar || [] };
       },
       /**
        * Tablo düzenleyici değişiklikleri (MatrisTablo._ic.degisiklikleriUygula: tablolar.degisiklikleri_uygula ile aynı anlam).
@@ -419,26 +418,6 @@
         return gec("tabloUygula", yeni, []);
       },
     };
-  }
-
-  /** IFC başlığındaki ve sahiplik geçmişindeki uygulama kimliğini değiştirir (docs/ifc_disari.js "Matris Öğren" yazar). */
-  function uygulamaKimligi(IFC, metin, u) {
-    const S = function (x) { return "'" + IFC.stepMetin(String(x)) + "'"; };
-    const eskiAd = S("Matris Öğren"), eskiTam = S("Matris Öğren " + IFC.SURUM);
-    const ad = String(u.ad), surum = String(u.surum || ""), firma = String(u.firma || u.ad);
-    const satirlar = metin.split("\n");
-    let org = null;
-    for (let i = 0; i < satirlar.length; i++) {
-      const s = satirlar[i];
-      if (s.indexOf("FILE_NAME(") === 0) satirlar[i] = s.replace(eskiTam + "," + eskiAd, S(ad + (surum ? " " + surum : "")) + "," + S(ad));
-      else if (org == null && /^#\d+=IFCORGANIZATION\(\$,/.test(s) && s.indexOf(eskiAd) > 0) {
-        org = s.slice(0, s.indexOf("="));
-        satirlar[i] = s.replace(eskiAd, S(firma));
-      } else if (/^#\d+=IFCAPPLICATION\(/.test(s)) {
-        satirlar[i] = s.replace(/IFCAPPLICATION\((#\d+),'[^']*',.*\);$/, function (_, o) { return "IFCAPPLICATION(" + o + "," + S(surum) + "," + S(ad) + "," + S(ad) + ");"; });
-      }
-    }
-    return satirlar.join("\n");
   }
 
   return { SURUM: SURUM, ISLEMLER: ISLEMLER, ISLEM_ADLARI: ISLEM_ADLARI, TASLAK: TASLAK, olustur: olustur };

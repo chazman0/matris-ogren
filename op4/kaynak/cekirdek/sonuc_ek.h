@@ -10,13 +10,6 @@
 
 namespace op4 {
 
-// ΣG, ΣQ, ΣS (kN): web_kopru sonuc_metin'den ("216 SD, 84 kombinasyon; G = 2714.76 kN, Q = 480.0 kN"). Yoksa NaN.
-// (SonucOzeti'nde ayrı alan yok — sözleşme değişikliği isteği: toplamG / toplamQ alanları.)
-struct CozumToplamlari {
-    double G, Q;
-};
-CozumToplamlari OzetToplamlari(const SonucOzeti& ozet);
-
 // D/C sınıflarına göre eleman sayıları (DcRengi ölçeği: < 0,7 / 0,7–0,9 / 0,9–1,0 / > 1,0 / tasarım yok).
 struct DcDagilimi {
     size_t yesil = 0, sari = 0, turuncu = 0, kirmizi = 0, yok = 0;

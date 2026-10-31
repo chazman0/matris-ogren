@@ -147,8 +147,9 @@ public:
     // veriOzeti: bina_coz yanıtındaki "veri" nesnesi (JSON metni). Model, çözülen modelle aynı olmalı (çağıran D,
     // cozum_kimligi ile denetler).
     virtual SonucEslemesi SonucEsle(const JsonMetni& veriOzeti) = 0;
-    // secenek: {"analiz":bool,"yukler":bool,"dc":bool,"uygulama":{"ad":"op4","surum":…,"firma":"Opus Fortis"},
-    //           "zaman":"YYYY-MM-DDTHH:MM:SS"}; veri: son bina_coz "veri"si (D/C için; boş olabilir).
+    // secenek: {"analiz":bool,"yukler":bool,"dc":bool,"uygulama":{"ad":"op4","surum":…,"firma":"Opus Fortis",
+    //           "tam_ad"?:…},"zaman":"YYYY-MM-DDTHH:MM:SS"}; veri: son bina_coz "veri"si (D/C için; boş olabilir).
+    //           uygulama docs/ifc_disari.js secenek.uygulama'ya gider (IfcApplication, geliştirici kurum, FILE_NAME).
     virtual IfcSonucu IfcDisari(const JsonMetni& secenek, const JsonMetni& veri) = 0;
 };
 

@@ -13,6 +13,18 @@ bool UygulamaKabugu::Kur(KabukAyari ayar, std::string& hata) {
     auto gunluk = [this](std::string_view s) {
         if (ortam_.gunluk) ortam_.gunluk(s);
     };
+    // Çıkış isteği: kaydedilir; ev sahibinin işlevi varsa o, yoksa kurulumdan sonra pencere kapatma kancası.
+    cikisIstendi_ = false;
+    cikisKodu_ = 0;
+    ortam_.cikisIste = [this, gunluk, evSahibi = std::move(ortam_.cikisIste)](int kod) {
+        if (!cikisIstendi_) {
+            cikisIstendi_ = true;
+            cikisKodu_ = kod;
+            gunluk("Çıkış istendi (kod " + std::to_string(kod) + ")");
+        }
+        if (evSahibi) evSahibi(kod);
+        else if (kuruldu_ && arayuz.pencereyiKapat) arayuz.pencereyiKapat();
+    };
     yedekBildirim_ = std::make_unique<GunlukBildirimleri>(gunluk);
     yedekIletisim_ = std::make_unique<BetikliIletisimKutulari>();
 
@@ -47,13 +59,18 @@ bool UygulamaKabugu::Kur(KabukAyari ayar, std::string& hata) {
     }
     if (!tamam) gunluk("Uyarı: " + hata);
 
-    for (const ModulKaydi& m : ayar.moduller)
+    for (const ModulKaydi& m : ayar.moduller) {
+        if (cikisIstendi_) {  // önceki modül çıkış istedi (ör. tek örnek devri): kalanlar kurulmaz
+            gunluk(std::string("Modül kurulmadı (çıkış istendi): ") + m.ad + " (" + m.paket + ")");
+            continue;
+        }
         if (m.kur) {
             m.kur(h_, ortam_);
             gunluk(std::string("Modül kuruldu: ") + m.ad + " (" + m.paket + ")");
         }
-    // Program her zaman boş model "Adsız 1" ile açılır (açılış dosyasını D ilk karede açar).
-    if (h_.cekirdek) {
+    }
+    // Program her zaman boş model "Adsız 1" ile açılır (açılış dosyasını D ilk karede açar); çıkış istendiyse açılmaz.
+    if (h_.cekirdek && !cikisIstendi_) {
         ModelYuklendi(h_, h_.cekirdek->YeniBos("Adsız 1"));
         belge.Acildi("", 1, false);
     }

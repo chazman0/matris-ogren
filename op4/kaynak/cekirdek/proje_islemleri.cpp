@@ -50,10 +50,14 @@ std::string KucukUzanti(const std::string& yol) {
         if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
     return u;
 }
-std::string UzantiDegistir(const std::string& yol, const std::string& uzanti) {
+// Uzantısız dosya adı: "C:/x/bina.matris" → "bina".
+std::string Govde(const std::string& yol) {
     const std::string ad = DosyaAdi(yol);
     const size_t n = ad.find_last_of('.');
-    const std::string govde = n == std::string::npos || n == 0 ? ad : ad.substr(0, n);
+    return n == std::string::npos || n == 0 ? ad : ad.substr(0, n);
+}
+std::string UzantiDegistir(const std::string& yol, const std::string& uzanti) {
+    const std::string govde = Govde(yol);
     const std::string k = Klasor(yol);
     return k.empty() ? govde + uzanti : Utf8(Yol(k) / Yol(govde + uzanti));
 }
@@ -151,6 +155,8 @@ DosyaIslemleri::DosyaIslemleri(Hizmetler& h, DosyaIslemleriAyari ayar, DosyaPlat
 DosyaIslemleri::~DosyaIslemleri() {
     if (h_.kapatmaOnayi) h_.kapatmaOnayi = nullptr;
     if (h_.belge) {
+        h_.belge->KatkiKaldir("model");  // katkılar bu nesneyi gösterir; belge kabukta daha uzun yaşar (S15)
+        h_.belge->KatkiKaldir("onizleme");
         h_.belge->kirliDegisti.Birak(aboneler_[0]);
         h_.belge->yolDegisti.Birak(aboneler_[1]);
         h_.belge->acildi.Birak(aboneler_[2]);
@@ -383,7 +389,8 @@ bool DosyaIslemleri::OkunaniYukle(OkumaSonucu& o, const std::string& yol, bool k
     const std::string belgeYolu = kurtarma ? asilYol : (eskiBicim ? std::string() : yol);
     if (belgeYolu.empty()) ++adsizSayaci_;
     eskiKaynak_ = eskiBicim && !kurtarma ? yol : std::string();
-    h_.belge->Acildi(belgeYolu, adsizSayaci_, o.dahaYeniSurum);
+    // İçe aktarılan eski biçimli belge başlıkta "Adsız N" yerine kaynak dosyanın gövdesiyle görünür (S15).
+    h_.belge->Acildi(belgeYolu, adsizSayaci_, o.dahaYeniSurum, eskiKaynak_.empty() ? std::string() : Govde(eskiKaynak_));
     if (kurtarma) h_.belge->KirliIsaretle();
     sonOtomatikSayac_ = kurtarma ? 0 : h_.belge->DegisiklikSayaci();
     kirliBaslangicMs_ = -1;

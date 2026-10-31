@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -31,6 +32,10 @@ struct SonucOzeti {
     size_t asanSayisi = 0;        // D/C > 1
     std::vector<std::string> uyarilar;
     std::vector<ElemanSonucu> elemanlar;  // çekirdek SonucEsle sonucu (kimliğe göre sıralı)
+    // Yük toplamları (kN): bina_coz veri.ozet.toplam_G / toplam_Q (motor yanıtından; özet metninden ayrıştırılmaz),
+    // sonuc/ozet.json'da ozet.toplam_G / toplam_Q. Yanıtta ya da kayıtta yoksa NaN (panel "—" gösterir).
+    double toplamG = std::numeric_limits<double>::quiet_NaN();
+    double toplamQ = std::numeric_limits<double>::quiet_NaN();
 };
 
 // D/C renk ölçeği (web sürümüyle aynı, docs/bina.js dcSinif + style.css): < 0,7 yeşil #22c55e, 0,7–0,9 sarı #facc15,

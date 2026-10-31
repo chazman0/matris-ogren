@@ -437,3 +437,28 @@ def test_gercek_motor(sunucu):
     assert s.yanit()["yanit"]["sonuc_metin"] == "4"
     s.kapat()
     assert s.bekle(10) == 0
+
+
+@gercek_motor
+def test_gercek_motor_d_istek_bicimleri(sunucu):
+    """op4 D'nin (cozum_akisi.cpp) motor istekleri, C++ istemcisinin yazdığı ham metinle (motor_istemci.cpp Gonder):
+    F5 bina_coz girdi {"bina": <şablon metni>, "anlat": false}, ayarlar {"sd_siniri": 6000}; .op4 açılışında bina_kimlik
+    ayarlar {} → veri.cozum_kimligi; veri.ozet.toplam_G / toplam_Q (S19)."""
+    s = sunucu(yollar=(DEPO / "docs",), rol="ana")
+    assert s.hazir(zaman=120)["basarili"] is True
+    metin = (OP4 / "veri" / "sablonlar" / "betonarme-tek-aciklik.json").read_text(encoding="utf-8").strip()
+
+    def ham(id_, islem, girdi, ayarlar):
+        s.yaz(p.istek_iletisi(id_, islem, '{"islem":"%s","girdi":%s,"ayarlar":%s}' % (islem, girdi, ayarlar)))
+        return s.yanit(zaman=120)["yanit"]
+
+    c = ham(1, "bina_coz", '{"bina":' + metin + ',"anlat":false}', '{"sd_siniri":6000}')
+    assert c["hata"] is None and c["bloklar"] == []
+    oz = c["veri"]["ozet"]
+    assert oz["toplam_G"] > 0 and oz["toplam_Q"] >= 0 and f"G = {oz['toplam_G']} kN" in c["sonuc_metin"]
+    k = ham(2, "bina_kimlik", '{"bina":' + metin + "}", "{}")
+    assert k["hata"] is None and k["cozum_kimligi"] == c["veri"]["cozum_kimligi"] and k["onbellekte"] is True
+    k = ham(3, "bina_kimlik", '{"bina":' + json.dumps(json.loads(metin), indent=2) + "}", '{"sd_siniri":6000}')
+    assert k["cozum_kimligi"] == c["veri"]["cozum_kimligi"]
+    s.kapat()
+    assert s.bekle(10) == 0

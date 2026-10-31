@@ -6,9 +6,8 @@
 # boştur). Yalnız bellek içi işlemler kullanılır: MINIZ_NO_STDIO (dosya G/Ç'si platform/dosya_sistemi.h'tedir; Türkçe
 # karakterli yollar orada çözülür) ve MINIZ_NO_ZLIB_COMPATIBLE_NAMES (zlib adlarıyla çakışma olmasın).
 #
-# op4_cekirdek'e bağlantı: kaynak/cekirdek/proje_*.cpp miniz kullanır. Hedef bu dosya içerildiğinde henüz tanımlı
-# olmadığından bağlantı, op4/ klasörünün işlenmesi bitince ertelenmiş çağrıyla kurulur (CMakeLists.txt'ye dokunmadan;
-# MIMARI §24.3 "yeni bağımlılık kendi dosyasında").
+# op4_cekirdek'e bağlantı: kaynak/cekirdek/proje_*.cpp miniz kullanır; op4/CMakeLists.txt op4_cekirdek'i op4::miniz'e
+# açıkça bağlar (MIMARI §24.6, 2026-10-31).
 op4_bagimlilik_git(miniz
   REPO https://github.com/richgel999/miniz.git
   ETIKET 3.0.2
@@ -34,13 +33,3 @@ if(MSVC)
 else()
   target_compile_options(op4_miniz PRIVATE -w)
 endif()
-
-# Ertelenmiş bağlantı: op4/CMakeLists.txt sonunda (Windows dışı derlemede erken return() sonrasında da) çalışır.
-function(_op4_miniz_bagla)
-  if(TARGET op4_cekirdek)
-    target_link_libraries(op4_cekirdek PUBLIC op4::miniz)
-  else()
-    message(WARNING "op4_cekirdek hedefi yok: miniz bağlanamadı (cmake/bagimlilik_miniz.cmake)")
-  endif()
-endfunction()
-cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" CALL _op4_miniz_bagla)
