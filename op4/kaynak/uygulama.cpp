@@ -1,46 +1,48 @@
-// op4 — uygulama: açılış ekranı → ana pencere (Win32 + DirectX 12 + Dear ImGui) → döngü; --test-pencere bu yoldan çalışır.
-// Sahibi: C (arayuz-goruntu). Sözleşme nesneleri ve paket modülleri UygulamaKabugu'ndadır (cekirdek/kabuk.h); hesap motoru
-// MotorHizmeti üstünden kullanılır (A'nın modülü sağlar), dosya komutları komut defterinden çalışır (D bağladıkça).
+// op4 — uygulama: açılış ekranı → ana pencere (Win32 özel krom + DirectX 12 + Dear ImGui) → döngü; --test-pencere bu
+// yoldan çalışır. Sahibi: C (arayuz-goruntu). Arayüz kaynak/arayuz/ana_pencere.* (Atölye yerleşimi); sözleşme nesneleri ve
+// paket modülleri UygulamaKabugu'ndadır (cekirdek/kabuk.h; C'nin modülü AnaPencere'yi kurar).
 #include <windows.h>
+#include <dwmapi.h>
+#include <windowsx.h>
 
 #include <algorithm>
 #include <cmath>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "acilis.h"
-#include "arayuz.h"
+#include "arayuz/ana_pencere.h"
+#include "arayuz/dil.h"
+#include "arayuz/stil.h"
+#include "arayuz/yazi.h"
+#include "cekirdek/ayarlar.h"
+#include "cekirdek/gorunum.h"
 #include "cekirdek/kabuk.h"
 #include "cekirdek/motor_hizmeti.h"
-#include "geometri.h"
 #include "grafik.h"
+#include "grafik/sahne_agi.h"
 #include "gunluk.h"
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
-#include "motor.h"
+#include "imgui_internal.h"
 #include "platform/dosya_sistemi.h"
-#include "proje.h"
+#include "resim.h"
 #include "test_kipleri.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace op4 {
-namespace {
-
-// Arayüzün (Faz 0) motor paneli eski MotorDurumu yapısını gösterir; MotorHizmeti özetinden doldurulur.
-MotorDurumu EskiMotorDurumu(const MotorDurumOzeti& d) {
-    MotorDurumu e;
-    e.hazir = d.hazir;
-    e.basarili = d.basarili;
-    e.hata = d.hata;
-    e.pythonSurumu = d.pythonSurumu;
-    e.surumJson = d.surumJson;
-    e.msToplam = d.hazirMs;
-    e.sablonSayisi = -1;
-    return e;
+// Hibrit grafikli dizüstülerde yüksek başarımlı GPU tercihi (MIMARI §6.1, D26; kabul C8).
+extern "C" {
+__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
+
+namespace op4 {
+
+const Yazilar& ArayuzYazilari();  // test_ekran.cpp (ImGuiBaglamiKur)
+
+namespace {
 
 class Uygulama {
 public:
@@ -49,36 +51,32 @@ public:
 
 private:
     void Kare();
-    void KameraGirdisi();
-    void IstekleriIsle();
-    void BaslikGuncelle();
-    void TestAdimi();  // --test-pencere: ImGui::NewFrame öncesi betikli girdi
-    void TestOlc();    // --test-pencere: kare sonrası ölçüm
-    // Komut defterinde işleyicisi bağlı komut varsa onu çalıştırır (D / C komutları devraldıkça eski yol devre dışı kalır).
-    bool KomutVarsaCalistir(const char* id);
+    void SahneAgiGuncelle();
+    void TestAdimi();
+    void TestOlc();
+    void LogoYukle();
+    CizimAyari Cizim() const;
 
     HWND hwnd_ = nullptr;
     Grafik grafik_;
-    UygulamaKabugu kabuk_;  // sözleşme nesneleri + paket modülleri (cekirdek/kabuk.h)
-    ArayuzDurumu arayuz_;
-    Proje proje_;
-    Ag ag_;
-    bool imgui_ = false;
-    bool kareIcinde_ = false;
-    bool motorAlindi_ = false;
+    UygulamaKabugu kabuk_;
+    AnaPencere* ana_ = nullptr;
+    bool imgui_ = false, kareIcinde_ = false, ozelKrom_ = true;
     float olcek_ = 1.0f;
     bool olcekDegisti_ = false;
     std::string iniYolu_;
+    uint64_t sonSahne_ = ~0ull, sonVurgu_ = ~0ull;
+    bool sonKati_ = false;
+    ImTextureData logo_;
     // --test-pencere
     int testSaniye_ = 0;
-    bool testShift_ = false;
     long long kare_ = 0;
     double kareToplamMs_ = 0, kareEnBuyukMs_ = 0;
     struct {
-        V3 p;
+        V3d p;
         bool pan = false, yakin = false;
         float mx = 0, my = 0;
-        float panHata = 0, yakinHata = -1, sapma0 = 0, donme = 0;
+        double panHata = 0, yakinHata = -1, sapma0 = 0, donme = 0;
         int panOlcum = 0;
     } betik_;
 };
@@ -92,6 +90,43 @@ LRESULT CALLBACK PencereYordami(HWND h, UINT m, WPARAM w, LPARAM l) {
 LRESULT Uygulama::Yordam(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (imgui_ && ImGui_ImplWin32_WndProcHandler(h, m, w, l)) return true;
     switch (m) {
+        case WM_NCCALCSIZE:
+            if (ozelKrom_ && w == TRUE) {
+                // İstemci alanı bütün pencere (başlık çubuğunu arayüz çizer); büyütülmüşken çerçeve kalınlığı kadar içeri.
+                auto* p = reinterpret_cast<NCCALCSIZE_PARAMS*>(l);
+                if (IsZoomed(h)) {
+                    const UINT dpi = GetDpiForWindow(h);
+                    const int c = GetSystemMetricsForDpi(SM_CXFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                    p->rgrc[0].left += c;
+                    p->rgrc[0].right -= c;
+                    p->rgrc[0].top += c;
+                    p->rgrc[0].bottom -= c;
+                }
+                return 0;
+            }
+            break;
+        case WM_NCHITTEST:
+            if (ozelKrom_) {
+                POINT pt{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+                RECT r;
+                GetWindowRect(h, &r);
+                const int k = static_cast<int>(6 * olcek_);
+                if (!IsZoomed(h)) {
+                    const bool sol = pt.x < r.left + k, sag = pt.x >= r.right - k, ust = pt.y < r.top + k, alt = pt.y >= r.bottom - k;
+                    if (ust && sol) return HTTOPLEFT;
+                    if (ust && sag) return HTTOPRIGHT;
+                    if (alt && sol) return HTBOTTOMLEFT;
+                    if (alt && sag) return HTBOTTOMRIGHT;
+                    if (sol) return HTLEFT;
+                    if (sag) return HTRIGHT;
+                    if (ust) return HTTOP;
+                    if (alt) return HTBOTTOM;
+                }
+                ScreenToClient(h, &pt);
+                if (ana_ && ana_->IsabetTesti(static_cast<float>(pt.x), static_cast<float>(pt.y)) == 1) return HTCAPTION;
+                return HTCLIENT;
+            }
+            break;
         case WM_SIZE:
             if (w != SIZE_MINIMIZED && hwnd_) {
                 grafik_.BoyutDegistir(LOWORD(l), HIWORD(l));
@@ -106,10 +141,13 @@ LRESULT Uygulama::Yordam(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_GETMINMAXINFO:
-            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {800, 500};
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {960, 600};
             return 0;
         case WM_SYSCOMMAND:
             if ((w & 0xfff0) == SC_KEYMENU) return 0;  // Alt menü tuşu ImGui'ye kalsın
+            break;
+        case WM_CLOSE:
+            if (kabuk_.H().kapatmaOnayi && !kabuk_.H().kapatmaOnayi()) return 0;
             break;
         case WM_DESTROY:
             PostQuitMessage(0);
@@ -118,213 +156,149 @@ LRESULT Uygulama::Yordam(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
-void Uygulama::BaslikGuncelle() {
-    std::wstring b = L"op4";
-    if (!proje_.yol.empty()) {
-        size_t i = proje_.yol.find_last_of(L"\\/");
-        b += L" — " + (i == std::wstring::npos ? proje_.yol : proje_.yol.substr(i + 1));
-    }
-    SetWindowTextW(hwnd_, b.c_str());
-    arayuz_.projeAdi = proje_.yol.empty() ? "Adsız" : Utf8(proje_.yol.substr(proje_.yol.find_last_of(L"\\/") + 1));
+CizimAyari Uygulama::Cizim() const {
+    CizimAyari a;
+    a.kati = ana_ && ana_->KesitGorunumu();
+    a.izgara = !ana_ || ana_->IzgaraGorunur();
+    a.kenarlar = !kabuk_.gorunum.kenarlar ? false : true;
+    a.ust = tema::Etkin().r.sahneUst;
+    a.alt = tema::Etkin().r.sahneAlt;
+    return a;
 }
 
-void Uygulama::KameraGirdisi() {
-    ImGuiIO& io = ImGui::GetIO();
-    Kamera& k = proje_.kamera;
-    const GorusAlani& g = arayuz_.gorus;
-    const ImVec2 m = io.MousePos;
-    const bool shift = io.KeyShift || testShift_;
-    const bool icinde = m.x >= g.x && m.y >= g.y && m.x < g.x + g.g && m.y < g.y + g.y2;
-    if (!io.WantCaptureMouse && icinde) {
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) k.SuruklemeBasla(m.x, m.y, shift);
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) k.SuruklemeBasla(m.x, m.y, false);
-        if (io.MouseWheel != 0.0f) k.Yakinlas(io.MouseWheel, m.x - g.x, m.y - g.y, g.g, g.y2);
+void Uygulama::SahneAgiGuncelle() {
+    if (!ana_ || !ana_->KesitGorunumu()) {
+        sonKati_ = false;
+        return;
     }
-    if (k.surukleme.etkin) {
-        const bool sol = ImGui::IsMouseDown(ImGuiMouseButton_Left), orta = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
-        if (!sol && !orta) {
-            k.SuruklemeBitir();
-        } else {
-            // Sürükleme sırasında Shift basılır / bırakılırsa kip, o anki konumdan kesintisiz değişir.
-            if (sol && !orta && k.surukleme.dondur != shift) k.SuruklemeBasla(m.x, m.y, shift);
-            k.SuruklemeGuncelle(m.x, m.y, g.y2);
-        }
-    }
-    if (!io.WantCaptureKeyboard) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F, false)) arayuz_.istek = Istek::Sigdir;
-        if (ImGui::IsKeyPressed(ImGuiKey_K, false)) arayuz_.sahne.kesitGorunumu = !arayuz_.sahne.kesitGorunumu;
-        if (ImGui::IsKeyPressed(ImGuiKey_G, false)) arayuz_.sahne.izgara = !arayuz_.sahne.izgara;
-    }
-}
-
-void Uygulama::IstekleriIsle() {
-    Istek i = arayuz_.istek;
-    arayuz_.istek = Istek::Yok;
+    const SahnePtr& s = ana_->Sahne();
+    if (sonKati_ && s->surum == sonSahne_ && ana_->VurguSurumu() == sonVurgu_) return;
+    sonKati_ = true;
+    sonSahne_ = s->surum;
+    sonVurgu_ = ana_->VurguSurumu();
+    SahneAgiAyari a;
+    a.secim = &kabuk_.secim.Liste();
+    a.uzerinde = ana_->Uzerinde();
+    a.yalnizSecili = ana_->YalnizSecili();
+    const double t0 = GecenMs();
     std::string hata;
-    switch (i) {
-        case Istek::Yeni:
-            if (KomutVarsaCalistir("dosya.yeni")) break;
-            proje_ = Proje();
-            proje_.kamera.Sigdir(ag_.enKucuk, ag_.enBuyuk);
-            arayuz_.sahne = proje_.ayar;
-            BaslikGuncelle();
-            KomutYaz(arayuz_, "Yeni proje.");
-            break;
-        case Istek::Ac: {
-            if (KomutVarsaCalistir("dosya.ac")) break;
-            std::wstring yol;
-            if (!DosyaSec(hwnd_, false, L"", yol)) break;
-            Proje p;
-            if (ProjeAc(yol, p, hata)) {
-                proje_ = p;
-                arayuz_.sahne = proje_.ayar;
-                BaslikGuncelle();
-                KomutYaz(arayuz_, "Açıldı: " + Utf8(yol));
-            } else {
-                KomutYaz(arayuz_, "HATA: " + hata);
-            }
-            break;
-        }
-        case Istek::Kaydet:
-        case Istek::FarkliKaydet: {
-            if (KomutVarsaCalistir(i == Istek::Kaydet ? "dosya.kaydet" : "dosya.farkli_kaydet")) break;
-            std::wstring yol = proje_.yol;
-            if (i == Istek::FarkliKaydet || yol.empty())
-                if (!DosyaSec(hwnd_, true, yol.empty() ? L"proje.op4" : yol, yol)) break;
-            proje_.ayar = arayuz_.sahne;
-            if (ProjeKaydet(yol, proje_, hata)) {
-                proje_.yol = yol;
-                BaslikGuncelle();
-                KomutYaz(arayuz_, "Kaydedildi: " + Utf8(yol));
-            } else {
-                KomutYaz(arayuz_, "HATA: " + hata);
-            }
-            break;
-        }
-        case Istek::Cikis:
-            if (KomutVarsaCalistir("dosya.cikis")) break;
-            PostMessageW(hwnd_, WM_CLOSE, 0, 0);
-            break;
-        case Istek::Sigdir:
-            if (KomutVarsaCalistir("gorunum.sigdir")) break;
-            proje_.kamera.Sigdir(ag_.enKucuk, ag_.enBuyuk);
-            break;
-        default:
-            break;
-    }
+    const Ag ag = SahneAgiKur(*s, a);
+    if (!grafik_.SahneYukle(ag, hata)) Gunluk("HATA: %s", hata.c_str());
+    if (kabuk_.H().bilgi.testKipi) Gunluk("Sahne ağı: %zu üçgen, %zu parça (%.1f ms)", ag.indisler.size() / 3, ag.parcalar.size(), GecenMs() - t0);
 }
 
-bool Uygulama::KomutVarsaCalistir(const char* id) {
-    Hizmetler& h = kabuk_.H();
-    if (!h.komutlar || !h.komutlar->Durum(id, h).bagli) return false;
+void Uygulama::LogoYukle() {
+    // Başlıktaki kemer simgesi: kimlik/opus-fortis-simge-koyu.png → ImGui kullanıcı dokusu (arka uç oluşturur).
+    const std::wstring yol = UygulamaDizini() + L"\\kimlik\\opus-fortis-simge-koyu.png";
+    Resim r;
     std::string hata;
-    if (!h.komutlar->Calistir(id, h, KomutKaynagi::Menu, {}, &hata) && !hata.empty()) KomutYaz(arayuz_, hata);
-    return true;
+    const int hy = static_cast<int>(std::lround(32 * olcek_));
+    int g = 0, y = 0;
+    if (!PngBoyutu(yol, g, y) || y <= 0) return;
+    const int hg = std::max(1, static_cast<int>(std::lround(static_cast<double>(hy) * g / y)));
+    if (!PngOku(yol, r, hata, hg, hy)) return;
+    logo_.Create(ImTextureFormat_RGBA32, r.g, r.y);
+    unsigned char* p = static_cast<unsigned char*>(logo_.GetPixels());
+    for (int i = 0; i < r.g * r.y; ++i) {  // PBGRA (önceden çarpılmış) → RGBA (düz alfa)
+        const uint8_t b = r.bgra[i * 4], gg = r.bgra[i * 4 + 1], rr = r.bgra[i * 4 + 2], a = r.bgra[i * 4 + 3];
+        auto duz = [a](uint8_t c) { return static_cast<unsigned char>(a ? std::min(255, c * 255 / a) : 0); };
+        p[i * 4] = duz(rr);
+        p[i * 4 + 1] = duz(gg);
+        p[i * 4 + 2] = duz(b);
+        p[i * 4 + 3] = a;
+    }
+    ImGui::RegisterUserTexture(&logo_);
+    if (ana_) ana_->logoEnBoy = static_cast<float>(r.g) / static_cast<float>(r.y);
 }
 
 void Uygulama::TestAdimi() {
-    // Olay sırası önemli: ImGui girdi kuyruğu (trickle) bir karede konumdan SONRA gelen düğme olayını işler, düğmeden
-    // sonra gelen konumu ertelemez ama tekerleği bir sonraki kareye erteler. Win32 arka ucu odaktayken gerçek imleç
-    // konumunu her karede kuyruğa ekler; betik konumu onun ardından ve düğme / tekerlekten ÖNCE eklenir.
+    // Betikli girdi (--test-pencere): görüş alanının sol alt bölgesinde (yüzen öğelerden uzak) kaydırma, döndürme,
+    // yakınlaşma. ImGui girdi kuyruğu konumu düğmeden önce işler; betik konumu her karede kuyruğa eklenir.
     ImGuiIO& io = ImGui::GetIO();
-    const GorusAlani& g = arayuz_.gorus;
-    const Kamera& k = proje_.kamera;
-    const float cx = g.x + g.g * 0.5f, cy = g.y + g.y2 * 0.5f;
+    const GorusDikdortgeni g = ana_->Gorus();
     const long long n = kare_;
-    // 1) konum: kaydırma (20–62) 40 kare × (+3, +1) px; döndürme (70–112) Shift + 40 kare × +4 px; yakınlaşma (120–)
     if (n == 20 || n == 70) {
-        betik_.mx = std::floor(cx);
-        betik_.my = std::floor(cy);
+        betik_.mx = std::floor(g.x + g.g * 0.30f);
+        betik_.my = std::floor(g.y + g.y2 * 0.68f);
     } else if (n > 21 && n <= 61) {
         betik_.mx += 3.0f;
         betik_.my += 1.0f;
     } else if (n > 71 && n <= 111) {
         betik_.mx += 4.0f;
     } else if (n == 120) {
-        betik_.mx = std::floor(g.x + g.g * 0.3f);  // ImGui fare konumunu tam piksele yuvarlar
-        betik_.my = std::floor(g.y + g.y2 * 0.4f);
+        betik_.mx = std::floor(g.x + g.g * 0.35f);
+        betik_.my = std::floor(g.y + g.y2 * 0.62f);
     }
     if (n >= 20) io.AddMousePosEvent(betik_.mx, betik_.my);
-    // 2) düğmeler, Shift, tekerlek
     if (n == 21) {
-        betik_.p = k.HedefDuzlemNoktasi(betik_.mx - g.x, betik_.my - g.y, g.g, g.y2);
+        betik_.p = CalismaDuzlemiNoktasi(ana_->Kamera(), betik_.mx - g.x, betik_.my - g.y, g.g, g.y2, 0.0);
         betik_.pan = true;
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
     } else if (n == 62) {
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
         betik_.pan = false;
     } else if (n == 70) {
-        testShift_ = true;
-        betik_.sapma0 = k.sapma;
+        io.AddKeyEvent(ImGuiMod_Shift, true);
+        betik_.sapma0 = ana_->Kamera().d.sapma;
     } else if (n == 71) {
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
     } else if (n == 112) {
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
     } else if (n == 114) {
-        testShift_ = false;
-        betik_.donme = k.sapma - betik_.sapma0;
+        io.AddKeyEvent(ImGuiMod_Shift, false);
+        betik_.donme = ana_->Kamera().d.sapma - betik_.sapma0;
     } else if (n == 122) {
-        betik_.p = k.HedefDuzlemNoktasi(betik_.mx - g.x, betik_.my - g.y, g.g, g.y2);
+        betik_.p = CalismaDuzlemiNoktasi(ana_->Kamera(), betik_.mx - g.x, betik_.my - g.y, g.g, g.y2, 0.0);
         betik_.yakin = true;
         io.AddMouseWheelEvent(0.0f, 2.0f);
     }
 }
 
 void Uygulama::TestOlc() {
-    const GorusAlani& g = arayuz_.gorus;
-    const Kamera& k = proje_.kamera;
-    float sx = 0, sy = 0;
+    const GorusDikdortgeni g = ana_->Gorus();
+    const GorusIzdusumu iz = ana_->Izdusum();
+    double sx = 0, sy = 0;
     const ImVec2 m = ImGui::GetIO().MousePos;
-    if (betik_.pan && kare_ > 22 && k.surukleme.etkin && k.Izdusur(betik_.p, g.g, g.y2, sx, sy)) {
+    if (betik_.pan && kare_ > 26 && ana_->GezinmeDurumu().Surukluyor() && iz.Izdusur(betik_.p, sx, sy)) {
         betik_.panHata = std::max(betik_.panHata, std::hypot(sx + g.x - m.x, sy + g.y - m.y));
         ++betik_.panOlcum;
     }
-    if (betik_.yakin && kare_ == 125 && k.Izdusur(betik_.p, g.g, g.y2, sx, sy))
+    if (betik_.yakin && kare_ == 125 && iz.Izdusur(betik_.p, sx, sy))
         betik_.yakinHata = std::hypot(sx + g.x - betik_.mx, sy + g.y - betik_.my);
 }
 
 void Uygulama::Kare() {
-    if (kareIcinde_) return;
+    if (kareIcinde_ || !ana_) return;
     kareIcinde_ = true;
     const double kareBasi = GecenMs();
     if (olcekDegisti_) {
-        ArayuzStili(olcek_);
+        ArayuzStiliUygula(olcek_);
         olcekDegisti_ = false;
     }
-    MotorHizmeti* motor = kabuk_.H().motor;
-    if (!motorAlindi_ && motor) {
-        const MotorDurumOzeti md = motor->Durum();
-        arayuz_.motor = EskiMotorDurumu(md);
-        if (md.hazir) {
-            motorAlindi_ = true;
-            if (md.basarili)
-                KomutYaz(arayuz_, "Hesap motoru hazır: " + md.aciklama + ".");
-            else
-                KomutYaz(arayuz_, "HATA: hesap motoru başlatılamadı — " + md.hata);
-        }
-    }
-    // Paket modüllerinin kare işleri (motor yanıtları, otomatik kayıt …) ve görünüm istekleri.
     kabuk_.H().KareIsleriniCalistir(GecenMs());
-    if (kabuk_.gorunum.SigdirIstendiMi()) {
-        proje_.kamera.Sigdir(ag_.enKucuk, ag_.enBuyuk);
-        kabuk_.gorunum.SigdirYapildi();
-    }
-    arayuz_.fps = ImGui::GetIO().Framerate;
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     if (testSaniye_ > 0) TestAdimi();
     ImGui::NewFrame();
-    ArayuzCiz(arayuz_);
-    KameraGirdisi();
+    const GorusDikdortgeni g0 = ana_->Gorus();
+    SahneDokusu d;
+    d.kimlik = static_cast<ImTextureID>(grafik_.SahneDokusu());
+    d.uvG = grafik_.UvG(g0.g);
+    d.uvY = grafik_.UvY(g0.y2);
+    ana_->KareCiz(olcek_, d, GecenMs());
     ImGui::Render();
-    grafik_.PencereKaresi(proje_.kamera, arayuz_.sahne, arayuz_.gorus, ImGui::GetDrawData());
+    SahneAgiGuncelle();
+    const GorusDikdortgeni g = ana_->Gorus();
+    grafik_.PencereKaresi(ana_->Kamera(), Cizim(), GorusAlani{g.x, g.y, g.g, g.y2}, ImGui::GetDrawData(), tema::Etkin().r.zemin,
+                          testSaniye_ > 0 || kabuk_.ayarlar.grafik.dikeyEsitleme);
+    ana_->CizimYapildi();
+    kabuk_.gorunum.CizimYapildi();
     if (testSaniye_ > 0) TestOlc();
     const double sure = GecenMs() - kareBasi;
     ++kare_;
     kareToplamMs_ += sure;
     kareEnBuyukMs_ = std::max(kareEnBuyukMs_, kare_ > 3 ? sure : 0.0);
     kareIcinde_ = false;
-    if (arayuz_.istek != Istek::Yok) IstekleriIsle();
 }
 
 int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
@@ -334,6 +308,8 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     ImGui_ImplWin32_EnableDpiAwareness();
     const std::wstring dizin = UygulamaDizini();
     Gunluk("op4 %s başlıyor; dizin: %s", OP4_SURUM, Utf8(dizin).c_str());
+    wchar_t ortam[8] = {};
+    ozelKrom_ = GetEnvironmentVariableW(L"OP4_STANDART_PENCERE", ortam, 8) == 0;
 
     // Sözleşme kabuğu: ayarlar, komut kataloğu, paket modülleri (A motor, B çekirdek, C arayüz, D dosya ve çözüm).
     {
@@ -348,29 +324,33 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
         ka.ortam.anaPencere = [this]() -> void* { return hwnd_; };
         ka.ortam.testKipi = testSaniye_ > 0;
         ka.ortam.motorsuz = s.motorsuz;
-        ka.ortam.acilisDosyasi = Utf8(s.proje);  // D devralana dek eski yol da açar (aşağıda)
+        ka.ortam.acilisDosyasi = Utf8(s.proje);
         ka.ortam.senaryo = Utf8(s.senaryo);
         ka.ortam.gunluk = [](std::string_view m) { Gunluk("%.*s", static_cast<int>(m.size()), m.data()); };
         ka.moduller = StandartModuller();
         std::string kh;
         if (!kabuk_.Kur(std::move(ka), kh)) Gunluk("Uyarı: %s", kh.c_str());
-        kabuk_.gorunum.SigdirYapildi();  // açılış kamerası aşağıda kurulur
+        ana_ = EtkinAnaPencere();
+    }
+    if (!ana_) {
+        Gunluk("HATA: arayüz modülü kurulmadı");
+        return 2;
     }
 
+    // Açılış ekranı ("Kemer Çizgisi"; Direct2D + DirectWrite, ayrı iş parçacığı). Adımlar gerçek yükleme olaylarından.
     AcilisEkrani acilis;
-    acilis.Olustur(ornek, dizin, L"Sürüm " OP4_SURUM);
-    const ULONGLONG acilisBasi = GetTickCount64();
+    const bool acilisVar = !s.acilisYok;
+    if (acilisVar) acilis.Baslat(ornek, dizin, Utf8(L"Sürüm " OP4_SURUM), kabuk_.ayarlar.arayuz.acilisEkrani == "koyu");
+    acilis.Adim(AcilisAdimi::Arayuz);
     MotorHizmeti* motor = kabuk_.H().motor;
     if (motor && !s.motorsuz) {
-        motor->durumBildirimi = [&acilis](MotorRolu, const std::string& m, float o) {
-            acilis.Ilerleme(m + "…", 0.10f + 0.88f * o);
-        };
+        motor->durumBildirimi = [&acilis](MotorRolu, const std::string&, float o) { acilis.AdimIlerleme(AcilisAdimi::Motor, o); };
         MotorAyari ma;
         ma.uygulamaDizini = Utf8(dizin);
         ma.gunlukDizini = kabuk_.H().bilgi.yerelDizin + "\\gunluk";
         motor->Baslat(ma);
     }
-    acilis.Ilerleme("Grafik başlatılıyor (DirectX 12)…", 0.03f);
+    acilis.Adim(AcilisAdimi::Grafik);
 
     WNDCLASSEXW wc{sizeof(wc)};
     wc.style = CS_DBLCLKS;
@@ -390,20 +370,23 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     const int pg = std::min(cg, static_cast<int>(1600 * olcek_)), py = std::min(cy, static_cast<int>(960 * olcek_));
     hwnd_ = CreateWindowExW(0, wc.lpszClassName, L"op4", WS_OVERLAPPEDWINDOW, mi.rcWork.left + (cg - pg) / 2,
                             mi.rcWork.top + (cy - py) / 2, pg, py, nullptr, nullptr, ornek, nullptr);
+    if (ozelKrom_) {
+        const MARGINS kenar{0, 0, 1, 0};  // DWM gölgesi ve yuvarlak köşe korunur
+        DwmExtendFrameIntoClientArea(hwnd_, &kenar);
+        SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
     std::string hata;
     RECT r;
     GetClientRect(hwnd_, &r);
     grafik_.HataKatmaniIste(s.hataKatmani);
-    if (!grafik_.Baslat(s.warp, hata) || !grafik_.TakasZinciriKur(hwnd_, static_cast<UINT>(r.right), static_cast<UINT>(r.bottom), hata)) {
+    grafik_.Tercih(kabuk_.ayarlar.grafik.bagdastirici, kabuk_.ayarlar.grafik.msaa);
+    if (!grafik_.Baslat(s.warp || kabuk_.ayarlar.grafik.warpZorla, hata) ||
+        !grafik_.TakasZinciriKur(hwnd_, static_cast<UINT>(r.right), static_cast<UINT>(r.bottom), hata)) {
         acilis.Kapat();
         Gunluk("HATA: %s", hata.c_str());
         if (testSaniye_ == 0) MessageBoxW(nullptr, Genis("DirectX 12 başlatılamadı:\n" + hata).c_str(), L"op4", MB_ICONERROR);
         return 2;
     }
-    ag_ = OrnekSahne();
-    if (!grafik_.SahneYukle(ag_, hata)) Gunluk("HATA: %s", hata.c_str());
-    proje_.kamera.Sigdir(ag_.enKucuk, ag_.enBuyuk);
-    acilis.Ilerleme("Arayüz hazırlanıyor…", 0.08f);
 
     iniYolu_ = Utf8(YerelVeriDizini() + L"\\arayuz.ini");
     ImGuiBaglamiKur(olcek_, iniYolu_.c_str());
@@ -412,29 +395,29 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     grafik_.ImGuiBilgisi(ii);
     ImGui_ImplDX12_Init(&ii);
     imgui_ = true;
-    arayuz_.bagdastirici = grafik_.BagdastiriciAdi();
-    arayuz_.warp = grafik_.Warp();
-    arayuz_.ornek = grafik_.OrnekSayisi();
-    arayuz_.ozellikDuzeyi = grafik_.OzellikDuzeyi();
-    arayuz_.ucgen = grafik_.UcgenSayisi();
-    arayuz_.motorBaslatildi = !s.motorsuz;
-    motorAlindi_ = s.motorsuz || !motor;
-    KomutYaz(arayuz_, "op4 " OP4_SURUM " — Opus Fortis. Gezinme: sol sürükle = kaydır, Shift + sol sürükle = döndür, "
-                      "tekerlek = yakınlaş, F = tümünü göster.");
+    ana_->YazilariAyarla(ArayuzYazilari());
+    ana_->bagdastirici = grafik_.BagdastiriciAdi();
+    ana_->warp = grafik_.Warp();
+    ana_->msaa = grafik_.OrnekSayisi();
+    ana_->bagdastiricilar = Grafik::Bagdastiricilar();
+    ana_->testKipi = testSaniye_ > 0;
+    ana_->pencere.kucult = [this] { ShowWindow(hwnd_, SW_MINIMIZE); };
+    ana_->pencere.buyutGeriAl = [this] { ShowWindow(hwnd_, IsZoomed(hwnd_) ? SW_RESTORE : SW_MAXIMIZE); };
+    ana_->pencere.kapat = [this] { PostMessageW(hwnd_, WM_CLOSE, 0, 0); };
+    ana_->pencere.buyuk = [this] { return IsZoomed(hwnd_) != 0; };
+    LogoYukle();
+    ana_->AyarlariUygula();
+    if (kabuk_.ayarlar.arayuz.acilis == "bos" || !kabuk_.ayarlar.arayuz.baslangicPaneli) ana_->yanPencere = YanPencere::Ozellikler;
+    acilis.Adim(AcilisAdimi::Motor);
+    Gunluk("Grafik: %s%s, MSAA %u×, özellik düzeyi %s", grafik_.BagdastiriciAdi().c_str(), grafik_.Warp() ? " (WARP)" : "",
+           grafik_.OrnekSayisi(), grafik_.OzellikDuzeyi());
+    ana_->Bildirim().KomutYaz(std::string("op4 ") + OP4_SURUM + " — Opus Fortis. " +
+                              Tr("Gezinme: sol sürükle = kaydır, Shift + sol sürükle = döndür, tekerlek = yakınlaş, Shift+F = tam görünüm."));
 
-    if (!s.proje.empty()) {
-        Proje p;
-        if (ProjeAc(s.proje, p, hata)) {
-            proje_ = p;
-            arayuz_.sahne = p.ayar;
-        } else {
-            KomutYaz(arayuz_, "HATA: " + hata);
-        }
-    }
-    BaslikGuncelle();
-
-    // Açılış ekranı: motor hazır olana dek (en az 1,2 s, en çok 120 s) mesajları işleyerek bekle.
+    // Motor hazır olana dek (en az 1,2 s, en çok 120 s) mesajları işleyerek bekle; sonra kalan adımlar ve "Hazır".
     bool cik = false;
+    const ULONGLONG acilisBasi = GetTickCount64();
+    bool motorBildirildi = false;
     for (;;) {
         MsgWaitForMultipleObjects(0, nullptr, FALSE, 20, QS_ALLINPUT);
         if (motor) motor->Pompala();
@@ -444,17 +427,24 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        const bool hazir = s.motorsuz || !motor || motor->Durum().hazir;
+        if (hazir && !motorBildirildi) {
+            motorBildirildi = true;
+            acilis.Adim(AcilisAdimi::Kutuphane);
+            kabuk_.H().KareIsleriniCalistir(GecenMs());  // D: açılış dosyası, şablon dizini …
+            acilis.Adim(AcilisAdimi::Proje);
+            acilis.Adim(AcilisAdimi::Hazir);
+        }
         const ULONGLONG gecen = GetTickCount64() - acilisBasi;
-        if (cik || ((s.motorsuz || !motor || motor->Durum().hazir) && gecen > 1200) || gecen > 120000) break;
+        if (cik || (hazir && (acilis.Bitti() || !acilisVar) && gecen > 400) || gecen > 120000) break;
     }
     if (motor) motor->durumBildirimi = nullptr;
-    acilis.Ilerleme("Hazır", 1.0f);
     acilis.Kapat();
     Gunluk("Açılış ekranı kapandı (%.0f ms)", GecenMs());
     ShowWindow(hwnd_, SW_SHOWMAXIMIZED);
     SetForegroundWindow(hwnd_);
 
-    // Ana döngü: girdi yokken bekler (boşta GPU/CPU harcamaz), girdi gelince hemen çizer.
+    // Ana döngü: girdi ya da istek yokken bekler (boşta GPU/CPU harcamaz), girdi gelince hemen çizer.
     int bosKare = 0;
     const ULONGLONG donguBasi = GetTickCount64();
     const long long kare0 = kare_;
@@ -474,9 +464,8 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
             WaitMessage();
             continue;
         }
-        bosKare = mesaj ? 0 : bosKare + 1;
-        if (testSaniye_ == 0 && bosKare > 6 && !proje_.kamera.surukleme.etkin)
-            MsgWaitForMultipleObjects(0, nullptr, FALSE, 250, QS_ALLINPUT);
+        bosKare = mesaj || ana_->CizimGerekli() || kabuk_.gorunum.CizimIstendiMi() ? 0 : bosKare + 1;
+        if (testSaniye_ == 0 && bosKare > 6) MsgWaitForMultipleObjects(0, nullptr, FALSE, 250, QS_ALLINPUT);
         Kare();
         if (testSaniye_ > 0 && kare_ - kare0 > 130 && GetTickCount64() - donguBasi >= static_cast<ULONGLONG>(testSaniye_) * 1000)
             DestroyWindow(hwnd_);
@@ -488,23 +477,21 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     int kod = 0;
     if (testSaniye_ > 0) {
         const MotorDurumOzeti md = motor ? motor->Durum() : MotorDurumOzeti{};
-        const float beklenenDonme = -40.0f * 4.0f * 0.0065f;
-        const bool panTamam = betik_.panOlcum >= 30 && betik_.panHata < 0.5f;
-        const bool donmeTamam = std::fabs(betik_.donme - beklenenDonme) < 0.02f;
-        const bool yakinTamam = betik_.yakinHata >= 0.0f && betik_.yakinHata < 0.5f;
+        const double beklenenDonme = -40.0 * 4.0 * KameraSuruklemesi::DONME_K;
+        const bool panTamam = betik_.panOlcum >= 30 && betik_.panHata < 0.5;
+        const bool donmeTamam = std::fabs(betik_.donme - beklenenDonme) < 0.02;
+        const bool yakinTamam = betik_.yakinHata >= 0.0 && betik_.yakinHata < 0.5;
         Gunluk("Pencere testi: kaydırma %d ölçüm, imleç altındaki noktanın en büyük kayması %.4f px %s", betik_.panOlcum,
                betik_.panHata, panTamam ? "✓" : "✗");
-        Gunluk("Pencere testi: döndürme Δsapma %.4f rad (beklenen %.4f) %s", betik_.donme, beklenenDonme,
-               donmeTamam ? "✓" : "✗");
-        Gunluk("Pencere testi: yakınlaşmada imleç altındaki noktanın kayması %.4f px %s", betik_.yakinHata,
-               yakinTamam ? "✓" : "✗");
+        Gunluk("Pencere testi: döndürme Δsapma %.4f rad (beklenen %.4f) %s", betik_.donme, beklenenDonme, donmeTamam ? "✓" : "✗");
+        Gunluk("Pencere testi: yakınlaşmada imleç altındaki noktanın kayması %.4f px %s", betik_.yakinHata, yakinTamam ? "✓" : "✗");
         Gunluk("Pencere testi: motor %s", s.motorsuz ? "başlatılmadı (--motorsuz)"
                                                      : (md.basarili ? "hazır ✓" : ("HATA ✗ " + md.hata).c_str()));
         GunlukHam(Bicim("OP4OLCUM senaryo=pencere kare=%lld ort_kare_ms=%.2f en_uzun_kare_ms=%.2f kaydirma_olcum=%d "
-                        "kaydirma_kayma_px=%.4f donme_rad=%.4f yakinlasma_kayma_px=%.4f bagdastirici_warp=%d msaa=%u",
-                        kareler, kareler > 0 ? (kareToplamMs_ - ms0) / static_cast<double>(kareler) : 0.0,
-                        kareEnBuyukMs_, betik_.panOlcum, betik_.panHata, betik_.donme, betik_.yakinHata,
-                        grafik_.Warp() ? 1 : 0, grafik_.OrnekSayisi()));
+                        "kaydirma_kayma_px=%.4f donme_rad=%.4f yakinlasma_kayma_px=%.4f bagdastirici_warp=%d msaa=%u ozel_krom=%d",
+                        kareler, kareler > 0 ? (kareToplamMs_ - ms0) / static_cast<double>(kareler) : 0.0, kareEnBuyukMs_,
+                        betik_.panOlcum, betik_.panHata, betik_.donme, betik_.yakinHata, grafik_.Warp() ? 1 : 0,
+                        grafik_.OrnekSayisi(), ozelKrom_ ? 1 : 0));
         bool tamam = kareler > 100 && panTamam && donmeTamam && yakinTamam && (s.motorsuz || md.basarili);
         if (s.hataKatmani) {
             HataKatmaniYaz(&grafik_);
@@ -516,15 +503,16 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
     }
 
     grafik_.GpuBekle();
+    ImGui::UnregisterUserTexture(&logo_);
     ImGui_ImplDX12_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
     imgui_ = false;
+    ana_ = nullptr;
     kabuk_.Kapat();  // modül nesneleri ters sırada; motor burada durur
     Gunluk("op4 kapandı");
     return kod;
 }
-
 
 }  // namespace
 

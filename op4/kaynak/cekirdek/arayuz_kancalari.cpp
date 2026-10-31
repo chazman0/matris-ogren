@@ -52,6 +52,17 @@ void ArayuzKancalari::AyarSayfasiEkle(AyarSayfasi s) {
     std::stable_sort(ayar_.begin(), ayar_.end(), [](const AyarSayfasi& a, const AyarSayfasi& b) { return a.sira < b.sira; });
 }
 
+void ArayuzKancalari::IletisimEkle(IletisimKaydi k) {
+    (void)std::erase_if(iletisim_, [&](const IletisimKaydi& x) { return x.id == k.id; });
+    iletisim_.push_back(std::move(k));
+}
+
+const IletisimKaydi* ArayuzKancalari::Iletisim(std::string_view id) const {
+    for (const IletisimKaydi& k : iletisim_)
+        if (k.id == id) return &k;
+    return nullptr;
+}
+
 std::vector<const MenuKatkisi*> ArayuzKancalari::MenuKatkilari(std::string_view menu) const {
     std::vector<const MenuKatkisi*> o;
     for (const MenuKatkisi& m : menu_)

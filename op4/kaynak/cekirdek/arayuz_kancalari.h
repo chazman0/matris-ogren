@@ -58,6 +58,18 @@ struct AyarSayfasi {
     std::function<void(Ayarlar&)> ciz;  // değişiklikleri doğrudan Ayarlar'a yazar; pencere kapanınca D kaydeder
 };
 
+// İletişim kaydı (eklenti, C, 31.10.2026): paketlerin modsuz pencereleri ve akış adımları. C her karede açık olanın
+// `ciz`ini çağırır (ImGui::Begin/End'i kayıt sahibi yapar); dönüş 0 = açık kalır, 1 = tamam, −1 = iptal.
+// Bilinen kimlik: "yonetmelik_sihirbazi" — Yeni proje akışında (Başlangıç paneli "Boş model" / şablon, dosya.yeni
+// Başlangıç'tan) asıl işlemden ÖNCE açılır; 1 dönerse akış sürer, −1 dönerse vazgeçilir (tasarımı ayrıdır).
+struct IletisimKaydi {
+    std::string id;
+    std::string baslik;
+    std::string sahip;
+    std::function<int()> ciz;
+};
+inline constexpr const char* YONETMELIK_SIHIRBAZI = "yonetmelik_sihirbazi";
+
 class ArayuzKancalari {
 public:
     void PanelEkle(PanelKaydi p);
@@ -69,6 +81,9 @@ public:
     const std::vector<DurumOgesi>& DurumOgeleri() const { return durum_; }       // (sagda, sira) sıralı
     std::vector<const MenuKatkisi*> MenuKatkilari(std::string_view menu) const;  // sira sıralı
     const std::vector<AyarSayfasi>& AyarSayfalari() const { return ayar_; }      // sira sıralı
+
+    void IletisimEkle(IletisimKaydi k);                                          // aynı id yenilenir
+    const IletisimKaydi* Iletisim(std::string_view id) const;
 
     const PanelKaydi* Panel(std::string_view id) const;
     bool PanelAcik(std::string_view id) const;
@@ -83,6 +98,7 @@ private:
     std::vector<DurumOgesi> durum_;
     std::vector<MenuKatkisi> menu_;
     std::vector<AyarSayfasi> ayar_;
+    std::vector<IletisimKaydi> iletisim_;
 };
 
 enum class TostTuru : uint8_t { Bilgi = 0, Basari = 1, Uyari = 2, Hata = 3 };

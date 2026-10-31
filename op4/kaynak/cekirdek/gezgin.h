@@ -13,12 +13,14 @@
 
 #include "cekirdek/kimlik.h"
 #include "cekirdek/oznitelik.h"
+#include "cekirdek/sahne.h"
 
 namespace op4 {
 
 struct GezginDugumu {
     std::string anahtar;                  // kararlı yol: "kat:2/alt_tur:kolon/kullanim_yeri:kose" (açık / kapalı durumu için)
     std::string baslik;                   // "Kat 2 (+6.40)", "Kolon", "köşe"
+    std::string bilgi;                    // ikincil metin: kat kotu "+9,00" (eklenti, C; Stüdyo ağacı)
     size_t sayi = 0;                      // alt ağaçtaki tekrarsız eleman sayısı
     std::vector<ElemanKimligi> elemanlar; // sıralı, tekrarsız; bu düğüm seçilince seçilecek küme
     std::vector<GezginDugumu> cocuklar;
@@ -26,5 +28,8 @@ struct GezginDugumu {
 
 // Kök "Proje" düğümünü kurar. Tablo boşsa çocuksuz kök (sayi 0).
 GezginDugumu GezginAgaciKur(const OznitelikTablosu& t);
+// Eklenti (C): kat başlıkları ve kotları sahnenin seviyelerinden ("Kat 2", bilgi "+9,00"; kat 0 "Zemin"); kök başlığı
+// sahne başlığıdır. sahne null ise yukarıdakiyle aynı.
+GezginDugumu GezginAgaciKur(const OznitelikTablosu& t, const SahneAnlik* sahne);
 
 }  // namespace op4

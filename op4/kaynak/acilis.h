@@ -1,46 +1,47 @@
-// op4 — açılış (yükleme) ekranı: kenarlıksız, ekranın ortasında; Opus Fortis logo yuvası + ilerleme metni ve çubuğu.
-// Logo: <uygulama>\kimlik\logo.png → opus-fortis-yatay-acik-zemin.png (kurumsal) → opus_fortis_logo_placeholder.png.
+// op4 — açılış ekranı "Kemer Çizgisi" (MIMARI §25; kimlik/acilis/aciklama.md, koyu ikizi kimlik/acilis-koyu/).
+//
+// Kenarlıksız katmanlı pencere, kendi iş parçacığında Direct2D (WIC bit eşlemi hedefi) + DirectWrite ile çizilir; d2d1.dll ve
+// dwrite.dll çalışma anında yüklenir (bağlama değişikliği yok). Kalem yolları kaynak/arayuz/acilis_kontur.h'den
+// (kimlik/acilis/kontur.json), yazı tipleri gömülü veriden (arayuz/yazi.h; DirectWrite bellek içi yükleyici, yoksa
+// Segoe UI), logo katmanları kimlik/acilis/katmanlar/*.png ve kimlik/opus-fortis-yazi-*-zemin.png'den gelir.
+//
+// Zaman çizelgesi aciklama.md "Hareket çizelgesi" ile aynıdır; adımlar GERÇEK yükleme olaylarından gelir (Adim,
+// AdimIlerleme): görsel saat gerçek adımın sonunu geçmez (bekler), gerçek adım öndeyse 2,5× hızla yetişir.
 #pragma once
 
 #include <windows.h>
 
-#include <mutex>
+#include <memory>
 #include <string>
-
-#include "resim.h"
 
 namespace op4 {
 
+enum class AcilisAdimi : int { Arayuz = 0, Grafik = 1, Motor = 2, Kutuphane = 3, Proje = 4, Hazir = 5 };
+
 class AcilisEkrani {
 public:
-    static std::wstring LogoYolu(const std::wstring& uygulamaDizini);
+    AcilisEkrani();
+    ~AcilisEkrani();
+    AcilisEkrani(const AcilisEkrani&) = delete;
+    AcilisEkrani& operator=(const AcilisEkrani&) = delete;
 
-    bool Olustur(HINSTANCE ornek, const std::wstring& uygulamaDizini, const std::wstring& surum);
-    // İş parçacığı güvenli.
-    void Ilerleme(const std::string& metin, float oran);
+    // Pencereyi ve çizim iş parçacığını başlatır (hemen döner). koyu = Ayarlar › Görüntü › Açılış ekranı "Koyu".
+    void Baslat(HINSTANCE ornek, const std::wstring& uygulamaDizini, const std::string& surum, bool koyu);
+    // İş parçacığı güvenli. Adim(a): a adımı başladı (öncekiler bitti). AdimIlerleme: adım içi oran (0–1).
+    void Adim(AcilisAdimi a);
+    void AdimIlerleme(AcilisAdimi a, float oran);
+    // "Hazır" canlandırması (kilit taşı oturur, OPUS FORTİS belirir) bitti mi. Başlatılmadıysa true.
+    bool Bitti() const;
     void Kapat();
-    HWND Pencere() const { return hwnd_; }
 
-    // Ekranı (g × y piksel, ölçek = DPI / 96) BGRA belleğe çizer (pencere ve --test-acilis aynı kodu kullanır).
-    static void Ciz(HDC dc, int g, int y, float olcek, const Resim* logo, const std::wstring& surum,
-                    const std::wstring& metin, float oran);
-    static constexpr int TABAN_G = 620, TABAN_Y = 380;  // 96 DPI'daki boyut
-    static constexpr int LOGO_Y = 160;                  // logo yuvasının yüksekliği (96 DPI); genişlik TABAN_G − 80
+    struct Ic;
 
 private:
-    static LRESULT CALLBACK Yordam(HWND h, UINT m, WPARAM w, LPARAM l);
-    HWND hwnd_ = nullptr;
-    float olcek_ = 1.0f;
-    Resim logo_;
-    bool logoVar_ = false;
-    std::wstring surum_;
-    std::mutex kilit_;
-    std::wstring metin_ = L"Başlatılıyor…";
-    float oran_ = 0.0f;
+    std::unique_ptr<Ic> ic_;
 };
 
-// --test-acilis: açılış ekranını PNG'ye çizer.
-bool AcilisResmi(const std::wstring& uygulamaDizini, const std::wstring& surum, const std::wstring& png, float olcek,
-                 std::string& hata);
+// --test-acilis: t (ms) anındaki kareyi (960×540 DIP × ölçek) PNG'ye çizer; adımlar çizelgedeki gibi varsayılır.
+bool AcilisResmi(const std::wstring& uygulamaDizini, const std::string& surum, const std::wstring& png, float olcek,
+                 double zamanMs, bool koyu, std::string& hata);
 
 }  // namespace op4

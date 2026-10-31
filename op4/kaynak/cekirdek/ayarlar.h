@@ -18,6 +18,14 @@ struct GrafikAyarlari {            // C
     int msaa = 0;                  // 0 = otomatik (donanımda 8, WARP'ta 4); 1, 2, 4, 8
     bool dikeyEsitleme = true;     // vsync
     bool warpZorla = false;        // yazılım işleyici (tanı)
+    // eklenti (C, 31.10.2026; Ayarlar › Görüntü ayarları)
+    double lodToleransPx = 0.5;    // görüntü ağı LOD ekran sapması sınırı (MIMARI §6.11), 0,25–4 px
+    std::string arkaPlan = "gradyan";  // "gradyan" (dikey, belirteç vp_ust → vp_alt) | "duz"
+    double cubukKalinlik = 1.6;    // çubuk görünümü / eleman kenarı çizgi kalınlığı (px), 0,5–3
+    double seciliKalinlik = 2.0;   // seçim konturu (px), 1–4
+    bool vurguyuIzle = true;       // seçim ve üzerinde renkleri vurgu paletinden; kapalıyken aşağıdaki renkler
+    std::string secimRengi = "#2563EB";     // seçim konturu ("#RRGGBB"; vurguyuIzle kapalıyken)
+    std::string uzerindeRengi = "#5B8FF2";  // üzerine gelme konturu
 };
 
 struct ArayuzAyarlari {            // C
@@ -27,6 +35,18 @@ struct ArayuzAyarlari {            // C
     double donmeDuyarliligi = 1.0;
     bool klasikMenu = false;       // şerit yerine klasik menü çubuğu
     std::string tema = "koyu";     // "koyu" | "acik"
+    // eklenti (C, 31.10.2026; Ayarlar › Program / Görüntü / Dil ayarları)
+    std::string acilis = "baslangic";       // açılışta: "baslangic" (Başlangıç paneli) | "son_proje" | "bos"
+    std::string acilisEkrani = "acik";      // açılış ekranı: "acik" (Kemer Çizgisi) | "koyu" (ikizi)
+    std::string vurgu = "kobalt";           // vurgu rengi: "kobalt" | "petrol" | "grafit" (tasarim/atolye-modern)
+    std::string yogunluk = "otomatik";      // "otomatik" (1600×900 altında sıkı) | "rahat" | "siki"
+    double etiketBoyu = 11.0;               // görünüm etiketleri (px), 9–16
+    std::string dil = "tr";                 // arayüz dili: "tr" | "en"
+    std::string ondalik = "virgul";         // sayı biçimi: "virgul" | "nokta"
+    bool binlikAyirici = true;              // binlik ayırıcı ince boşluk ("1 842")
+    std::string birimSistemi = "SI";        // "SI" (kN, m) | "teknik" (tf, m)
+    std::string varsayilanKuvvet = "kN";    // yeni projelerin birimleri: "kN" | "tf"
+    std::string varsayilanUzunluk = "m";    // "m" | "cm" | "mm"
 };
 
 struct DosyaAyarlari {             // D
