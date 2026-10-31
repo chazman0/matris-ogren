@@ -1672,6 +1672,7 @@ bir satıra uymalıdır; yeni dosya, sahibinin klasörüne ya da adlandırma ön
 op4/MIMARI.md                                   S
 op4/README.md                                   S
 op4/kimlik/**                                   -
+op4/tasarim/**                                  -
 op4/cmake/JsGom.cmake                           B
 op4/cmake/bagimlilik_quickjs.cmake              B
 op4/cmake/bagimlilik_miniz.cmake                D
