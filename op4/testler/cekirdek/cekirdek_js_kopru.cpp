@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
 
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <set>
@@ -87,6 +88,9 @@ TEST_CASE("cekirdek_js B5: 9 şablonun sahnesi — sayılar JS ile aynı, dizinl
         CHECK(t->sutunlar.size() == 23);
         for (const SahneCubugu& x : s->cubuklar) CHECK(t->Satir(CubukKimligi(x.no)).has_value());
         CHECK(y.ozet.baslik == json::parse(sinama::Sablon(ad))["baslik"].get<std::string>());
+        // kat sayısı temel (kat 0) hariç: "betonarme-3kat-…" → 3
+        if (const auto k = ad.find("kat"); k != std::string::npos && k > 0 && std::isdigit(static_cast<unsigned char>(ad[k - 1])))
+            CHECK(y.ozet.kat == static_cast<size_t>(ad[k - 1] - '0'));
     }
 }
 
@@ -175,6 +179,12 @@ TEST_CASE("cekirdek_js B4/B5: işlemler, rapor, geri al / yinele ve ortak akış
     CHECK(r.hata.find("Bilinmeyen işlem") != std::string::npos);
     r = ModelIslemiUygula(h, islem::HIZLI_AKS, "{}");
     CHECK_FALSE(r.basarili);
+    for (const char* bozuk : {"{bozuk", "[1,2]", "5"}) {
+        r = ModelIslemiUygula(h, islem::BASLIK_DEGISTIR, bozuk);
+        CHECK_FALSE(r.basarili);
+        CHECK(r.hata.find("geçerli bir JSON nesnesi değil") != std::string::npos);
+        CHECK(r.hata.find("İç hata") == std::string::npos);
+    }
 
     r = GeriAlUygula(h);
     CHECK(r.ModelDegisti());

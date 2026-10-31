@@ -31,6 +31,15 @@ else()
   # Hata ayıklama derlemesinde de iyileştirilmiş: yorumlayıcı -O0'da 3–5 kat yavaştır (B7 bütçeleri; op4 kodu etkilenmez).
   target_compile_options(op4_quickjs PRIVATE -w -funsigned-char -O2)
 endif()
+# UBSan (linux-cekirdek-asan: -fsanitize=undefined -fno-sanitize-recover): Clang 17+ C'de -fsanitize=function'ı da açar ve
+# QuickJS'in bilinçli işlev işaretçisi dönüşümlerini (js_realloc_rt → void *(*)(void *, …), cutils.h dbuf_claim) sınamayı
+# düşüren hata sayar. Yalnız bu denetim, yalnız QuickJS'te kapatılır; ASan ve UBSan'ın geri kalanı açık kalır. GCC bu denetimi
+# tanımaz (bayrak sınanır).
+include(CheckCCompilerFlag)
+check_c_compiler_flag(-fno-sanitize=function OP4_QUICKJS_FNO_SANITIZE_FUNCTION)
+if(OP4_QUICKJS_FNO_SANITIZE_FUNCTION)
+  target_compile_options(op4_quickjs PRIVATE -fno-sanitize=function)
+endif()
 if(NOT WIN32)
   target_link_libraries(op4_quickjs PUBLIC m)
 endif()

@@ -122,13 +122,17 @@
       for (const k in b) if (!GEOMETRI_DISI.has(k) && !(k in a)) return false;
       return true;
     }
+    /** Model özeti (C++ ModelOzeti): kat = temel (kat 0) dışındaki kat sayısı (katlar ve kat işaretli Z aksları). */
     function ozetKur() {
       const say = function (k) { return Array.isArray(model[k]) ? model[k].length : 0; };
       const ak = model.akslar || {};
+      const katNo = new Set();
+      for (const k of Array.isArray(model.katlar) ? model.katlar : []) if (k && isFinite(+k.no) && +k.no > 0) katNo.add(+k.no);
+      for (const z of Array.isArray(ak.z) ? ak.z : []) if (z && z.kat != null && z.kat !== "" && +z.kat > 0) katNo.add(+z.kat);
       const o = {
         baslik: model.baslik || "", surum: +model.surum || 1, sistem: model.sistem || "celik",
         dugum: say("dugumler"), cubuk: say("cubuklar") + say("kolonlar") + say("kirisler"),
-        panel: say("paneller") + say("dosemeler"), kat: say("katlar"),
+        panel: say("paneller") + say("dosemeler"), kat: katNo.size,
         aks: (Array.isArray(ak.x) ? ak.x.length : 0) + (Array.isArray(ak.y) ? ak.y.length : 0), bos: false,
       };
       o.bos = o.dugum + o.cubuk + o.panel === 0;

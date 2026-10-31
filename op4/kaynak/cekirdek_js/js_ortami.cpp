@@ -70,7 +70,8 @@ JSValue Kopyala(Klon& k, JSValueConst v) {
     if (JS_IsFunction(c, v)) return KlonHata(c, "işlev");
     void* ptr = JS_VALUE_GET_PTR(v);
     if (const auto i = k.gorulen.find(ptr); i != k.gorulen.end()) return JS_DupValue(c, i->second);
-    if (++k.derinlik > 4000) {
+    // Yerel yığın: Windows ana iş parçacığı 1 MB; QuickJS'e 640 KB ayrılır (Kur). 1000 düzey ≈ 250 KB (model verisi < 20 düzey).
+    if (++k.derinlik > 1000) {
         --k.derinlik;
         return JS_ThrowRangeError(c, "structuredClone: nesne çok derin");
     }

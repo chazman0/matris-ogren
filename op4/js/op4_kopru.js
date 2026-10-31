@@ -18,6 +18,15 @@
     for (const k of Object.keys(r)) if (k !== "eklenen" && k !== "silinen" && k !== "degisen") o[k] = r[k];
     return { json: JSON.stringify(o), eklenen: anahtarlar(r.eklenen), silinen: anahtarlar(r.silinen), degisen: anahtarlar(r.degisen) };
   }
+  /** C++'ın verdiği parametre metni; geçersiz JSON ya da nesne olmayan değer → null (rapor hatası). */
+  function parametre(metin) {
+    if (!metin) return {};
+    try { const p = JSON.parse(metin); return p && typeof p === "object" && !Array.isArray(p) ? p : null; } catch (e) { return null; }
+  }
+  function girdiHatasi(islem) {
+    return rapor({ islem: islem, basarili: false, hata: "İşlem parametreleri geçerli bir JSON nesnesi değil (" + islem + ").", uyarilar: [],
+      eklenen: [], silinen: [], degisen: [], icerik_degisti: false, sahne_surumu: cekirdek().sahneSurumu() });
+  }
   function cekirdek() {
     if (!c) throw new Error("Op4Kopru.kur çağrılmadı");
     return c;
@@ -33,10 +42,17 @@
     },
     yeniBos: function (baslik) { return JSON.stringify(cekirdek().yeniBos(baslik ? { baslik: baslik } : {})); },
     yukle: function (metin, kaynak) { return JSON.stringify(cekirdek().yukle(metin, kaynak)); },
-    uygula: function (islem, pJson) { return rapor(cekirdek().uygula(islem, pJson ? JSON.parse(pJson) : {})); },
+    uygula: function (islem, pJson) {
+      const p = parametre(pJson);
+      return p ? rapor(cekirdek().uygula(islem, p)) : girdiHatasi(islem);
+    },
     geriAl: function () { return rapor(cekirdek().geriAl()); },
     yinele: function () { return rapor(cekirdek().yinele()); },
-    tabloUygula: function (dJson) { return rapor(cekirdek().tabloUygula(JSON.parse(dJson))); },
+    tabloUygula: function (dJson) {
+      let d;
+      try { d = JSON.parse(dJson); } catch (e) { return girdiHatasi("tabloUygula"); }
+      return rapor(cekirdek().tabloUygula(d));
+    },
     durum: function () {
       const k = cekirdek();
       return JSON.stringify({ geri_al: k.geriAlBilgisi(), ozet: k.ozet(), sahne_surumu: k.sahneSurumu() });

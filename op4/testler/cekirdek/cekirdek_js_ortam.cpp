@@ -86,6 +86,8 @@ TEST_CASE("cekirdek_js B2: structuredClone (C++) — derin kopya, paylaşılan b
               paylasim: k.o1 === k.o2 && k.o1 !== ortak, dongu: k.kendi === k, tipli: k.t instanceof Float64Array && k.t !== o.t && k.t[0] === 1.25,
               tarih: k.d instanceof Date && k.d.getTime() === o.d.getTime() && k.d !== o.d, anahtarlar: Object.keys(k).join(","),
               islev: hata(function () {}), harita: hata(new Map()), kume: hata(new Set([1])), sembol: hata(Symbol("s")),
+              derin: hata((function () { var d = {}, x = d; for (var i = 0; i < 1500; i++) { x.a = {}; x = x.a; } return d; })()),
+              sig: (function () { var d = {}, x = d; for (var i = 0; i < 500; i++) { x.a = {}; x = x.a; } return !!structuredClone(d).a.a; })(),
               ilkel: structuredClone(5) + structuredClone("a")};
     })())");
     CHECK(j["ayri"] == true);
@@ -102,6 +104,8 @@ TEST_CASE("cekirdek_js B2: structuredClone (C++) — derin kopya, paylaşılan b
     CHECK(j["harita"] == "DataCloneError");
     CHECK(j["kume"] == "DataCloneError");
     CHECK(j["sembol"] == "DataCloneError");
+    CHECK(j["derin"] == "RangeError");  // yerel yığın koruması (1000 düzey)
+    CHECK(j["sig"] == true);
     CHECK(j["ilkel"] == "5a");
 }
 
