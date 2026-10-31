@@ -103,7 +103,6 @@
     return !!(m && ((m.akslar && Array.isArray(m.akslar.z) && m.akslar.z.length) || (Array.isArray(m.aks_sistemleri) && m.aks_sistemleri.length)));
   }
   function kimlikAnahtari(k) { return (KODLAR.eleman_turu[k.tur] || 0) * 281474976710656 + (k.alt || 0) * 4294967296 + (k.no >>> 0); }
-  function kimlikSirala(l) { return l.sort(function (a, b) { return kimlikAnahtari(a) - kimlikAnahtari(b); }); }
   function newell(P) {
     const n = [0, 0, 0];
     for (let k = 0; k < P.length; k++) {
@@ -140,7 +139,9 @@
     kt.forEach(function (k, i) { katlar.set(k.no != null ? +k.no : i, +k.kot); });
     const zAd = new Map();
     zKat.forEach(function (a) { katlar.set(+a.kat, +a.konum); zAd.set(+a.kat, String(a.ad)); });
-    return { xs: xs, ys: ys, katlar: katlar, zAd: zAd,
+    const zAdTers = new Map();   // Z aksı adı → kat no'ları (zAd sırasıyla)
+    for (const [kat, ad] of zAd) { if (!zAdTers.has(ad)) zAdTers.set(ad, []); zAdTers.get(ad).push(kat); }
+    return { xs: xs, ys: ys, katlar: katlar, zAd: zAd, zAdTers: zAdTers,
       ix: new Map(xs.map(function (a, i) { return [a.ad, i]; })), iy: new Map(ys.map(function (a, i) { return [a.ad, i]; })) };
   }
 
@@ -166,7 +167,8 @@
   DC.izgaraNo = function (aks, kat) {
     const g = this.izg;
     if (!g || !Array.isArray(aks) || aks.length !== 2) return null;
-    const ix = g.ix.get(String(aks[0])), iy = g.iy.get(String(aks[1])), k = kat == null ? 1 : +kat;
+    const a0 = aks[0], a1 = aks[1];
+    const ix = g.ix.get(typeof a0 === "string" ? a0 : String(a0)), iy = g.iy.get(typeof a1 === "string" ? a1 : String(a1)), k = kat == null ? 1 : +kat;
     if (ix == null || iy == null || !g.katlar.has(k)) return null;
     return 1000 * k + 20 * ix + iy + 1;
   };
@@ -202,7 +204,8 @@
   DC.aksRefNo = function (ref) {
     const g = this.izg;
     if ((!ref.sistem || ref.sistem === "GLOBAL") && ref.z != null && g) {
-      for (const [kat, ad] of g.zAd) if (ad === String(ref.z)) { const n = this.izgaraNo(ref.aks, kat); if (n != null) return n; }
+      const katlar = g.zAdTers.get(typeof ref.z === "string" ? ref.z : String(ref.z));
+      if (katlar) for (let q = 0; q < katlar.length; q++) { const n = this.izgaraNo(ref.aks, katlar[q]); if (n != null) return n; }
     }
     this.sanalKur();
     const k = this.MA.refAnahtar(this.g, ref);
@@ -303,10 +306,12 @@
   DC.konum = function (no) { return this.dugumAl(no).P; };
 
   /**
-   * Modelin ortak çözümlemesi: genel görünüm, kullanılan düğümler (no sıralı), çubuk / panel / mesnet bağları, seviyeler.
+   * Modelin ortak çözümlemesi (tipli dizi düzeninde; sahne, kat, kullanım yeri ve öznitelik bunu paylaşır).
    * @param {Object} model bina JSON
-   * @returns {Object} C — {g, genellestirildi, uyarilar, dugumler: [{no, P, tur, kayit}], dDizin: Map(no → dizin),
-   *   cubuklar: [{c, i, j, tur}], paneller: [{p, kose: [dizin], tur}], mesnetler: [{d, maske, tur, ortuk}],
+   * @returns {Object} C — {model, g (genel görünüm), genellestirildi, uyarilar, cozucu,
+   *   nd, dno: Uint32Array (sıralı düğüm no), xyz: Float64Array, dtur: Uint8Array, dkayit: Array, dDizin: Map(no → dizin),
+   *   kul: Uint8Array (çubuk / panel kullanıyor), nc, cel: Array (çubuk kayıtları), ci, cj: Uint32Array, ctur: Uint8Array (kod),
+   *   np, pel: Array, pbas, psay, pkose: Uint32Array, ptur: Uint8Array, nm, md: Uint32Array, mmaske, mtur, mortuk: Uint8Array,
    *   seviyeler: [{ad, z, kat}], katlar: [{kat, z, ad}] (z sıralı), z0, temelTipi, temelMesnet}
    */
   function cozumle(model) {
@@ -314,88 +319,110 @@
     const gg = genelGorunum(model), g = gg.g;
     const uy = gg.uyarilar.slice();
     const DCz = new DugumCozucu(g);
-    const kul = new Map();     // düğüm no → kullanım sayısı (çubuk / panel)
-    const no = function (ref, ne) {
-      try { return DCz.no(ref); } catch (e) { uy.push(ne + ": " + e.message); return null; }
-    };
-    const cub = [];
-    for (const c of liste(g, "cubuklar")) {
+    // çubuklar
+    const cl = liste(g, "cubuklar");
+    const cRec = [], cA = [], cB = [];
+    for (let k = 0; k < cl.length; k++) {
+      const c = cl[k];
       if (!c || c.no == null) continue;
-      const a = no(c.i, "Çubuk " + c.no + " i ucu"), b = no(c.j, "Çubuk " + c.no + " j ucu");
-      if (a == null || b == null) continue;
+      let a, b;
+      try { a = DCz.no(c.i); } catch (e) { uy.push("Çubuk " + c.no + " i ucu: " + e.message); continue; }
+      try { b = DCz.no(c.j); } catch (e) { uy.push("Çubuk " + c.no + " j ucu: " + e.message); continue; }
       try { DCz.dugumAl(a); DCz.dugumAl(b); } catch (e) { uy.push("Çubuk " + c.no + ": " + e.message); continue; }
-      kul.set(a, (kul.get(a) || 0) + 1); kul.set(b, (kul.get(b) || 0) + 1);
-      cub.push({ c: c, a: a, b: b });
+      cRec.push(c); cA.push(a); cB.push(b);
     }
-    const pan = [];
-    for (const p of liste(g, "paneller")) {
-      if (!p || p.no == null || !Array.isArray(p.kose)) continue;
-      const k = [];
-      let tamam = p.kose.length >= 3;
-      for (const r of p.kose) {
-        const n = no(r, "Panel " + p.no + " köşesi");
-        if (n == null) { tamam = false; break; }
-        try { DCz.dugumAl(n); } catch (e) { uy.push("Panel " + p.no + ": " + e.message); tamam = false; break; }
-        k.push(n);
+    // paneller
+    const pl = liste(g, "paneller");
+    const pRec = [], pNo = [], pSay = [];
+    for (let k = 0; k < pl.length; k++) {
+      const p = pl[k];
+      if (!p || p.no == null || !Array.isArray(p.kose) || p.kose.length < 3) continue;
+      const bas = pNo.length;
+      let tamam = true;
+      for (let q = 0; q < p.kose.length; q++) {
+        let n;
+        try { n = DCz.no(p.kose[q]); DCz.dugumAl(n); } catch (e) { uy.push("Panel " + p.no + " köşesi: " + e.message); tamam = false; break; }
+        pNo.push(n);
       }
-      if (!tamam) continue;
-      for (const n of k) kul.set(n, (kul.get(n) || 0) + 1);
-      pan.push({ p: p, k: k });
+      if (!tamam) { pNo.length = bas; continue; }
+      pRec.push(p); pSay.push(p.kose.length);
     }
     // açık mesnet kayıtları (motor _mesnetleri_oku: aynı düğümde VEYA; hepsi serbestse yok sayılır)
     const mes = new Map();
-    for (const s of liste(g, "mesnetler")) {
+    const ml = liste(g, "mesnetler");
+    for (let k = 0; k < ml.length; k++) {
+      const s = ml[k];
       if (!s) continue;
-      const n = no(s.dugum, "Mesnet");
-      if (n == null) continue;
-      try { DCz.dugumAl(n); } catch (e) { uy.push("Mesnet: " + e.message); continue; }
+      let n;
+      try { n = DCz.no(s.dugum); DCz.dugumAl(n); } catch (e) { uy.push("Mesnet: " + e.message); continue; }
       let m = 0;
-      MESNET_SIRASI.forEach(function (a, i) { if (s[a]) m |= 1 << i; });
-      const yay = ["kx", "ky", "kz", "krx", "kry", "krz", "k"].some(function (a) { return +s[a] > 0; }) || !!s.yay;
+      for (let i = 0; i < 6; i++) if (s[MESNET_SIRASI[i]]) m |= 1 << i;
+      const yay = !!s.yay || +s.kx > 0 || +s.ky > 0 || +s.kz > 0 || +s.krx > 0 || +s.kry > 0 || +s.krz > 0 || +s.k > 0;
       const o = mes.get(n);
-      if (o) { o.maske |= m; o.yay = o.yay || yay; continue; }
-      mes.set(n, { maske: m, yay: yay, kayit: s });
+      if (o) { o.maske |= m; o.yay = o.yay || yay; } else mes.set(n, { maske: m, yay: yay });
     }
     // düğüm kayıtları (bağlantısız olanlar da sahnede)
     for (const n of DCz.kayit.keys()) { try { DCz.dugumAl(n); } catch (e) { uy.push(e.message); } }
-    // seviyeler
+    // düğüm dizileri (no sıralı)
+    const nd = DCz.dugum.size;
+    const sirali = new Float64Array(nd);
+    let q = 0;
+    for (const n of DCz.dugum.keys()) sirali[q++] = n;
+    sirali.sort();
+    const dno = new Uint32Array(nd), xyz = new Float64Array(3 * nd), dtur = new Uint8Array(nd), dkayit = new Array(nd), dDizin = new Map();
+    for (let i = 0; i < nd; i++) {
+      const d = DCz.dugum.get(sirali[i]);
+      dno[i] = d.no; xyz[3 * i] = d.P[0]; xyz[3 * i + 1] = d.P[1]; xyz[3 * i + 2] = d.P[2]; dtur[i] = d.tur; dkayit[i] = d.kayit;
+      dDizin.set(d.no, i);
+    }
+    const kul = new Uint8Array(nd);
+    const nc = cRec.length, ci = new Uint32Array(nc), cj = new Uint32Array(nc), ctur = new Uint8Array(nc);
+    for (let k = 0; k < nc; k++) {
+      const i = dDizin.get(cA[k]), j = dDizin.get(cB[k]);
+      ci[k] = i; cj[k] = j; kul[i] = 1; kul[j] = 1;
+      ctur[k] = cubukTurKodu(cRec[k], xyz, i, j);
+    }
+    const np = pRec.length, pbas = new Uint32Array(np), psay = new Uint32Array(np), pkose = new Uint32Array(pNo.length), ptur = new Uint8Array(np);
+    let b = 0;
+    for (let k = 0; k < np; k++) {
+      pbas[k] = b; psay[k] = pSay[k];
+      for (let t = 0; t < pSay[k]; t++) { const i = dDizin.get(pNo[b]); pkose[b++] = i; kul[i] = 1; }
+      ptur[k] = panelTurKodu(pRec[k]);
+    }
+    // seviyeler ve katlar
     let S0 = null;
     try { S0 = DCz.sistemler()[0]; } catch (e) { S0 = null; }
     const seviyeler = (S0 ? S0.l.z : []).map(function (a) { return { ad: String(a.ad), z: +a.konum, kat: a.kat != null ? +a.kat : -1 }; })
-      .sort(function (a, b) { return a.z - b.z; });
+      .sort(function (x, y) { return x.z - y.z; });
     const katlar = seviyeler.filter(function (s) { return s.kat >= 0; }).map(function (s) { return { kat: s.kat, z: s.z, ad: s.ad }; });
     // temel kotu (Is.temelKotu): en küçük numaralı katın kotu; kat yoksa en alt GLOBAL Z aksı
     let z0 = null;
-    if (DCz.izg && DCz.izg.katlar.size) { const k = Math.min.apply(null, [...DCz.izg.katlar.keys()]); z0 = DCz.izg.katlar.get(k); }
+    if (DCz.izg && DCz.izg.katlar.size) { let k0 = Infinity; for (const k of DCz.izg.katlar.keys()) if (k < k0) k0 = k; z0 = DCz.izg.katlar.get(k0); }
     else if (aksSistemiVar(g) && seviyeler.length) z0 = seviyeler[0].z;
     const temelMesnet = String((g.temeller && g.temeller.mesnet) || "ankastre").toLowerCase();
     const temelTipi = String((g.temeller && g.temeller.tip) || "tekil").trim().toLowerCase();
-    // düğümler: no sıralı
-    const dugumler = [...DCz.dugum.values()].sort(function (a, b) { return a.no - b.no; });
-    const dDizin = new Map();
-    dugumler.forEach(function (d, i) { dDizin.set(d.no, i); });
+    // mesnetler: açık kayıtlar + temel kuralı (C3; aks kesişimi düğümleri, en alt kat seviyesi, kullanılan)
     const T = KODLAR.dugum_turu, MT = KODLAR.mesnet_turu;
-    // mesnetler: açık kayıtlar + temel kuralı (C3; aks kesişimi düğümleri, en alt kat seviyesi)
-    const mesnetler = [];
-    for (const d of dugumler) {
-      const m = mes.get(d.no);
+    const mD = [], mM = [], mT = [], mO = [];
+    const ortukMaske = temelMesnet === "mafsal" ? 0x07 : temelMesnet === "elastik" ? 0x23 : 0x3F;
+    const ortukTur = temelMesnet === "mafsal" ? MT.mafsal : temelMesnet === "elastik" ? MT.yay : MT.ankastre;
+    for (let i = 0; i < nd; i++) {
+      const m = mes.get(dno[i]);
       if (m) {
         if (!m.maske && !m.yay) continue;
-        mesnetler.push({ d: dDizin.get(d.no), maske: m.maske, tur: m.yay ? MT.yay : mesnetTuru(m.maske), ortuk: false });
+        mD.push(i); mM.push(m.maske); mT.push(m.yay ? MT.yay : mesnetTuru(m.maske)); mO.push(0);
         continue;
       }
-      if ((d.tur === T.aks_kat || d.tur === T.aks_kesisimi) && !(d.kayit && d.kayit.tur) && z0 != null && Math.abs(d.P[2] - z0) <= 1e-6 && kul.has(d.no)) {
-        const maske = temelMesnet === "mafsal" ? 0x07 : temelMesnet === "elastik" ? 0x23 : 0x3F;
-        mesnetler.push({ d: dDizin.get(d.no), maske: maske, tur: temelMesnet === "mafsal" ? MT.mafsal : temelMesnet === "elastik" ? MT.yay : MT.ankastre, ortuk: true });
+      const t = dtur[i];
+      if ((t === T.aks_kat || t === T.aks_kesisimi) && !(dkayit[i] && dkayit[i].tur) && z0 != null && Math.abs(xyz[3 * i + 2] - z0) <= 1e-6 && kul[i]) {
+        mD.push(i); mM.push(ortukMaske); mT.push(ortukTur); mO.push(1);
       }
     }
-    const cubuklar = cub.map(function (x) {
-      return { c: x.c, i: dDizin.get(x.a), j: dDizin.get(x.b), tur: cubukAltTuru(x.c, dugumler[dDizin.get(x.a)].P, dugumler[dDizin.get(x.b)].P) };
-    });
-    const paneller = pan.map(function (x) { return { p: x.p, kose: x.k.map(function (n) { return dDizin.get(n); }), tur: panelAltTuru(x.p) }; });
-    return { g: g, model: model, genellestirildi: gg.genellestirildi, uyarilar: uy, cozucu: DCz, dugumler: dugumler, dDizin: dDizin,
-      kullanim: kul, cubuklar: cubuklar, paneller: paneller, mesnetler: mesnetler, seviyeler: seviyeler, katlar: katlar, z0: z0,
-      temelTipi: temelTipi, temelMesnet: temelMesnet };
+    return { model: model, g: g, genellestirildi: gg.genellestirildi, uyarilar: uy, cozucu: DCz,
+      nd: nd, dno: dno, xyz: xyz, dtur: dtur, dkayit: dkayit, dDizin: dDizin, kul: kul,
+      nc: nc, cel: cRec, ci: ci, cj: cj, ctur: ctur, np: np, pel: pRec, pbas: pbas, psay: psay, pkose: pkose, ptur: ptur,
+      nm: mD.length, md: Uint32Array.from(mD), mmaske: Uint8Array.from(mM), mtur: Uint8Array.from(mT), mortuk: Uint8Array.from(mO),
+      seviyeler: seviyeler, katlar: katlar, z0: z0, temelTipi: temelTipi, temelMesnet: temelMesnet };
   }
   function mesnetTuru(m) {
     const MT = KODLAR.mesnet_turu;
@@ -404,60 +431,106 @@
     if ((m & 0x04) && !(m & 0x38) && (m & 0x03) !== 0x03) return MT.kayici;
     return MT.diger;
   }
-  const CUBUK_TURLERI = Object.keys(KODLAR.cubuk_turu);
-  /** Çubuk alt türü: kayıttaki tur (bilinen); yoksa geometriden (düşey kolon, yatay kiriş, eğik diğer — bina_cizim cubukTuru). */
-  function cubukAltTuru(c, Pi, Pj) {
-    const t = String(c.tur == null ? "" : c.tur).trim().toLowerCase();
-    if (t && CUBUK_TURLERI.indexOf(t) >= 0) return t;
-    if (t) return "diger";
-    const L = uzaklik(Pi, Pj);
-    if (L < 1e-9) return "diger";
-    if (Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1]) <= 1e-6 * L) return "kolon";
-    if (Math.abs(Pj[2] - Pi[2]) <= 1e-6 * L) return "kiris";
-    return "diger";
+  const CUBUK_TURLERI = Object.keys(KODLAR.cubuk_turu);   // kod sırasıyla
+  const PANEL_TURLERI = Object.keys(KODLAR.panel_turu);
+  /** Çubuk alt türü kodu: kayıttaki tur (bilinen); yoksa geometriden (düşey kolon, yatay kiriş, eğik diğer — bina_cizim cubukTuru). */
+  const turOnbellek = new Map();   // kayıttaki tur dizesi → kod (birkaç farklı değer)
+  function cubukTurKodu(c, xyz, i, j) {
+    const K = KODLAR.cubuk_turu;
+    if (c.tur != null && c.tur !== "") {
+      let k = turOnbellek.get(c.tur);
+      if (k === undefined) {
+        const t = (typeof c.tur === "string" ? c.tur : String(c.tur)).trim().toLowerCase();
+        k = !t ? -1 : Object.prototype.hasOwnProperty.call(K, t) ? K[t] : K.diger;
+        if (typeof c.tur === "string") turOnbellek.set(c.tur, k);
+      }
+      if (k >= 0) return k;
+    }
+    const dx = xyz[3 * j] - xyz[3 * i], dy = xyz[3 * j + 1] - xyz[3 * i + 1], dz = xyz[3 * j + 2] - xyz[3 * i + 2];
+    const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (L < 1e-9) return K.diger;
+    if (Math.hypot(dx, dy) <= 1e-6 * L) return K.kolon;
+    if (Math.abs(dz) <= 1e-6 * L) return K.kiris;
+    return K.diger;
   }
-  function panelAltTuru(p) {
-    const t = String(p.tur == null ? "doseme" : p.tur).trim().toLowerCase();
-    return t in KODLAR.panel_turu ? t : "diger";
+  const panelTurOnbellek = new Map();
+  function panelTurKodu(p) {
+    let k = panelTurOnbellek.get(p.tur);
+    if (k === undefined) {
+      const t = p.tur == null ? "doseme" : String(p.tur).trim().toLowerCase();
+      k = Object.prototype.hasOwnProperty.call(KODLAR.panel_turu, t) ? KODLAR.panel_turu[t] : KODLAR.panel_turu.diger;
+      if (p.tur == null || typeof p.tur === "string") panelTurOnbellek.set(p.tur, k);
+    }
+    return k;
   }
   function cozumAl(model, ek) { return ek && ek.cozum && ek.cozum.model === model ? ek.cozum : cozumle(model); }
 
   // ================================================================= KAT ÜYELİĞİ (§10.2)
-  /** z'ye en yakın seviye adı. */
-  function enYakinSeviye(sev, z) {
-    let en = null, ed = Infinity;
-    for (const s of sev) { const d = Math.abs(s.z - z); if (d < ed - 1e-12) { ed = d; en = s.ad; } }
-    return en;
-  }
-  /** Yatay eleman kuralı: z_{k−1} + 1 mm < z ≤ z_k + 1 mm → k; üst katın üstü → üst kat; kat 0 ve altı → kat 0 (temel). */
-  function katBul(katlar, z) {
-    if (!katlar.length) return [];
-    if (z <= katlar[0].z + TOL) return [katlar[0].kat];
-    for (let i = 1; i < katlar.length; i++) if (z <= katlar[i].z + TOL) return [katlar[i].kat];
-    return [katlar[katlar.length - 1].kat];
-  }
-  /** Kolon kuralı: alt–üst aralığının kestiği bütün katlar (z_{k−1} < z_üst ≤ z_k + 1 mm; kat aralığını aşan kolon birden çok). */
-  function kolonKatlari(katlar, za, zu) {
-    if (!katlar.length) return [];
-    const alt = Math.min(za, zu), ust = Math.max(za, zu);
-    const out = [];
-    for (let i = 1; i < katlar.length; i++) {
-      if (katlar[i].z > alt + TOL && katlar[i - 1].z < ust - TOL) out.push(katlar[i].kat);
+  /**
+   * Kat üyeliğinin iç (tipli dizi) biçimi: düğüm ve panel tek kat (dKat, pKat; −1 = kat seviyesi yok), çubuk kat listesi
+   * (cBas / cDeger, CSR), seviye dizinleri (dSev, cSev, pSev; −1 = yok; seviyeler dizisine).
+   */
+  function katHesapla(C) {
+    const K = C.katlar, sev = C.seviyeler, nK = K.length, nS = sev.length;
+    const kz = new Float64Array(nK), kno = new Int32Array(nK), sz = new Float64Array(nS);
+    for (let i = 0; i < nK; i++) { kz[i] = K[i].z; kno[i] = K[i].kat; }
+    for (let i = 0; i < nS; i++) sz[i] = sev[i].z;
+    const katBul = function (z) {       // yatay eleman kuralı
+      if (!nK) return -1;
+      for (let i = 0; i < nK; i++) if (z <= kz[i] + TOL) return kno[i];
+      return kno[nK - 1];
+    };
+    const sevBul = function (z) {
+      let en = -1, ed = Infinity;
+      for (let i = 0; i < nS; i++) { const d = Math.abs(sz[i] - z); if (d < ed - 1e-12) { ed = d; en = i; } }
+      return en;
+    };
+    const xyz = C.xyz, nd = C.nd, nc = C.nc, np = C.np;
+    const dKat = new Int32Array(nd), dSev = new Int32Array(nd);
+    for (let i = 0; i < nd; i++) {
+      const z = xyz[3 * i + 2];
+      let k = -2;
+      for (let q = 0; q < nK; q++) if (Math.abs(kz[q] - z) <= TOL) { k = kno[q]; break; }
+      dKat[i] = k === -2 ? katBul(z) : k;
+      dSev[i] = sevBul(z);
     }
-    if (!out.length) return katBul(katlar, ust);
-    if (ust > katlar[katlar.length - 1].z + TOL && out[out.length - 1] !== katlar[katlar.length - 1].kat) out.push(katlar[katlar.length - 1].kat);
-    return out;
+    const cBas = new Uint32Array(nc + 1), deger = [], cSev = new Int32Array(nc);
+    const cos10 = Math.cos(10 * D2R) - 1e-12;
+    for (let k = 0; k < nc; k++) {
+      cBas[k] = deger.length;
+      const i = C.ci[k], j = C.cj[k];
+      const zi = xyz[3 * i + 2], zj = xyz[3 * j + 2];
+      const dx = xyz[3 * j] - xyz[3 * i], dy = xyz[3 * j + 1] - xyz[3 * i + 1], dz = zj - zi;
+      const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const zu = zi > zj ? zi : zj;
+      cSev[k] = sevBul(zu);
+      if (!nK) continue;
+      if (L >= 1e-9 && Math.abs(dz) / L >= cos10) {
+        // kolon: alt–üst aralığının kestiği katlar
+        const alt = zi < zj ? zi : zj, ust = zu, bas = deger.length;
+        for (let q = 1; q < nK; q++) if (kz[q] > alt + TOL && kz[q - 1] < ust - TOL) deger.push(kno[q]);
+        if (deger.length === bas) deger.push(katBul(ust));
+        else if (ust > kz[nK - 1] + TOL && deger[deger.length - 1] !== kno[nK - 1]) deger.push(kno[nK - 1]);
+      } else deger.push(katBul(zu));
+    }
+    cBas[nc] = deger.length;
+    const pKat = new Int32Array(np), pSev = new Int32Array(np);
+    for (let k = 0; k < np; k++) {
+      let zu = -Infinity;
+      const b = C.pbas[k], s = C.psay[k];
+      for (let t = 0; t < s; t++) { const z = xyz[3 * C.pkose[b + t] + 2]; if (z > zu) zu = z; }
+      pKat[k] = katBul(zu);
+      pSev[k] = sevBul(zu);
+    }
+    return { dKat: dKat, dSev: dSev, cBas: cBas, cDeger: Int32Array.from(deger), cSev: cSev, pKat: pKat, pSev: pSev };
   }
-  function kolonMu(Pi, Pj) {
-    const L = uzaklik(Pi, Pj);
-    if (L < 1e-9) return false;
-    return Math.abs(Pj[2] - Pi[2]) / L >= Math.cos(10 * D2R) - 1e-12;
-  }
+  function katAl(C, ek) { return ek && ek.katIc && ek.cozum === C ? ek.katIc : katHesapla(C); }
 
   /**
    * Kat ve seviye üyeliği (MIMARI §10.2; tolerans 1 mm). Surum 1 modelde genellestir görünümüne göre.
-   * Düğüm: bir kat Z aksına 1 mm'den yakınsa o kat; değilse yatay eleman kuralı. Kolon (düşeyle ≤ 10°): kestiği katlar.
-   * Yatay / eğik çubuk ve panel: üst ucunun (panelde en yüksek köşenin) kotuyla yatay eleman kuralı. Kat 0 temel katıdır.
+   * Düğüm: bir kat Z aksına 1 mm'den yakınsa o kat; değilse yatay eleman kuralı. Kolon (düşeyle ≤ 10°): alt–üst aralığının
+   * kestiği bütün katlar (z_{k−1} < z_üst ≤ z_k + 1 mm). Yatay / eğik çubuk ve panel: üst ucunun (panelde en yüksek köşenin)
+   * kotuyla yatay eleman kuralı (z_{k−1} + 1 mm < z ≤ z_k + 1 mm → k; üst katın üstü → üst kat; kat 0 ve altı → kat 0, temel).
    * @param {Object} model bina JSON
    * @param {{cozum?: Object}} [ek]
    * @returns {{seviyeler: Array<{ad: string, z: number, kat: number}>,
@@ -466,46 +539,43 @@
    *   Anahtar eleman no'su (dize). Kat listesi boş = modelde kat seviyesi yok. Kat aralığını aşan kolon birden çok kat taşır.
    */
   function katUyeligi(model, ek) {
-    const C = cozumAl(model, ek);
-    const K = C.katlar, sev = C.seviyeler;
+    const C = cozumAl(model, ek), K = katAl(C, ek), sev = C.seviyeler;
     const out = { seviyeler: sev.map(function (s) { return { ad: s.ad, z: s.z, kat: s.kat }; }), dugum: {}, cubuk: {}, panel: {},
       seviye: { dugum: {}, cubuk: {}, panel: {} } };
-    for (const d of C.dugumler) {
-      const z = d.P[2];
-      let k = null;
-      for (const s of K) if (Math.abs(s.z - z) <= TOL) { k = [s.kat]; break; }
-      out.dugum[d.no] = k || katBul(K, z);
-      const sv = enYakinSeviye(sev, z);
-      if (sv != null) out.seviye.dugum[d.no] = sv;
+    for (let i = 0; i < C.nd; i++) {
+      out.dugum[C.dno[i]] = K.dKat[i] >= 0 ? [K.dKat[i]] : [];
+      if (K.dSev[i] >= 0) out.seviye.dugum[C.dno[i]] = sev[K.dSev[i]].ad;
     }
-    for (const x of C.cubuklar) {
-      const Pi = C.dugumler[x.i].P, Pj = C.dugumler[x.j].P;
-      const zu = Math.max(Pi[2], Pj[2]);
-      out.cubuk[x.c.no] = kolonMu(Pi, Pj) ? kolonKatlari(K, Pi[2], Pj[2]) : katBul(K, zu);
-      const sv = enYakinSeviye(sev, zu);
-      if (sv != null) out.seviye.cubuk[x.c.no] = sv;
+    for (let k = 0; k < C.nc; k++) {
+      const no = +C.cel[k].no;
+      out.cubuk[no] = Array.from(K.cDeger.subarray(K.cBas[k], K.cBas[k + 1]));
+      if (K.cSev[k] >= 0) out.seviye.cubuk[no] = sev[K.cSev[k]].ad;
     }
-    for (const x of C.paneller) {
-      let zu = -Infinity;
-      for (const i of x.kose) zu = Math.max(zu, C.dugumler[i].P[2]);
-      out.panel[x.p.no] = katBul(K, zu);
-      const sv = enYakinSeviye(sev, zu);
-      if (sv != null) out.seviye.panel[x.p.no] = sv;
+    for (let k = 0; k < C.np; k++) {
+      const no = +C.pel[k].no;
+      out.panel[no] = K.pKat[k] >= 0 ? [K.pKat[k]] : [];
+      if (K.pSev[k] >= 0) out.seviye.panel[no] = sev[K.pSev[k]].ad;
     }
     return out;
   }
 
   // ================================================================= KULLANIM YERİ (§10.3)
-  function cokgenAlani2(P) { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; }
-  function noktaParcaUzakligi(p, a, b) {
-    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
-    let t = L2 > 1e-24 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  /** Kullanım yeri kodları (iç biçim; 0 = sınıfsız ""). */
+  const YERLER = Object.freeze(["", "kose", "kenar", "ic", "dis", "konsol", "dis-cephe", "temel", "kolon-ustu", "ara", "+x", "-x", "+y", "-y"]);
+  const Y = {};
+  YERLER.forEach(function (a, i) { Y[a] = i; });
+
+  function noktaParcaUzakligi(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    let t = L2 > 1e-24 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
-  /** Dışbükey zarf (monoton zincir; doğrusal noktalar atılır), saat yönünün tersine. */
-  function disbukeyZarf(noktalar) {
-    const p = noktalar.slice().sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+  /** Dışbükey zarf (monoton zincir; doğrusal noktalar atılır), saat yönünün tersine; düz [x, y, …] dizisi. */
+  function disbukeyZarf(duz) {
+    const p = [];
+    for (let i = 0; i < duz.length; i += 2) p.push([duz[i], duz[i + 1]]);
+    p.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     const tekil = [];
     for (const q of p) if (!tekil.length || Math.hypot(q[0] - tekil[tekil.length - 1][0], q[1] - tekil[tekil.length - 1][1]) > TOL_YER / 10) tekil.push(q);
     if (tekil.length < 3) return tekil;
@@ -517,107 +587,281 @@
     return alt.concat(ust);
   }
   /**
-   * Bir katın plan zarfı: {parcalar: [[A, B]] (iç sol yanda), koseler: [[x, y]]}. Döşemeler varsa birleşimlerinin sınırı
-   * (komşu döşemenin ters yönlü eş doğrusal kenarıyla örtülmeyen kenar parçaları), yoksa kolonların dışbükey zarfı.
-   * Köşe: iç açısı < 170° olan sınır tepesi.
+   * Kat plan zarfı: sınır parçaları (iç sol yanda) ve köşeler, ızgara dizinli (sorgu sabit zamanlı). Döşemeler varsa birleşimlerinin
+   * sınırı (komşu döşemenin ters yönlü eş doğrusal kenarıyla örtülmeyen kenar parçaları), yoksa kolonların dışbükey zarfı.
+   * Köşe: iç açısı < 170° olan sınır tepesi (sola dönüş > 10°).
+   * @param {Array<number[]>} dosemeler her döşeme için düz [x0, y0, x1, y1, …]
+   * @param {number[]} kolonlar düz [x, y, …]
    */
-  function zarfKur(dosemeler, kolonNoktalari) {
-    const parcalar = [], koseler = [];
-    const kenarlar = [];
-    for (const P0 of dosemeler) {
-      if (P0.length < 3) continue;
-      const P = cokgenAlani2(P0) < 0 ? P0.slice().reverse() : P0;
-      for (let i = 0; i < P.length; i++) {
-        const a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        if (L > TOL_YER) kenarlar.push({ a: a, b: b, L: L, d: [(b[0] - a[0]) / L, (b[1] - a[1]) / L] });
+  function Zarf(dosemeler, kolonlar) {
+    const par = [];      // düz [ax, ay, bx, by, …]
+    const kose = [];     // düz [x, y, …]
+    this.kaynak = dosemeler.length ? "doseme" : "kolon";
+    if (dosemeler.length) {
+      const ex = [], ey = [], ux = [], uy = [], el = [];
+      for (const P0 of dosemeler) {
+        const n = P0.length / 2;
+        if (n < 3) continue;
+        let a2 = 0;
+        for (let i = 0; i < n; i++) { const j = (i + 1) % n; a2 += P0[2 * i] * P0[2 * j + 1] - P0[2 * j] * P0[2 * i + 1]; }
+        for (let s = 0; s < n; s++) {
+          const i = a2 < 0 ? n - 1 - s : s, j = a2 < 0 ? (n - 1 - s + n - 1) % n : (s + 1) % n;
+          const ax = P0[2 * i], ay = P0[2 * i + 1], bx = P0[2 * j], by = P0[2 * j + 1], L = Math.hypot(bx - ax, by - ay);
+          if (L <= TOL_YER) continue;
+          ex.push(ax); ey.push(ay); ux.push((bx - ax) / L); uy.push((by - ay) / L); el.push(L);
+        }
       }
-    }
-    if (kenarlar.length) {
-      // eş doğrusal kenar kovaları: doğrultu açısı (yönsüz) ve doğruya uzaklık
-      const kova = new Map();
-      const anahtar = function (e) {
-        let ax = e.d[0], ay = e.d[1];
+      // tam ters eşi olan kenar (ızgaradaki komşu döşemelerin ortak kenarı) bütünüyle örtülüdür: karma tabloyla elenir; kalanlar
+      // (T birleşimleri, kısmi örtüşmeler) eş doğrusal kovalarda karşılaştırılır. Geçerli (örtüşmeyen) döşemelerde tam eşli bir
+      // kenar başka hiçbir kenarı örtmez.
+      const ucAnahtar = function (x, y) { return Math.round(x / TOL_YER) + "," + Math.round(y / TOL_YER); };
+      const yonlu = new Set(), ka = [], kb = [];
+      for (let i = 0; i < el.length; i++) {
+        ka.push(ucAnahtar(ex[i], ey[i])); kb.push(ucAnahtar(ex[i] + ux[i] * el[i], ey[i] + uy[i] * el[i]));
+        yonlu.add(ka[i] + "|" + kb[i]);
+      }
+      const kalan = [];
+      for (let i = 0; i < el.length; i++) if (!yonlu.has(kb[i] + "|" + ka[i])) kalan.push(i);
+      // eş doğrusal kenar kovaları: yönsüz doğrultu açısı ve doğruya uzaklık (sayısal anahtar)
+      const m = el.length, kova = new Map(), kt = new Float64Array(m), kc = new Float64Array(m);
+      for (let q0 = 0; q0 < kalan.length; q0++) {
+        const i = kalan[q0];
+        let ax = ux[i], ay = uy[i];
         if (ax < -1e-12 || (Math.abs(ax) <= 1e-12 && ay < 0)) { ax = -ax; ay = -ay; }
-        const t = Math.round(Math.atan2(ay, ax) * 1e3), c = Math.round((-ay * e.a[0] + ax * e.a[1]) / TOL_YER);
-        return [t, c];
-      };
-      kenarlar.forEach(function (e, i) {
-        const k = anahtar(e);
-        e.k = k;
-        const s = k[0] + "|" + k[1];
-        if (!kova.has(s)) kova.set(s, []);
-        kova.get(s).push(i);
-      });
-      const dik = function (e, p) { return Math.abs(-e.d[1] * (p[0] - e.a[0]) + e.d[0] * (p[1] - e.a[1])); };
-      kenarlar.forEach(function (e, i) {
-        const ort = [];
+        kt[i] = Math.round(Math.atan2(ay, ax) * 1e3);
+        kc[i] = Math.round((-ay * ex[i] + ax * ey[i]) / TOL_YER);
+        const a = (kt[i] + 4000) * 1e9 + kc[i] + 4e8;
+        let l = kova.get(a);
+        if (!l) { l = []; kova.set(a, l); }
+        l.push(i);
+      }
+      const ort = [];
+      for (let q0 = 0; q0 < kalan.length; q0++) {
+        const i = kalan[q0];
+        ort.length = 0;
         for (let dt = -1; dt <= 1; dt++) for (let dc = -1; dc <= 1; dc++) {
-          for (const j of kova.get((e.k[0] + dt) + "|" + (e.k[1] + dc)) || []) {
-            if (j === i) continue;
-            const f = kenarlar[j];
-            if (f.d[0] * e.d[0] + f.d[1] * e.d[1] > -0.9999) continue;     // ters yönlü değil
-            if (dik(e, f.a) > TOL_YER || dik(e, f.b) > TOL_YER) continue;      // aynı doğru üstünde değil
-            const ta = (f.a[0] - e.a[0]) * e.d[0] + (f.a[1] - e.a[1]) * e.d[1], tb = (f.b[0] - e.a[0]) * e.d[0] + (f.b[1] - e.a[1]) * e.d[1];
-            const lo = Math.max(0, Math.min(ta, tb)), hi = Math.min(e.L, Math.max(ta, tb));
-            if (hi - lo > TOL_YER) ort.push([lo, hi]);
+          const l = kova.get((kt[i] + dt + 4000) * 1e9 + kc[i] + dc + 4e8);
+          if (!l) continue;
+          for (let q = 0; q < l.length; q++) {
+            const j = l[q];
+            if (j === i || ux[j] * ux[i] + uy[j] * uy[i] > -0.9999) continue;   // ters yönlü değil
+            const jbx = ex[j] + ux[j] * el[j], jby = ey[j] + uy[j] * el[j];
+            if (Math.abs(-uy[i] * (ex[j] - ex[i]) + ux[i] * (ey[j] - ey[i])) > TOL_YER) continue;
+            if (Math.abs(-uy[i] * (jbx - ex[i]) + ux[i] * (jby - ey[i])) > TOL_YER) continue;
+            const ta = (ex[j] - ex[i]) * ux[i] + (ey[j] - ey[i]) * uy[i], tb = (jbx - ex[i]) * ux[i] + (jby - ey[i]) * uy[i];
+            const lo = Math.max(0, Math.min(ta, tb)), hi = Math.min(el[i], Math.max(ta, tb));
+            if (hi - lo > TOL_YER) ort.push(lo, hi);
           }
         }
-        ort.sort(function (x, y) { return x[0] - y[0]; });
+        // örtülmeyen aralıklar
+        const sirali = [];
+        for (let q = 0; q < ort.length; q += 2) sirali.push([ort[q], ort[q + 1]]);
+        sirali.sort(function (x, y) { return x[0] - y[0]; });
         let son = 0;
-        const ekle = function (t0, t1) { if (t1 - t0 > TOL_YER) parcalar.push([[e.a[0] + e.d[0] * t0, e.a[1] + e.d[1] * t0], [e.a[0] + e.d[0] * t1, e.a[1] + e.d[1] * t1]]); };
-        for (const o of ort) { if (o[0] > son) ekle(son, o[0]); son = Math.max(son, o[1]); }
-        if (son < e.L) ekle(son, e.L);
-      });
+        for (const o of sirali) {
+          if (o[0] - son > TOL_YER) par.push(ex[i] + ux[i] * son, ey[i] + uy[i] * son, ex[i] + ux[i] * o[0], ey[i] + uy[i] * o[0]);
+          if (o[1] > son) son = o[1];
+        }
+        if (el[i] - son > TOL_YER) par.push(ex[i] + ux[i] * son, ey[i] + uy[i] * son, ex[i] + ux[i] * el[i], ey[i] + uy[i] * el[i]);
+      }
       // köşeler: bir parçanın bittiği ve diğerinin başladığı tepede sola dönüş > 10°
       const uclar = new Map();
-      const tk = function (p) { return Math.round(p[0] / TOL_YER) + "," + Math.round(p[1] / TOL_YER); };
-      parcalar.forEach(function (s, i) {
-        for (const u of [[s[0], "bas"], [s[1], "son"]]) {
-          const k = tk(u[0]);
-          if (!uclar.has(k)) uclar.set(k, { p: u[0], bas: [], son: [] });
-          uclar.get(k)[u[1]].push(i);
+      const np = par.length / 4;
+      for (let i = 0; i < np; i++) {
+        for (let u = 0; u < 2; u++) {
+          const x = par[4 * i + 2 * u], y = par[4 * i + 2 * u + 1];
+          const a = (Math.round(x / TOL_YER) + 1e7) * 4e7 + Math.round(y / TOL_YER) + 1e7;
+          let e = uclar.get(a);
+          if (!e) { e = { x: x, y: y, bas: [], son: [] }; uclar.set(a, e); }
+          (u === 0 ? e.bas : e.son).push(i);
         }
-      });
-      for (const u of uclar.values()) {
-        let kose = false;
-        for (const i of u.son) for (const j of u.bas) {
-          const a = parcalar[i], b = parcalar[j];
-          const d1 = [a[1][0] - a[0][0], a[1][1] - a[0][1]], d2 = [b[1][0] - b[0][0], b[1][1] - b[0][1]];
-          const donus = Math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1]);
-          if (donus > 10 * D2R + 1e-9) kose = true;
-        }
-        if (kose) koseler.push(u.p);
       }
-      return { parcalar: parcalar, koseler: koseler, kaynak: "doseme" };
+      for (const e of uclar.values()) {
+        let k = false;
+        for (let s = 0; s < e.son.length && !k; s++) for (let b = 0; b < e.bas.length && !k; b++) {
+          const i = e.son[s], j = e.bas[b];
+          const d1x = par[4 * i + 2] - par[4 * i], d1y = par[4 * i + 3] - par[4 * i + 1], d2x = par[4 * j + 2] - par[4 * j], d2y = par[4 * j + 3] - par[4 * j + 1];
+          if (Math.atan2(d1x * d2y - d1y * d2x, d1x * d2x + d1y * d2y) > 10 * D2R + 1e-9) k = true;
+        }
+        if (k) kose.push(e.x, e.y);
+      }
+    } else {
+      const z = disbukeyZarf(kolonlar);
+      if (z.length <= 2) {
+        for (const p of z) kose.push(p[0], p[1]);
+        if (z.length === 2) par.push(z[0][0], z[0][1], z[1][0], z[1][1]);
+      } else {
+        for (let i = 0; i < z.length; i++) {
+          const o = z[(i + z.length - 1) % z.length], p = z[i], q = z[(i + 1) % z.length];
+          par.push(p[0], p[1], q[0], q[1]);
+          const d1x = p[0] - o[0], d1y = p[1] - o[1], d2x = q[0] - p[0], d2y = q[1] - p[1];
+          if (Math.atan2(d1x * d2y - d1y * d2x, d1x * d2x + d1y * d2y) > 10 * D2R + 1e-9) kose.push(p[0], p[1]);
+        }
+      }
     }
-    const z = disbukeyZarf(kolonNoktalari);
-    if (z.length <= 2) {
-      for (const p of z) koseler.push(p);
-      if (z.length === 2) parcalar.push([z[0], z[1]]);
-      return { parcalar: parcalar, koseler: koseler, kaynak: "kolon" };
+    this.par = par; this.kose = kose;
+    // ızgara dizini
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < par.length; i += 2) { if (par[i] < x0) x0 = par[i]; if (par[i] > x1) x1 = par[i]; if (par[i + 1] < y0) y0 = par[i + 1]; if (par[i + 1] > y1) y1 = par[i + 1]; }
+    for (let i = 0; i < kose.length; i += 2) { if (kose[i] < x0) x0 = kose[i]; if (kose[i] > x1) x1 = kose[i]; if (kose[i + 1] < y0) y0 = kose[i + 1]; if (kose[i + 1] > y1) y1 = kose[i + 1]; }
+    if (!(x0 <= x1)) { x0 = y0 = 0; x1 = y1 = 1; }
+    this.x0 = x0 - 1; this.y0 = y0 - 1;
+    this.h = Math.max(1, Math.max(x1 - x0, y1 - y0) / 48);
+    this.pHucre = new Map(); this.kHucre = new Map();
+    for (let i = 0; i < par.length / 4; i++) {
+      const ax = par[4 * i], ay = par[4 * i + 1], bx = par[4 * i + 2], by = par[4 * i + 3];
+      this.ekle(this.pHucre, i, Math.min(ax, bx) - TOL_YER, Math.min(ay, by) - TOL_YER, Math.max(ax, bx) + TOL_YER, Math.max(ay, by) + TOL_YER);
     }
-    for (let i = 0; i < z.length; i++) {
-      const o = z[(i + z.length - 1) % z.length], p = z[i], q = z[(i + 1) % z.length];
-      parcalar.push([p, q]);
-      const d1 = [p[0] - o[0], p[1] - o[1]], d2 = [q[0] - p[0], q[1] - p[1]];
-      if (Math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1]) > 10 * D2R + 1e-9) koseler.push(p);
-    }
-    return { parcalar: parcalar, koseler: koseler, kaynak: "kolon" };
+    for (let i = 0; i < kose.length / 2; i++) this.ekle(this.kHucre, i, kose[2 * i] - TOL_YER, kose[2 * i + 1] - TOL_YER, kose[2 * i] + TOL_YER, kose[2 * i + 1] + TOL_YER);
   }
-  function zarftaMi(Z, p) { for (const s of Z.parcalar) if (noktaParcaUzakligi(p, s[0], s[1]) <= TOL_YER) return true; return false; }
-  function koseMi(Z, p) { for (const q of Z.koseler) if (Math.hypot(p[0] - q[0], p[1] - q[1]) <= TOL_YER) return true; return false; }
-  /** a–b doğru parçası zarf sınırı üstünde mi (iki uç ve orta nokta aynı sınır parçasında). */
-  function zarfKenarindaMi(Z, a, b) {
-    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    for (const s of Z.parcalar) {
-      const L = Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]);
+  Zarf.prototype.ekle = function (h, i, ax, ay, bx, by) {
+    const c0 = Math.floor((ax - this.x0) / this.h), c1 = Math.floor((bx - this.x0) / this.h);
+    const r0 = Math.floor((ay - this.y0) / this.h), r1 = Math.floor((by - this.y0) / this.h);
+    for (let c = c0; c <= c1; c++) for (let r = r0; r <= r1; r++) {
+      const a = (c + 65536) * 262144 + r + 65536;
+      let l = h.get(a);
+      if (!l) { l = []; h.set(a, l); }
+      l.push(i);
+    }
+  };
+  Zarf.prototype.hucre = function (h, x, y) {
+    return h.get((Math.floor((x - this.x0) / this.h) + 65536) * 262144 + Math.floor((y - this.y0) / this.h) + 65536);
+  };
+  Zarf.prototype.uzerinde = function (x, y) {
+    const l = this.hucre(this.pHucre, x, y), p = this.par;
+    if (l) for (let q = 0; q < l.length; q++) { const i = l[q]; if (noktaParcaUzakligi(x, y, p[4 * i], p[4 * i + 1], p[4 * i + 2], p[4 * i + 3]) <= TOL_YER) return true; }
+    return false;
+  };
+  Zarf.prototype.koseMi = function (x, y) {
+    const l = this.hucre(this.kHucre, x, y), k = this.kose;
+    if (l) for (let q = 0; q < l.length; q++) { const i = l[q]; if (Math.hypot(x - k[2 * i], y - k[2 * i + 1]) <= TOL_YER) return true; }
+    return false;
+  };
+  /** a–b doğru parçası zarf sınırı üstünde mi (iki uç doğru üstünde, orta nokta aynı sınır parçasında). */
+  Zarf.prototype.kenarda = function (ax, ay, bx, by) {
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const l = this.hucre(this.pHucre, mx, my), p = this.par;
+    if (!l) return false;
+    for (let q = 0; q < l.length; q++) {
+      const i = l[q], sx = p[4 * i], sy = p[4 * i + 1], ex = p[4 * i + 2], ey = p[4 * i + 3];
+      const L = Math.hypot(ex - sx, ey - sy);
       if (L < 1e-12) continue;
-      const ux = (s[1][0] - s[0][0]) / L, uy = (s[1][1] - s[0][1]) / L;
-      const dik = function (p) { return Math.abs(-uy * (p[0] - s[0][0]) + ux * (p[1] - s[0][1])); };
-      if (dik(a) <= TOL_YER && dik(b) <= TOL_YER && noktaParcaUzakligi(m, s[0], s[1]) <= TOL_YER) return true;
+      const vx = (ex - sx) / L, vy = (ey - sy) / L;
+      if (Math.abs(-vy * (ax - sx) + vx * (ay - sy)) <= TOL_YER && Math.abs(-vy * (bx - sx) + vx * (by - sy)) <= TOL_YER &&
+          noktaParcaUzakligi(mx, my, sx, sy, ex, ey) <= TOL_YER) return true;
     }
     return false;
+  };
+
+  /** Kullanım yerinin iç biçimi: cYer, pYer, dYer (YERLER kodları). */
+  function yerHesapla(C, K) {
+    const xyz = C.xyz, nd = C.nd, nc = C.nc, np = C.np, ci = C.ci, cj = C.cj;
+    const CT = KODLAR.cubuk_turu, PT = KODLAR.panel_turu;
+    // komşuluk (CSR): düğüm → çubuklar
+    const der = new Uint32Array(nd + 1);
+    for (let k = 0; k < nc; k++) { der[ci[k] + 1]++; der[cj[k] + 1]++; }
+    for (let i = 0; i < nd; i++) der[i + 1] += der[i];
+    const komsu = new Uint32Array(der[nd]), dolu = der.slice(0, nd);
+    for (let k = 0; k < nc; k++) { komsu[dolu[ci[k]]++] = k; komsu[dolu[cj[k]]++] = k; }
+    const mesnetli = new Uint8Array(nd);
+    for (let m = 0; m < C.nm; m++) mesnetli[C.md[m]] = 1;
+    const cift = new Set();
+    for (let k = 0; k < nc; k++) { const a = ci[k] < cj[k] ? ci[k] : cj[k], b = ci[k] < cj[k] ? cj[k] : ci[k]; cift.add(a * 2097152 + b); }
+    const sonKatC = function (k) { return K.cBas[k + 1] > K.cBas[k] ? K.cDeger[K.cBas[k + 1] - 1] : -1; };
+    // kat zarfları (tembel)
+    const katDoseme = new Map(), katKolon = new Map(), kolonUst = new Uint8Array(nd);
+    for (let k = 0; k < np; k++) {
+      if (C.ptur[k] !== PT.doseme || K.pKat[k] < 0) continue;
+      const b = C.pbas[k], s = C.psay[k], P = new Array(2 * s);
+      for (let t = 0; t < s; t++) { const i = C.pkose[b + t]; P[2 * t] = xyz[3 * i]; P[2 * t + 1] = xyz[3 * i + 1]; }
+      let l = katDoseme.get(K.pKat[k]);
+      if (!l) { l = []; katDoseme.set(K.pKat[k], l); }
+      l.push(P);
+    }
+    for (let k = 0; k < nc; k++) {
+      if (C.ctur[k] !== CT.kolon) continue;
+      const u = xyz[3 * ci[k] + 2] >= xyz[3 * cj[k] + 2] ? ci[k] : cj[k];
+      kolonUst[u] = 1;
+      const kt = sonKatC(k);
+      if (kt < 0) continue;
+      let l = katKolon.get(kt);
+      if (!l) { l = []; katKolon.set(kt, l); }
+      l.push(xyz[3 * u], xyz[3 * u + 1]);
+    }
+    const zarflar = new Map();
+    const zarf = function (k) {
+      if (k < 0) return null;
+      let z = zarflar.get(k);
+      if (!z) { z = new Zarf(katDoseme.get(k) || [], katKolon.get(k) || []); zarflar.set(k, z); }
+      return z;
+    };
+    let mx = 0, my = 0;
+    for (let i = 0; i < nd; i++) { mx += xyz[3 * i]; my += xyz[3 * i + 1]; }
+    if (nd) { mx /= nd; my /= nd; }
+    // çubuklar
+    const cYer = new Uint8Array(nc);
+    for (let k = 0; k < nc; k++) {
+      const t = C.ctur[k];
+      if (t !== CT.kolon && t !== CT.kiris && t !== CT.capraz) continue;
+      const i = ci[k], j = cj[k], Z = zarf(sonKatC(k));
+      if (t === CT.kolon) {
+        const u = xyz[3 * i + 2] >= xyz[3 * j + 2] ? i : j;
+        cYer[k] = !Z ? 0 : Z.koseMi(xyz[3 * u], xyz[3 * u + 1]) ? Y.kose : Z.uzerinde(xyz[3 * u], xyz[3 * u + 1]) ? Y.kenar : Y.ic;
+      } else if (t === CT.kiris) {
+        const bos = (der[i + 1] - der[i] <= 1 && !mesnetli[i]) || (der[j + 1] - der[j] <= 1 && !mesnetli[j]);
+        cYer[k] = bos ? Y.konsol : Z && Z.kenarda(xyz[3 * i], xyz[3 * i + 1], xyz[3 * j], xyz[3 * j + 1]) ? Y.dis : Y.ic;
+      } else cYer[k] = Z && Z.kenarda(xyz[3 * i], xyz[3 * i + 1], xyz[3 * j], xyz[3 * j + 1]) ? Y["dis-cephe"] : Y.ic;
+    }
+    // döşeme kenarının çubukla taşınıp taşınmadığı: doğrudan çubuk ya da eş doğrusal çubuk zinciri
+    const kenarTasinir = function (a, b) {
+      if (cift.has((a < b ? a : b) * 2097152 + (a < b ? b : a))) return true;
+      const Ax = xyz[3 * a], Ay = xyz[3 * a + 1], Az = xyz[3 * a + 2];
+      const ux = xyz[3 * b] - Ax, uy = xyz[3 * b + 1] - Ay, uz = xyz[3 * b + 2] - Az, L = Math.sqrt(ux * ux + uy * uy + uz * uz);
+      if (L < TOL) return false;
+      let simdi = a, t = 0, adim = 0;
+      while (simdi !== b && adim++ < 1000) {
+        let ileri = -1, it = t;
+        for (let q = der[simdi]; q < der[simdi + 1]; q++) {
+          const k = komsu[q], o = ci[k] === simdi ? cj[k] : ci[k];
+          const vx = xyz[3 * o] - Ax, vy = xyz[3 * o + 1] - Ay, vz = xyz[3 * o + 2] - Az;
+          const tt = (vx * ux + vy * uy + vz * uz) / L;
+          const dik = Math.sqrt(Math.max(0, vx * vx + vy * vy + vz * vz - tt * tt));
+          if (dik <= TOL_YER && tt > t + TOL && tt <= L + TOL && (ileri < 0 || tt < it)) { ileri = o; it = tt; }
+        }
+        if (ileri < 0) return false;
+        simdi = ileri; t = it;
+      }
+      return simdi === b;
+    };
+    const pYer = new Uint8Array(np);
+    for (let k = 0; k < np; k++) {
+      const b = C.pbas[k], s = C.psay[k];
+      if (C.ptur[k] === PT.doseme) {
+        const Z = zarf(K.pKat[k]);
+        let tasinan = 0, kenarda = false;
+        for (let t = 0; t < s; t++) {
+          const a = C.pkose[b + t], c = C.pkose[b + (t + 1) % s];
+          if (kenarTasinir(a, c)) tasinan++;
+          if (!kenarda && Z && Z.kenarda(xyz[3 * a], xyz[3 * a + 1], xyz[3 * c], xyz[3 * c + 1])) kenarda = true;
+        }
+        pYer[k] = tasinan === 1 ? Y.konsol : kenarda ? Y.kenar : Y.ic;
+      } else if (C.ptur[k] === PT.cephe) {
+        let n0 = 0, n1 = 0, cx = 0, cy = 0;
+        for (let t = 0; t < s; t++) {
+          const a = C.pkose[b + t], c = C.pkose[b + (t + 1) % s];
+          n0 += (xyz[3 * a + 1] - xyz[3 * c + 1]) * (xyz[3 * a + 2] + xyz[3 * c + 2]);
+          n1 += (xyz[3 * a + 2] - xyz[3 * c + 2]) * (xyz[3 * a] + xyz[3 * c]);
+          cx += xyz[3 * a]; cy += xyz[3 * a + 1];
+        }
+        cx /= s; cy /= s;
+        pYer[k] = Math.abs(n0) >= Math.abs(n1) ? (cx >= mx ? Y["+x"] : Y["-x"]) : (cy >= my ? Y["+y"] : Y["-y"]);
+      }
+    }
+    const dYer = new Uint8Array(nd), z0 = C.z0;
+    for (let i = 0; i < nd; i++) dYer[i] = (z0 != null && Math.abs(xyz[3 * i + 2] - z0) <= TOL) || mesnetli[i] ? Y.temel : kolonUst[i] ? Y["kolon-ustu"] : Y.ara;
+    return { cYer: cYer, pYer: pYer, dYer: dYer };
   }
+  function yerAl(C, K, ek) { return ek && ek.yerIc && ek.cozum === C ? ek.yerIc : yerHesapla(C, K); }
 
   /**
    * Alt tür ve kullanım yeri (MIMARI §10.3; tolerans 1 cm). Kat zarfı: o kattaki döşeme panellerinin birleşimi, döşeme yoksa
@@ -627,7 +871,7 @@
    * zarf kenarındaysa dış cephe, değilse iç. Cephe paneli: yatay normalinin baskın ekseni ve binanın ortasına göre ±x / ±y.
    * Düğüm: temel seviyesinde ya da mesnetliyse temel, bir kolonun üst ucuysa kolon üstü, değilse ara.
    * @param {Object} model
-   * @param {{cozum?: Object, kat?: Object}} [ek]
+   * @param {{cozum?: Object}} [ek]
    * @returns {{cubuk: Object<string, {alt_tur: string, yer: string}>, panel: Object<string, {alt_tur: string, yer: string}>,
    *            dugum: Object<string, {alt_tur: string, yer: string}>}}
    *   alt_tur: kolon | kiris | doseme | cati | cephe | capraz | makas-ust | makas-alt | makas-dikme | makas-diyagonal | asik
@@ -636,110 +880,11 @@
    *            cephe +x|-x|+y|-y; sınıfsız ""
    */
   function kullanimYeri(model, ek) {
-    const C = cozumAl(model, ek);
-    const KU = ek && ek.kat ? ek.kat : katUyeligi(model, { cozum: C });
-    const D = C.dugumler;
+    const C = cozumAl(model, ek), K = katAl(C, ek), Yi = yerAl(C, K, ek);
     const out = { cubuk: {}, panel: {}, dugum: {} };
-    // komşuluk: düğüm dizini → çubuklar; mesnetli düğümler
-    const komsu = new Map();
-    C.cubuklar.forEach(function (x, k) {
-      for (const n of [x.i, x.j]) { if (!komsu.has(n)) komsu.set(n, []); komsu.get(n).push(k); }
-    });
-    const mesnetli = new Set(C.mesnetler.map(function (m) { return m.d; }));
-    const ciftler = new Map();
-    C.cubuklar.forEach(function (x) { ciftler.set(Math.min(x.i, x.j) + "|" + Math.max(x.i, x.j), true); });
-    // kat zarfları
-    const sonKat = function (l) { return l && l.length ? l[l.length - 1] : null; };
-    const katDoseme = new Map(), katKolon = new Map();
-    C.paneller.forEach(function (x) {
-      if (x.tur !== "doseme") return;
-      const k = sonKat(KU.panel[x.p.no]);
-      if (k == null) return;
-      if (!katDoseme.has(k)) katDoseme.set(k, []);
-      katDoseme.get(k).push(x.kose.map(function (i) { return D[i].P; }));
-    });
-    const kolonUst = new Set();
-    C.cubuklar.forEach(function (x) {
-      if (x.tur !== "kolon") return;
-      const u = D[x.i].P[2] >= D[x.j].P[2] ? x.i : x.j;
-      kolonUst.add(u);
-      const k = sonKat(KU.cubuk[x.c.no]);
-      if (k == null) return;
-      if (!katKolon.has(k)) katKolon.set(k, []);
-      katKolon.get(k).push(D[u].P);
-    });
-    const zarflar = new Map();
-    const zarf = function (k) {
-      if (k == null) return null;
-      if (!zarflar.has(k)) zarflar.set(k, zarfKur(katDoseme.get(k) || [], katKolon.get(k) || []));
-      return zarflar.get(k);
-    };
-    // bina ortası (plan; cephe yönü için)
-    let mx = 0, my = 0;
-    for (const d of D) { mx += d.P[0]; my += d.P[1]; }
-    if (D.length) { mx /= D.length; my /= D.length; }
-
-    C.cubuklar.forEach(function (x) {
-      const Pi = D[x.i].P, Pj = D[x.j].P, k = sonKat(KU.cubuk[x.c.no]), Z = zarf(k);
-      let yer = "";
-      if (x.tur === "kolon") {
-        const u = Pi[2] >= Pj[2] ? Pi : Pj;
-        yer = !Z ? "" : koseMi(Z, u) ? "kose" : zarftaMi(Z, u) ? "kenar" : "ic";
-      } else if (x.tur === "kiris") {
-        const ucBos = [x.i, x.j].some(function (n) { return (komsu.get(n) || []).length <= 1 && !mesnetli.has(n); });
-        yer = ucBos ? "konsol" : Z && zarfKenarindaMi(Z, Pi, Pj) ? "dis" : "ic";
-      } else if (x.tur === "capraz") {
-        yer = Z && zarfKenarindaMi(Z, Pi, Pj) ? "dis-cephe" : "ic";
-      }
-      out.cubuk[x.c.no] = { alt_tur: x.tur, yer: yer };
-    });
-    // döşeme kenarının çubukla taşınıp taşınmadığı: doğrudan çubuk ya da eş doğrusal çubuk zinciri
-    const kenarTasinir = function (a, b) {
-      if (ciftler.has(Math.min(a, b) + "|" + Math.max(a, b))) return true;
-      const A = D[a].P, B = D[b].P, L = uzaklik(A, B);
-      if (L < TOL) return false;
-      let simdi = a, t = 0, adim = 0;
-      while (simdi !== b && adim++ < 1000) {
-        let ileri = null, it = t;
-        for (const k of komsu.get(simdi) || []) {
-          const x = C.cubuklar[k], o = x.i === simdi ? x.j : x.i, P = D[o].P;
-          const v = [P[0] - A[0], P[1] - A[1], P[2] - A[2]];
-          const tt = (v[0] * (B[0] - A[0]) + v[1] * (B[1] - A[1]) + v[2] * (B[2] - A[2])) / L;
-          const dik = Math.sqrt(Math.max(0, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] - tt * tt));
-          if (dik <= TOL_YER && tt > it + TOL && tt <= L + TOL) { if (ileri == null || tt < it) { ileri = o; it = tt; } }
-        }
-        if (ileri == null) return false;
-        simdi = ileri; t = it;
-      }
-      return simdi === b;
-    };
-    C.paneller.forEach(function (x) {
-      let yer = "";
-      const P = x.kose.map(function (i) { return D[i].P; });
-      if (x.tur === "doseme") {
-        const Z = zarf(sonKat(KU.panel[x.p.no]));
-        let tasinan = 0, kenarda = false;
-        for (let i = 0; i < x.kose.length; i++) {
-          const a = x.kose[i], b = x.kose[(i + 1) % x.kose.length];
-          if (kenarTasinir(a, b)) tasinan++;
-          if (Z && zarfKenarindaMi(Z, D[a].P, D[b].P)) kenarda = true;
-        }
-        yer = tasinan === 1 ? "konsol" : kenarda ? "kenar" : "ic";
-      } else if (x.tur === "cephe") {
-        const n = newell(P);
-        let cx = 0, cy = 0;
-        for (const q of P) { cx += q[0]; cy += q[1]; }
-        cx /= P.length; cy /= P.length;
-        if (Math.abs(n[0]) >= Math.abs(n[1])) yer = cx >= mx ? "+x" : "-x";
-        else yer = cy >= my ? "+y" : "-y";
-      }
-      out.panel[x.p.no] = { alt_tur: x.tur, yer: yer };
-    });
-    const z0 = C.z0;
-    D.forEach(function (d, i) {
-      const yer = (z0 != null && Math.abs(d.P[2] - z0) <= TOL) || mesnetli.has(i) ? "temel" : kolonUst.has(i) ? "kolon-ustu" : "ara";
-      out.dugum[d.no] = { alt_tur: "dugum", yer: yer };
-    });
+    for (let k = 0; k < C.nc; k++) out.cubuk[C.cel[k].no] = { alt_tur: CUBUK_TURLERI[C.ctur[k]], yer: YERLER[Yi.cYer[k]] };
+    for (let k = 0; k < C.np; k++) out.panel[C.pel[k].no] = { alt_tur: PANEL_TURLERI[C.ptur[k]], yer: YERLER[Yi.pYer[k]] };
+    for (let i = 0; i < C.nd; i++) out.dugum[C.dno[i]] = { alt_tur: "dugum", yer: YERLER[Yi.dYer[i]] };
     return out;
   }
 
@@ -800,109 +945,198 @@
     if (/^C\d/.test(kut)) return "betonarme";
     return null;
   }
-  function serbestMetni(c, uc) {
-    const l = c && c.serbest && Array.isArray(c.serbest[uc]) ? c.serbest[uc] : [];
-    const s = new Set(l);
-    const m = SERBESTLIKLER.filter(function (x) { return s.has(x); });
-    return m.length ? m.join(",") : null;
-  }
-  function kesitMalzemesi(g, kesit) {
+  function kesitBilgisi(g, kesit, onbellek) {
+    let o = onbellek.get(kesit);
+    if (o) return o;
     const ks = g && g.kesitler;
-    let k = ks && kesit != null ? ks[kesit] : null;
-    if (k && String(k.tip || "").toLowerCase() === "vute" && !k.malzeme && ks[k.temel]) k = ks[k.temel];
-    return k && k.malzeme ? String(k.malzeme) : null;
-  }
-  function kesitProfili(g, kesit) {
-    const ks = g && g.kesitler;
-    let k = ks && kesit != null ? ks[kesit] : null;
+    let k = ks ? ks[kesit] : null;
     if (k && String(k.tip || "").toLowerCase() === "vute" && ks[k.temel]) k = ks[k.temel];
-    const r = profilAdiNormal(k && k.profil ? k.profil : kesit);
-    return r.ad;
+    const malzeme = k && k.malzeme ? String(k.malzeme) : null;
+    o = { profil: profilAdiNormal(k && k.profil ? k.profil : kesit).ad, malzeme: malzeme, sistem: malzemeSistemi(g, malzeme) };
+    onbellek.set(kesit, o);
+    return o;
+  }
+  /** Metin / enum sütunu kurucusu (sözlüklü). */
+  function SozlukSutunu(n) { this.kod = new Uint32Array(n).fill(SAHNE_YOK); this.sozluk = []; this.dizin = new Map(); }
+  SozlukSutunu.prototype.koy = function (satir, v) {
+    if (v === null || v === undefined) return;
+    const t = typeof v === "string" ? v : String(v);
+    let k = this.dizin.get(t);
+    if (k === undefined) { k = this.sozluk.length; this.sozluk.push(t); this.dizin.set(t, k); }
+    this.kod[satir] = k;
+  };
+  const SERBEST_METIN = (function () {
+    const l = [];
+    for (let m = 0; m < 64; m++) {
+      const s = [];
+      for (let q = 0; q < 6; q++) if (m & (1 << q)) s.push(SERBESTLIKLER[q]);
+      l.push(s.length ? s.join(",") : null);
+    }
+    return l;
+  })();
+  function serbestMaskesi(c) {
+    let ser = 0;
+    if (c && c.serbest) {
+      for (let u = 0; u < 2; u++) {
+        const l = c.serbest[u ? "j" : "i"];
+        if (!Array.isArray(l)) continue;
+        for (let q = 0; q < l.length; q++) { const b = SERBESTLIKLER.indexOf(l[q]); if (b >= 0) ser |= 1 << ((u ? 6 : 0) + b); }
+      }
+    }
+    return ser;
   }
 
   /**
-   * Sütunlu öznitelik tablosu, Faz 1 alanları (OZNITELIK_IDLERI). C++ OznitelikTablosu'na birebir çevrilir.
-   * Satırlar: çubuklar, paneller, düğümler, mesnetler (sahne sırası). Çubuk / panelde x, y, z ağırlık merkezidir.
-   * @param {Object} model
-   * @param {{cozum?: Object, kat?: Object, kullanim?: Object}} [ek] katUyeligi / kullanimYeri önceden hesaplandıysa
-   * @returns {{satirlar: Array<{tur: string, no: number, alt?: number}>,
-   *            sutunlar: Array<{id: string, tur: "sayi"|"metin"|"enum"|"bool"|"liste", birim?: string,
-   *                             degerler: Array<number|string|boolean|number[]|null>}>}}
-   *   Her sütunun degerler dizisi satirlar ile aynı uzunluktadır; değer yoksa null.
+   * Öznitelik tablosunun C++ OznitelikTablosu düzeni (tipli diziler; köprü kopyasız okur). Satırlar: çubuklar, paneller,
+   * düğümler, mesnetler (sahne sırası). Sütunlar OZNITELIK_IDLERI sırasıyla: sayi / bool → sayi (Float64Array; Bool 0/1, yoksa
+   * NaN); metin / enum → kod (Uint32Array; yoksa 0xFFFFFFFF) + sozluk; liste → liste_bas (n + 1) + liste_deger.
+   * @returns {{satir_tur: Uint8Array, satir_no: Uint32Array, satir_alt: Uint16Array, sutunlar: Array<{id, tur, birim, sayi?,
+   *            kod?, sozluk?, liste_bas?, liste_deger?}>}}
    */
-  function oznitelikCikar(model, ek) {
-    const C = cozumAl(model, ek);
-    const KU = ek && ek.kat ? ek.kat : katUyeligi(model, { cozum: C });
-    const KY = ek && ek.kullanim ? ek.kullanim : kullanimYeri(model, { cozum: C, kat: KU });
-    const g = C.g, D = C.dugumler, T = KODLAR.dugum_turu;
-    const satirlar = [];
-    const s = {};
-    for (const id of OZNITELIK_IDLERI) s[id] = [];
-    const satir = function (tur, no, v) {
-      satirlar.push({ tur: tur, no: no });
-      for (const id of OZNITELIK_IDLERI) s[id].push(v[id] === undefined ? null : v[id]);
+  function oznitelikHesapla(C, K, Yi) {
+    const g = C.g, xyz = C.xyz, nd = C.nd, nc = C.nc, np = C.np, nm = C.nm;
+    const n = nc + np + nd + nm;
+    const ET = KODLAR.eleman_turu, T = KODLAR.dugum_turu;
+    const satir_tur = new Uint8Array(n), satir_no = new Uint32Array(n), satir_alt = new Uint16Array(n);
+    const sayi = function () { return new Float64Array(n).fill(NaN); };
+    const s = {
+      tur: new SozlukSutunu(n), no: sayi(), ad: new SozlukSutunu(n), alt_tur: new SozlukSutunu(n), kullanim_yeri: new SozlukSutunu(n),
+      seviye: new SozlukSutunu(n), kesit: new SozlukSutunu(n), profil: new SozlukSutunu(n), malzeme: new SozlukSutunu(n),
+      sistem: new SozlukSutunu(n), grup: new SozlukSutunu(n), uzunluk: sayi(), egim: sayi(), aci: sayi(), kalinlik: sayi(), alan: sayi(),
+      serbest_i: new SozlukSutunu(n), serbest_j: new SozlukSutunu(n), serbest_dugum: sayi(), x: sayi(), y: sayi(), z: sayi(),
     };
+    for (const a of ["cubuk", "panel", "dugum", "mesnet"]) s.tur.koy(0, a);          // sabit sözlük sırası
+    s.tur.kod[0] = SAHNE_YOK;
+    const katBas = new Uint32Array(n + 1), katDeger = [];
     const sistemModel = g.sistem === "celik" || g.sistem === "betonarme" ? g.sistem : null;
-    for (const x of C.cubuklar) {
-      const c = x.c, Pi = D[x.i].P, Pj = D[x.j].P, no = +c.no;
-      const L = uzaklik(Pi, Pj);
-      const malz = kesitMalzemesi(g, c.kesit);
-      const y = KY.cubuk[no] || {};
-      satir("cubuk", no, {
-        tur: "cubuk", no: no, ad: c.ad != null ? String(c.ad) : null, alt_tur: y.alt_tur || x.tur, kullanim_yeri: y.yer || null,
-        kat: KU.cubuk[no] || [], seviye: KU.seviye.cubuk[no] != null ? KU.seviye.cubuk[no] : null,
-        kesit: c.kesit != null ? String(c.kesit) : null, profil: c.kesit != null ? kesitProfili(g, c.kesit) : null, malzeme: malz,
-        sistem: malzemeSistemi(g, malz) || sistemModel, grup: c.grup != null ? String(c.grup) : null,
-        uzunluk: L, egim: Math.atan2(Pj[2] - Pi[2], Math.hypot(Pj[0] - Pi[0], Pj[1] - Pi[1])) / D2R, aci: +c.aci || 0,
-        serbest_i: serbestMetni(c, "i"), serbest_j: serbestMetni(c, "j"),
-        serbest_dugum: D[x.i].tur === T.serbest || D[x.j].tur === T.serbest,
-        x: (Pi[0] + Pj[0]) / 2, y: (Pi[1] + Pj[1]) / 2, z: (Pi[2] + Pj[2]) / 2,
-      });
+    const kesitler = new Map();
+    let r = 0;
+    for (let k = 0; k < nc; k++, r++) {
+      const c = C.cel[k], i = C.ci[k], j = C.cj[k];
+      satir_tur[r] = ET.cubuk; satir_no[r] = +c.no;
+      s.tur.kod[r] = 0; s.no[r] = +c.no;
+      if (c.ad != null) s.ad.koy(r, c.ad);
+      s.alt_tur.koy(r, CUBUK_TURLERI[C.ctur[k]]);
+      if (Yi.cYer[k]) s.kullanim_yeri.koy(r, YERLER[Yi.cYer[k]]);
+      katBas[r] = katDeger.length;
+      for (let q = K.cBas[k]; q < K.cBas[k + 1]; q++) katDeger.push(K.cDeger[q]);
+      if (K.cSev[k] >= 0) s.seviye.koy(r, C.seviyeler[K.cSev[k]].ad);
+      if (c.kesit != null) {
+        const kb = kesitBilgisi(g, c.kesit, kesitler);
+        s.kesit.koy(r, c.kesit); s.profil.koy(r, kb.profil); s.malzeme.koy(r, kb.malzeme); s.sistem.koy(r, kb.sistem || sistemModel);
+      } else s.sistem.koy(r, sistemModel);
+      if (c.grup != null) s.grup.koy(r, c.grup);
+      const xi = xyz[3 * i], yi = xyz[3 * i + 1], zi = xyz[3 * i + 2], xj = xyz[3 * j], yj = xyz[3 * j + 1], zj = xyz[3 * j + 2];
+      const dx = xj - xi, dy = yj - yi, dz = zj - zi;
+      s.uzunluk[r] = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      s.egim[r] = Math.atan2(dz, Math.hypot(dx, dy)) / D2R;
+      s.aci[r] = +c.aci || 0;
+      const ser = serbestMaskesi(c);
+      s.serbest_i.koy(r, SERBEST_METIN[ser & 63]); s.serbest_j.koy(r, SERBEST_METIN[(ser >> 6) & 63]);
+      s.serbest_dugum[r] = C.dtur[i] === T.serbest || C.dtur[j] === T.serbest ? 1 : 0;
+      s.x[r] = (xi + xj) / 2; s.y[r] = (yi + yj) / 2; s.z[r] = (zi + zj) / 2;
     }
-    for (const x of C.paneller) {
-      const p = x.p, no = +p.no, P = x.kose.map(function (i) { return D[i].P; });
-      const n = newell(P);
-      let cx = 0, cy = 0, cz = 0;
-      for (const q of P) { cx += q[0]; cy += q[1]; cz += q[2]; }
-      const y = KY.panel[no] || {};
+    for (let k = 0; k < np; k++, r++) {
+      const p = C.pel[k], b = C.pbas[k], ns = C.psay[k];
+      satir_tur[r] = ET.panel; satir_no[r] = +p.no;
+      s.tur.kod[r] = 1; s.no[r] = +p.no;
+      if (p.ad != null) s.ad.koy(r, p.ad);
+      s.alt_tur.koy(r, PANEL_TURLERI[C.ptur[k]]);
+      if (Yi.pYer[k]) s.kullanim_yeri.koy(r, YERLER[Yi.pYer[k]]);
+      katBas[r] = katDeger.length;
+      if (K.pKat[k] >= 0) katDeger.push(K.pKat[k]);
+      if (K.pSev[k] >= 0) s.seviye.koy(r, C.seviyeler[K.pSev[k]].ad);
       const malz = p.malzeme != null ? String(p.malzeme) : null;
-      satir("panel", no, {
-        tur: "panel", no: no, ad: p.ad != null ? String(p.ad) : null, alt_tur: y.alt_tur || x.tur, kullanim_yeri: y.yer || null,
-        kat: KU.panel[no] || [], seviye: KU.seviye.panel[no] != null ? KU.seviye.panel[no] : null,
-        malzeme: malz, sistem: malzemeSistemi(g, malz) || sistemModel,
-        kalinlik: p.kalinlik != null && isFinite(+p.kalinlik) ? +p.kalinlik : null, alan: Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) / 2,
-        serbest_dugum: x.kose.some(function (i) { return D[i].tur === T.serbest; }),
-        x: cx / P.length, y: cy / P.length, z: cz / P.length,
-      });
+      s.malzeme.koy(r, malz);
+      s.sistem.koy(r, malzemeSistemi(g, malz) || sistemModel);
+      if (p.kalinlik != null && isFinite(+p.kalinlik)) s.kalinlik[r] = +p.kalinlik;
+      let n0 = 0, n1 = 0, n2 = 0, cx = 0, cy = 0, cz = 0, serbest = 0;
+      for (let t = 0; t < ns; t++) {
+        const a = C.pkose[b + t], e = C.pkose[b + (t + 1) % ns];
+        const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2], ex = xyz[3 * e], ey = xyz[3 * e + 1], ez = xyz[3 * e + 2];
+        n0 += (ay - ey) * (az + ez); n1 += (az - ez) * (ax + ex); n2 += (ax - ex) * (ay + ey);
+        cx += ax; cy += ay; cz += az;
+        if (C.dtur[a] === T.serbest) serbest = 1;
+      }
+      s.alan[r] = Math.sqrt(n0 * n0 + n1 * n1 + n2 * n2) / 2;
+      s.serbest_dugum[r] = serbest;
+      s.x[r] = cx / ns; s.y[r] = cy / ns; s.z[r] = cz / ns;
     }
-    for (const d of D) {
-      const y = KY.dugum[d.no] || {};
-      satir("dugum", d.no, {
-        tur: "dugum", no: d.no, ad: d.kayit && d.kayit.ad != null ? String(d.kayit.ad) : null, alt_tur: "dugum", kullanim_yeri: y.yer || null,
-        kat: KU.dugum[d.no] || [], seviye: KU.seviye.dugum[d.no] != null ? KU.seviye.dugum[d.no] : null,
-        serbest_dugum: d.tur === T.serbest, x: d.P[0], y: d.P[1], z: d.P[2],
-      });
+    for (let i = 0; i < nd; i++, r++) {
+      const d = C.dkayit[i];
+      satir_tur[r] = ET.dugum; satir_no[r] = C.dno[i];
+      s.tur.kod[r] = 2; s.no[r] = C.dno[i];
+      if (d && d.ad != null) s.ad.koy(r, d.ad);
+      s.alt_tur.koy(r, "dugum");
+      if (Yi.dYer[i]) s.kullanim_yeri.koy(r, YERLER[Yi.dYer[i]]);
+      katBas[r] = katDeger.length;
+      if (K.dKat[i] >= 0) katDeger.push(K.dKat[i]);
+      if (K.dSev[i] >= 0) s.seviye.koy(r, C.seviyeler[K.dSev[i]].ad);
+      s.serbest_dugum[r] = C.dtur[i] === T.serbest ? 1 : 0;
+      s.x[r] = xyz[3 * i]; s.y[r] = xyz[3 * i + 1]; s.z[r] = xyz[3 * i + 2];
     }
-    for (const m of C.mesnetler) {
-      const d = D[m.d];
-      satir("mesnet", d.no, {
-        tur: "mesnet", no: d.no, alt_tur: "mesnet", kat: KU.dugum[d.no] || [], seviye: KU.seviye.dugum[d.no] != null ? KU.seviye.dugum[d.no] : null,
-        x: d.P[0], y: d.P[1], z: d.P[2],
-      });
+    for (let m = 0; m < nm; m++, r++) {
+      const i = C.md[m];
+      satir_tur[r] = ET.mesnet; satir_no[r] = C.dno[i];
+      s.tur.kod[r] = 3; s.no[r] = C.dno[i];
+      s.alt_tur.koy(r, "mesnet");
+      katBas[r] = katDeger.length;
+      if (K.dKat[i] >= 0) katDeger.push(K.dKat[i]);
+      if (K.dSev[i] >= 0) s.seviye.koy(r, C.seviyeler[K.dSev[i]].ad);
+      s.x[r] = xyz[3 * i]; s.y[r] = xyz[3 * i + 1]; s.z[r] = xyz[3 * i + 2];
     }
+    katBas[n] = katDeger.length;
+    return {
+      satir_tur: satir_tur, satir_no: satir_no, satir_alt: satir_alt,
+      sutunlar: OZNITELIK_IDLERI.map(function (id) {
+        const tur = OZNITELIK_TURLERI[id], o = { id: id, tur: tur, birim: OZNITELIK_BIRIMLERI[id] || "" };
+        if (tur === "liste") { o.liste_bas = katBas; o.liste_deger = Float64Array.from(katDeger); }
+        else if (tur === "sayi" || tur === "bool") o.sayi = s[id];
+        else { o.kod = s[id].kod; o.sozluk = s[id].sozluk; }
+        return o;
+      }),
+    };
+  }
+  /** Kodlu tablodan genel biçim (oznitelikCikar dönüşü). */
+  function oznitelikCoz(t) {
+    const n = t.satir_no.length, turAdi = Object.keys(KODLAR.eleman_turu);
+    const satirlar = new Array(n);
+    for (let i = 0; i < n; i++) satirlar[i] = { tur: turAdi[t.satir_tur[i]], no: t.satir_no[i] };
     return {
       satirlar: satirlar,
-      sutunlar: OZNITELIK_IDLERI.map(function (id) {
-        const o = { id: id, tur: OZNITELIK_TURLERI[id], degerler: s[id] };
-        if (OZNITELIK_BIRIMLERI[id]) o.birim = OZNITELIK_BIRIMLERI[id];
+      sutunlar: t.sutunlar.map(function (c) {
+        const d = new Array(n);
+        for (let i = 0; i < n; i++) {
+          if (c.tur === "sayi") d[i] = Number.isNaN(c.sayi[i]) ? null : c.sayi[i];
+          else if (c.tur === "bool") d[i] = Number.isNaN(c.sayi[i]) ? null : c.sayi[i] !== 0;
+          else if (c.tur === "liste") d[i] = Array.from(c.liste_deger.subarray(c.liste_bas[i], c.liste_bas[i + 1]));
+          else d[i] = c.kod[i] === SAHNE_YOK ? null : c.sozluk[c.kod[i]];
+        }
+        const o = { id: c.id, tur: c.tur, degerler: d };
+        if (c.birim) o.birim = c.birim;
         return o;
       }),
     };
   }
 
   /**
-   * Öznitelik tablosunun C++ OznitelikTablosu düzeni (tipli diziler; köprü kopyasız okur): satır kimlikleri tür / alt / no
-   * dizileri, sütunlar sayi (Float64Array; Bool 0/1, yoksa NaN) | kod (Uint32Array) + sozluk | liste_bas + liste_deger.
+   * Sütunlu öznitelik tablosu, Faz 1 alanları (OZNITELIK_IDLERI). C++ OznitelikTablosu'na birebir çevrilir.
+   * Satırlar: çubuklar, paneller, düğümler, mesnetler (sahne sırası). Çubuk / panelde x, y, z ağırlık merkezidir (panelde
+   * köşelerin ortalaması); egim yatayla işaretli açı (j ucu yüksekse +), alan Newell normalinin yarısı.
+   * @param {Object} model
+   * @param {{cozum?: Object}} [ek]
+   * @returns {{satirlar: Array<{tur: string, no: number, alt?: number}>,
+   *            sutunlar: Array<{id: string, tur: "sayi"|"metin"|"enum"|"bool"|"liste", birim?: string,
+   *                             degerler: Array<number|string|boolean|number[]|null>}>}}
+   *   Her sütunun degerler dizisi satirlar ile aynı uzunluktadır; değer yoksa null.
+   */
+  function oznitelikCikar(model, ek) {
+    const C = cozumAl(model, ek), K = katAl(C, ek);
+    return oznitelikCoz(oznitelikHesapla(C, K, yerAl(C, K, ek)));
+  }
+
+  /**
+   * Genel biçimli tablonun (oznitelikCikar) kodlu düzene çevrilmesi (oznitelikHesapla ile aynı biçim).
    * @param {Object} tablo oznitelikCikar çıktısı
    */
   function oznitelikKodla(tablo) {
@@ -921,16 +1155,9 @@
         bas[n] = d.length;
         o.liste_bas = bas; o.liste_deger = Float64Array.from(d);
       } else {
-        const sozluk = [], dizin = new Map(), kod = new Uint32Array(n);
-        for (let i = 0; i < n; i++) {
-          const v = c.degerler[i];
-          if (v === null || v === undefined) { kod[i] = SAHNE_YOK; continue; }
-          const t = String(v);
-          let k = dizin.get(t);
-          if (k === undefined) { k = sozluk.length; sozluk.push(t); dizin.set(t, k); }
-          kod[i] = k;
-        }
-        o.kod = kod; o.sozluk = sozluk;
+        const sz = new SozlukSutunu(n);
+        for (let i = 0; i < n; i++) sz.koy(i, c.degerler[i]);
+        o.kod = sz.kod; o.sozluk = sz.sozluk;
       }
       return o;
     });
@@ -973,7 +1200,8 @@
   /**
    * Sahne (MIMARI §9.3 SAHNE içeriği; C++ SahneAnlik, kaynak/cekirdek/sahne.h). Tipli diziler QuickJS'ten C++'a sıfır
    * kopyayla geçer. Dizinler dugumler dizisine göredir (0 tabanlı). Akslar: her sistemin iki plan yönündeki aksları (Z aksları
-   * seviyelerdedir; silindirik r çemberleri doğru parçası olmadığı için yoktur), en alt seviyede çizilir.
+   * seviyelerdedir; silindirik r çemberleri doğru parçası olmadığı için yoktur), en alt seviyede çizilir. y_yerel ModelOps
+   * yerelEksenVektor ile aynı hesaptır (motor kuralı).
    * @param {Object} model
    * @param {number} sahneSurumu
    * @param {{cozum?: Object}} [ek]
@@ -993,54 +1221,40 @@
    *   kesitler: Array<{ad: string, profil: string, tur: number, malzeme: string, h: number, b: number, tw: number,
    *                    tf: number, r: number}>,
    *   gruplar: string[], malzemeler: string[]
-   * }}  Yok anlamındaki dizin 0xFFFFFFFF (SAHNE_YOK).
+   * }}  Yok anlamındaki dizin 0xFFFFFFFF (SAHNE_YOK). Tipli diziler çözümlemeyle paylaşılır: değiştirilmemelidir.
    */
   function sahneCikar(model, sahneSurumu, ek) {
     const C = cozumAl(model, ek);
-    const g = C.g, D = C.dugumler, MO = bag("ModelOps"), MA = bag("MatrisAks");
-    const nd = D.length, nc = C.cubuklar.length, np = C.paneller.length, nm = C.mesnetler.length;
-    // düğümler
-    const dNo = new Uint32Array(nd), xyz = new Float64Array(3 * nd), dTur = new Uint8Array(nd), dBay = new Uint8Array(nd);
-    const mesnetli = new Set(C.mesnetler.map(function (m) { return m.d; }));
-    D.forEach(function (d, i) {
-      dNo[i] = d.no; xyz[3 * i] = d.P[0]; xyz[3 * i + 1] = d.P[1]; xyz[3 * i + 2] = d.P[2]; dTur[i] = d.tur;
-      let b = 0;
-      if (mesnetli.has(i)) b |= KODLAR.dugum_bayraklari.mesnetli;
-      if (!C.kullanim.has(d.no)) b |= KODLAR.dugum_bayraklari.baglantisiz;
-      dBay[i] = b;
-    });
+    const g = C.g, xyz = C.xyz, MA = bag("MatrisAks");
+    const nd = C.nd, nc = C.nc, np = C.np, nm = C.nm;
+    const T = KODLAR.dugum_turu, CB = KODLAR.cubuk_bayraklari;
+    // düğüm bayrakları
+    const dBay = new Uint8Array(nd);
+    for (let i = 0; i < nd; i++) if (!C.kul[i]) dBay[i] = KODLAR.dugum_bayraklari.baglantisiz;
+    for (let m = 0; m < nm; m++) dBay[C.md[m]] |= KODLAR.dugum_bayraklari.mesnetli;
     // kesitler, gruplar, malzemeler
     const kesitler = [], kDizin = new Map();
     const kesitEkle = function (ad) {
-      const a = String(ad);
-      if (kDizin.has(a)) return kDizin.get(a);
-      const k = kesitKaydi(g, a);
-      kDizin.set(a, kesitler.length);
-      kesitler.push(k);
-      return kesitler.length - 1;
+      const a = typeof ad === "string" ? ad : String(ad);
+      let q = kDizin.get(a);
+      if (q === undefined) { q = kesitler.length; kDizin.set(a, q); kesitler.push(kesitKaydi(g, a)); }
+      return q;
     };
     for (const ad of Object.keys((g && g.kesitler) || {})) kesitEkle(ad);
     const gruplar = [], gDizin = new Map();
-    const malzemeler = [], mDizin = new Set();
-    const malzemeEkle = function (ad) { if (ad && !mDizin.has(ad)) { mDizin.add(ad); malzemeler.push(ad); } };
+    const malzemeler = [], mVar = new Set();
+    const malzemeEkle = function (ad) { if (ad && !mVar.has(ad)) { mVar.add(ad); malzemeler.push(ad); } };
     for (const ad of Object.keys((g && g.malzemeler) || {})) malzemeEkle(ad);
     // çubuklar
-    const cNo = new Uint32Array(nc), ci = new Uint32Array(nc), cj = new Uint32Array(nc), cTur = new Uint8Array(nc), cBay = new Uint8Array(nc);
-    const cSer = new Uint16Array(nc), cKes = new Uint32Array(nc), cGrp = new Uint32Array(nc), cUre = new Uint32Array(nc);
-    const cAci = new Float64Array(nc), cY = new Float64Array(3 * nc);
-    const CB = KODLAR.cubuk_bayraklari, T = KODLAR.dugum_turu;
-    C.cubuklar.forEach(function (x, k) {
-      const c = x.c;
-      cNo[k] = +c.no; ci[k] = x.i; cj[k] = x.j; cTur[k] = KODLAR.cubuk_turu[x.tur] || 0;
+    const cNo = new Uint32Array(nc), cBay = new Uint8Array(nc), cSer = new Uint16Array(nc), cKes = new Uint32Array(nc);
+    const cGrp = new Uint32Array(nc), cUre = new Uint32Array(nc), cAci = new Float64Array(nc), cY = new Float64Array(3 * nc);
+    for (let k = 0; k < nc; k++) {
+      const c = C.cel[k], i = C.ci[k], j = C.cj[k];
+      cNo[k] = +c.no;
       let b = 0;
       if (c.yalniz_cekme) b |= CB.yalniz_cekme;
-      if (D[x.i].tur === T.serbest || D[x.j].tur === T.serbest) b |= CB.serbest_dugume_bagli;
-      let ser = 0;
-      for (const uc of ["i", "j"]) {
-        const l = c.serbest && Array.isArray(c.serbest[uc]) ? c.serbest[uc] : [];
-        for (const s of l) { const q = SERBESTLIKLER.indexOf(s); if (q >= 0) ser |= 1 << ((uc === "j" ? 6 : 0) + q); }
-      }
-      cSer[k] = ser;
+      if (C.dtur[i] === T.serbest || C.dtur[j] === T.serbest) b |= CB.serbest_dugume_bagli;
+      cSer[k] = serbestMaskesi(c);
       if (c.kesit != null && c.kesit !== "") {
         const q = kesitEkle(c.kesit);
         cKes[k] = q;
@@ -1049,86 +1263,96 @@
       } else cKes[k] = SAHNE_YOK;
       if (c.grup != null && c.grup !== "") {
         const a = String(c.grup);
-        if (!gDizin.has(a)) { gDizin.set(a, gruplar.length); gruplar.push(a); }
-        cGrp[k] = gDizin.get(a);
+        let q = gDizin.get(a);
+        if (q === undefined) { q = gruplar.length; gDizin.set(a, q); gruplar.push(a); }
+        cGrp[k] = q;
       } else cGrp[k] = SAHNE_YOK;
       const u = c.kaynak && c.kaynak.uretec != null ? +c.kaynak.uretec : 0;
-      cUre[k] = u > 0 ? u : 0;
-      if (u > 0) b |= CB.uretecten;
+      if (u > 0) { cUre[k] = u; b |= CB.uretecten; }
       cBay[k] = b;
-      cAci[k] = +c.aci || 0;
-      const e = MO.yerelEksenVektor(D[x.i].P, D[x.j].P, cAci[k]);
-      if (e) { cY[3 * k] = e.y[0]; cY[3 * k + 1] = e.y[1]; cY[3 * k + 2] = e.y[2]; }
-    });
+      const aci = +c.aci || 0;
+      cAci[k] = aci;
+      // ModelOps.yerelEksenVektor ile aynı işlem sırası (bit düzeyinde aynı sonuç)
+      const d0 = xyz[3 * j] - xyz[3 * i], d1 = xyz[3 * j + 1] - xyz[3 * i + 1], d2 = xyz[3 * j + 2] - xyz[3 * i + 2];
+      const L = Math.sqrt(d0 * d0 + d1 * d1 + d2 * d2);
+      if (L < 1e-12) continue;
+      const s = 1 / L, x0 = d0 * s, x1 = d1 * s, x2 = d2 * s, D = Math.hypot(x0, x1);
+      let y0, y1, y2, z0, z1, z2;
+      if (D < 1e-9) { const cy = x2 > 0 ? 1 : -1; y0 = -cy; y1 = 0; y2 = 0; z0 = 0; z1 = -1; z2 = 0; }
+      else { y0 = -x0 * x2 / D; y1 = -x1 * x2 / D; y2 = D; z0 = x1 / D; z1 = -x0 / D; z2 = 0; }
+      const a = aci * D2R;
+      if (a) { const co = Math.cos(a), si = Math.sin(a); cY[3 * k] = y0 * co + z0 * si; cY[3 * k + 1] = y1 * co + z1 * si; cY[3 * k + 2] = y2 * co + z2 * si; }
+      else { cY[3 * k] = y0; cY[3 * k + 1] = y1; cY[3 * k + 2] = y2; }
+    }
     // paneller
-    const pNo = new Uint32Array(np), pBas = new Uint32Array(np), pSay = new Uint32Array(np), pTur = new Uint8Array(np), pBay = new Uint8Array(np);
-    const pKal = new Float64Array(np);
-    let toplamKose = 0;
-    for (const x of C.paneller) toplamKose += x.kose.length;
-    const kose = new Uint32Array(toplamKose);
-    let q = 0;
-    C.paneller.forEach(function (x, k) {
-      pNo[k] = +x.p.no; pBas[k] = q; pSay[k] = x.kose.length; pTur[k] = KODLAR.panel_turu[x.tur];
-      for (const i of x.kose) kose[q++] = i;
-      pKal[k] = isFinite(+x.p.kalinlik) ? +x.p.kalinlik : 0;
+    const pNo = new Uint32Array(np), pBay = new Uint8Array(np), pKal = new Float64Array(np);
+    for (let k = 0; k < np; k++) {
+      const p = C.pel[k], b = C.pbas[k], ns = C.psay[k];
+      pNo[k] = +p.no;
+      pKal[k] = isFinite(+p.kalinlik) ? +p.kalinlik : 0;
       // düzlemsellik (ModelOps panelGeometri: en büyük sapma > 5 mm)
-      const P = x.kose.map(function (i) { return D[i].P; });
-      const n = newell(P), A2 = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+      let n0 = 0, n1 = 0, n2 = 0, cx = 0, cy = 0, cz = 0;
+      for (let t = 0; t < ns; t++) {
+        const a = C.pkose[b + t], e = C.pkose[b + (t + 1) % ns];
+        n0 += (xyz[3 * a + 1] - xyz[3 * e + 1]) * (xyz[3 * a + 2] + xyz[3 * e + 2]);
+        n1 += (xyz[3 * a + 2] - xyz[3 * e + 2]) * (xyz[3 * a] + xyz[3 * e]);
+        n2 += (xyz[3 * a] - xyz[3 * e]) * (xyz[3 * a + 1] + xyz[3 * e + 1]);
+        cx += xyz[3 * a]; cy += xyz[3 * a + 1]; cz += xyz[3 * a + 2];
+      }
+      const A2 = Math.sqrt(n0 * n0 + n1 * n1 + n2 * n2);
       let sapma = 0;
       if (A2 > 1e-12) {
-        let cx = 0, cy = 0, cz = 0;
-        for (const p of P) { cx += p[0]; cy += p[1]; cz += p[2]; }
-        cx /= P.length; cy /= P.length; cz /= P.length;
-        for (const p of P) sapma = Math.max(sapma, Math.abs(((p[0] - cx) * n[0] + (p[1] - cy) * n[1] + (p[2] - cz) * n[2]) / A2));
+        cx /= ns; cy /= ns; cz /= ns;
+        for (let t = 0; t < ns; t++) {
+          const a = C.pkose[b + t];
+          const v = Math.abs(((xyz[3 * a] - cx) * n0 + (xyz[3 * a + 1] - cy) * n1 + (xyz[3 * a + 2] - cz) * n2) / A2);
+          if (v > sapma) sapma = v;
+        }
       }
       pBay[k] = sapma > TOL_DUZLEM ? KODLAR.panel_bayraklari.duzlemsel_degil : 0;
-      if (x.p.malzeme) malzemeEkle(String(x.p.malzeme));
-    });
-    // mesnetler, temeller
-    const mD = new Uint32Array(nm), mM = new Uint8Array(nm), mT = new Uint8Array(nm);
+      if (p.malzeme) malzemeEkle(String(p.malzeme));
+    }
+    // temeller (temel kuralıyla mesnetlenen aks kesişimi düğümleri)
     const temeller = [];
     const TT = KODLAR.temel_turu;
     const tem = g.temeller || {};
     const varsayilan = tem.varsayilan || {};
     const ozel = new Map();
     for (const o of Array.isArray(tem.ozel) ? tem.ozel : []) if (o && Array.isArray(o.aks)) ozel.set((o.sistem && o.sistem !== "GLOBAL" ? o.sistem + "|" : "") + o.aks.join("|"), o);
-    C.mesnetler.forEach(function (m, k) {
-      mD[k] = m.d; mM[k] = m.maske; mT[k] = m.tur;
-      if (!m.ortuk) return;
-      const d = D[m.d];
+    const temelTur = C.temelTipi === "surekli" ? TT.surekli : C.temelTipi === "radye" ? TT.radye : TT.tekil;
+    const olcu = function (a, b) { const v = +a; return isFinite(v) && v > 0 ? v : (isFinite(+b) && +b > 0 ? +b : 0); };
+    for (let m = 0; m < nm; m++) {
+      if (!C.mortuk[m]) continue;
+      const i = C.md[m], no = C.dno[i];
       let aks = null;
-      if (d.tur === T.aks_kat) {
+      if (C.dtur[i] === T.aks_kat) {
         const iz = C.cozucu.izg;
-        if (iz) { const r = d.no - 1000 * Math.floor(d.no / 1000) - 1; const ix = Math.floor(r / 20), iy = r % 20; if (iz.xs[ix] && iz.ys[iy]) aks = iz.xs[ix].ad + "|" + iz.ys[iy].ad; }
-      } else if (C.cozucu._sanalP && C.cozucu._sanalP.has(d.no)) {
-        const ref = C.cozucu._sanalP.get(d.no).ref;
+        if (iz) { const r = no - 1000 * Math.floor(no / 1000) - 1; const ix = Math.floor(r / 20), iy = r % 20; if (iz.xs[ix] && iz.ys[iy]) aks = iz.xs[ix].ad + "|" + iz.ys[iy].ad; }
+      } else if (C.cozucu._sanalP && C.cozucu._sanalP.has(no)) {
+        const ref = C.cozucu._sanalP.get(no).ref;
         aks = (ref.sistem && ref.sistem !== "GLOBAL" ? ref.sistem + "|" : "") + ref.aks.join("|");
       }
       const o = (aks && ozel.get(aks)) || {};
-      const tur = C.temelTipi === "surekli" ? TT.surekli : C.temelTipi === "radye" ? TT.radye : TT.tekil;
-      const sayi = function (a, b) { const v = +a; return isFinite(v) && v > 0 ? v : (isFinite(+b) && +b > 0 ? +b : 0); };
-      temeller.push({ kimlik: { tur: "temel", no: d.no, alt: 0 }, dugum: m.d, tur: tur,
-        B: sayi(o.B, varsayilan.B), L: sayi(o.L, varsayilan.L), h: sayi(o.h, varsayilan.h) });
-    });
+      temeller.push({ kimlik: { tur: "temel", no: no, alt: 0 }, dugum: i, tur: temelTur,
+        B: olcu(o.B, varsayilan.B), L: olcu(o.L, varsayilan.L), h: olcu(o.h, varsayilan.h) });
+    }
     // akslar
     const akslar = [];
-    let z0 = C.seviyeler.length ? C.seviyeler[0].z : 0;
-    if (C.z0 != null) z0 = C.z0;
+    const z0 = C.z0 != null ? C.z0 : (C.seviyeler.length ? C.seviyeler[0].z : 0);
     let S = [];
     try { S = MA.sistemler(g); } catch (e) { S = []; }
     S.forEach(function (s, si) {
       if (!s.global && s.gorunur === false) return;
       const yu = s.yonler[0], yv = s.yonler[1];
       const zk = s.zOrtak ? z0 : z0 - s.orijin[2];
-      const kapsam = function (l) { if (!l.length) return [0, 0]; return [l[0].konum, l[l.length - 1].konum]; };
+      const kapsam = function (l) { return l.length ? [l[0].konum, l[l.length - 1].konum] : [0, 0]; };
       const lu = s.l[yu] || [], lv = s.l[yv] || [];
       const cizgi = function (eksen, a, l0, l1, uYon) {
         const P = function (t) { return uYon ? MA.sistemNokta(s, a.konum, t, zk) : MA.sistemNokta(s, t, a.konum, zk); };
         const bas = P(l0), son = P(l1);
-        const ilk = a.balon !== "son";
         const L = uzaklik(bas, son);
         const u = L > 1e-12 ? [(son[0] - bas[0]) / L, (son[1] - bas[1]) / L, (son[2] - bas[2]) / L] : [0, 0, 0];
-        const balon = ilk ? [bas[0] - 0.5 * u[0], bas[1] - 0.5 * u[1], bas[2] - 0.5 * u[2]] : [son[0] + 0.5 * u[0], son[1] + 0.5 * u[1], son[2] + 0.5 * u[2]];
+        const balon = a.balon !== "son" ? [bas[0] - 0.5 * u[0], bas[1] - 0.5 * u[1], bas[2] - 0.5 * u[2]] : [son[0] + 0.5 * u[0], son[1] + 0.5 * u[1], son[2] + 0.5 * u[2]];
         akslar.push({ kimlik: { tur: "aks", alt: s.global ? 0 : si, no: eksen * 65536 + a._i }, ad: String(a.ad), sistem: String(s.ad), eksen: eksen,
           bas: bas, son: son, balon: balon });
       };
@@ -1145,10 +1369,10 @@
       sahne_surumu: sahneSurumu || 0, model_surumu: surumSayi(model.surum), baslik: model.baslik != null ? String(model.baslik) : "",
       sistem: model.sistem != null ? String(model.sistem) : "celik", uyarilar: C.uyarilar.slice(),
       seviyeler: C.seviyeler.map(function (s) { return { ad: s.ad, z: s.z, kat: s.kat }; }), akslar: akslar,
-      dugumler: { no: dNo, xyz: xyz, tur: dTur, bayrak: dBay },
-      cubuklar: { no: cNo, i: ci, j: cj, tur: cTur, bayrak: cBay, serbestlik: cSer, kesit: cKes, grup: cGrp, uretec: cUre, aci: cAci, y_yerel: cY },
-      paneller: { no: pNo, kose_bas: pBas, kose_sayisi: pSay, kose: kose, tur: pTur, bayrak: pBay, kalinlik: pKal },
-      mesnetler: { dugum: mD, maske: mM, tur: mT },
+      dugumler: { no: C.dno, xyz: xyz, tur: C.dtur, bayrak: dBay },
+      cubuklar: { no: cNo, i: C.ci, j: C.cj, tur: C.ctur, bayrak: cBay, serbestlik: cSer, kesit: cKes, grup: cGrp, uretec: cUre, aci: cAci, y_yerel: cY },
+      paneller: { no: pNo, kose_bas: C.pbas, kose_sayisi: C.psay, kose: C.pkose, tur: C.ptur, bayrak: pBay, kalinlik: pKal },
+      mesnetler: { dugum: C.md, maske: C.mmaske, tur: C.mtur },
       temeller: temeller,
       kesitler: kesitler.map(function (k) { return { ad: k.ad, profil: k.profil, tur: k.tur, malzeme: k.malzeme, h: k.h, b: k.b, tw: k.tw, tf: k.tf, r: k.r }; }),
       gruplar: gruplar, malzemeler: malzemeler,
@@ -1157,51 +1381,98 @@
 
   /**
    * İki sahne arasındaki eleman farkı (cephe IslemRaporu). Karşılaştırılan: çubuk (uç düğümleri ve konumları, tür, kesit
-   * kaydı, açı, serbestlik, grup, bayrak), panel (köşeler, tür, kalınlık), düğüm (konum, tür, bayrak), mesnet (maske, tür),
-   * aks (ad, uçlar), temel (tür, B, L, h). Kimlik listeleri sıralı ve tekrarsızdır.
+   * kaydı, açı, serbestlik, grup, bayrak, üreteç), panel (köşeler, tür, kalınlık, bayrak), düğüm (konum, tür, bayrak), mesnet
+   * (maske, tür), aks (ad, sistem, uçlar), temel (tür, B, L, h). Kimlik listeleri sıralı ve tekrarsızdır.
    * @returns {{eklenen: Array, silinen: Array, degisen: Array}}
    */
   function sahneFarki(a, b) {
-    const eklenen = [], silinen = [], degisen = [];
-    const ayni3 = function (x, i, y, j) { return x[3 * i] === y[3 * j] && x[3 * i + 1] === y[3 * j + 1] && x[3 * i + 2] === y[3 * j + 2]; };
-    const kesitAyni = function (ka, kb) {
+    const yeniL = function () { return { cubuk: [], panel: [], dugum: [], mesnet: [], aks: [], temel: [] }; };
+    const E = yeniL(), Sl = yeniL(), Dg = yeniL();
+    const eklenen = { push: function (k) { E[k.tur].push(k.tur === "aks" ? k.alt * 4294967296 + k.no : k.no); } };
+    const silinen = { push: function (k) { Sl[k.tur].push(k.tur === "aks" ? k.alt * 4294967296 + k.no : k.no); } };
+    const degisen = { push: function (k) { Dg[k.tur].push(k.tur === "aks" ? k.alt * 4294967296 + k.no : k.no); } };
+    const liste = function (L) {
+      const out = [];
+      for (const tur of ["cubuk", "panel", "dugum", "mesnet", "aks", "temel"]) {
+        const v = Float64Array.from(L[tur]).sort();
+        for (let i = 0; i < v.length; i++) {
+          if (i && v[i] === v[i - 1]) continue;
+          out.push(tur === "aks" ? { tur: tur, no: v[i] % 4294967296, alt: Math.floor(v[i] / 4294967296) } : { tur: tur, no: v[i] });
+        }
+      }
+      return out;
+    };
+    if (a === b) return { eklenen: [], silinen: [], degisen: [] };
+    const da = a.dugumler, db = b.dugumler, xa = da.xyz, xb = db.xyz;
+    // kesit kayıtlarının eşdeğerliği (a dizini → b dizini)
+    const kesitAyni = new Map();
+    const kes = function (ka, kb) {
       if (ka === SAHNE_YOK || kb === SAHNE_YOK) return ka === kb;
-      const p = a.kesitler[ka], q = b.kesitler[kb];
-      return p.ad === q.ad && p.profil === q.profil && p.tur === q.tur && p.malzeme === q.malzeme && p.h === q.h && p.b === q.b && p.tw === q.tw && p.tf === q.tf && p.r === q.r;
-    };
-    const grupAyni = function (ga, gb) { return (ga === SAHNE_YOK ? null : a.gruplar[ga]) === (gb === SAHNE_YOK ? null : b.gruplar[gb]); };
-    const karsilastir = function (tur, noA, noB, ayni) {
-      const m = new Map();
-      for (let i = 0; i < noA.length; i++) m.set(noA[i], i);
-      const gorulen = new Set();
-      for (let j = 0; j < noB.length; j++) {
-        const n = noB[j], i = m.get(n);
-        gorulen.add(n);
-        if (i === undefined) eklenen.push({ tur: tur, no: n });
-        else if (!ayni(i, j)) degisen.push({ tur: tur, no: n });
+      const anahtar = ka * 4294967296 + kb;
+      let r = kesitAyni.get(anahtar);
+      if (r === undefined) {
+        const p = a.kesitler[ka], q = b.kesitler[kb];
+        r = p.ad === q.ad && p.profil === q.profil && p.tur === q.tur && p.malzeme === q.malzeme && p.h === q.h && p.b === q.b && p.tw === q.tw && p.tf === q.tf && p.r === q.r;
+        kesitAyni.set(anahtar, r);
       }
-      for (let i = 0; i < noA.length; i++) if (!gorulen.has(noA[i])) silinen.push({ tur: tur, no: noA[i] });
+      return r;
     };
-    const da = a.dugumler, db = b.dugumler;
-    karsilastir("dugum", da.no, db.no, function (i, j) { return ayni3(da.xyz, i, db.xyz, j) && da.tur[i] === db.tur[j] && da.bayrak[i] === db.bayrak[j]; });
-    const ca = a.cubuklar, cb = b.cubuklar;
-    karsilastir("cubuk", ca.no, cb.no, function (i, j) {
-      return da.no[ca.i[i]] === db.no[cb.i[j]] && da.no[ca.j[i]] === db.no[cb.j[j]] && ayni3(da.xyz, ca.i[i], db.xyz, cb.i[j]) &&
-        ayni3(da.xyz, ca.j[i], db.xyz, cb.j[j]) && ca.tur[i] === cb.tur[j] && ca.bayrak[i] === cb.bayrak[j] && ca.serbestlik[i] === cb.serbestlik[j] &&
-        ca.aci[i] === cb.aci[j] && ca.uretec[i] === cb.uretec[j] && kesitAyni(ca.kesit[i], cb.kesit[j]) && grupAyni(ca.grup[i], cb.grup[j]);
-    });
-    const pa = a.paneller, pb = b.paneller;
-    karsilastir("panel", pa.no, pb.no, function (i, j) {
-      if (pa.kose_sayisi[i] !== pb.kose_sayisi[j] || pa.tur[i] !== pb.tur[j] || pa.kalinlik[i] !== pb.kalinlik[j] || pa.bayrak[i] !== pb.bayrak[j]) return false;
-      for (let k = 0; k < pa.kose_sayisi[i]; k++) {
+    const ayniNokta = function (i, j) { return xa[3 * i] === xb[3 * j] && xa[3 * i + 1] === xb[3 * j + 1] && xa[3 * i + 2] === xb[3 * j + 2]; };
+    // düğümler
+    const dm = new Map();
+    for (let i = 0; i < da.no.length; i++) dm.set(da.no[i], i);
+    const dGor = new Uint8Array(da.no.length);
+    for (let j = 0; j < db.no.length; j++) {
+      const i = dm.get(db.no[j]);
+      if (i === undefined) { eklenen.push({ tur: "dugum", no: db.no[j] }); continue; }
+      dGor[i] = 1;
+      if (!ayniNokta(i, j) || da.tur[i] !== db.tur[j] || da.bayrak[i] !== db.bayrak[j]) degisen.push({ tur: "dugum", no: db.no[j] });
+    }
+    for (let i = 0; i < da.no.length; i++) if (!dGor[i]) silinen.push({ tur: "dugum", no: da.no[i] });
+    // çubuklar
+    const ca = a.cubuklar, cb = b.cubuklar, cm = new Map();
+    for (let i = 0; i < ca.no.length; i++) cm.set(ca.no[i], i);
+    const cGor = new Uint8Array(ca.no.length);
+    for (let j = 0; j < cb.no.length; j++) {
+      const i = cm.get(cb.no[j]);
+      if (i === undefined) { eklenen.push({ tur: "cubuk", no: cb.no[j] }); continue; }
+      cGor[i] = 1;
+      const ai = ca.i[i], aj = ca.j[i], bi = cb.i[j], bj = cb.j[j];
+      const ga = ca.grup[i], gb = cb.grup[j];
+      const ayni = da.no[ai] === db.no[bi] && da.no[aj] === db.no[bj] && ayniNokta(ai, bi) && ayniNokta(aj, bj) && ca.tur[i] === cb.tur[j] &&
+        ca.bayrak[i] === cb.bayrak[j] && ca.serbestlik[i] === cb.serbestlik[j] && ca.aci[i] === cb.aci[j] && ca.uretec[i] === cb.uretec[j] &&
+        kes(ca.kesit[i], cb.kesit[j]) && (ga === SAHNE_YOK ? null : a.gruplar[ga]) === (gb === SAHNE_YOK ? null : b.gruplar[gb]);
+      if (!ayni) degisen.push({ tur: "cubuk", no: cb.no[j] });
+    }
+    for (let i = 0; i < ca.no.length; i++) if (!cGor[i]) silinen.push({ tur: "cubuk", no: ca.no[i] });
+    // paneller
+    const pa = a.paneller, pb = b.paneller, pm = new Map();
+    for (let i = 0; i < pa.no.length; i++) pm.set(pa.no[i], i);
+    const pGor = new Uint8Array(pa.no.length);
+    for (let j = 0; j < pb.no.length; j++) {
+      const i = pm.get(pb.no[j]);
+      if (i === undefined) { eklenen.push({ tur: "panel", no: pb.no[j] }); continue; }
+      pGor[i] = 1;
+      let ayni = pa.kose_sayisi[i] === pb.kose_sayisi[j] && pa.tur[i] === pb.tur[j] && pa.kalinlik[i] === pb.kalinlik[j] && pa.bayrak[i] === pb.bayrak[j];
+      for (let k = 0; ayni && k < pa.kose_sayisi[i]; k++) {
         const x = pa.kose[pa.kose_bas[i] + k], y = pb.kose[pb.kose_bas[j] + k];
-        if (da.no[x] !== db.no[y] || !ayni3(da.xyz, x, db.xyz, y)) return false;
+        if (da.no[x] !== db.no[y] || !ayniNokta(x, y)) ayni = false;
       }
-      return true;
-    });
-    const ma = a.mesnetler, mb = b.mesnetler;
-    const mNoA = Uint32Array.from(ma.dugum, function (i) { return da.no[i]; }), mNoB = Uint32Array.from(mb.dugum, function (i) { return db.no[i]; });
-    karsilastir("mesnet", mNoA, mNoB, function (i, j) { return ma.maske[i] === mb.maske[j] && ma.tur[i] === mb.tur[j]; });
+      if (!ayni) degisen.push({ tur: "panel", no: pb.no[j] });
+    }
+    for (let i = 0; i < pa.no.length; i++) if (!pGor[i]) silinen.push({ tur: "panel", no: pa.no[i] });
+    // mesnetler
+    const ma = a.mesnetler, mb = b.mesnetler, mm = new Map();
+    for (let i = 0; i < ma.dugum.length; i++) mm.set(da.no[ma.dugum[i]], i);
+    const mGor = new Uint8Array(ma.dugum.length);
+    for (let j = 0; j < mb.dugum.length; j++) {
+      const no = db.no[mb.dugum[j]], i = mm.get(no);
+      if (i === undefined) { eklenen.push({ tur: "mesnet", no: no }); continue; }
+      mGor[i] = 1;
+      if (ma.maske[i] !== mb.maske[j] || ma.tur[i] !== mb.tur[j]) degisen.push({ tur: "mesnet", no: no });
+    }
+    for (let i = 0; i < ma.dugum.length; i++) if (!mGor[i]) silinen.push({ tur: "mesnet", no: da.no[ma.dugum[i]] });
+    // akslar
     const ak = function (x) { return x.kimlik.alt * 4294967296 + x.kimlik.no; };
     const aa = new Map(a.akslar.map(function (x) { return [ak(x), x]; }));
     const bb = new Set();
@@ -1213,6 +1484,7 @@
       else if (y.ad !== x.ad || y.sistem !== x.sistem || uzaklik(y.bas, x.bas) !== 0 || uzaklik(y.son, x.son) !== 0) degisen.push(id);
     }
     for (const x of a.akslar) if (!bb.has(ak(x))) silinen.push({ tur: "aks", no: x.kimlik.no, alt: x.kimlik.alt });
+    // temeller
     const ta = new Map(a.temeller.map(function (t) { return [t.kimlik.no, t]; })), tb = new Set();
     for (const t of b.temeller) {
       const u = ta.get(t.kimlik.no);
@@ -1221,7 +1493,7 @@
       else if (u.tur !== t.tur || u.B !== t.B || u.L !== t.L || u.h !== t.h) degisen.push({ tur: "temel", no: t.kimlik.no });
     }
     for (const t of a.temeller) if (!tb.has(t.kimlik.no)) silinen.push({ tur: "temel", no: t.kimlik.no });
-    return { eklenen: kimlikSirala(eklenen), silinen: kimlikSirala(silinen), degisen: kimlikSirala(degisen) };
+    return { eklenen: liste(E), silinen: liste(Sl), degisen: liste(Dg) };
   }
 
   // ================================================================= SONUÇ EŞLEME
@@ -1243,15 +1515,15 @@
     const C = cozumAl(model, ek);
     const cubukNo = new Set(), panelNo = new Set();
     const kaynakC = new Map(), kaynakP = new Map();
-    for (const x of C.cubuklar) {
-      cubukNo.add(+x.c.no);
-      const k = x.c.kaynak;
-      if (k && k.aks_kat) { const a = k.aks_kat + "|" + (+k.no); if (!kaynakC.has(a)) kaynakC.set(a, []); kaynakC.get(a).push(+x.c.no); }
+    for (const c of C.cel) {
+      cubukNo.add(+c.no);
+      const k = c.kaynak;
+      if (k && k.aks_kat) { const a = k.aks_kat + "|" + (+k.no); if (!kaynakC.has(a)) kaynakC.set(a, []); kaynakC.get(a).push(+c.no); }
     }
-    for (const x of C.paneller) {
-      panelNo.add(+x.p.no);
-      const k = x.p.kaynak;
-      if (k && k.aks_kat) { const a = k.aks_kat + "|" + (+k.no); if (!kaynakP.has(a)) kaynakP.set(a, []); kaynakP.get(a).push(+x.p.no); }
+    for (const p of C.pel) {
+      panelNo.add(+p.no);
+      const k = p.kaynak;
+      if (k && k.aks_kat) { const a = k.aks_kat + "|" + (+k.no); if (!kaynakP.has(a)) kaynakP.set(a, []); kaynakP.get(a).push(+p.no); }
     }
     const sonuc = new Map();
     const koy = function (tur, no, r, i) {
@@ -1310,8 +1582,10 @@
   return {
     SURUM: SURUM, KODLAR: KODLAR, OZNITELIK_IDLERI: OZNITELIK_IDLERI, OZNITELIK_TURLERI: OZNITELIK_TURLERI,
     OZNITELIK_BIRIMLERI: OZNITELIK_BIRIMLERI, TASLAK: TASLAK, SAHNE_YOK: SAHNE_YOK, Op4Hatasi: Op4Hatasi,
-    bagimliliklarKur: bagimliliklarKur, cozumle: cozumle, kimlikAnahtari: kimlikAnahtari,
+    YERLER: YERLER, bagimliliklarKur: bagimliliklarKur, cozumle: cozumle, kimlikAnahtari: kimlikAnahtari,
     bosModel: bosModel, katUyeligi: katUyeligi, kullanimYeri: kullanimYeri, profilAdiNormal: profilAdiNormal,
     oznitelikCikar: oznitelikCikar, oznitelikKodla: oznitelikKodla, sahneCikar: sahneCikar, sahneFarki: sahneFarki, sonucEsle: sonucEsle,
+    // iç (tipli dizi) biçimler: cephe aynı model için önbellekler
+    katHesapla: katHesapla, yerHesapla: yerHesapla, oznitelikHesapla: oznitelikHesapla, oznitelikCoz: oznitelikCoz,
   };
 });

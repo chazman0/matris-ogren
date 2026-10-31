@@ -98,14 +98,29 @@
       if (t.sahne.sahne_surumu !== sahneSurumu) t.sahne.sahne_surumu = sahneSurumu;
       return t.sahne;
     }
+    function kodluAl() {
+      const t = turetilmis();
+      if (!t.kodlu) {
+        const K = OP.katHesapla(t.cozum);
+        t.kodlu = OP.oznitelikHesapla(t.cozum, K, OP.yerHesapla(t.cozum, K));
+      }
+      return t.kodlu;
+    }
     function oznitelikAl() {
       const t = turetilmis();
-      if (!t.oznitelik) {
-        if (!t.kat) t.kat = OP.katUyeligi(model, { cozum: t.cozum });
-        if (!t.kullanim) t.kullanim = OP.kullanimYeri(model, { cozum: t.cozum, kat: t.kat });
-        t.oznitelik = OP.oznitelikCikar(model, { cozum: t.cozum, kat: t.kat, kullanim: t.kullanim });
-      }
+      if (!t.oznitelik) t.oznitelik = OP.oznitelikCoz(kodluAl());
       return t.oznitelik;
+    }
+    /**
+     * Sahneyi ve öznitelikleri etkilemeyen üst düzey alanlar. Yeni model eskisiyle bunlar DIŞINDA aynı nesneleri paylaşıyorsa
+     * (ör. baslikDegistir yüzeysel kopyası) çözümleme, öznitelik tablosu ve sahne dizileri yeniden kullanılır.
+     */
+    const GEOMETRI_DISI = new Set(["baslik", "aciklama", "yuk_durumlari", "deprem", "kombinasyon_kumesi", "analiz", "ek_yukler",
+      "ruzgar", "kar", "duvarlar", "sablon", "proje", "birim"]);
+    function ayniGeometri(a, b) {
+      for (const k in a) if (!GEOMETRI_DISI.has(k) && a[k] !== b[k]) return false;
+      for (const k in b) if (!GEOMETRI_DISI.has(k) && !(k in a)) return false;
+      return true;
     }
     function ozetKur() {
       const say = function (k) { return Array.isArray(model[k]) ? model[k].length : 0; };
@@ -149,16 +164,32 @@
       r.uyarilar = uyarilar || [];
       if (yeni === model) return r;
       const eski = sahneAl();
-      const onceki = model;
+      const onceki = model, eskiTurev = turev;
       model = yeni;
       sahneSurumu++;
-      const f = OP.sahneFarki(eski, sahneAl());
+      const hedef = yigin === "geri" ? gecmis[gecmis.length - 1] : yigin === "ileri" ? ileri[ileri.length - 1] : null;
+      let f;
+      if (hedef && hedef.turev && hedef.turev.model === yeni && hedef.fark) {
+        // geri al / yinele: hedef anlığın türetilmiş verisi ve ileri yöndeki fark saklı (yeniden hesap yok)
+        turev = hedef.turev;
+        f = hedef.fark;
+        if (turev.sahne) turev.sahne.sahne_surumu = sahneSurumu;
+      } else if (eskiTurev && eskiTurev.model === onceki && ayniGeometri(onceki, yeni)) {
+        // hızlı yol: geometri ve öznitelik kaynakları aynı nesneler; yalnız başlık gibi alanlar değişti
+        turev = { model: yeni, cozum: Object.assign({}, eskiTurev.cozum, { model: yeni }), kodlu: eskiTurev.kodlu, oznitelik: eskiTurev.oznitelik,
+          sahne: Object.assign({}, eski, { baslik: yeni.baslik != null ? String(yeni.baslik) : "", sahne_surumu: sahneSurumu }) };
+        f = { eklenen: [], silinen: [], degisen: [] };
+      } else f = OP.sahneFarki(eski, sahneAl());
       r.eklenen = f.eklenen; r.silinen = f.silinen; r.degisen = f.degisen;
       r.icerik_degisti = true;
       r.sahne_surumu = sahneSurumu;
-      if (yigin === "geri") ileri.push({ model: onceki, ad: gecmis.pop().ad, bayt: bayt(onceki) });
-      else if (yigin === "ileri") gecmis.push({ model: onceki, ad: ileri.pop().ad, bayt: bayt(onceki) });
-      else { gecmis.push({ model: onceki, ad: ISLEM_ADLARI[islem] || islem, bayt: bayt(onceki) }); ileri = []; sinirla(); }
+      // yığın kaydı: önceki model, onun türetilmiş verisi (yalnız tepedeki iki kayıtta tutulur) ve bu geçişin tersi
+      const ters = { eklenen: f.silinen, silinen: f.eklenen, degisen: f.degisen };
+      const kayit = function (ad) { return { model: onceki, ad: ad, bayt: bayt(onceki), turev: eskiTurev && eskiTurev.model === onceki ? eskiTurev : null, fark: ters }; };
+      if (yigin === "geri") ileri.push(kayit(gecmis.pop().ad));
+      else if (yigin === "ileri") gecmis.push(kayit(ileri.pop().ad));
+      else { gecmis.push(kayit(ISLEM_ADLARI[islem] || islem)); ileri = []; sinirla(); }
+      for (const y of [gecmis, ileri]) for (let i = 0; i < y.length - 2; i++) y[i].turev = null;
       return r;
     }
 
@@ -301,12 +332,8 @@
       sahne: function () { return sahneAl(); },
       /** @returns {Object} Op4Ops.oznitelikCikar biçimi */
       oznitelikler: function () { return oznitelikAl(); },
-      /** @returns {Object} Op4Ops.oznitelikKodla biçimi (C++ köprüsü; tipli diziler) */
-      oznitelikKodlu: function () {
-        const t = turetilmis();
-        if (!t.kodlu) t.kodlu = OP.oznitelikKodla(oznitelikAl());
-        return t.kodlu;
-      },
+      /** @returns {Object} Op4Ops.oznitelikHesapla (kodlu) biçimi (C++ köprüsü; tipli diziler) */
+      oznitelikKodlu: function () { return kodluAl(); },
       /** @returns {number} */
       sahneSurumu: function () { return sahneSurumu; },
       /** @returns {ModelOzeti} */

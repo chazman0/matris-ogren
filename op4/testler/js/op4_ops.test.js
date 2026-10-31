@@ -14,6 +14,17 @@ const sablon = (ad) => JSON.parse(fs.readFileSync(path.join(SABLON, ad + ".json"
 const SABLONLAR = fs.readdirSync(SABLON).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
 
 /** n × m göz, k kat genel model (aks REF'li kolon / kiriş, isteğe bağlı döşemeler). */
+/** Çözümlemedeki kolonlar: {no, P (üst uç)}. */
+function kolonlar(C) {
+  const l = [];
+  for (let k = 0; k < C.nc; k++) {
+    if (C.ctur[k] !== O.KODLAR.cubuk_turu.kolon) continue;
+    const u = C.xyz[3 * C.ci[k] + 2] >= C.xyz[3 * C.cj[k] + 2] ? C.ci[k] : C.cj[k];
+    l.push({ no: +C.cel[k].no, P: [C.xyz[3 * u], C.xyz[3 * u + 1], C.xyz[3 * u + 2]] });
+  }
+  return l;
+}
+
 function izgaraModel(nx, ny, nk, sec) {
   sec = sec || {};
   const xs = [], ys = [], zs = [];
@@ -120,11 +131,7 @@ test("kullanimYeri: döşeme zarfı — köşe / kenar / iç kolon, dış / iç 
   const C = O.cozumle(m);
   const u = O.kullanimYeri(m, { cozum: C });
   const kolonYer = {};
-  for (const x of C.cubuklar) {
-    if (x.tur !== "kolon") continue;
-    const P = C.dugumler[x.j].P;
-    kolonYer[P[0] / 6 + "," + P[1] / 5] = u.cubuk[x.c.no].yer;
-  }
+  for (const x of kolonlar(C)) kolonYer[x.P[0] / 6 + "," + x.P[1] / 5] = u.cubuk[x.no].yer;
   for (const [k, y] of Object.entries(kolonYer)) {
     const [i, j] = k.split(",").map(Number);
     const kenar = i === 0 || i === 3 || j === 0 || j === 3, kose = (i === 0 || i === 3) && (j === 0 || j === 3);
@@ -142,7 +149,7 @@ test("kullanimYeri: L planlı döşeme zarfında iç köşe kenar sayılır; dö
   const u = O.kullanimYeri(m);
   const C = O.cozumle(m);
   const yer = (x, y) => {
-    for (const c of C.cubuklar) { const P = C.dugumler[c.j].P; if (c.tur === "kolon" && P[0] === x && P[1] === y) return u.cubuk[c.c.no].yer; }
+    for (const c of kolonlar(C)) if (c.P[0] === x && c.P[1] === y) return u.cubuk[c.no].yer;
     return null;
   };
   assert.equal(yer(6, 5), "kenar");      // iç (içbükey) köşe: iç açı 270° → köşe değil
@@ -152,7 +159,7 @@ test("kullanimYeri: L planlı döşeme zarfında iç köşe kenar sayılır; dö
   const d = izgaraModel(2, 1, 1, { doseme: false });
   const ud = O.kullanimYeri(d), Cd = O.cozumle(d);
   const yd = {};
-  for (const c of Cd.cubuklar) if (c.tur === "kolon") { const P = Cd.dugumler[c.j].P; yd[P[0] + "," + P[1]] = ud.cubuk[c.c.no].yer; }
+  for (const c of kolonlar(Cd)) yd[c.P[0] + "," + c.P[1]] = ud.cubuk[c.no].yer;
   assert.deepEqual(yd, { "0,0": "kose", "0,5": "kose", "6,0": "kenar", "6,5": "kenar", "12,0": "kose", "12,5": "kose" });
 });
 

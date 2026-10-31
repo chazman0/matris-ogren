@@ -1,7 +1,13 @@
-// Model çekirdeği (B) — başarım (MIMARI §6.13, §9.5; kabul B7): celik-sanayi-4hol ve sentetik 5 bin / 20 bin çubukta uygula
-// (C++ çağrısından sahne ve öznitelik anlıkları hazır olana dek) ≤ 100 / ≤ 300 ms. Ölçümler "OP4OLCUM senaryo=cekirdek …"
-// satırlarıdır. Bütçe yalnız iyileştirilmiş QuickJS'te (GCC/Clang her zaman -O2; MSVC Release) ve temizleyicisiz derlemede
-// zorunludur: MSVC Debug ve ASan/UBSan derlemelerinde yalnız ölçüm yazılır.
+// Model çekirdeği (B) — başarım (MIMARI §6.13, §9.5; kabul B7). Süre: C++ çağrısından sahne ve öznitelik anlıkları hazır
+// olana dek. Ölçümler "OP4OLCUM senaryo=cekirdek …" satırlarıdır.
+//   Bütçe (≤ 100 ms; 20 bin çubukta ≤ 300 ms) ZORUNLU: celik-sanayi-4hol'de bütün işlemler; sentetik 5 bin / 20 bin çubukta
+//   geometriyi değiştirmeyen uygula (baslikDegistir: çözümleme yeniden kullanılır) ve geri al / yinele (anlığın türetilmiş
+//   verisi ve farkı saklı).
+//   Geometriyi değiştiren uygula (aksSihirbazi: bütün elemanlar yeniden çözümlenir) sentetik modellerde bütçeyi AŞAR; yalnız
+//   ölçülür ve gerilemeye karşı geniş bir üst sınırla korunur. Ölçülen dağılım (Linux clang, 20 bin çubuk): docs/
+//   aksSihirbazUygula'nın kendisi ≈ 550 ms (JSON kopyası), çözümleme ≈ 380 ms, fark ≈ 180 ms, kullanım yeri ≈ 270 ms.
+// Bütçe yalnız iyileştirilmiş QuickJS'te (GCC/Clang her zaman -O2; MSVC Release) ve temizleyicisiz derlemede zorunludur:
+// MSVC Debug ve ASan/UBSan derlemelerinde yalnız ölçüm yazılır.
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
 
@@ -71,10 +77,11 @@ double Ms(std::chrono::steady_clock::time_point t0) {
 }
 
 struct Olcum {
-    double yukle = 0, baslik = 0, aks = 0, geriAl = 0;
+    double yukle = 0, baslik = 0, aks = 0, geriAl = 0, yinele = 0;
 };
 
-Olcum Olc(ModelCekirdegi& c, const std::string& ad, const std::string& metin, double butce) {
+// butce: zorunlu işlemler; aksSiniri: geometrik işlem için gerileme sınırı (0 = aks işlemi de bütçeye tabi)
+Olcum Olc(ModelCekirdegi& c, const std::string& ad, const std::string& metin, double butce, double aksSiniri) {
     Olcum o;
     auto t0 = std::chrono::steady_clock::now();
     const YuklemeSonucu y = c.Yukle(metin, "sinama:" + ad);
@@ -101,11 +108,25 @@ Olcum Olc(ModelCekirdegi& c, const std::string& ad, const std::string& metin, do
     REQUIRE_MESSAGE(a.basarili, a.hata);
     CHECK(a.degisen.size() > 0);
     t0 = std::chrono::steady_clock::now();
-    REQUIRE(c.GeriAl().ModelDegisti());
+    const IslemRaporu g = c.GeriAl();
     o.geriAl = Ms(t0);
-    std::printf("OP4OLCUM senaryo=cekirdek model=%s cubuk=%zu panel=%zu yukle_ms=%.1f uygula_ms=%.1f aks_ms=%.1f geri_al_ms=%.1f butce_ms=%.0f zorunlu=%d\n",
-                ad.c_str(), cubuk, panel, o.yukle, o.baslik, o.aks, o.geriAl, butce, kButceZorunlu ? 1 : 0);
-    if (kButceZorunlu) CHECK_MESSAGE(o.baslik <= butce, ad << ": uygula " << o.baslik << " ms > " << butce << " ms");
+    REQUIRE(g.ModelDegisti());
+    CHECK(g.degisen.size() == a.degisen.size());
+    t0 = std::chrono::steady_clock::now();
+    const IslemRaporu y = c.Yinele();
+    o.yinele = Ms(t0);
+    REQUIRE(y.ModelDegisti());
+    CHECK(y.degisen.size() == a.degisen.size());
+    std::printf("OP4OLCUM senaryo=cekirdek model=%s cubuk=%zu panel=%zu yukle_ms=%.1f uygula_ms=%.1f aks_ms=%.1f geri_al_ms=%.1f "
+                "yinele_ms=%.1f butce_ms=%.0f zorunlu=%d\n",
+                ad.c_str(), cubuk, panel, o.yukle, o.baslik, o.aks, o.geriAl, o.yinele, butce, kButceZorunlu ? 1 : 0);
+    if (kButceZorunlu) {
+        CHECK_MESSAGE(o.baslik <= butce, ad << ": uygula " << o.baslik << " ms > " << butce << " ms");
+        CHECK_MESSAGE(o.geriAl <= butce, ad << ": geri al " << o.geriAl << " ms > " << butce << " ms");
+        CHECK_MESSAGE(o.yinele <= butce, ad << ": yinele " << o.yinele << " ms > " << butce << " ms");
+        const double s = aksSiniri > 0 ? aksSiniri : butce;
+        CHECK_MESSAGE(o.aks <= s, ad << ": geometrik uygula " << o.aks << " ms > " << s << " ms");
+    }
     return o;
 }
 
@@ -114,7 +135,8 @@ Olcum Olc(ModelCekirdegi& c, const std::string& ad, const std::string& metin, do
 TEST_CASE("cekirdek_js B7: başarım — sanayi şablonu, sentetik 5 bin ve 20 bin çubuk") {
     auto c = sinama::CekirdekKur();
     REQUIRE(c);
-    Olc(*c, "celik-sanayi-4hol", sinama::Sablon("celik-sanayi-4hol"), 100);
-    Olc(*c, "sentetik-5bin", SentetikModel(10, 10, 15), 100);
-    Olc(*c, "sentetik-20bin", SentetikModel(28, 19, 12), 300);
+    Olc(*c, "celik-sanayi-4hol", sinama::Sablon("celik-sanayi-4hol"), 100, 0);
+    // geometrik işlem: bütçe aşılıyor (yukarıdaki not); MSVC'nin hesaplanmış goto'suz yorumlayıcısı için geniş gerileme sınırı
+    Olc(*c, "sentetik-5bin", SentetikModel(10, 10, 15), 100, 2000);
+    Olc(*c, "sentetik-20bin", SentetikModel(28, 19, 12), 300, 7000);  // ≤ 20 Y aksı: aks–kat numaralaması (1000·kat + 20·ix + iy + 1)
 }
