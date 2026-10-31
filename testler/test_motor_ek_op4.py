@@ -302,19 +302,31 @@ def test_kume_haritasi_hatalari():
 
 
 def test_dogrultuya_gore_R_D():
-    # X: A11 (R = 8, D = 3), Y: A13 (R = 6, D = 2,5); ampirik T_p iki yönde aynı ve > T_B → R_a = R/I:
-    # V_tE,Y / V_tE,X = 8/6 (alt sınır etkin değil). θ_II sınırı Y: 0,12·2,5/(0,5·6) = 0,10.
+    # X: A11 (R = 8, D = 3, C_t = 0,10), Y: A13 (R = 6, D = 2,5, C_t = 0,07; Denk. 4.27, doğrultu başına). H_N = 9,6 m:
+    # 9,6^0,75 = 5,4537 → T_pA,X = 0,5454 s, T_pA,Y = 0,3818 s (ampirik; ikisi de > T_B = 0,375 s → R_a = R/I, S_ae = S_D1/T).
+    # V_X tek sistemli (A11) binayla aynı (≈ 288,81 kN); V_Y/V_X = (8/6)·(0,10/0,07) = 1,90476 (alt sınır etkin değil).
+    # θ_II sınırı X: 0,12·3/(0,5·8) = 0,09; Y: 0,12·2,5/(0,5·6) = 0,10.
     b = yapi.bina_sablon("betonarme-3kat-3x3")
+    d0 = yapi.bina_coz(copy.deepcopy(b), anlat=False).veri["deprem"]
     b["deprem"]["tasiyici_x"] = "betonarme-cerceve-yuksek"
     b["deprem"]["tasiyici_y"] = "betonarme-perde-bosluksuz"
     d = yapi.bina_coz(b, anlat=True).veri["deprem"]
-    assert d["X"]["Tp"] == pytest.approx(d["Y"]["Tp"]) and d["X"]["Tp"] > d["TB"]
+    H = 9.6 ** 0.75
+    assert d["X"]["TpA"] == pytest.approx(0.10 * H) and d["Y"]["TpA"] == pytest.approx(0.07 * H)
+    assert d["X"]["Tp"] == pytest.approx(0.10 * H) and d["Y"]["Tp"] == pytest.approx(0.07 * H) and d["Y"]["Tp"] > d["TB"]
+    assert d["X"]["Ct"] == pytest.approx(0.10) and d["Y"]["Ct"] == pytest.approx(0.07) and d["Ct"] == pytest.approx(0.10)
     assert d["X"]["Ra"] == pytest.approx(8.0) and d["Y"]["Ra"] == pytest.approx(6.0)
-    assert d["Y"]["VtE"] / d["X"]["VtE"] == pytest.approx(8.0 / 6.0, rel=1e-9)
+    assert d["X"]["VtE"] == pytest.approx(d0["X"]["VtE"], rel=1e-12) and d0["X"]["VtE"] == pytest.approx(288.81, abs=0.01)
+    assert d["Y"]["VtE"] / d["X"]["VtE"] == pytest.approx((8.0 / 6.0) * (0.10 / 0.07), rel=1e-9)
     assert d["Y"]["theta_sinir"] == pytest.approx(0.10) and d["X"]["theta_sinir"] == pytest.approx(0.12 * 3 / (0.5 * 8))
     assert d["karma"]["X"]["kod"] == "A11" and d["karma"]["Y"]["kod"] == "A13"
-    assert d["Ct"] == pytest.approx(0.07)                                  # en küçük C_t (motor kuralı, güvenli taraf)
-    assert any("4.3.4.2" in u for u in d["uyarilar"])
+    assert all(k["kappa_x"] == 1.0 and k["kappa_y"] == 1.0 and k["sinir"] == pytest.approx(0.008) for k in d["katlar"])
+    assert any("4.3.4.2" in u for u in d["uyarilar"]) and any("Denk. (4.28)" in u for u in d["uyarilar"])
+    # elle C_t,Y (Denk. 4.28 sonucu gibi) doğrultu değerini değiştirir
+    b2 = copy.deepcopy(b)
+    b2["deprem"]["Ct_y"] = 0.05
+    d2 = yapi.bina_coz(b2, anlat=False).veri["deprem"]
+    assert d2["Y"]["TpA"] == pytest.approx(0.05 * H) and d2["X"]["VtE"] == pytest.approx(d["X"]["VtE"], rel=1e-12)
     # süneklik düzeyleri farklı (A11 yüksek, A31 sınırlı) → 4.3.4.2 uyarısı
     b["deprem"]["tasiyici_y"] = "betonarme-cerceve-sinirli"
     d = yapi.bina_coz(b, anlat=False).veri["deprem"]
@@ -328,8 +340,12 @@ def test_bolge_sistemi_en_kucuk_R():
     d = yapi.bina_coz(b, anlat=False).veri["deprem"]
     assert (d["R"], d["D"]) == (5.0, 2.0) and d["karma"]["Y"]["kod"] == "C13"
     assert d["karma"]["BYS_min"] == 4                                      # elverişsiz: C13 BYS ≥ 4 (A11: ≥ 3)
-    assert d["kappa"] == 0.5 and d["Ch"] == 1.0                           # betonarme + çelik: κ en küçük, C_h en büyük
+    assert d["kappa"] == 0.5 and d["Ch"] == 1.0                           # özet: kat değerlerinin en elverişsizi
     assert d["sinir_oran"] == pytest.approx(0.004)
+    kat = {k["kat"]: k for k in d["katlar"]}                               # kat başına: 1–2 betonarme, 3 çelik (C13)
+    assert [kat[i]["kappa_x"] for i in (1, 2, 3)] == [1.0, 1.0, 0.5] and [kat[i]["sinir_y"] for i in (1, 2, 3)] == \
+        [pytest.approx(0.008), pytest.approx(0.008), pytest.approx(0.004)]
+    assert kat[3]["theta_sinir_x"] == pytest.approx(0.12 * 2 / (1.0 * 5))  # C_h = 1 (çelik), R = 5, D = 2 → 0,048
     assert any("en küçük R" in u for u in d["uyarilar"])
     # eşit R'de küçük D: C13 (5; 2) ve A22 (5; 2,5) → D = 2
     b["deprem"]["tasiyici_bolgeleri"] = [{"katlar": [2, 2], "tasiyici": "betonarme-karma-perde"},
@@ -337,6 +353,55 @@ def test_bolge_sistemi_en_kucuk_R():
     assert yv.TBDY_TASIYICI["betonarme-karma-perde"]["R"] == 5 and yv.TBDY_TASIYICI["betonarme-karma-perde"]["D"] == 2.5
     d = yapi.bina_coz(b, anlat=False).veri["deprem"]
     assert (d["R"], d["D"]) == (5.0, 2.0)
+
+
+def test_celik_cati_kati_kat_basina_kappa():
+    """4 katlı betonarme şablon + çelik 4. kat (bölge [4, 4] C11): betonarme katlar 0,008·κ (κ = 1), çelik kat 0,008·0,5 = 0,004
+    ile denetlenir (md. 4.9.1.3); C_h betonarmede 0,5, çelikte 1 (Denk. 4.36) → θ sınırı 0,12·3/(0,5·8) = 0,09 ve 0,12·3/(1·8) =
+    0,045. Yönetici satır A11 (R = 8, D = 3; C11 ile eşit, ana sistem önce) → C_t = 0,10, T_pA = 0,10·12^0,75 = 0,6447 s; taban
+    kesmesi anahtarsız modelle aynı. Öteleme oranları da aynı: X'te 1–3. katlar (0,00476 / 0,00716 / 0,00598) 0,008'in altında
+    sağlanır, 4. kat 0,00589 > 0,004 sağlanmaz."""
+    b = _karma_bina()
+    d0 = yapi.bina_coz(copy.deepcopy(b), anlat=False).veri["deprem"]
+    b["kombinasyon_kumeleri"] = {"betonarme": "ts500", "celik": "cythye_ydkt"}
+    b["deprem"]["tasiyici_bolgeleri"] = [{"katlar": [4, 4], "tasiyici": "celik-cerceve-yuksek"}]
+    d = yapi.bina_coz(b, anlat=True).veri["deprem"]
+    assert d["Ct"] == pytest.approx(0.10) and d["TpA"] == pytest.approx(0.10 * 12 ** 0.75)
+    for y in ("X", "Y"):
+        assert d[y]["VtE"] == pytest.approx(d0[y]["VtE"], rel=1e-12)
+    k0 = {k["kat"]: k for k in d0["katlar"]}
+    kat = {k["kat"]: k for k in d["katlar"]}
+    for i in (1, 2, 3):
+        assert kat[i]["kappa_x"] == kat[i]["kappa_y"] == 1.0 and kat[i]["Ch_x"] == 0.5
+        assert kat[i]["sinir_x"] == pytest.approx(0.008) and kat[i]["theta_sinir_x"] == pytest.approx(0.09)
+        assert kat[i]["oran_x"] == pytest.approx(k0[i]["oran_x"], rel=1e-12) and kat[i]["uygun_x"]
+    assert kat[4]["kappa_x"] == 0.5 and kat[4]["Ch_y"] == 1.0 and kat[4]["sinir_x"] == pytest.approx(0.004)
+    assert kat[4]["theta_sinir_y"] == pytest.approx(0.045)
+    assert kat[4]["oran_x"] == pytest.approx(0.00589, abs=5e-6) and not kat[4]["uygun_x"]
+    assert [round(kat[i]["oran_x"], 5) for i in (1, 2, 3)] == [0.00476, 0.00716, 0.00598]
+    assert d["karma"]["katlar"][3]["kaynak_x"] == "çelik" and d["karma"]["katlar"][0]["kaynak_x"] == "betonarme"
+    assert any("kat başına" in u for u in d["uyarilar"])
+    # aynı katta (grup bölgesi, genel model) betonarme ve çelik birlikte → κ = 0,5
+    import tablolar
+    t = tablolar.bina_tablolari(b, yapi.bina_coz(b, anlat=False).veri, kati=True)
+    ot = tablolar.tablo(t, "oteleme")
+    assert any(s_["ad"] == "kappa_x" for s_ in ot["sutunlar"]) and ot["satirlar"][3]["degerler"]["sinir_x"] == pytest.approx(0.004)
+
+
+def test_ayni_katta_iki_malzeme_kappa_celik():
+    # Genel model: ana sistem A11 (betonarme) + X-CAPRAZ çubuk grubu C13 (çelik) bölgesi; çaprazlar üç katta da var → her katta
+    # aynı doğrultuda ikisi birden → κ = 0,5, C_h = 1 (güvenli taraf). Sistemi belirlenemeyen (yığma E11) katta binanın 'sistem'i
+    # (celik: κ = 0,5) ve uyarı.
+    g = yapi.bina_sablon("celik-cbf-3kat")
+    g["deprem"]["tasiyici"] = "betonarme-cerceve-yuksek"
+    g["deprem"]["tasiyici_bolgeleri"] = [{"grup": "X-CAPRAZ", "tasiyici": "celik-merkezi-capraz"}]
+    d = yapi.bina_coz(g, anlat=False).veri["deprem"]
+    assert [(k["kat"], k["sistem_x"], k["kappa_x"], k["Ch_x"]) for k in d["katlar"]] == [(i, "A11/C13", 0.5, 1.0) for i in (1, 2, 3)]
+    assert d["karma"]["katlar"][0]["kaynak_x"] == "betonarme + çelik"
+    g["deprem"]["tasiyici_bolgeleri"] = [{"grup": "X-CAPRAZ", "tasiyici": "yigma-donatili"}]
+    d = yapi.bina_coz(g, anlat=False).veri["deprem"]
+    assert any("belirlenemedi" in u and "(celik)" in u for u in d["uyarilar"])
+    assert all(k["kappa_x"] == 0.5 for k in d["katlar"])
 
 
 def test_bolge_hatalari_ve_genel_model_grubu():
@@ -423,6 +488,8 @@ def test_kopru_bina_spektrum_ozel_ve_hatalar(kopru):
     y2 = iste(kopru, "bina_spektrum", {"SS": 1.0, "S1": 0.3, "zemin_sinifi": "ZC", "HN": 9.6, "tasiyici_x": "betonarme-cerceve-yuksek",
                                         "tasiyici_y": "betonarme-perde-bosluksuz"})
     assert y2["hata"] is None and y2["egriler"]["SaR_Y"] is not None and y2["karma"]["Y"]["kod"] == "A13"
+    assert y2["TpA"] == pytest.approx(0.10 * 9.6 ** 0.75) and y2["TpA_Y"] == pytest.approx(0.07 * 9.6 ** 0.75) and y2["Ct_Y"] == 0.07
+    assert y2["Ra_Y"] == pytest.approx(6.0)
     # hatalar: motorla aynı iletiler, girdi türü
     h = iste(kopru, "bina_spektrum", {"SS": 1.2, "S1": 0.35, "zemin_sinifi": "ZF"})
     assert h["hata_turu"] == "girdi" and "sahaya özel" in h["hata"]

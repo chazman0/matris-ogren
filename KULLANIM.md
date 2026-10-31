@@ -432,7 +432,10 @@ nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırla
 İsteğe bağlı ekler (verilmezse sonuçlar değişmez): **karma yapı** — `kombinasyon_kumeleri: {"betonarme": "ts500", "celik":
 "cythye_ydkt"}` eleman tahkikini kesit malzemesinin kümesiyle yapar (aynı yük durumları); `deprem.tasiyici_x` / `tasiyici_y`
 doğrultu başına R, D (TBDY md. 4.3.4.2), `deprem.tasiyici_bolgeleri: [{"katlar": [4, 4], "tasiyici": "celik-cerceve-yuksek"}]`
-(genel modelde `"grup"` de olur) yükseklik boyunca farklı sistem — her doğrultuda en küçük R'li satır bütün binaya (motor kuralı).
+(genel modelde `"grup"` de olur) yükseklik boyunca farklı sistem — her doğrultuda en küçük R'li satır bütün binaya (motor kuralı);
+C_t ve T_pA doğrultu başına o doğrultunun sisteminden (`deprem.Ct_x` / `Ct_y` ile elle), göreli öteleme κ'sı (md. 4.9.1.3) ve
+θ_II'deki C_h (Denk. 4.36) kat ve doğrultu başına o katın sisteminden: betonarme κ = 1, C_h = 0,5; çelik κ = 0,5, C_h = 1; aynı
+katta ikisi birden çelik değerleri (`veri.deprem.katlar[].kappa_x`, `sinir_x`, `theta_sinir_x`).
 **Sahaya özel spektrum** — `deprem.ozel_spektrum: {"noktalar": [[T, S_ae], ...], "kaynak": "…", "SDS"?, "SD1"?, "DD3"?}`
 (TBDY md. 2.4; ZF zeminde zorunlu, md. 16.5): tablo doğrusal ara değerle okunur, tasarımda standart spektrumun %90'ının
 altına inilmez (md. 2.4.1.2). **Hareketli yük azaltması** — `yuk_durumlari.Q.azaltma: true` (TS 498:2021 md. 16 Çizelge 7):
