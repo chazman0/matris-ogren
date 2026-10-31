@@ -1044,6 +1044,7 @@ def _oku(bina):
     B.kombinasyon_kumesi = str(bina.get("kombinasyon_kumesi") or ("ts500" if B.sistem == "betonarme" else "cythye_ydkt")).strip().lower()
     if B.kombinasyon_kumesi not in yv.KOMBINASYONLAR:
         raise MatrisHatasi(f"kombinasyon_kumesi {B.kombinasyon_kumesi!r} tanımsız; seçenekler: {', '.join(yv.KOMBINASYONLAR)}.")
+    Y._kume_haritasi_oku(B, bina)       # karma yapı: malzemeye göre kombinasyon kümesi (isteğe bağlı)
     # temeller (C3: en alt Z seviyesindeki bütün aks kesişimleri — her aks sisteminde — temele oturur; _mesnetleri_oku)
     t = bina.get("temeller") if isinstance(bina.get("temeller"), dict) else {}
     var = t.get("varsayilan") if isinstance(t.get("varsayilan"), dict) else {}
@@ -1089,7 +1090,7 @@ def _oku(bina):
     B.dosemeler = [{"kullanim": p["kullanim"]} for p in B.paneller if p["q"] > 0 and p["kullanim"] in yv.TS498_HAREKETLI]
     Y._yuk_durumlarini_oku(B, bina)
     B.dosemeler = []
-    zorunlu = B.sistem == "betonarme" and B.deprem is not None
+    zorunlu = B.deprem is not None and (B.sistem == "betonarme" or (Y._karma_mi(B) and Y._beton_eleman_var(B)))
     if B.analiz["catlamis_rijitlik"] is None:
         B.analiz["catlamis_rijitlik"] = zorunlu
     _dugum_seviyeleri(B)
@@ -2315,7 +2316,7 @@ def _temel_sonuclari(B, ag, paket, kombinasyonlar, YK):
     yüklerinden toplanır (servis G + Q). kolon_N_kolonlar: yalnız taban kolonları (temel.py sayısı); aks–kat modelinde ikisi aynı."""
     tm = _tm()
     info = ag["temel"]
-    veri, ic = tm.sonuclar(info.BT, ag, paket, kombinasyonlar)
+    veri, ic = tm.sonuclar(info.BT, ag, paket, Y._temel_kombinasyonlari(B, paket, kombinasyonlar), **Y._temel_q(B))
     ya = veri["yuk_akisi"]
     kat = {d: 1.0 for d in ("G", "Q") if d in paket.durum}
     e_idx = {no: j for j, no in enumerate(paket.el_no)}
@@ -3141,7 +3142,12 @@ def _akis(B, YK, ag, durumlar_kisa):
             r["sistem"] = m["sistem"]
         Bt, Lt = m["B"], m["L"]
         N_temel = Y.GAMMA_BA * Bt * Lt * h_t
-        N = tg["FZ"] + tq["FZ"] + N_temel
+        bq = (getattr(B, "azaltma", None) or {}).get("temel_kolon", {}).get(kol)       # TS 498 md. 16 (tekil temel)
+        if bq is None:
+            N = tg["FZ"] + tq["FZ"] + N_temel
+        else:
+            N = tg["FZ"] + bq * tq["FZ"] + N_temel
+            r.update({"MX": tg["MX"] + bq * tq["MX"], "MY": tg["MY"] + bq * tq["MY"], "beta_Q": bq})
         sig_m = 6.0 * abs(r["MX"]) / (Bt * Lt * Lt) + 6.0 * abs(r["MY"]) / (Lt * Bt * Bt)
         smax, smin = N / (Bt * Lt) + sig_m, N / (Bt * Lt) - sig_m
         eX, eY = (abs(r["MY"]) / N, abs(r["MX"]) / N) if N > 1e-9 else (0.0, 0.0)
@@ -3257,7 +3263,7 @@ def _dugum_akimlari(B, YK, ag, kisa, d):
 _I_N, _I_V, _I_M, _I_VZ, _I_MY = 0, 1, 2, 3, 4
 
 
-def _tasarim_baglam(B, ag, paket, kombinasyonlar):
+def _tasarim_baglam(B, ag, paket, kombinasyonlar, kume=None):
     kombs = [k for k in kombinasyonlar if k["uygulandi"] and k["tur"] in ("dayanim", "deprem")]
     adlar_d = list(paket.durum)
     G = np.zeros((len(kombs), len(adlar_d)))
@@ -3270,9 +3276,76 @@ def _tasarim_baglam(B, ag, paket, kombinasyonlar):
     for d in ("G", "Q"):
         if d in paket.durum:
             GQ = GQ + paket.durum[d]["diy"]
-    return SimpleNamespace(B=B, ag=ag, paket=paket, kombs=kombs, adlar=[k["ad"] for k in kombs],
-                           deprem=[k["tur"] == "deprem" for k in kombs], C=G @ D, GQ=GQ,
-                           idx={no: j for j, no in enumerate(paket.el_no)}, sonuclar={}, serbest=True)
+    T = SimpleNamespace(B=B, ag=ag, paket=paket, kombs=kombs, adlar=[k["ad"] for k in kombs],
+                        deprem=[k["tur"] == "deprem" for k in kombs], C=G @ D, GQ=GQ,
+                        idx={no: j for j, no in enumerate(paket.el_no)}, sonuclar={}, serbest=True, kume=kume or B.kombinasyon_kumesi)
+    Y._azaltma_baglam(T, adlar_d, G)
+    return T
+
+
+def _kume_listesi(B, paket, kume, kren_adlar):
+    """Karma yapı: ikinci kombinasyon kümesinin (kren birleşimleri dahil, çözüm katsayılı) listesi."""
+    kl = _kren_kombinasyonlari(Y._kombinasyon_listesi(B, set(paket.durum) - set(kren_adlar), kume=kume), kren_adlar)
+    for k in kl:
+        k["cozum"] = Y._cozum_katsayilari(k, paket)
+    return kl
+
+
+def _malzeme_baglamlari(T, B, ag, paket, kren_adlar):
+    Y._malzeme_kumeleri(T, lambda kume: _kume_listesi(B, paket, kume, kren_adlar),
+                        lambda liste, kume: _tasarim_baglam(B, ag, paket, liste, kume=kume))
+
+
+def _azaltma_hesapla(B, YK, ag):
+    """TS 498:2021 md. 16 Çizelge 7 (yuk_durumlari.Q.azaltma): kolon çubuğu başına β. Kat hareketli yükleri döşeme / çatı
+    panellerinden (seviye = panel köşelerinin en üst katı); kolon, üst ucunun katı ve üstünde kolon zinciri süren katları
+    taşır. Temel: tekilde mesnet kolonunun β'sı, mütemadi / radyede taban kolonlarının en büyüğü. Kapalıysa None."""
+    if not getattr(B, "q_azaltma", False):
+        return None
+    D = B.coz.dugum
+    kat_q = {k: 0.0 for k in range(1, B.nk + 1)}
+    kat_grup = {k: set() for k in kat_q}
+    for p in B.paneller:
+        if p["tur"] not in ("doseme", "cati"):
+            continue
+        Q = float((p.get("toplam") or {}).get("Q", 0.0))
+        kat = p["kat"] if p["kat"] is not None else max(D[n]["kat"] for n in p["kose"])
+        if Q > 1e-9 and kat in kat_q:
+            kat_q[kat] += Q
+            kat_grup[kat].add(yv.TS498_HAREKETLI.get(p["kullanim"], {}).get("azaltma_grubu", "a"))
+    kolon = [c for c in B.cubuklar if c["tur"] == "kolon"]
+    ust_kolon = {}
+    for c in kolon:
+        alt, ust = (c["i"], c["j"]) if D[c["i"]]["Z"] <= D[c["j"]]["Z"] else (c["j"], c["i"])
+        c["_alt"], c["_ust"] = alt, ust
+        ust_kolon.setdefault(alt, []).append(c)
+    kayitlar = []
+    for c in kolon:
+        katlar, gorulen, simdi = [], {c["no"]}, c
+        while True:
+            k = D[simdi["_ust"]]["kat"]
+            if k >= 1 and k not in katlar:
+                katlar.append(k)
+            sonraki = [c2 for c2 in ust_kolon.get(simdi["_ust"], []) if c2["no"] not in gorulen]
+            if not sonraki:
+                break
+            simdi = sonraki[0]
+            gorulen.add(simdi["no"])
+        yuklu = [j for j in katlar if kat_q.get(j, 0.0) > 1e-9]
+        grup = Y._azaltma_grubu(set().union(*(kat_grup[j] or {"a"} for j in yuklu)) if yuklu else set())
+        beta, ayr = yv.azaltma_beta_katlar(grup, [kat_q.get(j, 0.0) for j in katlar])
+        kayitlar.append({"tur": "kolon", "no": c["no"], "cubuk": c["no"], "adres": f"Ç{c['no']}", "kat": c["kat"] if c["kat"] is not None
+                         else D[c["_ust"]]["kat"], "n": ayr["n"], "grup": grup, "beta": beta, "beta_tablo": ayr["beta_tablo"],
+                         "esit": ayr["esit"], "katlar": yuklu, "fe": [pp["fe"] for pp in B.parca[c["no"]]]})
+    for c in kolon:
+        c.pop("_alt", None)
+        c.pop("_ust", None)
+    zemin_kat = min((kt["no"] for kt in B.katlar), default=0)
+    taban = [e for e, c in zip(kayitlar, kolon) if D[(c["i"] if D[c["i"]]["Z"] <= D[c["j"]]["Z"] else c["j"])]["kat"] == zemin_kat]
+    tb = max(taban, key=lambda e: e["beta"]) if taban else {"beta": 1.0, "n": 0, "grup": "a"}
+    sonuc = Y._azaltma_sonucu(kayitlar, tb, kat_q, B.temeller["tip"])
+    sonuc["temel_kolon"] = {e["no"]: e["beta"] for e in taban}
+    return sonuc
 
 
 def _capraz_duzen(B, c):
@@ -3403,12 +3476,13 @@ def _cubuk_tasarla(ts, T, c, anl=None, bilgi=None, kt_yerine=None):
     ks = B.kesitler[c["kesit"]]
     kt = kt_yerine if kt_yerine is not None else (B.kesitler[ks["temel"]] if ks["tip"] == "vute" else ks)
     mal = B.malzemeler[kt["malzeme"]]
+    T = Y._T_sec(T, "celik" if mal["tur"] == "celik" else "betonarme")      # karma yapı: malzemeye göre kombinasyon kümesi
     bl = _bloklar(T, c)
     L = c["L"]
     kayit = {"no": c["no"], "kat": c["kat"], "adres": f"Ç{c['no']} ({_tur_adi(c['tur'])})", "kesit": c["kesit"]}
     fe = list(c["fe"])
     uy = []
-    yontem = "GKT" if B.kombinasyon_kumesi == "cythye_gkt" else "YDKT"
+    yontem = "GKT" if Y._kume(T) == "cythye_gkt" else "YDKT"
     varsayim = []
     bilgi = bilgi if bilgi is not None else {}
     if mal["tur"] == "celik":
@@ -3817,6 +3891,8 @@ def _tasarim(ts, T):
         for c in B.cubuklar:
             try:
                 k, uy, _ = _cubuk_tasarla(ts, T, c)
+                if c["tur"] == "kolon" and getattr(B, "azaltma", None):
+                    k["ozet"]["beta_Q"] = B.azaltma["kolon_beta"].get(c["no"], 1.0)
             except MatrisHatasi as h:
                 k = {"no": c["no"], "cubuk": c["no"], "tur": c["tur"], "kat": c["kat"], "adres": f"Ç{c['no']} ({_tur_adi(c['tur'])})", "kesit": c["kesit"],
                      "malzeme": None, "sistem": None, "fe_elemanlar": list(c["fe"]), "dc": None, "durum": "hesaplanamadı",
@@ -3852,7 +3928,7 @@ def _tasarim(ts, T):
     gruplar = {"celik": [], "betonarme": [], "ortak": []}
     if celik_var:
         gruplar["celik"] += [
-            "Çelik: ÇYTHYE 2018 " + ("GKT" if B.kombinasyon_kumesi == "cythye_gkt" else "YDKT") + "; kolon, kiriş, aşık, kren ve bağ "
+            "Çelik: ÇYTHYE 2018 " + ("GKT" if Y._kume(Y._T_sec(T, "celik")) == "cythye_gkt" else "YDKT") + "; kolon, kiriş, aşık, kren ve bağ "
             "kirişi I/H kesitlerde eğilmeli eleman (Bölüm 11 etkileşim), çapraz ve makas çubukları ile basit kesitler (kutu, boru, "
             "korniyer, U) eksenel çubuk (Bölüm 7–8). Kombinasyon başına eleman boyunca en büyük |N|, |M|, |V| (aynı kombinasyon).",
             "Varsayılan burkulma ve yanal burulma boyları (çubukta Lb / K verilmezse): " + ("; ".join(ks_varsayim) or "—") + ". İkinci "
@@ -3870,10 +3946,11 @@ def _tasarim(ts, T):
                                         "7.4.1 / TBDY 2018 md. 7.3.2 en az değeri); 'gerekli ρ' 0,01 → 0,04 taranır.")
     gruplar["ortak"].append(f"Tahkik kombinasyonları: dayanım ve deprem birleşimleri ({len(T.kombs)} adet); servis ve öteleme "
                             "birleşimleri tahkike girmez.")
+    gruplar["ortak"].extend(Y._ek_varsayimlar(T))
     varsayimlar = gruplar["celik"] + gruplar["betonarme"] + gruplar["ortak"]
-    return {
+    return Y._tasarim_ek(T, {
         "yontem": {"betonarme": "TS 500:2000 (+TBDY 2018 Bölüm 7 sınırları)",
-                   "celik": f"ÇYTHYE 2018 {'GKT' if B.kombinasyon_kumesi == 'cythye_gkt' else 'YDKT'} (+TBDY 2018 Bölüm 9 çapraz koşulları)"},
+                   "celik": f"ÇYTHYE 2018 {'GKT' if Y._kume(Y._T_sec(T, 'celik')) == 'cythye_gkt' else 'YDKT'} (+TBDY 2018 Bölüm 9 çapraz koşulları)"},
         "varsayimlar": varsayimlar, "varsayim_gruplari": gruplar, "kombinasyon_sayisi": len(T.adlar), "elemanlar": kayitlar,
         "en_buyuk_dc": sirali[0]["dc"] if sirali else 0.0, "kritik": [k["no"] for k in sirali[:5]],
         "kritik_elemanlar": [{"tur": k["tur"], "no": k["no"], "adres": k["adres"], "dc": k["dc"],
@@ -3881,7 +3958,7 @@ def _tasarim(ts, T):
                              for k in sirali[:10]],
         "dc_dagilimi": dag, "uyarilar": genel + tekil,
         "Lb_K_varsayimlari": ks_varsayim,
-    }
+    })
 
 
 # ============================================================================
@@ -4697,6 +4774,7 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
     ag, model = _ag_kur(B, kutle)
     _mekanizma_duzelt(B, ag, model)
     B.ag = ag
+    B.azaltma = _azaltma_hesapla(B, YK, ag)      # TS 498:2021 md. 16 (yuk_durumlari.Q.azaltma); kapalıysa None
     durumlar = {}
     for d in YK.durumlar:
         cub = {cno: kay[d] for cno, kay in YK.cubuk.items() if kay.get(d)}
@@ -4763,7 +4841,7 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
             yalniz = _yalniz_cekme_coz(B, ag, model, durumlar, paket, kombinasyonlar, deprem)
         yol += "; yalnız çekme: birleşimler doğrudan, yinelemeli"
     if hafif:
-        return _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem)
+        return _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem, kren_adlar)
     zarf = Y._zarf_paket(paket, kombinasyonlar)
     ozetler = {k["ad"]: paket.ozet(paket.birlesim(k["cozum"])) for k in kombinasyonlar if k["uygulandi"]}
     gosterilecek = Y._gosterilecek_sec(B, kombinasyonlar, zarf)
@@ -4777,10 +4855,12 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
         temel_veri, temel_ic = _temel_sonuclari(B, ag, paket, kombinasyonlar, YK)
     veri = _veri(B, YK, ag, model, durumlar, durumlar_kisa, kombinasyonlar, sonuclar, zarf, akis, yol, deprem=deprem, ruzgar=ruzgar,
                  kutle=kutle, ozetler=ozetler, gosterilecek=gosterilecek, kimlik=kimlik, kren=kren, yalniz=yalniz, temel_veri=temel_veri)
+    Y._veri_ek(B, veri)
     ts = _tasarim_mod()
     T = tas = None
     if ts is not None:
         T = _tasarim_baglam(B, ag, paket, kombinasyonlar)
+        _malzeme_baglamlari(T, B, ag, paket, kren_adlar)
         tas = _tasarim(ts, T)
         veri["tasarim"] = tas
         veri["ozet"]["en_buyuk_dc"] = tas["en_buyuk_dc"]
@@ -4799,6 +4879,9 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
         anl.baslik(B.baslik, 2)
     sonuc = mo.Sonuc(sp.Matrix(kisa_m["G"]["u"]), anl, "u_G", "", "")
     sonuc.veri = veri
+    komb_tur = {k["ad"]: k["tur"] for k in kombinasyonlar if k["uygulandi"]}
+    if T is not None:
+        Y._ek_kumeleri_kaydet(T, komb_kat, komb_tur)
     sonuc.ic = {"kimlik": kimlik, "paket": paket, "kombinasyonlar": komb_kat, "durumlar": set(paket.durum), "tasarim": T,
                 "serbest": True, "bina": B.ham, "B": B, "tas": tas,
                 "temel": _tm().basinc_meta(ag["temel"]) if ag.get("temel") is not None else None, "oteleme_asan": _oteleme_asan(deprem),
@@ -4806,7 +4889,7 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
                 # alan.py (ısı haritası, eleman bilgisi): yapi.bina_coz ile aynı paket — normalize bina, ağ, motor modeli, yükler,
                 # tasarım sonucu (yanıtta kısaltıldıysa tam satırlar: betonarme kullanımı kapasite satırlarını arar), kombinasyon türleri
                 "alan": {"B": B, "ag": ag, "model": model, "Y": YK, "tasarim": tas_tam if tas_tam is not None else tas,
-                         "komb_tur": {k["ad"]: k["tur"] for k in kombinasyonlar if k["uygulandi"]}}}
+                         "komb_tur": komb_tur}}
     if tas_tam is not None:      # yanıtta kontrol satırları kısaltıldı: rapor bütün satırları bundan yazar (köprü bina_rapor)
         sonuc.ic["tas_tam"] = tas_tam
     mo.son_anlatim = anl
@@ -4814,13 +4897,14 @@ def bina_coz(bina, *, goster=None, anlat=True, hafif=False):
     return sonuc
 
 
-def _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem):
+def _hafif_sonuc(B, YK, ag, model, paket, kombinasyonlar, deprem, kren_adlar=()):
     """bina_coz(hafif=True) dönüşü: kesit önerisinin ara çözümleri için tasarım (aynı D/C'ler) ve öteleme paketi (``ic`` tam
     çözümün paketiyle aynı anahtarlar; veri yalnız {tasarim})."""
     ts = _tasarim_mod()
     T = tas = None
     if ts is not None:
         T = _tasarim_baglam(B, ag, paket, kombinasyonlar)
+        _malzeme_baglamlari(T, B, ag, paket, kren_adlar)
         tas = _tasarim(ts, T)
     ic = {"kimlik": Y._cozum_kimligi(B), "paket": paket, "durumlar": set(paket.durum), "tasarim": T, "serbest": True,
           "bina": B.ham, "B": B, "tas": tas, "oteleme_asan": _oteleme_asan(deprem), "oteleme": _oteleme_oranlari(deprem), "deprem": deprem, "hafif": True,

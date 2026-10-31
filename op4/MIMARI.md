@@ -1963,8 +1963,10 @@ geçerlidir. Bağlayıcı kaynak `op4/tasarim/atolye-modern/` (belirteçler `bel
 sayfaları); yerleşimin kökeni `op4/tasarim/taslaklar/atolye/`.
 
 **Kullanıcı kararları (31.10.2026):** vurgu **A — Kobalt** (#2563EB) varsayılan; Petrol ve Grafit Ayarlar › Görüntü'de
-seçenek olarak kalır. Arayüz yazı tipi (Inter) beğenilmedi ("harfler tek düze durmuyor"); daha düzgün ve verimli bir
-yazı tipi seçilmektedir. Yazı tipi tek belirteçten yüklenir, metin imgui_freetype ile ipuçlu (hinting) çizilir.
+seçenek olarak kalır. Arayüz yazı tipi (Inter) beğenilmedi ("harfler tek düze durmuyor"; asıl neden glif konumlarının tek
+tek yuvarlanması ve ipucu eksikliğiydi): yazı tipi **Noto Sans SemiCondensed** (OFL; wdth 87,5, statik 400/500/600/700)
+seçildi. Yazı tipi tek belirteçten yüklenir; metin imgui_freetype ile LightHinting | ForceAutoHint, yatay piksel
+yakalama, tam piksel boyut ve konumla çizilir; eksik simgeler (≈ ≤ ≥ ← →) MergeMode ile tamamlanır.
 Kısayollar: Alt+1/2/3 kat kapsamı, görünümler Ctrl+Alt+1…4, Seçimi temizle Esc + Ctrl+Shift+A. Yönetmelik sihirbazı:
 kural ihlalinde engeller; rüzgâr ve kar varsayılan açık; ilk sürüme karma yapı, sahaya özel spektrum ve hareketli yük
 azaltması (TS 498 Çizelge 7) eklenir (`op4/tasarim/sihirbaz/sihirbaz.md` §12).

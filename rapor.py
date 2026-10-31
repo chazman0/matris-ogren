@@ -1193,6 +1193,26 @@ class _Rapor:
         else:
             h += self._b6_aks_kat_dosemeler()
         h += self._b6_kar_ruzgar_kren_ek()
+        h += self._b6_azaltma()
+        return h
+
+    def _b6_azaltma(self):
+        """TS 498:2021 md. 16 hareketli yük azaltması (yalnız yuk_durumlari.Q.azaltma açıksa)."""
+        az = _sozluk(self.v.get("hareketli_azaltma"))
+        if not az:
+            return ""
+        el = [e for e in _liste(az.get("elemanlar")) if isinstance(e, dict)]
+        bet = {}
+        for e in el:
+            bet.setdefault(e.get("beta"), []).append(e)
+        t = _sozluk(az.get("temel"))
+        ozet = "; ".join(f"β = {_f(b_, 3)}: {len(es)} kolon ({_e(', '.join(str(x.get('adres') or x.get('no')) for x in es[:4]))}"
+                         f"{' …' if len(es) > 4 else ''})" for b_, es in sorted(bet.items(), key=lambda kv: kv[0] if kv[0] is not None else 1))
+        h = _h3("6.9 Hareketli yük azaltması (TS 498:2021 md. 16, Çizelge 7)")
+        h += _p("Üç tam kattan fazla kat taşıyan düşey elemanlarda (kolon) ve temellerde hareketli yük, taşınan tam kat sayısına göre "
+                "Çizelge 7'deki <i>β</i> (alınacak Q / toplam Q) ile azaltıldı; kiriş ve döşemede azaltma yapılmadı. " + _e(ozet)
+                + f". Temel: β = {_f(t.get('beta'), 3)} ({_e(t.get('kural') or '')}). Deprem birleşimlerinde Q azaltılmadı (motor kuralı).")
+        h += f'<p class="kaynak">{self.kaynak(az.get("kaynak"))}</p>'
         return h
 
     def _b6_aks_kat_metni(self, kiris_oz):
@@ -1583,6 +1603,22 @@ class _Rapor:
             ("Ek dışmerkezlik", f"± {_f((d.get('e_oran') or 0.05) * 100, 1)}%·<i>B</i>", k("e")),
             ("DD-3 spektral ivmeleri (öteleme için)", f"{_v('S', 'DS')} = {_f(d.get('SDS_DD3'), 4)}, {_v('S', 'D1')} = {_f(d.get('SD1_DD3'), 4)}", k("lambda")),
         ]
+        oz = _sozluk(d.get("ozel_spektrum"))
+        if oz:
+            a = _sozluk(oz.get("asgari"))
+            satir.append(("Sahaya özel spektrum (TBDY md. 2.4)",
+                          _e(f"{len(_liste(oz.get('noktalar')))} noktalı T–S_ae tablosu; kaynak: {oz.get('kaynak') or '–'}; "
+                             f"S_DS {oz.get('SDS_kaynak')}, S_D1 {oz.get('SD1_kaynak')}; md. 2.4.1.2 %90 tabanı "
+                             + (("sağlandı" if a.get("saglandi") else "sağlanmadı, tabanın altında kalan aralıklarda %90 tabanı kullanıldı")
+                                + f" (en küçük oran {_f(a.get('en_kucuk_oran'), 3)})" if a else "denetlenemedi")), k("ozel_spektrum")))
+        km = _sozluk(d.get("karma"))
+        if km:
+            kx, ky = _sozluk(km.get("X")), _sozluk(km.get("Y"))
+            bol = "; ".join(f"{z.get('ad')}: {z.get('X')}/{z.get('Y')}" for z in _liste(km.get("bolgeler")) if isinstance(z, dict))
+            satir.append(("Karma taşıyıcı sistem (TBDY md. 4.3.4.2)",
+                          _e(f"X: {kx.get('kod')} (R = {_f(kx.get('R'), 2)}, D = {_f(kx.get('D'), 2)}); Y: {ky.get('kod')} "
+                             f"(R = {_f(ky.get('R'), 2)}, D = {_f(ky.get('D'), 2)})" + (f"; bölgeler — {bol} (en küçük R bütün binaya)" if bol else "")),
+                          k("karma")))
         h = _anahtar_deger([s if len(s) == 3 else (s[0], s[1], "") for s in satir])
         h += _h3("7.1 Yatay elastik tasarım spektrumu") + self.spektrum_svg(d)
         h += _p(f"{_v('S', 'ae')}(<i>T</i>) = (0.4 + 0.6<i>T</i>/{_v('T', 'A')}){_v('S', 'DS')} (0 ≤ <i>T</i> ≤ {_v('T', 'A')}); "
@@ -1742,6 +1778,11 @@ class _Rapor:
         kk = _sozluk(getattr(yv, "KOMBINASYONLAR", {}).get(kume)) if yv else {}
         h = _p(f"Kullanılan küme: <b>{_e(kk.get('ad') or kume or '–')}</b>"
                + (f' <span class="kaynak">({self.kaynak(kk.get("kaynak"))})</span>' if kk.get("kaynak") else ""))
+        kmk = _sozluk(_g(self.v, "tasarim", "kombinasyon_kumeleri"))
+        if kmk:      # karma yapı: kesit malzemesine göre küme
+            h += _p("Karma yapı — eleman tahkikinde malzemeye göre küme: " + "; ".join(
+                f"{_e(m)}: <b>{_e(_sozluk(x).get('ad') or _sozluk(x).get('kume'))}</b> ({_e(_sozluk(x).get('kombinasyon_sayisi'))} birleşim)"
+                for m, x in kmk.items()) + ". Tablolarda ve zarfta ana küme gösterilir; aynı yük durumlarından kurulur.")
         kom = [k for k in _liste(v.get("kombinasyonlar")) if isinstance(k, dict)]
         if not kom:
             return h + _not(UYGULANMADI)

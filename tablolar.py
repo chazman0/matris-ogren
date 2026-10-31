@@ -2319,6 +2319,89 @@ def _t_spektrum(c):
               satirlar, "Yatay elastik tasarım spektrumu ve azaltılmış spektrum (I/R_a).", "TBDY 2018 Denk. 2.3, 4.8")
 
 
+def _std_Sae(st, T, TL=6.0):
+    """Standart yatay elastik spektrum (TBDY 2018 Denk. 2.2) köşe değerlerinden."""
+    SDS, SD1, TA, TB = st["SDS"], st["SD1"], st["TA"], st["TB"]
+    if T <= TA:
+        return (0.4 + 0.6 * T / TA) * SDS
+    if T <= TB:
+        return SDS
+    return SD1 / T if T <= TL else SD1 * TL / T ** 2
+
+
+def _t_ozel_spektrum(c):
+    """Sahaya özel spektrum tablosu ve TBDY 2018 md. 2.4.1.2 (%90) denetimi — yalnız deprem.ozel_spektrum verildiyse."""
+    dep = _deprem_verisi(c)
+    oz = (dep or {}).get("ozel_spektrum")
+    if not oz:
+        return None
+    st = oz.get("standart")
+    oran = (oz.get("asgari") or {}).get("oran", 0.9)
+    satirlar = []
+    for T, v in oz.get("noktalar") or []:
+        s_std = _std_Sae(st, T, dep.get("TL") or 6.0) if st else None
+        satirlar.append(_R({"T": T, "Sae_ozel": v, "Sae_std": s_std, "taban": oran * s_std if s_std is not None else None,
+                            "Sae": max(v, oran * s_std) if s_std is not None else v,
+                            "oran": v / s_std if s_std else None,
+                            "durum": ("sağlandı" if v >= oran * s_std - 1e-9 else "taban kullanıldı") if s_std is not None else "—"}))
+    a = oz.get("asgari") or {}
+    return _T("ozel_spektrum", "Sahaya Özel Spektrum (TBDY 2.4)", "Deprem",
+              [_S("T", "T", "s", ondalik=3), _S("Sae_ozel", "S_ae (sahaya özel)", "g", ondalik=4),
+               _S("Sae_std", f"S_ae (standart, {oz.get('taban_zemin') or '—'})", "g", ondalik=4),
+               _S("taban", f"Taban %{round(100 * oran)}·standart", "g", ondalik=4), _S("Sae", "S_ae (tasarımda)", "g", ondalik=4),
+               _S("oran", "Özel / standart", ondalik=3, vurgu="dc"), _S("durum", "md. 2.4.1.2", tur="metin")],
+              satirlar, f"Kaynak: {oz.get('kaynak') or '—'}. S_DS: {oz.get('SDS_kaynak')}; S_D1: {oz.get('SD1_kaynak')}. Asgari denetim "
+                        f"(0,01 s ızgarası): en küçük oran {a.get('en_kucuk_oran', '—')} (T = {a.get('T_en_kucuk', '—')} s) — "
+                        + ("sağlandı." if a.get("saglandi") else "sağlanmadı; tabanın altındaki aralıklarda %90 tabanı kullanıldı."),
+              "TBDY 2018 md. 2.4.1.2; ZF: md. 16.5")
+
+
+def _t_karma_sistem(c):
+    """Karma taşıyıcı sistem (TBDY 4.3.4.2 doğrultu sistemleri, yükseklik boyunca bölgeler) — yalnız ilgili anahtarlar varsa."""
+    dep = _deprem_verisi(c)
+    km = (dep or {}).get("karma")
+    if not km:
+        return None
+    satirlar = []
+    for y in ("X", "Y"):
+        v = km[y]
+        satirlar.append(_R({"bolge": "yönetici (hesapta)", "dogrultu": y, "kod": v["kod"], "tanim": v["tanim"], "R": v["R"], "D": v["D"],
+                            "suneklik": v["suneklik"]}))
+    satirlar.append(_R({"bolge": "ana sistem", "dogrultu": "X / Y", "kod": f"{km['ana']['X']} / {km['ana']['Y']}", "tanim": "", "R": None,
+                        "D": None, "suneklik": ""}))
+    for z in km.get("bolgeler") or []:
+        yer = ("katlar " + "–".join(str(k) for k in z["katlar"])) if z.get("katlar") else f"grup {z.get('grup')}"
+        satirlar.append(_R({"bolge": f"{z['ad']} ({yer})", "dogrultu": "X / Y", "kod": f"{z['X']} / {z['Y']}", "tanim": "", "R": None,
+                            "D": None, "suneklik": ""}))
+    return _T("karma_sistem", "Karma Taşıyıcı Sistem", "Deprem",
+              [_S("bolge", "Bölge", tur="metin"), _S("dogrultu", "Doğrultu", tur="metin"), _S("kod", "Tablo 4.1", tur="metin"),
+               _S("tanim", "Tanım", tur="metin"), _S("R", "R", ondalik=2), _S("D", "D", ondalik=2), _S("suneklik", "Süneklik", tur="metin")],
+              satirlar, f"İzin verilen BYS ≥ {km.get('BYS_min')} (elverişsiz sistem); κ = {km.get('kappa')}, C_h = {km.get('Ch')}. "
+                        "Yükseklik boyunca farklı sistemde her doğrultuda en küçük R'li satır bütün binaya uygulanır (motor kuralı).",
+              km.get("kaynak", "TBDY 2018 md. 4.3.4.2, Tablo 4.1"))
+
+
+def _t_hareketli_azaltma(c):
+    """TS 498:2021 md. 16 Çizelge 7 — kolon başına uygulanan β (yalnız yuk_durumlari.Q.azaltma açıksa)."""
+    az = (c.veri or {}).get("hareketli_azaltma")
+    if not az:
+        return None
+    satirlar = []
+    for e in az.get("elemanlar") or []:
+        satirlar.append(_R({"eleman": f"{e['tur']} {e['no']}", "adres": e.get("adres"), "kat": e.get("kat"), "n": e.get("n"),
+                            "grup": e.get("grup"), "beta_tablo": e.get("beta_tablo"), "beta": e.get("beta"),
+                            "azaltma": (1.0 - e["beta"]) if e.get("beta") is not None else None}))
+    t = az.get("temel") or {}
+    satirlar.append(_R({"eleman": f"temel ({t.get('tip')})", "adres": t.get("kural"), "kat": 0, "n": t.get("n"), "grup": t.get("grup"),
+                        "beta_tablo": None, "beta": t.get("beta"), "azaltma": (1.0 - t["beta"]) if t.get("beta") is not None else None}))
+    return _T("hareketli_azaltma", "Hareketli Yük Azaltması (TS 498 Çizelge 7)", "Yükler",
+              [_S("eleman", "Eleman", tur="metin"), _S("adres", "Adres", tur="metin"), _S("kat", "Kat", ondalik=0),
+               _S("n", "Taşınan tam kat", ondalik=0), _S("grup", "Grup (a/b/yok)", tur="metin"), _S("beta_tablo", "β (Çizelge 7)", ondalik=3),
+               _S("beta", "β (uygulanan)", ondalik=3), _S("azaltma", "Azaltma 1 − β", ondalik=3)],
+              satirlar, "Kolon ve temellerde Q deprem dışı birleşimlerde β ile çarpılır; kiriş ve döşemede azaltma yok. a: konut, büro "
+                        "(en çok %40); b: hafif işyeri, mağaza (en çok %20); yok: depo, ağır sanayi.", az.get("kaynak", "TS 498:2021 md. 16"))
+
+
 # ============================================================================
 # ANALİZ
 # ============================================================================
@@ -2592,15 +2675,17 @@ def _t_tasarim_kolon(c):
         satirlar.append(_R({"no": e["no"], "adres": e.get("adres", ""), "kat": e.get("kat"), "kesit": e.get("kesit", ""),
                             "dc": e.get("dc"), "durum": e.get("durum", ""), "kontrol": b.get("kontrol", ""), "kombinasyon": b.get("kombinasyon", ""),
                             "N_max": o.get("N_max_kN"), "Ndm": o.get("Ndm_kN"), "N_sinir": o.get("N_sinir_TBDY_kN"),
-                            "rho": (o.get("rho") or 0.0) * 100 if o.get("rho") is not None else None, "As": o.get("As_toplam_cm2")}))
+                            "rho": (o.get("rho") or 0.0) * 100 if o.get("rho") is not None else None, "As": o.get("As_toplam_cm2"),
+                            **({"beta_Q": o.get("beta_Q")} if c.veri.get("hareketli_azaltma") else {})}))
     if not satirlar:
         return None
+    ek = [_S("beta_Q", "β (TS 498 Çiz. 7)", ondalik=3)] if c.veri.get("hareketli_azaltma") else []
     return _T("tasarim_betonarme_kolon", "Betonarme Kolon Tahkikleri", "Tasarım",
               [_S("no", "Kolon", ondalik=0), _S("adres", "Adres", tur="metin"), _S("kat", "Kat", ondalik=0), _S("kesit", "Kesit", tur="metin"),
                _S("dc", "D/C", ondalik=3, vurgu="dc"), _S("durum", "Durum", tur="metin"), _S("kontrol", "Belirleyen kontrol", tur="metin"),
                _S("kombinasyon", "Belirleyen birleşim", tur="metin"), _S("N_max", "N_d maks", "kN", ondalik=2),
                _S("Ndm", "N_dm", "kN", ondalik=2), _S("N_sinir", "0,40·f_ck·A_c", "kN", ondalik=2),
-               _S("rho", "ρ", "%", ondalik=2), _S("As", "A_s toplam", "cm²", ondalik=2)],
+               _S("rho", "ρ", "%", ondalik=2), _S("As", "A_s toplam", "cm²", ondalik=2)] + ek,
               satirlar, "N–M etkileşimi (iki eksenli), N_dm ≤ 0,40 f_ck A_c (TBDY 7.3.1.2); D/C > 1 kırmızı.",
               (c.veri["tasarim"].get("yontem") or {}).get("betonarme", ""))
 
@@ -3592,11 +3677,11 @@ def bina_tablolari(bina, veri=None, *, kati=False):
     if (c.R and c.R.deprem) or (c.veri and c.veri.get("deprem")) or isinstance(c.ham.get("deprem"), dict):
         ekle(_t_deprem_parametreleri)
         if _deprem_verisi(c):
-            for fn in (_t_spektrum, _t_kat_kuvvetleri, _t_burulma, _t_oteleme, _t_theta):
+            for fn in (_t_spektrum, _t_ozel_spektrum, _t_karma_sistem, _t_kat_kuvvetleri, _t_burulma, _t_oteleme, _t_theta):
                 ekle(fn)
     if c.veri is not None:
         for fn in (_t_yer_degistirmeler, _t_tepkiler, _t_zarf, _t_kombinasyon_ozeti, _t_kolon_yukleri, _t_korunum,
-                   _t_tasarim_kiris, _t_tasarim_kolon, _t_tasarim_celik):
+                   _t_tasarim_kiris, _t_tasarim_kolon, _t_tasarim_celik, _t_hareketli_azaltma):
             ekle(fn)
     ekle(_t_temel_parametreleri)
     if c.veri is not None:

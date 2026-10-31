@@ -428,6 +428,16 @@ G + 1,3Q + 1,3(S/2) + 1,3W ve G + 1,3Q + 1,3S + 1,3(W/2), servis G + Q + S),
 Rüzgâr dört yöne, E_d(H) Denk. (4.9)'a göre ±EX ± 0,3EY ve ±0,3EX ± EY ile ± dışmerkezliğe (32 varyant) açılır; varlık
 nedeni olan durum yoksa satır uygulanmaz (6.4'te T, 6.9/6.10'da H, kar satırlarında S), ikincil terim yoksa sıfır alınır
 (4.11'de 0,2S, 4.12'de H). Kombinasyonlar yeniden çözülmez, durum sonuçlarının katsayılı toplamıdır (yaygın yapı analiz programları da böyle yapar).
+
+İsteğe bağlı ekler (verilmezse sonuçlar değişmez): **karma yapı** — `kombinasyon_kumeleri: {"betonarme": "ts500", "celik":
+"cythye_ydkt"}` eleman tahkikini kesit malzemesinin kümesiyle yapar (aynı yük durumları); `deprem.tasiyici_x` / `tasiyici_y`
+doğrultu başına R, D (TBDY md. 4.3.4.2), `deprem.tasiyici_bolgeleri: [{"katlar": [4, 4], "tasiyici": "celik-cerceve-yuksek"}]`
+(genel modelde `"grup"` de olur) yükseklik boyunca farklı sistem — her doğrultuda en küçük R'li satır bütün binaya (motor kuralı).
+**Sahaya özel spektrum** — `deprem.ozel_spektrum: {"noktalar": [[T, S_ae], ...], "kaynak": "…", "SDS"?, "SD1"?, "DD3"?}`
+(TBDY md. 2.4; ZF zeminde zorunlu, md. 16.5): tablo doğrusal ara değerle okunur, tasarımda standart spektrumun %90'ının
+altına inilmez (md. 2.4.1.2). **Hareketli yük azaltması** — `yuk_durumlari.Q.azaltma: true` (TS 498:2021 md. 16 Çizelge 7):
+kolon ve temellerde taşınan tam kat sayısına göre β (`veri.hareketli_azaltma`, tasarım kaydında `ozet.beta_Q`). Yönetmelikte
+açık karşılığı bulunamayan motor kuralları `yapi_veri.EK_KURALLAR`'da `dogrulandi: false` ile listelenir ve uyarılara yazılır.
 Yanıt boyutu için `durumlar` içinde yalnız G ve Q tam diyagramlıdır; S, W, E durumları uç kuvvetleri ve `enb` taşır
 (`diyagram: false`), `sonuclar` yalnız ilk dayanım kombinasyonunu içerir (büyük modelde o da tembel kalır, `ozet.sonuclar_tembel`).
 
@@ -673,6 +683,7 @@ Bina işlemleri:
 | `bina_kutuphane`, `bina_sablonlar`, `bina_sablon` | kütüphane (`tasiyici_sistemler` dahil), şablon listesi, `{ad}` → `{bina}` |
 | `bina_yuk_yolu` | `{bina, veri, hedef: {tur: "doseme" \| "kiris" \| "kolon", no, durum}}` → `{adimlar}` |
 | `bina_deprem` | `{bina}` → `{deprem}` (çözümsüz önizleme: spektrum, V_tE, F_i) |
+| `bina_spektrum` | `{SS, S1, SS_DD3?, S1_DD3?, zemin_sinifi, BKS, tasiyici \| tasiyici_x/_y?, R?, D?, Ct?, ozel_spektrum?, HN?, sistem?, T_maks?, adim?}` (ya da `{deprem: {…}}`, `{bina}`) → `{FS, F1, SDS, SD1, TA, TB, TL, DTS, BYS, TpA, Ra, SaR, lambda, uyarilar, spektrum, egriler, ozel_spektrum?, karma?}`: modelsiz TBDY 2018 spektrum önizlemesi (Yönetmelik sihirbazı); sahaya özel tabloda md. 2.4.1.2 %90 denetimi `ozel_spektrum.asgari` |
 | `bina_kombinasyon` | `{cozum_kimligi, ad, katsayilar?, bina?}` → `{ad, sonuc}` (tam kayıt). Köprü son çözümleri bellekte tutar; kimlik yoksa `bina` verilirse yeniden çözer |
 | `bina_eleman_tasarim` | `{cozum_kimligi, tur: "kiris" \| "kolon" \| "cubuk", no, bina?}` → `{ad, bloklar, sonuc}`; genel modelde `tur: "cubuk"` ve çubuk numarası (tam eşleşme) |
 | `bina_kesit_oner` | `{cozum_kimligi \| bina, hedef: "hepsi" \| [{tur, no}], yinele: 0…3, grup?: true}` → `{oneriler, turlar, dc_once, dc_sonra, bina?, oteleme?, uyarilar, sure_ms}` (3.9.1; parçalı elemanda `cubuklar`, grup kipinde `grup`) |
