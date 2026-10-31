@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <utility>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -45,6 +47,19 @@ std::string TusAdi(const std::string& k) {
     for (const auto& [a, b] : adlar)
         if (t == a) return b;
     return "";
+}
+
+// Katlanmış iki ad arasındaki düzenleme uzaklığı (Levenshtein); yakın komut önerisi için.
+size_t Uzaklik(const std::string& a, const std::string& b) {
+    std::vector<size_t> once(b.size() + 1), simdi(b.size() + 1);
+    for (size_t j = 0; j <= b.size(); ++j) once[j] = j;
+    for (size_t i = 1; i <= a.size(); ++i) {
+        simdi[0] = i;
+        for (size_t j = 1; j <= b.size(); ++j)
+            simdi[j] = std::min({once[j] + 1, simdi[j - 1] + 1, once[j - 1] + (a[i - 1] == b[j - 1] ? 0u : 1u)});
+        std::swap(once, simdi);
+    }
+    return once[b.size()];
 }
 
 SecimKosulu SecimOku(const std::string& s) {
@@ -253,7 +268,20 @@ bool KomutYoneticisi::SatirCalistir(std::string_view satir, Hizmetler& h, std::s
     if (!t) {
         if (hata) {
             *hata = "Bilinmeyen komut: '" + ad + "'.";
-            const auto yakin = Tamamla(ad, 5);
+            auto yakin = Tamamla(ad, 5);
+            if (yakin.empty()) {
+                // Yazım hatası: katlanmış ada (ya da takma ada) düzenleme uzaklığı en küçük komutlar.
+                const std::string k = TurkceKatla(ad);
+                const size_t sinir = std::max<size_t>(1, k.size() / 3);
+                std::vector<std::pair<size_t, const KomutTanimi*>> aday;
+                for (const KomutTanimi& t : tanimlar_) {
+                    size_t u = Uzaklik(k, TurkceKatla(t.ad));
+                    for (const std::string& a : t.takmaAdlar) u = std::min(u, Uzaklik(k, TurkceKatla(a)));
+                    if (u <= sinir) aday.emplace_back(u, &t);
+                }
+                std::stable_sort(aday.begin(), aday.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+                for (size_t i = 0; i < aday.size() && i < 3; ++i) yakin.push_back(aday[i].second);
+            }
             if (!yakin.empty()) {
                 *hata += " Yakın komutlar:";
                 for (size_t i = 0; i < yakin.size(); ++i) *hata += (i ? ", " : " ") + yakin[i]->ad;
