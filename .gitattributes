@@ -1,0 +1,8 @@
+# Satır sonları. Windows'ta git core.autocrlf=true ile LF dosyaları CRLF olarak alır; op4'ün veri ve sınama dosyaları
+# bayt bayt karşılaştırılır (şablon metni, kanonik model metni, gömülü JS), kurulumdaki şablonlar da LF kalmalıdır.
+# Yalnız metin uzantıları listelenir (op4/testler içinde zip fikstürleri vardır). op4/kurulum/op4.iss CRLF + BOM'dur.
+op4/veri/**/*.json      text eol=lf
+op4/testler/**/*.json   text eol=lf
+op4/testler/**/*.jsonl  text eol=lf
+op4/js/*.js             text eol=lf
+docs/*.js               text eol=lf
