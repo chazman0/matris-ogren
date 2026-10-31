@@ -1951,8 +1951,12 @@ görsel ve yerleşim kararlarının **önüne geçer**; §5'te çelişen her şe
 
 Kullanıcı Stüdyo kararını geri aldı: arayüz **B — "Atölye"** yerleşimiyle, **modernize edilerek** yapılır; yukarıdaki
 Stüdyo maddeleri (yüzen paneller, yüzen komut çubuğu, yüzen ray) geçersizdir, gezinme ve açılış ekranı kuralları aynen
-geçerlidir. Bağlayıcı kaynak `op4/tasarim/taslaklar/atolye/` (yerleşim) ve hazırlanmakta olan modernize tasarım
-(belirteçler; birleşince bu bölüme bağlanır).
+geçerlidir. Bağlayıcı kaynak `op4/tasarim/atolye-modern/` (belirteçler `belirtec.py`, belirtim `tasarim.md`, Ayarlar
+sayfaları); yerleşimin kökeni `op4/tasarim/taslaklar/atolye/`.
+
+**Kullanıcı kararları (31.10.2026):** vurgu **A — Kobalt** (#2563EB) varsayılan; Petrol ve Grafit Ayarlar › Görüntü'de
+seçenek olarak kalır. Arayüz yazı tipi (Inter) beğenilmedi ("harfler tek düze durmuyor"); daha düzgün ve verimli bir
+yazı tipi seçilmektedir. Yazı tipi tek belirteçten yüklenir, metin imgui_freetype ile ipuçlu (hinting) çizilir.
 
 - **Korunacaklar (kullanıcının beğendiği):** üst çubuk + şerit, soldaki model ağacı, sağdaki Özellikler ve dikey pencere
   şeridi; ayrıca Atölye'nin ince sol rayı, sekmeli alt rıhtım (Komut / Mesajlar / Tablolar), kat kapsamı anahtarı +
