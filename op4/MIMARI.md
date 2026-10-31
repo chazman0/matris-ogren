@@ -1957,6 +1957,9 @@ sayfaları); yerleşimin kökeni `op4/tasarim/taslaklar/atolye/`.
 **Kullanıcı kararları (31.10.2026):** vurgu **A — Kobalt** (#2563EB) varsayılan; Petrol ve Grafit Ayarlar › Görüntü'de
 seçenek olarak kalır. Arayüz yazı tipi (Inter) beğenilmedi ("harfler tek düze durmuyor"); daha düzgün ve verimli bir
 yazı tipi seçilmektedir. Yazı tipi tek belirteçten yüklenir, metin imgui_freetype ile ipuçlu (hinting) çizilir.
+Kısayollar: Alt+1/2/3 kat kapsamı, görünümler Ctrl+Alt+1…4, Seçimi temizle Esc + Ctrl+Shift+A. Yönetmelik sihirbazı:
+kural ihlalinde engeller; rüzgâr ve kar varsayılan açık; ilk sürüme karma yapı, sahaya özel spektrum ve hareketli yük
+azaltması (TS 498 Çizelge 7) eklenir (`op4/tasarim/sihirbaz/sihirbaz.md` §12).
 
 - **Korunacaklar (kullanıcının beğendiği):** üst çubuk + şerit, soldaki model ağacı, sağdaki Özellikler ve dikey pencere
   şeridi; ayrıca Atölye'nin ince sol rayı, sekmeli alt rıhtım (Komut / Mesajlar / Tablolar), kat kapsamı anahtarı +

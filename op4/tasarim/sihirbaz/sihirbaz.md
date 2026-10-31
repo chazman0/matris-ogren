@@ -602,6 +602,17 @@ varsayılanı kullananlar** (değeri eski varsayılana eşit olan döşemeler/ki
 
 ## 12. Açık sorular (kullanıcıya)
 
+**Kararlar (31.10.2026, kullanıcı):**
+- **1 Karma yapı:** ilk sürümde desteklenir — motor eleman grubuna / kat bölgesine göre taşıyıcı sistem ve kombinasyon
+  kümesi uygular ("kısıtlı" kart kalkar).
+- **2 Sahaya özel spektrum:** ilk sürümde — kullanıcı tanımlı T–S_ae tablosu (ZF ve isteğe bağlı her sınıf için); 13'teki
+  motor eki (`bina_spektrum`, DTS/BYS tabloları) bununla birlikte yapılır.
+- **6 Hareketli yük azaltması (TS 498 Çizelge 7):** ilk sürümde, seçenek olarak.
+- **8 Kural ihlalleri:** sihirbaz **engeller** — kurala aykırı seçimde "İleri" kilitlenir; adım çubuğunda "eksik",
+  alanın altında neden + yönetmelik maddesi + düzeltme önerisi gösterilir.
+- **9 Rüzgâr, 10 Kar:** varsayılan açık.
+- Diğerleri açık; önerilen varsayılanlarla ilerlenir.
+
 1. **Karma yapı:** motor tek `sistem` ve tek kombinasyon kümesi uygular; karma yapıda çelik elemanlar TS 500 katsayılarıyla
    (YDKT dayanımı) tahkik edilir. Karma kartı "kısıtlı" olarak mı kalsın, yoksa motora eleman grubuna göre küme eklensin mi?
 2. **ZF / sahaya özel spektrum:** ZF seçilince adım "eksik" oluyor. Kullanıcı tanımlı spektrum tablosu (T–S_ae) girişi

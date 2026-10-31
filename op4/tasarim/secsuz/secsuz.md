@@ -590,6 +590,10 @@ görüntüleri bu taslaklarla gözle karşılaştırılır (MIMARI §25 kabul il
 
 ## 20. Açık sorular (kullanıcı onayı)
 
+**Kararlar (31.10.2026, kullanıcı):** 1 ve 2 onaylandı — Alt+1/2/3 kat kapsamı (Bu kat / Benzer katlar / Tüm katlar),
+görünümler Ctrl+Alt+1…4 (3B / Plan / Ön / Yan); Seçimi temizle Esc + Ctrl+Shift+A (Ctrl+Q hızlı başlat olarak kalır).
+3–6 açık; önerilen varsayılanlarla uygulanır.
+
 1. **Alt+1…4 çakışması**: `komutlar.json` görünümleri (3B/Plan/Ön/Yan) ile kat kapsamı (Alt+1/2/3) — öneri: görünümler
    Ctrl+Alt+1…4.
 2. **Temizle kısayolu**: ilke 10'daki Ctrl+Q op4'te hızlı başlat; öneri Esc + Ctrl+Shift+A.
