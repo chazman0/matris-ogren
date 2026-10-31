@@ -1687,8 +1687,12 @@ class _Rapor:
             for x in katlar:
                 rows.append([_e(x.get("kat")), _f(x.get("h"), 2), _f(float(x.get("delta_x") or 0) * 1000, 3), _f(float(x.get("delta_etkin_x") or 0) * 1000, 2),
                              _f(x.get("oran_x"), 5), _f(float(x.get("delta_y") or 0) * 1000, 3), _f(float(x.get("delta_etkin_y") or 0) * 1000, 2),
-                             _f(x.get("oran_y"), 5), _f(x.get("sinir", sin), 4),
-                             _dc_hucre(max(float(x.get("oran_x") or 0), float(x.get("oran_y") or 0)) / float(x.get("sinir", sin) or 1),
+                             _f(x.get("oran_y"), 5),
+                             (_f(x.get("sinir_x"), 4) + " / " + _f(x.get("sinir_y"), 4) + f" (κ {_f(x.get('kappa_x'), 2)} / {_f(x.get('kappa_y'), 2)})")
+                             if "sinir_x" in x else _f(x.get("sinir", sin), 4),
+                             _dc_hucre(max(float(x.get("oran_x") or 0) / float(x["sinir_x"] or 1), float(x.get("oran_y") or 0) / float(x["sinir_y"] or 1))
+                                       if "sinir_x" in x else
+                                       max(float(x.get("oran_x") or 0), float(x.get("oran_y") or 0)) / float(x.get("sinir", sin) or 1),
                                        x.get("uygun"))])
             h += _tablo(["Kat", _v("h", "i") + " [m]", "Δ<sub>X,max</sub> [mm]", "δ<sub>X,max</sub> [mm]", "λδ<sub>X</sub>/h",
                          "Δ<sub>Y,max</sub> [mm]", "δ<sub>Y,max</sub> [mm]", "λδ<sub>Y</sub>/h", "Sınır", "D/C"], rows, sinif="kucuk")
@@ -1696,8 +1700,15 @@ class _Rapor:
             h += _p(f"{_v('θ', 'II,i')} = (Δ<sub>i</sub>)<sub>ort</sub>·Σ<sub>k≥i</sub> <i>w</i><sub>k</sub>/({_v('V', 'i')}·{_v('h', 'i')}) ≤ "
                     f"0.12·<i>D</i>/({_v('C', 'h')}·<i>R</i>) = 0.12·{_f(d.get('D'), 2)}/({_f(d.get('Ch'), 2)}·{_f(d.get('R'), 2)}) = "
                     f"{_f(d.get('theta_sinir'), 4)} {k('theta')}")
-            rows = [[_e(x.get("kat")), _f(x.get("theta_x"), 5), _f(x.get("theta_y"), 5), _f(d.get("theta_sinir"), 4),
-                     _dc_hucre(max(float(x.get("theta_x") or 0), float(x.get("theta_y") or 0)) / float(d.get("theta_sinir") or 1))] for x in katlar]
+            rows = [[_e(x.get("kat")), _f(x.get("theta_x"), 5), _f(x.get("theta_y"), 5),
+                     (_f(x.get("theta_sinir_x"), 4) + " / " + _f(x.get("theta_sinir_y"), 4)) if "theta_sinir_x" in x else _f(d.get("theta_sinir"), 4),
+                     _dc_hucre(max(float(x.get("theta_x") or 0) / float(x["theta_sinir_x"] or 1), float(x.get("theta_y") or 0) / float(x["theta_sinir_y"] or 1))
+                               if "theta_sinir_x" in x else
+                               max(float(x.get("theta_x") or 0), float(x.get("theta_y") or 0)) / float(d.get("theta_sinir") or 1))] for x in katlar]
+            if any("kappa_x" in x for x in katlar):
+                h += _p("Karma bina: κ (md. 4.9.1.3) ve " + _v("C", "h") + " (Denk. 4.36) kat ve doğrultu başına katın sisteminden — betonarme "
+                        "κ = 1, " + _v("C", "h") + " = 0.5; çelik κ = 0.5, " + _v("C", "h") + " = 1; aynı katta ikisi birden çelik değerleri "
+                        "(sınır sütununda X / Y).")
             h += _tablo(["Kat", _v("θ", "II,X"), _v("θ", "II,Y"), "Sınır", "D/C"], rows)
         uy = _sozluk(d.get("uygulanabilirlik"))
         if uy:

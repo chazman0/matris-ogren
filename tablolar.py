@@ -2276,15 +2276,21 @@ def _t_oteleme(c):
         sinir = k.get("sinir", dep.get("sinir_oran"))
         ox, oy = k.get("oran_x"), k.get("oran_y")
         en = max(v for v in (ox, oy, 0.0) if v is not None)
+        katli = "sinir_x" in k            # karma: kat ve doğrultu başına κ (md. 4.9.1.3)
+        dc = (max((ox or 0.0) / k["sinir_x"], (oy or 0.0) / k["sinir_y"]) if katli else (en / sinir if sinir else None))
         satirlar.append(_R({"kat": k["kat"], "h": k.get("h"), "d_x": (k.get("d_x") or 0.0) * 1000, "d_y": (k.get("d_y") or 0.0) * 1000,
                             "delta_x": (k.get("delta_etkin_x") or 0.0) * 1000, "delta_y": (k.get("delta_etkin_y") or 0.0) * 1000,
-                            "oran_x": ox, "oran_y": oy, "sinir": sinir, "dc": en / sinir if sinir else None,
-                            "uygun": bool(k.get("uygun", True))}))
+                            "oran_x": ox, "oran_y": oy, "sinir": sinir, "dc": dc, "uygun": bool(k.get("uygun", True)),
+                            **({"kappa_x": k.get("kappa_x"), "kappa_y": k.get("kappa_y"), "sinir_x": k.get("sinir_x"),
+                                "sinir_y": k.get("sinir_y")} if katli else {})}))
+    kat_sutun = any("sinir_x" in k for k in dep.get("katlar") or [])
     return _T("oteleme", "Göreli Kat Ötelemeleri", "Deprem",
               [_S("kat", "Kat", ondalik=0), _S("h", "h_i", "m", ondalik=2), _S("d_x", "d_i (X)", "mm", ondalik=2),
                _S("d_y", "d_i (Y)", "mm", ondalik=2), _S("delta_x", "δ_i etkin (X)", "mm", ondalik=2), _S("delta_y", "δ_i etkin (Y)", "mm", ondalik=2),
-               _S("oran_x", "λ·δ/h (X)", ondalik=5), _S("oran_y", "λ·δ/h (Y)", ondalik=5), _S("sinir", "Sınır κ·0,008", ondalik=4),
-               _S("dc", "Oran / sınır", ondalik=3, vurgu="dc"), _S("uygun", "Sağlanıyor", tur="bool")],
+               _S("oran_x", "λ·δ/h (X)", ondalik=5), _S("oran_y", "λ·δ/h (Y)", ondalik=5), _S("sinir", "Sınır κ·0,008", ondalik=4)]
+              + ([_S("kappa_x", "κ (X, kat)", ondalik=2), _S("kappa_y", "κ (Y, kat)", ondalik=2), _S("sinir_x", "Sınır (X)", ondalik=4),
+                  _S("sinir_y", "Sınır (Y)", ondalik=4)] if kat_sutun else [])
+              + [_S("dc", "Oran / sınır", ondalik=3, vurgu="dc"), _S("uygun", "Sağlanıyor", tur="bool")],
               satirlar, "δ_i = (R/I)·Δ_i (etkin göreli öteleme); λ·δ_i,max/h_i ≤ κ·0,008 (dolgu bitişik) ya da κ·0,016 (esnek).",
               "TBDY 2018 Denk. 4.33–4.34")
 
@@ -2298,6 +2304,11 @@ def _t_theta(c):
     for k in dep.get("katlar") or []:
         tx, ty = k.get("theta_x"), k.get("theta_y")
         en = max(v for v in (tx, ty, 0.0) if v is not None)
+        if "theta_sinir_x" in k:      # karma: kat ve doğrultu başına C_h (Denk. 4.36)
+            sx, sy = k["theta_sinir_x"], k["theta_sinir_y"]
+            satirlar.append(_R({"kat": k["kat"], "theta_x": tx, "theta_y": ty, "sinir": min(sx, sy),
+                                "dc": max((tx or 0.0) / sx, (ty or 0.0) / sy)}))
+            continue
         satirlar.append(_R({"kat": k["kat"], "theta_x": tx, "theta_y": ty, "sinir": sinir, "dc": en / sinir if sinir else None}))
     return _T("theta", "İkinci Mertebe Göstergesi θ_II", "Deprem",
               [_S("kat", "Kat", ondalik=0), _S("theta_x", "θ_II (X)", ondalik=4), _S("theta_y", "θ_II (Y)", ondalik=4),
@@ -2366,7 +2377,7 @@ def _t_karma_sistem(c):
     for y in ("X", "Y"):
         v = km[y]
         satirlar.append(_R({"bolge": "yönetici (hesapta)", "dogrultu": y, "kod": v["kod"], "tanim": v["tanim"], "R": v["R"], "D": v["D"],
-                            "suneklik": v["suneklik"]}))
+                            "suneklik": v["suneklik"], "Ct": (km.get("Ct") or {}).get(y), "TpA": (km.get("TpA") or {}).get(y)}))
     satirlar.append(_R({"bolge": "ana sistem", "dogrultu": "X / Y", "kod": f"{km['ana']['X']} / {km['ana']['Y']}", "tanim": "", "R": None,
                         "D": None, "suneklik": ""}))
     for z in km.get("bolgeler") or []:
@@ -2375,9 +2386,11 @@ def _t_karma_sistem(c):
                             "D": None, "suneklik": ""}))
     return _T("karma_sistem", "Karma Taşıyıcı Sistem", "Deprem",
               [_S("bolge", "Bölge", tur="metin"), _S("dogrultu", "Doğrultu", tur="metin"), _S("kod", "Tablo 4.1", tur="metin"),
-               _S("tanim", "Tanım", tur="metin"), _S("R", "R", ondalik=2), _S("D", "D", ondalik=2), _S("suneklik", "Süneklik", tur="metin")],
-              satirlar, f"İzin verilen BYS ≥ {km.get('BYS_min')} (elverişsiz sistem); κ = {km.get('kappa')}, C_h = {km.get('Ch')}. "
-                        "Yükseklik boyunca farklı sistemde her doğrultuda en küçük R'li satır bütün binaya uygulanır (motor kuralı).",
+               _S("tanim", "Tanım", tur="metin"), _S("R", "R", ondalik=2), _S("D", "D", ondalik=2), _S("suneklik", "Süneklik", tur="metin"),
+               _S("Ct", "C_t (Denk. 4.27)", ondalik=3), _S("TpA", "T_pA", "s", ondalik=4)],
+              satirlar, f"İzin verilen BYS ≥ {km.get('BYS_min')} (elverişsiz sistem); C_t ve T_pA doğrultu başına; κ ve C_h kat başına "
+                        "(Göreli Kat Ötelemeleri tablosu). Yükseklik boyunca farklı sistemde her doğrultuda en küçük R'li satır bütün "
+                        "binaya uygulanır (motor kuralı).",
               km.get("kaynak", "TBDY 2018 md. 4.3.4.2, Tablo 4.1"))
 
 

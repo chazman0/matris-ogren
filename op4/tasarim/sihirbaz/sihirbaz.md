@@ -142,7 +142,7 @@ seçenekler** · **Doğrulama** (motorun kuralı; H = hata/eksik, U = uyarı) ·
 |---|---|---|---|
 | Betonarme | `sistem: "betonarme"` | TS 500:2000 (+T1/T2/T3), TS 708:2016, TBDY 2018 Bölüm 7, TS 498:2021 | Adım 2 beton + donatı; Adım 4 Tablo 4.1 A ve B satırları (motor `onuretimli` grubunu betonarmeyle uyumlu sayar), C_t = 0,10 (çerçeve) / 0,07; Adım 6 `ts500`; Adım 7 çatlamış kesit açık |
 | Çelik | `sistem: "celik"` | ÇYTHYE 2018 (YDKT/GKT), TBDY 2018 Bölüm 9, TS 498:2021 | Adım 2 yapı çeliği (+ temel için beton); Adım 4 C satırları, C_t = 0,08; Adım 6 `cythye_ydkt`; κ = 0,5, C_h = 1,0 |
-| Karma | `sistem`: kullanıcı **ana taşıyıcı sistemi** seçer; `kombinasyon_kumeleri` `{"betonarme": "ts500", "celik": "cythye_ydkt"}`; isteğe bağlı `deprem.tasiyici_x` / `tasiyici_y`, `deprem.tasiyici_bolgeleri` | ikisi | Motor (karar 1): eleman tahkikinde kesit malzemesine göre küme (çelik → ÇYTHYE 5.3 + TBDY 9.2.5, beton → TS 500 6.2.6 + TBDY 4.4.4; aynı yük durumları); doğrultuya göre R, D (TBDY 4.3.4.2); yükseklik boyunca / eleman grubuna göre bölge sistemleri → her doğrultuda en küçük R'li satır bütün binaya (motor kuralı, `EK_KURALLAR`); izin verilen BYS elverişsiz sistem; betonarme + çelik birlikteyse κ = 0,5, C_h = 1,0 (güvenli taraf, doğrulanmadı) |
+| Karma | `sistem`: kullanıcı **ana taşıyıcı sistemi** seçer; `kombinasyon_kumeleri` `{"betonarme": "ts500", "celik": "cythye_ydkt"}`; isteğe bağlı `deprem.tasiyici_x` / `tasiyici_y`, `deprem.tasiyici_bolgeleri` | ikisi | Motor (karar 1): eleman tahkikinde kesit malzemesine göre küme (çelik → ÇYTHYE 5.3 + TBDY 9.2.5, beton → TS 500 6.2.6 + TBDY 4.4.4; aynı yük durumları); doğrultuya göre R, D (TBDY 4.3.4.2); yükseklik boyunca / eleman grubuna göre bölge sistemleri → her doğrultuda en küçük R'li satır bütün binaya (motor kuralı, `EK_KURALLAR`); izin verilen BYS elverişsiz sistem; C_t ve T_pA doğrultu başına o doğrultunun yönetici satırından; κ ve C_h kat ve doğrultu başına o katın sisteminden (betonarme κ 1 / C_h 0,5, çelik κ 0,5 / C_h 1, aynı katta ikisi birden çelik değerleri; kullanıcı kararı 31.10.2026, `EK_KURALLAR` doğrulanmadı) |
 
 **Ön geometri (tahmini)** — modele yazılmaz; yalnız önizleme (BYS, T_pA, rüzgâr q):
 
@@ -280,7 +280,7 @@ yapı türüyle uyuşmuyor. Engellesin mi uyarsın mı: açık soru 8.
 | Alan | Anahtar | Varsayılan | Seçenekler | Doğrulama | Kaynak |
 |---|---|---|---|---|---|
 | Periyot T_p | `deprem.periyot` | `"otomatik"` | otomatik (motor: DTS 3–4 ya da BYS ≥ 6 ise ampirik, değilse Rayleigh ≤ 1,4·T_pA) · ampirik · rayleigh | — | md. 4.7.3 |
-| C_t | `deprem.Ct` | Otomatik (anahtar yazılmaz) | 0,10 betonarme çerçeve · 0,08 çelik · 0,07 diğer | > 0 | Denk. 4.27; tamamı perdeli binada Denk. 4.28 (C_t = 0,1/√A_t ≤ 0,07) motor uygulamaz → bilgi |
+| C_t | `deprem.Ct` (karma: `Ct_x`, `Ct_y`) | Otomatik (anahtar yazılmaz) | 0,10 betonarme çerçeve · 0,08 çelik · 0,07 diğer | > 0 | Denk. 4.27; tamamı perdeli binada Denk. 4.28 (C_t = 0,1/√A_t ≤ 0,07) motor uygulamaz → bilgi (perdeli doğrultuda uyarı). Doğrultuya göre farklı sistemde C_t ve T_pA doğrultu başına |
 | n | `deprem.n` | Otomatik (anahtar yazılmaz; motor döşemelerin kullanım sınıflarından en büyük n'yi alır) | 0,3 · 0,6 · 0,8 · 1,0 | 0 ≤ n ≤ 1 | Tablo 4.3 |
 | Ek dışmerkezlik | `deprem.dismerkezlik` | 0,05 | ≥ 0 (arayüz üst sınırı 0,30) | > 0,30 H (web arayüzüyle aynı) | md. 4.5.10.2 |
 | Dolgu duvarlar | `deprem.dolgu` | `"bitisik"` | bitişik gevrek (λδ/h ≤ 0,008κ) · esnek derzli (0,016κ) | — | md. 4.9.1.3 |
@@ -300,8 +300,8 @@ yapı türüyle uyuşmuyor. Engellesin mi uyarsın mı: açık soru 8.
 | EDYY uygunluğu | düzenli: DTS 1–2 BYS ≥ 4, DTS 3–4 BYS ≥ 5; diğer: 5 / 6 | Tablo 4.4 | uygun |
 | λ | S_ae(T_p; DD-3)/S_ae(T_p; DD-2) (DD-3 yoksa 1) | md. 4.9.1.4 | 0,446 |
 | E_d(Z) | (2/3)·S_DS·G | Denk. 4.10 | 0,816·G |
-| Drift sınırı | 0,008κ / 0,016κ; κ: betonarme 1,0, çelik 0,5 | Denk. 4.34 | 0,008 |
-| θ_II sınırı | 0,12·D/(C_h·R); C_h: betonarme 0,5, çelik 1,0 | Denk. 4.35 | 0,09 |
+| Drift sınırı | 0,008κ / 0,016κ; κ: betonarme 1,0, çelik 0,5 (karma binada kat ve doğrultu başına; `veri.deprem.katlar[].kappa_x / sinir_x`) | md. 4.9.1.3, Denk. 4.34 | 0,008 |
+| θ_II sınırı | 0,12·D/(C_h·R); C_h: betonarme 0,5, çelik ve kompozit kolonlu 1,0 (karma binada kat ve doğrultu başına; `theta_sinir_x`) | Denk. 4.36 | 0,09 |
 
 V_tE, F_i, m_t model ister; model varken spektrum kartının altında `bina_deprem` önizlemesi (taban kesme, kat kuvvetleri)
 açılır (bugünkü web Deprem sekmesiyle aynı).
@@ -617,7 +617,8 @@ varsayılanı kullananlar** (değeri eski varsayılana eşit olan döşemeler/ki
 - Diğerleri açık; önerilen varsayılanlarla ilerlenir.
 - **Motor eki (1, 2, 6, 13 uygulandı):** model anahtarları `kombinasyon_kumeleri`, `deprem.tasiyici_x` / `tasiyici_y` /
   `tasiyici_bolgeleri` (takma ad `sistem_x` / `sistem_y` / `sistem_bolgeleri`), `deprem.ozel_spektrum`, `yuk_durumlari.Q.azaltma`;
-  köprü `bina_spektrum`; kütüphanede DTS/BYS tabloları ve T_L. Yönetmelikte açık karşılığı bulunamayan motor kuralları
+  köprü `bina_spektrum`; kütüphanede DTS/BYS tabloları ve T_L. Karma binada (kullanıcı kararı 31.10.2026) κ ve C_h kat ve doğrultu
+  başına katın sisteminden, C_t ve T_pA doğrultu başına (`deprem.Ct_x` / `Ct_y` ile elle). Yönetmelikte açık karşılığı bulunamayan motor kuralları
   `yapi_veri.EK_KURALLAR`'da `dogrulandi: false` ile durur ve kullanıldıklarında sonuç uyarılarına yazılır (sihirbazda "Uyarı").
 
 1. **Karma yapı:** motor tek `sistem` ve tek kombinasyon kümesi uygular; karma yapıda çelik elemanlar TS 500 katsayılarıyla
