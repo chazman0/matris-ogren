@@ -886,7 +886,10 @@ bool Grafik::EkranDisiKaresi(const GorunumKamerasi& kam, const CizimAyari& a, Go
         const UINT g = okumaIzi_.Footprint.Width, y = okumaIzi_.Footprint.Height;
         rgba->resize(static_cast<size_t>(g) * y * 4);
         uint8_t* p = nullptr;
-        D3D12_RANGE okunan{0, static_cast<SIZE_T>(okumaIzi_.Offset + static_cast<UINT64>(okumaIzi_.Footprint.RowPitch) * y)};
+        // Son satır RowPitch'e doldurulmaz: tampon Offset + RowPitch·(y−1) + g·4 bayttır (GetCopyableFootprints toplamı).
+        // RowPitch·y ile aralık, genişlik·4 256'nın katı değilse (ör. 1366 px) tamponu aşar ve Map reddeder.
+        D3D12_RANGE okunan{0, static_cast<SIZE_T>(okumaIzi_.Offset + static_cast<UINT64>(okumaIzi_.Footprint.RowPitch) * (y - 1) +
+                                                  static_cast<UINT64>(g) * 4)};
         if (FAILED(okumaTamponu_->Map(0, &okunan, reinterpret_cast<void**>(&p)))) return false;
         for (UINT r = 0; r < y; ++r)
             std::memcpy(rgba->data() + static_cast<size_t>(r) * g * 4,
