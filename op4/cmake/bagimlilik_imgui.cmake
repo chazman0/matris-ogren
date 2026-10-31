@@ -1,5 +1,7 @@
 # Dear ImGui v1.92.9b-docking (MIT) — yalnız Windows (DX12 + Win32 arka uçları). Hedef: imgui. Sahibi: A (sürüm), C (kullanım).
 # OP4_IMGUI_DIZINI ile yerel kopya verilebilir (MinGW denetimi).
+# Yazı atlası imgui_freetype ile işlenir (IMGUI_ENABLE_FREETYPE, PUBLIC: arayuz/yazi.cpp LightHinting | ForceAutoHint kurar;
+# MIMARI §25.1); FreeType cmake/bagimlilik_freetype.cmake'tedir (bu dosyadan önce içerilir).
 if(WIN32)
   op4_bagimlilik_git(imgui
     REPO https://github.com/ocornut/imgui.git
@@ -10,11 +12,13 @@ if(WIN32)
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/misc/freetype/imgui_freetype.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp)
   target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-  target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DISABLE_DEMO_WINDOWS UNICODE _UNICODE)
-  target_link_libraries(imgui PUBLIC d3d12 dxgi d3dcompiler dwmapi)
+  target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DISABLE_DEMO_WINDOWS IMGUI_ENABLE_FREETYPE
+                                          UNICODE _UNICODE)
+  target_link_libraries(imgui PUBLIC d3d12 dxgi d3dcompiler dwmapi PRIVATE op4::freetype)
   if(MSVC)
     target_compile_options(imgui PRIVATE /utf-8 /W3)
   endif()

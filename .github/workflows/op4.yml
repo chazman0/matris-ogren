@@ -5,8 +5,9 @@
 #                   başlatma, çökme, 50 MB yanıt; sahte ve gerçek motor)
 #   --test-motor    süreç tabanlı hesap motoru: op4motor.exe → Py_Main → op4_sunucu (tel protokolü): ana / tembel
 #                   yardımcı motor, şablonlar, bina_kimlik, anlatımsız bina_coz, hesap ortasında iptal, yeniden başlatma
-#   --test-ekran    WARP (yazılım D3D12) ile ekran dışı kare → PNG
-#   --test-acilis   açılış ekranı → PNG
+#   --test-ekran    WARP (yazılım D3D12) ile ekran dışı kare → PNG (1280×720; Atölye ekranları 1920×1080 ve 1366×768:
+#                   boş, örnek, katı, Ayarlar sayfaları, Büyük yazı boyutu)
+#   --test-acilis   açılış ekranı kareleri (--olcek 2; açık ve koyu) → PNG
 #   --hata-katmani  D3D12 hata ayıklama katmanı yoklaması; katman varsa onunla ekran testi (0 hata iletisi)
 #   --test-pencere  gerçek pencere + takas zinciri + açılış ekranı + motor; betikli kaydırma / döndürme / yakınlaşma
 #   kurulum         sihirbaz ekran görüntüsü → sessiz kur (Türkçe karakterli yol) → kurulu programla --test-motor ve
@@ -216,6 +217,17 @@ jobs:
           for f in op4motor.exe motor/op4_sunucu.py motor/op4_protokol.py motor/web_kopru.py; do
             [ -f "paket/$f" ] || { echo "::error::paket/$f yok"; exit 1; }
           done
+          # Üçüncü taraf lisansları (MIMARI §19): liste (kurulum/lisanslar/UCUNCU_TARAF.txt) ve metinler <uygulama>\lisanslar.
+          for f in UCUNCU_TARAF.txt FreeType-FTL.txt DearImGui-LICENSE.txt nlohmann-json-LICENSE.txt miniz-LICENSE.txt \
+                   quickjs-ng-LICENSE.txt notosans-OFL.txt inter-OFL.txt cormorantgaramond-OFL.txt; do
+            [ -f "paket/lisanslar/$f" ] || { echo "::error::paket/lisanslar/$f yok"; exit 1; }
+          done
+          grep -q "FreeType Project" paket/lisanslar/FreeType-FTL.txt || { echo "::error::lisanslar/FreeType-FTL.txt FTL metni değil"; exit 1; }
+          # Arayüz yazı tipi op4.exe'ye gömülüdür (kaynak/arayuz/yazi_verisi.cpp; MIMARI §25.1): ayrı dosya kurulmaz. Aile adı
+          # tasarım belirtecinden (belirtec.py YAZI_AILESI = kimlik_uret.py ARAYUZ_YAZI; test_op4_araclar denetler).
+          aile=$(sed -n 's/^YAZI_AILESI = "\(.*\)"\r\{0,1\}$/\1/p' op4/tasarim/atolye-modern/belirtec.py)
+          echo "gömülü arayüz yazı ailesi: ${aile:-?}"
+          [ -n "$aile" ] && grep -q "$aile" paket/op4.exe || { echo "::error::op4.exe'de gömülü arayüz yazı ailesi (${aile:-?}) yok"; exit 1; }
           ./paket/op4motor.exe --denetle --gunluk denetle.log > /dev/null || { cat denetle.log; echo "::error::op4motor.exe --denetle başarısız"; exit 1; }
           cat denetle.log
           # Eksik dosyada okunur ileti ve çıkış kodu 2 (Py_FatalError yok).
@@ -247,14 +259,13 @@ jobs:
           echo "MOTOR_OLCUM=$(tr -d '\r' < motor2.log | sed -n 's/^OP4OLCUM senaryo=motor //p' | head -1)" >> "$GITHUB_ENV"
           exit "$kod"
 
-      - name: Sına — ekran (--test-ekran, WARP) ve açılış ekranı (--test-acilis)
+      - name: Sına — ekran (--test-ekran, WARP, 1280×720; gömülü gölgelendiriciler)
         run: |
           kod=0
-          ./paket/op4.exe --test-ekran ekran-960x540.png --boyut 960x540 --gunluk ekran.log > /dev/null || kod=$?
-          ./paket/op4.exe --test-ekran onizleme.png --boyut 640x360 --gunluk onizleme.log > /dev/null || kod=$?
-          ./paket/op4.exe --test-ekran sahne.png --boyut 640x360 --arayuzsuz --gunluk sahne.log > /dev/null || kod=$?
-          ./paket/op4.exe --test-acilis acilis.png --gunluk acilis.log > /dev/null || kod=$?
-          for g in ekran onizleme sahne acilis; do
+          # Atölye yerleşiminin en küçük istemci alanı 1024×640'tır (tasarim.md §9): eski 640×360 kare yerine 1280×720.
+          ./paket/op4.exe --test-ekran onizleme.png --boyut 1280x720 --gunluk ekran.log > /dev/null || kod=$?
+          ./paket/op4.exe --test-ekran sahne.png --boyut 1280x720 --arayuzsuz --gunluk sahne.log > /dev/null || kod=$?
+          for g in ekran sahne; do
             echo "::group::$g.log"
             cat "$g.log"
             echo "::endgroup::"
@@ -265,8 +276,8 @@ jobs:
           grep -q "gömülü bayt kodu (FXC, SM 5.1" ekran.log || { echo "::error::gölgelendiriciler gömülü bayt kodundan yüklenmedi"; kod=2; }
           # Kabul A4 ölçümü, aynı çalıştırmada art arda (ılık): gömülü bayt kodu ↔ çalışma anı derlemesi (Faz 0 yolu;
           # OP4_GOLGELENDIRICI=calisma_ani gömülü bayt kodunu kapatır). Gölgelendirici hazırlığı ve aygıt süresi kazancı.
-          ./paket/op4.exe --test-ekran ab-gomulu.png --boyut 640x360 --gunluk ab-gomulu.log > /dev/null || kod=$?
-          OP4_GOLGELENDIRICI=calisma_ani ./paket/op4.exe --test-ekran ab-calisma-ani.png --boyut 640x360 --gunluk ab-calisma-ani.log > /dev/null || kod=$?
+          ./paket/op4.exe --test-ekran ab-gomulu.png --boyut 1280x720 --gunluk ab-gomulu.log > /dev/null || kod=$?
+          OP4_GOLGELENDIRICI=calisma_ani ./paket/op4.exe --test-ekran ab-calisma-ani.png --boyut 1280x720 --gunluk ab-calisma-ani.log > /dev/null || kod=$?
           grep -q "gömülü bayt kodu kapalı" ab-calisma-ani.log || { echo "::error::OP4_GOLGELENDIRICI=calisma_ani gömülü bayt kodunu kapatmadı"; kod=2; }
           olc() { tr -d '\r' < "$1" | sed -n "s/.*$2\([0-9.]*\).*/\1/p" | head -1; }
           g_ms=$(olc ab-gomulu.log 'Gölgelendiriciler derlendi (')
@@ -280,8 +291,77 @@ jobs:
           awk -v g="${g_ms:-0}" -v c="${c_ms:-0}" 'BEGIN { exit !(c > g) }' || { echo "::error::gömülü gölgelendiriciler çalışma anı derlemesinden hızlı değil: $satir"; kod=2; }
           awk -v ga="${g_ay:-0}" -v ca="${c_ay:-0}" 'BEGIN { exit !(ca - ga > 40) }' || echo "::warning::aygıt süresi gömülü gölgelendiricilerle 40 ms'den az kısaldı (kabul A4; ölçüm gürültülü): $satir"
           echo "GOLGELENDIRICI=${satir#OP4OLCUM senaryo=golgelendirici }" >> "$GITHUB_ENV"
-          # Günlükteki kopyalar 256 renge indirgenir (≈ 3 kat küçük); asıl PNG'ler yapıt olarak saklanır.
-          python op4/araclar/gunluk_png_yaz.py onizleme=onizleme.png sahne=sahne.png acilis=acilis.png || kod=$?
+          # Günlükteki kopyalar 960 piksel genişliğe küçültülüp 256 renge indirgenir; asıl PNG'ler yapıt olarak saklanır.
+          python op4/araclar/gunluk_png_yaz.py --en-genislik 960 onizleme=onizleme.png sahne=sahne.png || kod=$?
+          exit "$kod"
+
+      - name: Sına — Atölye ekranları (--test-ekran 1920×1080 ve 1366×768; boş, örnek, katı, Ayarlar, Büyük yazı)
+        run: |
+          kod=0
+          # denetle <ad> <GxY> <değişken> <çıkış kodu>: test_ekran.cpp'nin başarı satırları. "OP4OLCUM senaryo=ekran
+          # degisken=<d> gen=<G> yuk=<Y> … arayuz_kose=<n> model_yuzde=<%>"; örnekli değişkenlerde görünümde model (> %1).
+          denetle() {
+            local ad="$1" boyut="$2" degisken="$3" k="$4" satir yuzde kose
+            echo "::group::$ad.log"
+            cat "$ad.log" || true
+            echo "::endgroup::"
+            satir=$(grep -m1 '^OP4OLCUM senaryo=ekran ' <(tr -d '\r' < "$ad.log") || true)
+            echo "$ad: ${satir:-OP4OLCUM senaryo=ekran satırı yok}"
+            [ "$k" = 0 ] || { echo "::error::$ad: op4.exe --test-ekran çıkış kodu $k"; kod=2; }
+            grep -q "EKRAN TESTİ BAŞARILI" "$ad.log" || { echo "::error::$ad: 'EKRAN TESTİ BAŞARILI' satırı yok"; kod=2; }
+            [[ "$satir" == *" degisken=$degisken gen=${boyut%x*} yuk=${boyut#*x} "* ]] || { echo "::error::$ad: OP4OLCUM değişken / boyut tutmuyor"; kod=2; }
+            kose=$(sed -n 's/.* arayuz_kose=\([0-9]*\).*/\1/p' <<< "$satir")
+            yuzde=$(sed -n 's/.* model_yuzde=\([0-9.]*\).*/\1/p' <<< "$satir")
+            awk -v k="${kose:-0}" 'BEGIN { exit !(k > 2000) }' || { echo "::error::$ad: arayüz köşe sayısı ${kose:-?} (> 2000 beklenir)"; kod=2; }
+            if [ "$degisken" != bos ]; then
+              awk -v p="${yuzde:-0}" 'BEGIN { exit !(p > 1.0) }' || { echo "::error::$ad: görünümde model yok (model_yuzde=${yuzde:-?})"; kod=2; }
+            fi
+          }
+          k=0; ./paket/op4.exe --test-ekran ekran-bos-1920.png --boyut 1920x1080 --gunluk ekran-bos-1920.log > /dev/null || k=$?
+          denetle ekran-bos-1920 1920x1080 bos "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ornek-1920.png --boyut 1920x1080 --senaryo ornek --gunluk ekran-ornek-1920.log > /dev/null || k=$?
+          denetle ekran-ornek-1920 1920x1080 ornek "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ornek-kati-1920.png --boyut 1920x1080 --senaryo ornek-kati --gunluk ekran-ornek-kati-1920.log > /dev/null || k=$?
+          denetle ekran-ornek-kati-1920 1920x1080 ornek-kati "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ayarlar-1920.png --boyut 1920x1080 --senaryo ayarlar --gunluk ekran-ayarlar-1920.log > /dev/null || k=$?
+          denetle ekran-ayarlar-1920 1920x1080 ayarlar "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ayarlar-program-1920.png --boyut 1920x1080 --senaryo ayarlar-program --gunluk ekran-ayarlar-program-1920.log > /dev/null || k=$?
+          denetle ekran-ayarlar-program-1920 1920x1080 ayarlar-program "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ayarlar-dil-1920.png --boyut 1920x1080 --senaryo ayarlar-dil --gunluk ekran-ayarlar-dil-1920.log > /dev/null || k=$?
+          denetle ekran-ayarlar-dil-1920 1920x1080 ayarlar-dil "$k"
+          k=0; ./paket/op4.exe --test-ekran ekran-ornek-1366.png --boyut 1366x768 --senaryo ornek --gunluk ekran-ornek-1366.log > /dev/null || k=$?
+          denetle ekran-ornek-1366 1366x768 ornek "$k"
+          # Ayarlar › Görüntü › Yazı boyutu = Büyük (arayüz ölçeği × 7/6; küçük ekranda Sıkı yoğunlukla birlikte)
+          k=0; ./paket/op4.exe --test-ekran ekran-buyuk-1366.png --boyut 1366x768 --senaryo ornek-buyuk --gunluk ekran-buyuk-1366.log > /dev/null || k=$?
+          denetle ekran-buyuk-1366 1366x768 ornek-buyuk "$k"
+          # Günlük kopyaları 960 piksel genişlikte (API kuyruğundan okunur kalsın); tam çözünürlük yapıtlarda.
+          python op4/araclar/gunluk_png_yaz.py --en-genislik 960 ekran-bos-1920=ekran-bos-1920.png \
+            ekran-ornek-1920=ekran-ornek-1920.png ekran-ornek-kati-1920=ekran-ornek-kati-1920.png \
+            ekran-ayarlar-1920=ekran-ayarlar-1920.png ekran-ayarlar-program-1920=ekran-ayarlar-program-1920.png \
+            ekran-ayarlar-dil-1920=ekran-ayarlar-dil-1920.png ekran-ornek-1366=ekran-ornek-1366.png \
+            ekran-buyuk-1366=ekran-buyuk-1366.png || kod=$?
+          exit "$kod"
+
+      - name: Sına — açılış ekranı kareleri (--test-acilis --olcek 2; açık ve koyu)
+        run: |
+          kod=0
+          # acilis.png (son kare) + acilis-0 / -50 / -oturma / -100 ve koyu ikizi acilis-koyu-* (kimlik/acilis*/kare-*.png hedefleri)
+          ./paket/op4.exe --test-acilis acilis.png --olcek 2 --gunluk acilis.log > /dev/null || kod=$?
+          echo "::group::acilis.log"
+          cat acilis.log || true
+          echo "::endgroup::"
+          [ "$kod" = 0 ] || echo "::error::op4.exe --test-acilis çıkış kodu $kod"
+          grep -q "AÇILIŞ TESTİ BAŞARILI" acilis.log || { echo "::error::'AÇILIŞ TESTİ BAŞARILI' satırı yok"; kod=2; }
+          grep -q '^OP4OLCUM senaryo=acilis kare=9 olcek=2.00' <(tr -d '\r' < acilis.log) || { echo "::error::'OP4OLCUM senaryo=acilis kare=9 olcek=2.00' yok"; kod=2; }
+          pngler=(acilis=acilis.png)
+          for z in "" "-koyu"; do
+            for k in 0 50 oturma 100; do
+              f="acilis$z-$k.png"
+              [ -f "$f" ] || { echo "::error::$f yok"; kod=2; }
+              pngler+=("acilis$z-$k=$f")
+            done
+          done
+          python op4/araclar/gunluk_png_yaz.py --en-genislik 960 "${pngler[@]}" || kod=$?
           exit "$kod"
 
       - name: Sına — D3D12 hata ayıklama katmanı (yoklama; varsa katmanla ekran testi)
@@ -292,7 +372,7 @@ jobs:
           echo "::group::Graphics Tools isteğe bağlı özelliği"
           powershell -NoProfile -Command "Get-WindowsCapability -Online -Name 'Tools.Graphics.DirectX*' | Format-Table Name, State -AutoSize | Out-String -Width 200" || echo "(sorgulanamadı)"
           echo "::endgroup::"
-          ./paket/op4.exe --test-ekran katman.png --boyut 640x360 --hata-katmani --gunluk katman.log > /dev/null || kod=$?
+          ./paket/op4.exe --test-ekran katman.png --boyut 1280x720 --hata-katmani --gunluk katman.log > /dev/null || kod=$?
           cat katman.log
           durum=$(tr -d '\r' < katman.log | sed -n 's/^OP4OLCUM hata_katmani=\([a-z]*\).*/\1/p' | head -1)
           iletiler=$(tr -d '\r' < katman.log | sed -n 's/^OP4OLCUM hata_katmani_iletileri //p' | head -1)
@@ -306,7 +386,13 @@ jobs:
           # Hata ayıklama katmanı varsa (windows-2025'te Graphics Tools kurulu) takas zinciri yolu da 0 hata iletisiyle geçmeli.
           ./paket/op4.exe --test-pencere 8 --hata-katmani --gunluk pencere.log > /dev/null || kod=$?
           cat pencere.log
-          echo "PENCERE=$(tr -d '\r' < pencere.log | sed -n 's/^OP4OLCUM senaryo=pencere //p' | head -1)" >> "$GITHUB_ENV"
+          satir=$(tr -d '\r' < pencere.log | sed -n 's/^OP4OLCUM senaryo=pencere //p' | head -1 || true)
+          echo "PENCERE=$satir" >> "$GITHUB_ENV"
+          # Kabul C5 / MIMARI §7.4: imleç altındaki noktanın kayması kaydırmada ve yakınlaşmada < 0,5 px.
+          kay=$(sed -n 's/.*kaydirma_kayma_px=\([0-9.]*\).*/\1/p' <<< "$satir")
+          yak=$(sed -n 's/.*yakinlasma_kayma_px=\([0-9.]*\).*/\1/p' <<< "$satir")
+          echo "kaydırma kayması ${kay:-?} px, yakınlaşma kayması ${yak:-?} px (< 0,5 beklenir)"
+          awk -v a="${kay:-9}" -v b="${yak:-9}" 'BEGIN { exit !(a < 0.5 && b < 0.5) }' || { echo "::error::pencere testi: kaydirma_kayma_px / yakinlasma_kayma_px < 0,5 değil ya da ölçüm yok"; kod=2; }
           exit "$kod"
 
       - name: Kurulum paketi (Inno Setup 6; lisans satırları, sihirbaz görselleri)
@@ -436,7 +522,7 @@ jobs:
           $kisayol = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Opus Fortis\op4.lnk"
           "Başlat menüsü kısayolu: $(Test-Path $kisayol) ($kisayol)"
           "Kaldırıcı: $(Test-Path "$hedef\unins000.exe")"
-          foreach ($f in @("op4motor.exe", "motor\op4_sunucu.py", "motor\op4_protokol.py")) {
+          foreach ($f in @("op4motor.exe", "motor\op4_sunucu.py", "motor\op4_protokol.py", "lisanslar\UCUNCU_TARAF.txt", "lisanslar\FreeType-FTL.txt")) {
             if (-not (Test-Path "$hedef\$f")) { "::error::kurulumda $f yok"; exit 1 }
           }
           $p = Start-Process -FilePath "$hedef\op4.exe" -Wait -PassThru -ArgumentList @("--test-motor", "--gunluk", "`"$PWD\kurulu-motor.log`"")

@@ -119,6 +119,22 @@ def test_yaz_sinir_ve_eksik_dosya(tmp_path, capsys):
     assert yaz.main([f"a={tmp_path / 'a.png'}", "--indirgeme-yok", "--sinir-kb", "0"]) == 2
 
 
+def test_yaz_en_genislik_gunluk_kopyasi(tmp_path, capsys):
+    """--en-genislik: geniş görüntünün günlük kopyası küçültülür (asıl boyut gen/yuk, kopya gunluk_gen/gunluk_yuk)."""
+    pil = pytest.importorskip("PIL.Image")
+    im = pil.new("RGB", (1920, 1080), (243, 244, 246))
+    im.paste((37, 99, 235), (100, 100, 900, 600))
+    im.save(tmp_path / "b.png")
+    (tmp_path / "k.png").write_bytes(_png(7, 5))
+    assert yaz.main([f"b={tmp_path / 'b.png'}", f"k={tmp_path / 'k.png'}", "--en-genislik", "960"]) == 0
+    cikti = capsys.readouterr().out
+    assert "OP4-PNG ad=b " in cikti and "gen=1920 yuk=1080 gunluk_gen=960 gunluk_yuk=540" in cikti
+    assert "gen=7 yuk=5\n" in cikti  # dar görüntü küçültülmez, ek alan yok
+    bloklar, _ = coz.coz(coz.gunluk_metni(_ci_gunlugu(cikti)), tmp_path / "c")
+    assert [x["durum"] for x in bloklar] == ["doğrulandı", "doğrulandı"]
+    assert yaz.png_boyutu((tmp_path / "c" / "b.png").read_bytes()) == (960, 540)
+
+
 def _is_akisi() -> dict:
     yaml = pytest.importorskip("yaml")
     return yaml.safe_load((KOK / ".github" / "workflows" / "op4.yml").read_text(encoding="utf-8"))
@@ -245,3 +261,41 @@ def test_op4_is_akisi_motor_ve_linux_matrisi():
     bayt = (KOK / "op4" / "kaynak" / "grafik" / "golgelendirici_bayt.cpp").read_text(encoding="utf-8")
     assert 'L"OP4_GOLGELENDIRICI"' in bayt and 'L"calisma_ani"' in bayt and "gömülü bayt kodu kapalı" in bayt
     assert "gömülü bayt kodu (FXC, SM 5.1" in bayt
+
+
+def test_op4_is_akisi_ekran_goruntuleri():
+    """C'nin ekran sınamaları (MIMARI §25, §25.1): 1920×1080 boş / örnek / katı / Ayarlar sayfaları, 1366×768 örnek ve
+    Büyük yazı boyutu, açılış kareleri (--olcek 2, açık ve koyu); hepsi günlüğe küçültülmüş kopyayla basılır. Eski 640×360
+    ekran sınaması 1280×720'ye çıktı; pencere testinin kayma ölçümleri iş akışında da eşiklenir."""
+    d = _is_akisi()
+    win = d["jobs"]["windows"]
+    win_run = "\n".join(a.get("run", "") for a in win["steps"])
+    for parca in ("ekran-bos-1920.png --boyut 1920x1080", "ekran-ornek-1920.png --boyut 1920x1080 --senaryo ornek",
+                  "--senaryo ornek-kati", "--senaryo ayarlar", "--senaryo ayarlar-program", "--senaryo ayarlar-dil",
+                  "ekran-ornek-1366.png --boyut 1366x768", "ekran-buyuk-1366.png --boyut 1366x768 --senaryo ornek-buyuk",
+                  "--test-acilis acilis.png --olcek 2", "acilis-koyu-", "--en-genislik", "model_yuzde",
+                  "kaydirma_kayma_px", "yakinlasma_kayma_px", "lisanslar/FreeType-FTL.txt"):
+        assert parca in win_run, parca
+    assert "640x360" not in win_run
+    # Değişken adları C'nin ekran sınamasındakilerle aynı (test_ekran.cpp EkranOrtami::Degisken).
+    ekran = (KOK / "op4" / "kaynak" / "test_ekran.cpp").read_text(encoding="utf-8")
+    for ad in ("ornek-kati", "ornek-buyuk", "ayarlar-program", "ayarlar-dil"):
+        assert f'"{ad}"' in ekran, ad
+    assert 'rfind("ayarlar", 0)' in ekran
+
+
+def test_arayuz_yazi_ailesi_tek_kaynak():
+    """Arayüz yazı tipi (MIMARI §25.1, kullanıcı kararı 31.10.2026): kimlik_uret.py ARAYUZ_YAZI = belirtec.py YAZI_AILESI =
+    gömülü veri (yazi_verisi.cpp) = tema_belirtec.h; kullanılan bütün yazı tipi dosyaları ve OFL metinleri depoda."""
+    pytest.importorskip("PIL.Image")
+    kimlik = _modul("kimlik_uret")
+    b = kimlik._belirtec_yukle()
+    assert kimlik.ARAYUZ_YAZI_AILESI == b.YAZI_AILESI
+    veri = (KOK / "op4" / "kaynak" / "arayuz" / "yazi_verisi.cpp").read_text(encoding="utf-8")
+    assert f'ArayuzYaziAilesi() {{ return "{b.YAZI_AILESI}"; }}' in veri
+    assert kimlik.tema_metni() == (KOK / "op4" / "kaynak" / "arayuz" / "tema_belirtec.h").read_text(encoding="utf-8")
+    fontlar = KOK / "op4" / "kimlik" / "fontlar"
+    for _, dosya, _, _ in kimlik.YAZI_ORNEKLERI:
+        assert (fontlar / dosya).is_file(), dosya
+        assert (fontlar / (dosya.split("-")[0] + "-OFL.txt")).is_file(), dosya
+    assert set(b.YAZI_BOYUTU) == {"kucuk", "orta", "buyuk"} and b.YAZI_BOYUTU["orta"] == 1.0

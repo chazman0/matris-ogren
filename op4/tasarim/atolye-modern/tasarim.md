@@ -24,7 +24,7 @@ Palet değişimi tek satırdır: `belirtec.py` → `VARSAYILAN_PALET = "kobalt"`
 **Atölye · Modern**, Atölye'nin yoğun mühendislik iskeletini olduğu gibi tutar, yüzeyini bugünün masaüstü
 uygulamalarının diline taşır: katmanlı beyaz/gri yüzeyler, 1 px ince kenarlar, yalnız açılır pencerelerde ve görünüm
 üstündeki araçlarda belirgin, panellerde ise neredeyse sezilmeyen gölge; kartlarda, girişlerde ve düğmelerde 6 px
-yarıçap; tutarlı 8 px ritim; Inter'in 400/500/600 ağırlıklarıyla net bir yazı hiyerarşisi. Paneller Stüdyo'daki gibi
+yarıçap; tutarlı 8 px ritim; Noto Sans SemiCondensed'in 400/500/600 ağırlıklarıyla net bir yazı hiyerarşisi. Paneller Stüdyo'daki gibi
 yüzmez; **kenara yapışık kalır**, görünüm iskeletin merkezidir. Renk tek bir **vurgu** ailesiyle sınırlıdır ve anlam taşır:
 etkin, birincil, odak, seçim. Anlamsal renkler (D/C ölçeği, uyarı, hata) vurgudan bağımsızdır.
 
@@ -164,8 +164,15 @@ Işık yönü (−0,45, −0,50, +0,74); yüzey katsayısı 0,50 + 0,40·lambert
 
 ## 4. Yazı ölçeği
 
-Inter değişken (OFL, `kimlik/fontlar/`); `opsz` = boyut (14–32'ye kırpılır), ağırlık eksenden. Türkçe glifler
-(İ ı Ş ş Ğ ğ Ü ü Ö ö Ç ç) bütün boyutlarda denetlendi ("İptal", "İş parçacığı", "ÖNİZLEME", "ÇİZ", "KİRİŞ").
+**Noto Sans SemiCondensed** (OFL, `kimlik/fontlar/notosans-*`; kullanıcı kararı 31.10.2026, MIMARI §25.1): Noto Sans
+v2.015 değişken dosyasından wdth 87,5 ile kesilmiş statik 400 / 500 / 600 / 700 örnekleri (imgui_freetype değişken eksen
+kurmaz); belirteç `belirtec.py` `YAZI_AILESI`, gömme `araclar/kimlik_uret.py` `ARAYUZ_YAZI`. Metin imgui_freetype ile
+LightHinting | ForceAutoHint, yatay piksel yakalama, tam piksel boyut ve konumla çizilir; ailede olmayan simgeler
+(≈ ≤ ≥ ← → ↺ ▾ …) Inter alt kümesinden MergeMode ile birleşir. Açılış ekranı (marka) Inter Light ve Cormorant Garamond'la
+kalır. Türkçe glifler (İ ı Ş ş Ğ ğ Ü ü Ö ö Ç ç) bütün boyutlarda bulunur ("İptal", "İş parçacığı", "ÖNİZLEME", "ÇİZ",
+"KİRİŞ"). Boyutlar aşağıdaki tablodadır; Ayarlar › Görüntü › **Yazı boyutu** (Küçük / Orta / Büyük) bütün ölçeği
+`YAZI_BOYUTU` çarpanıyla (11/12 · 1 · 7/6; gövde 11 · 12 · 14 px) büyütür, yazıya bağlı modül ölçüleri de aynı oranla
+büyür (§7.2).
 
 | Rol | Boyut / ağırlık | Yer |
 |---|---|---|
@@ -313,6 +320,7 @@ Ayarlar **Ctrl+,**. Tek harfli anında kısayol yoktur (MIMARI §5.4); harfler k
 | Arayüz | Vurgu rengi | seçim çipleri | **Kobalt** | Kobalt · Petrol · Grafit (anlamsal renkler değişmez) |
 | | Arayüz ölçeği | açılır | Sistemi izle | %100 · %125 · %150 · %175 · %200; yazı atlası yeniden kurulur |
 | | Yoğunluk | segment | Otomatik | Rahat · Sıkı · Otomatik (1600×900 altında Sıkı) |
+| | Yazı boyutu | segment | **Orta** | Küçük · Orta · Büyük — yazı ölçeğinin tamamı `YAZI_BOYUTU` çarpanıyla (11/12 · 1 · 7/6; gövde 11 · 12 · 14 px @ 100 %); satır, şerit, ağaç ve özellik satırı yükseklikleri yazıyla birlikte büyür (arayüz ölçeği = DPI × çarpan; metin kırpılmaz); Otomatik yoğunluk ölçeklenmiş alanı izler; canlı önizleme, İptal geri döner (`ayarlar.json` `arayuz.yazi_boyutu`) |
 | | Hareketi azalt | anahtar | Kapalı (sistem ayarını izler) | geçişler anında |
 | | Açılış ekranı | iki küçük resim + radyo | **Açık** | Açık · Koyu (`kimlik/acilis`, `kimlik/acilis-koyu`; logo ve canlandırma aynı) |
 
@@ -367,6 +375,9 @@ Ayarlar **Ctrl+,**. Tek harfli anında kısayol yoktur (MIMARI §5.4); harfler k
    "Etkin kat" ve başlıktaki kullanıcı adı gizlenir; **kat kapsamı anahtarı her zaman kalır**.
 8. 1280 altında Model ağacı otomatik olarak pencere şeridine döner (tek panel), görünüm ≥ %60 kalır.
 9. Ayarlar: pencere ekranın %94'ü; 1200 px altında kartlar tek sütun; 1000 px altında gezinti yalnız simge.
+10. En küçük istemci alanı **1024 × 640** mantıksal px (Sıkı yoğunluk, tek panel, görünüm ≥ %60, durum çubuğu öğeleri
+    çakışmaz); pencere bunu arayüz ölçeğiyle (DPI × yazı boyutu) çarpıp `WM_GETMINMAXINFO` ile uygular. Ekran dışı
+    sınamada daha küçük `--boyut` olduğu gibi çizilir (günlüğe uyarı).
 
 ## 10. Dear ImGui + özel bileşenlere eşleme
 
@@ -387,7 +398,7 @@ Ayarlar **Ctrl+,**. Tek harfli anında kısayol yoktur (MIMARI §5.4); harfler k
 | Rıhtım · komut · durum | `BeginTabBar` (özel alt çizgi); komut `InputText` + `CallbackCompletion/History`; durum çubuğu özel çipler; kat kapsamı vurgu segmenti `Alt+1/2/3` |
 | Ayarlar | `BeginPopupModal("Ayarlar")`, boyut min(1440, %94) × min(960, %94); sol `BeginChild` 256 (`Selectable` kategoriler, alt bölümler `SetScrollHereY` ile kaydırma izleme); sağ `BeginChild` + `BeginTable(2, SizingStretchSame)` içinde kartlar (`BeginChild` `Borders` + `AutoResizeY`, `ChildRounding` 6); alt çubuk sabit. Ayarlar kayıt defteri (kimlik, etiket, açıklama, anahtar sözcük, sayfa, bölüm, varsayılan, tür) aramayı, değişti işaretini ve Varsayılana dön'ü besler. Kopyalanan ayar yapısıyla fark sayılır; Uygula → `ayarlar.json`; Esc = İptal, Enter = Tamam |
 | Tuş yakalama | Odaklı yakalama alanında `ImGuiKey` döngüsü + `io.KeyMods`; ilk tuş bırakıldığında birleşim yazılır; çakışma kayıt defterinden anında |
-| Yazı tipi | `imgui_freetype` + Inter değişken: 400/500/600 (TR/EN monogramında 700); boyutlar 9–20 × DPI (ImGui 1.92 dinamik yazı tipleri). `tnum`: derlemede yazı tipi araçlarıyla `tnum` özelliği dondurulmuş "Inter-Tnum" kopyası üretilir, sayısal alanlarda kullanılır |
+| Yazı tipi | `imgui_freetype` (FreeType 2.13.3, LightHinting \| ForceAutoHint) + Noto Sans SemiCondensed statik 400/500/600/700 (gömülü alt küme; semboller Inter'den MergeMode); boyutlar 9–20 × DPI × yazı boyutu (ImGui 1.92 dinamik yazı tipleri, tam piksel). `tnum`: Noto Sans'ın rakamları varsayılan olarak eşit genişliklidir |
 | Simgeler | 24 birimlik yol listeleri (`tuval.py::simge_ciz`, ≈ 140 simge) → `AddPolyline/AddCircle/AddRect` 1,5 px × DPI; önbellekli doku isteğe bağlı |
 
 ## 11. 25 ilkenin yeri

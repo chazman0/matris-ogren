@@ -247,6 +247,26 @@ TEST_CASE("D5 son dosyalar: en yeni başta, tekrarsız, en çok 10; ayarlar.json
     CHECK(o.SatirdaVar("Dosya bulunamadı"));
 }
 
+TEST_CASE("S22 Ayarlar › Uygula / Tamam: ayarlarDegisti ayarlar.json'u hemen yazar; bilinmeyen anahtarlar korunur") {
+    DOrtam o;
+    const std::string yol = o.h.bilgi.ayarDizini + "/ayarlar.json";
+    REQUIRE(o.h.ayarlarDegisti.AboneSayisi() == 1);  // D'nin kalıcılığı abone
+    o.ayarlar.bilinmeyen = R"({"gelecek_grup": {"x": 1}})";
+    o.ayarlar.arayuz.vurgu = "petrol";
+    o.ayarlar.arayuz.yaziBoyutu = "buyuk";
+    o.h.ayarlarDegisti.Yay();  // kare işi çalışmadan
+    Ayarlar okunan;
+    std::string hata;
+    REQUIRE(AyarlariOku(DosyaIcerigi(yol), okunan, hata));
+    CHECK(okunan.arayuz.vurgu == "petrol");
+    CHECK(okunan.arayuz.yaziBoyutu == "buyuk");
+    CHECK(json::parse(okunan.bilinmeyen)["gelecek_grup"]["x"] == 1);
+    // Yıkıcı aboneliği bırakır.
+    o.cozum.reset();
+    o.dosya.reset();
+    CHECK(o.h.ayarlarDegisti.AboneSayisi() == 0);
+}
+
 TEST_CASE("D3 eski biçimlerden açma: Faz 0 .op4 (kamera, boş model), .matris, .json; kaydederken Farklı kaydet") {
     DOrtam o;
     const std::string deneme = o.dizin.Yol("faz0.op4");

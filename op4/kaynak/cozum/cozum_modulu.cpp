@@ -2,7 +2,7 @@
 // platformdan bağımsızdır ve Linux'ta sınanır (cekirdek/cozum_akisi.h: F5 eşzamansız bina_coz, iptal, eski işareti,
 // D/C boyaması, sonuc/ katkısı, açılışta bina_kimlik eşleştirmesi).
 //
-// Bu dosya C'nin kancalarına Stüdyo belirteçleriyle çizilen iki öğe ekler:
+// Bu dosya C'nin kancalarına tema belirteçleriyle (arayuz/tema.h; dosya/kart_cizimi.h) çizilen iki öğe ekler:
 //   * "Sonuç özeti" paneli (sağ denetçi): durum rozeti (Güncel / Sonuçlar eski), SD, kombinasyon, ΣG, ΣQ, en büyük D/C
 //     (eleman, renk), D/C > 1 sayısı, süre; D/C gösterge ölçeği (eşik ve sayılar), "D/C renkleri" anahtarı, "En kritik
 //     elemanı seç", uyarılar; çözüm sürerken geçen süre + belirsiz ilerleme + İptal; birincil eylem "Çöz F5".
@@ -13,7 +13,7 @@
 #include "cekirdek/cozum_akisi.h"
 #include "cekirdek/kabuk.h"
 #include "cekirdek/sonuc_ek.h"
-#include "dosya/studyo_tema.h"
+#include "dosya/kart_cizimi.h"
 #include "imgui.h"
 
 namespace op4 {
@@ -31,13 +31,13 @@ struct CozumModulu {
     }
 
     void Panel() {
-        using namespace studyo;
+        using namespace kart;
         const float s = Olcek();
         if (akis->Evre() != CozumEvresi::Bos) {
             Baslik(akis->Evre() == CozumEvresi::Cozuluyor ? "Çözülüyor" : "İptal ediliyor",
                    "Hesap motoru ayrı süreçte çalışıyor; bu sırada modeli gezebilir ve inceleyebilirsiniz.");
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ALTIN);
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, YUZEY3);
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, R().vurgu);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, R().yuzey3);
             ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(-1.0f, 6.0f * s), "");
             ImGui::PopStyleColor(2);
             EtiketDeger("Geçen süre", SureMetni(akis->GecenMs()).c_str());
@@ -57,7 +57,7 @@ struct CozumModulu {
         }
         const SonucOzeti& o = h.sonuc->Ozet();
         const bool eski = h.sonuc->Eski();
-        Rozet(eski ? "Sonuçlar eski" : "Güncel", eski ? Rgb(0xD9A13B, 48) : Rgb(0x4C9A63, 40), eski ? KAHVE_KOYU : TAMAM);
+        Rozet(eski ? "Sonuçlar eski" : "Güncel", eski ? R().uyariTon : R().okTon, eski ? R().uyari : R().ok);
         if (eski) {
             ImGui::SameLine();
             if (BirincilDugme("Yeniden çöz   F5")) Komut("analiz.coz");
@@ -94,7 +94,7 @@ struct CozumModulu {
         if (!o.uyarilar.empty()) {
             Ayrac();
             if (ImGui::TreeNode("uyarilar", "Uyarılar (%d)", static_cast<int>(o.uyarilar.size()))) {
-                ImGui::PushStyleColor(ImGuiCol_Text, METIN2);
+                ImGui::PushStyleColor(ImGuiCol_Text, R().metin2);
                 ImGui::PushTextWrapPos(0.0f);
                 for (const std::string& u : o.uyarilar) ImGui::BulletText("%s", u.c_str());
                 ImGui::PopTextWrapPos();
@@ -105,27 +105,27 @@ struct CozumModulu {
     }
 
     void DurumOgesi() {
-        using namespace studyo;
+        using namespace kart;
         const std::string m = akis->DurumMetni();
         if (m.empty()) return;
         if (akis->Evre() != CozumEvresi::Bos) {
-            ImGui::PushStyleColor(ImGuiCol_Text, KAHVE);
+            ImGui::PushStyleColor(ImGuiCol_Text, R().vurguMetin);
             ImGui::TextUnformatted(m.c_str());
             ImGui::PopStyleColor();
             if (akis->Evre() == CozumEvresi::Cozuluyor) {
                 ImGui::SameLine();
-                ImGui::PushStyleColor(ImGuiCol_Text, METIN2);
+                ImGui::PushStyleColor(ImGuiCol_Text, R().metin2);
                 if (ImGui::SmallButton("İptal")) Komut("analiz.iptal");
                 ImGui::PopStyleColor();
             }
             return;
         }
         if (h.sonuc->Eski()) {
-            Rozet(m.c_str(), Rgb(0xD9A13B, 48), KAHVE_KOYU);
+            Rozet(m.c_str(), R().uyariTon, R().uyari);
         } else {
             RenkKaresi(Rgba(DcRengi(h.sonuc->Ozet().enBuyukDc)));
             ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Text, METIN2);
+            ImGui::PushStyleColor(ImGuiCol_Text, R().metin2);
             ImGui::TextUnformatted(m.c_str());
             ImGui::PopStyleColor();
         }

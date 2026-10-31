@@ -60,6 +60,9 @@ struct Hizmetler {
     Olay<IslemRaporu> modelDegisti;   // ModelIslemiSonrasi yayınlar (düzenleme, geri al, yinele)
     Olay<ModelOzeti> modelYuklendi;   // ModelYuklendi yayınlar (Yeni, Aç, şablon, kurtarma)
     Olay<> sahneDegisti;              // çekirdekte yeni sahne / öznitelik anlığı var (C: çizici, BVH, gezgin)
+    // Ayarlar penceresinde Uygula / Tamam (ya da İptal ile geri dönüş) bitti: Hizmetler::ayarlar kalıcı durumdadır. C yayınlar
+    // (canlı önizleme sırasında yayınlanmaz); D ayarlar.json'u hemen yazar (§24.6, 2026-10-31).
+    Olay<> ayarlarDegisti;
 
     // ---- kancalar -----------------------------------------------------------------------------------------------------
     // Pencere kapanmadan önce (D bağlar: "Kaydet / Kaydetme / Vazgeç"). false → kapanma iptal.

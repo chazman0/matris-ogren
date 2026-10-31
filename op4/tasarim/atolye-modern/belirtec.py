@@ -120,8 +120,12 @@ GOLGE = dict(   # (bulanıklık yarıçapı, dy, saydamlık)
 )
 
 # ----------------------------------------------------------------------------
-# Yazı ölçeği — Inter değişken (opsz = boyut, 14–32'ye kırpılır). (boyut px @1×, ağırlık)
+# Yazı ailesi ve yazı ölçeği (boyut px @1×, ağırlık). Arayüz yazı tipi: Noto Sans SemiCondensed (wdth 87,5; statik
+# 400 / 500 / 600 / 700 örnekleri kimlik/fontlar/notosans-*; kullanıcı kararı 31.10.2026, MIMARI §25.1). Uygulamaya gömen
+# araç: op4/araclar/kimlik_uret.py (ARAYUZ_YAZI aynı aileyi seçmelidir; --yazi / --tema denetler). Semboller (≈ ≤ ≥ ← →
+# …) Inter alt kümesinden birleşir; açılış ekranı (marka) Inter Light ve Cormorant Garamond'dur.
 # ----------------------------------------------------------------------------
+YAZI_AILESI = "Noto Sans SemiCondensed"
 Y = dict(
     sayfa=(20, 600),        # Ayarlar sayfa başlığı
     pencere=(15, 600),      # kipli pencere başlığı
@@ -135,6 +139,10 @@ Y = dict(
     rozet=(9, 600),         # sayaç rozeti
     bolum=(9, 600),         # BÜYÜK HARF bölüm etiketi (ÇİZ / SEÇ), harf aralığı +0,6 px
 )
+# Yazı boyutu (Ayarlar › Görüntü › Yazı boyutu; ayarlar.json arayuz.yazi_boyutu): bütün yazı ölçeğinin ve yazıya bağlı
+# modül ölçülerinin çarpanı (arayüz ölçeği = DPI × çarpan; satır, şerit, ağaç ve özellik satırları yazıyla birlikte
+# büyür, metin kırpılmaz). Gövde yazısı (12 px) 1×'te tam piksele düşer: Küçük 11 · Orta 12 · Büyük 14 px.
+YAZI_BOYUTU = dict(kucuk=11 / 12, orta=1.0, buyuk=14 / 12)
 
 # ----------------------------------------------------------------------------
 # Modül yükseklikleri/genişlikleri — iki yoğunluk. "rahat" ≥ 1600×900, "siki" daha küçük ekranda otomatik.

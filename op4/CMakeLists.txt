@@ -178,3 +178,12 @@ install(TARGETS op4 op4motor RUNTIME DESTINATION .)
 install(DIRECTORY kimlik/ DESTINATION kimlik FILES_MATCHING PATTERN "*.png" PATTERN "*.ico")
 # Veri katalogları (komutlar.json, oznitelikler.json, sahne_kodlari.json, sablonlar/) kurulu programda <uygulama>\veri.
 install(DIRECTORY veri/ DESTINATION veri FILES_MATCHING PATTERN "*.json")
+# Üçüncü taraf lisansları (MIMARI §19): kurulu programda <uygulama>\lisanslar. Liste ve atıflar kurulum/lisanslar/
+# UCUNCU_TARAF.txt'te; metinler bağımlılıkların kaynak ağaçlarından (FreeType FTL'si cmake/bagimlilik_freetype.cmake'te),
+# gömülü yazı tiplerinin OFL metinleri kimlik/fontlar/'dan (Cinzel gömülmez).
+install(FILES kurulum/lisanslar/UCUNCU_TARAF.txt DESTINATION lisanslar)
+install(FILES "${imgui_SOURCE_DIR}/LICENSE.txt" DESTINATION lisanslar RENAME DearImGui-LICENSE.txt)
+install(FILES "${nlohmann_json_SOURCE_DIR}/LICENSE.MIT" DESTINATION lisanslar RENAME nlohmann-json-LICENSE.txt)
+install(FILES "${miniz_SOURCE_DIR}/LICENSE" DESTINATION lisanslar RENAME miniz-LICENSE.txt)
+install(FILES "${quickjs_SOURCE_DIR}/LICENSE" DESTINATION lisanslar RENAME quickjs-ng-LICENSE.txt)
+install(DIRECTORY kimlik/fontlar/ DESTINATION lisanslar FILES_MATCHING PATTERN "*-OFL.txt" PATTERN "cinzel-OFL.txt" EXCLUDE)

@@ -11,10 +11,14 @@ Yapıtlar (artifact) ve ham günlük adresi bazı ortamlardan indirilemez; gör�
     -----OP4-PNG-BITIR-----
     ::endgroup::
 
-`bayt` asıl PNG'nin, `gunluk_bayt` ve `sha256` günlüğe yazılan kopyanın boyutu ve özetidir. Kopya, Pillow varsa 256
-renge indirgenir (≈ 3 kat küçük); Pillow yoksa asıl dosya olduğu gibi yazılır.
+`bayt` asıl PNG'nin, `gunluk_bayt` ve `sha256` günlüğe yazılan kopyanın boyutu ve özetidir; `gen` / `yuk` asıl
+görüntünün boyutudur. Kopya, Pillow varsa 256 renge indirgenir (≈ 3 kat küçük); `--en-genislik N` verilirse ve görüntü
+daha genişse kopya önce en-boy oranı korunarak N piksel genişliğe küçültülür (günlük API kuyruğundan okunur kalsın;
+satırda `gunluk_gen` / `gunluk_yuk`). Asıl PNG'ler yapıt olarak tam çözünürlükte saklanır. Pillow yoksa asıl dosya
+olduğu gibi yazılır.
 
 Kullanım:  python op4/araclar/gunluk_png_yaz.py ad=dosya.png [ad2=dosya2.png ...] [--indirgeme-yok] [--sinir-kb 300]
+                                                [--en-genislik 960]
 Çıkış kodu: 0 her görüntü yazıldı; 2 dosya yok ya da sınırı aşıyor (yine de diğerleri yazılır).
 """
 from __future__ import annotations
@@ -39,28 +43,35 @@ def png_boyutu(veri: bytes) -> tuple[int, int]:
     return struct.unpack(">II", veri[16:24])
 
 
-def indirge(veri: bytes) -> bytes:
+def indirge(veri: bytes, en_genislik: int = 0) -> bytes:
     try:
         from PIL import Image
     except ImportError:
         return veri
     try:
-        im = Image.open(io.BytesIO(veri)).convert("RGB").quantize(256)
+        im = Image.open(io.BytesIO(veri)).convert("RGB")
+        if en_genislik > 0 and im.width > en_genislik:
+            im = im.resize((en_genislik, max(1, round(im.height * en_genislik / im.width))), Image.LANCZOS)
+        im = im.quantize(256)
         cikti = io.BytesIO()
         im.save(cikti, format="PNG", optimize=True)
         kucuk = cikti.getvalue()
     except Exception:  # bozuk / okunamayan dosya: olduğu gibi yaz
         return veri
+    if en_genislik > 0 and png_boyutu(veri)[0] > en_genislik:
+        return kucuk  # küçültülmüş kopya her zaman yazılır
     return kucuk if len(kucuk) < len(veri) else veri
 
 
 def blok(ad: str, asil: bytes, gunluk: bytes) -> str:
     gen, yuk = png_boyutu(asil)
+    kgen, kyuk = png_boyutu(gunluk)
+    olcu = f" gunluk_gen={kgen} gunluk_yuk={kyuk}" if (kgen, kyuk) != (gen, yuk) else ""
     b64 = base64.b64encode(gunluk).decode("ascii")
     satirlar = [
         f"::group::OP4-PNG {ad}",
         f"OP4-PNG ad={ad} bayt={len(asil)} gunluk_bayt={len(gunluk)} sha256={hashlib.sha256(gunluk).hexdigest()} "
-        f"gen={gen} yuk={yuk}",
+        f"gen={gen} yuk={yuk}{olcu}",
         BASLA,
         *(b64[i:i + SATIR] for i in range(0, len(b64), SATIR)),
         BITIR,
@@ -74,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("goruntuler", nargs="+", metavar="ad=dosya.png")
     ap.add_argument("--indirgeme-yok", action="store_true", help="256 renge indirgeme yapma")
     ap.add_argument("--sinir-kb", type=int, default=300, help="günlük kopyası için üst sınır (KB; MIMARI §20.3)")
+    ap.add_argument("--en-genislik", type=int, default=0, metavar="PX",
+                    help="günlük kopyasını bu genişliğe küçült (yalnız daha geniş görüntüler; 0 = küçültme yok)")
     a = ap.parse_args(argv)
     kod = 0
     for oge in a.goruntuler:
@@ -86,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             kod = 2
             continue
         asil = dosya.read_bytes()
-        gunluk = asil if a.indirgeme_yok else indirge(asil)
+        gunluk = asil if a.indirgeme_yok else indirge(asil, a.en_genislik)
         if len(gunluk) > a.sinir_kb * 1024:
             print(f"OP4-PNG ad={ad} HATA: günlük kopyası {len(gunluk)} bayt, sınır {a.sinir_kb} KB", flush=True)
             kod = 2

@@ -59,6 +59,12 @@ TEST_CASE("arayüz dili: komut kataloğu ve şablonların görünen metinleri İ
     }
     DilAyarla(ArayuzDili::Ingilizce);
     CHECK(std::string(Tr("Dosya")) == "File");
+    // Ayarlar › Görüntü › Yazı boyutu (pencereler.cpp satırı ve seçenekleri).
+    CHECK(std::string(Tr("Yazı boyutu")) == "Text size");
+    CHECK(std::string(Tr("Küçük")) == "Small");
+    CHECK(std::string(Tr("Orta")) == "Medium");
+    CHECK(std::string(Tr("Büyük")) == "Large");
+    CHECK(std::string(Tr("Arayüz yazıları ve satır yükseklikleri birlikte ölçeklenir")) != "Arayüz yazıları ve satır yükseklikleri birlikte ölçeklenir");
     CHECK(Trf("%zu seçili", size_t{6}) == "6 selected");
     CHECK(std::string(Tr("bilinmeyen metin")) == "bilinmeyen metin");
     DilAyarla(ArayuzDili::Turkce);

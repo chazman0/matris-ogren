@@ -166,6 +166,7 @@ DosyaIslemleri::~DosyaIslemleri() {
     // Onaysız kapanışta (ör. pencere WM_CLOSE'u kapatmaOnayi'na bağlamadıysa) kayıt kalır, bir sonraki açılış sorar.
     if (h_.belge && (!h_.belge->Kirli() || kapanisOnaylandi_)) KurtarmaKaydiniSil();
     oturumKilidi_.Birak();
+    h_.ayarlarDegisti.Birak(ayarAboneligi_);
     AyarlariKaydet();
 }
 
@@ -196,6 +197,8 @@ void DosyaIslemleri::Kur() {
     aboneler_[3] = b.kaydedildi.Abone([this](const std::string&) { BasligiYay(); });
     h_.kapatmaOnayi = [this] { return KapatmaOnayi(); };
     h_.KareIsiEkle("dosya", [this](double t) { KareIsi(t); });
+    // Ayarlar › Uygula / Tamam: ayarlar.json hemen yazılır (kare işindeki saniyelik denetimi beklemeden; S22, S18).
+    ayarAboneligi_ = h_.ayarlarDegisti.Abone([this] { AyarlariKaydet(); });
 
     if (!h_.komutlar) return;
     auto bagla = [this](const char* id, std::function<void(KomutBaglami&)> f,

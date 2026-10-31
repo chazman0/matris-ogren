@@ -67,7 +67,7 @@ struct Renkler {
 };
 Renkler RenkleriKur(Palet p);
 
-// ---- tipografi (tasarim.md §4; Inter 400 / 500 / 600) ------------------------------------------------------------------
+// ---- tipografi (tasarim.md §4; belirtec::YAZI_AILESI 400 / 500 / 600) ----------------------------------------------------
 enum class Agirlik : uint8_t { Normal = 0, Yari = 1, Orta = 2, Kalin = 3, Cok = 4 };  // 400 · 450 · 500 · 600 · 700
 struct Tipografi {
     float sayfa, pencere, baslik, govde, etiket, kucuk, rozet, rayBolum;
@@ -89,6 +89,10 @@ struct Olculer {
     // yoğunluk eşikleri (pencere istemci alanı; görev çubuğu payıyla 1600×900 ekran)
     float darEsikGenislik = 1600, darEsikYukseklik = 860;
     float tekPanelEsigi = 1280;  // bunun altında model ağacı pencere şeridine döner (§9.8)
+    // En küçük istemci alanı (mantıksal px; tasarim.md §9): Sıkı yoğunluk, tek panel, görünüm ≥ %60 ve durum çubuğu
+    // öğeleri çakışmadan sığar. Pencere WM_GETMINMAXINFO ile arayüz ölçeğiyle (DPI × yazı boyutu) çarpıp uygular;
+    // ekran dışı sınamada daha küçük --boyut olduğu gibi çizilir (günlüğe uyarı).
+    float enAzGenislik = 1024, enAzYukseklik = 640;
 };
 Olculer OlculeriKur(Yogunluk y);
 
@@ -104,6 +108,14 @@ struct SahneCizimi {
     float etiketBoy = 11.0f;
     float tutamac = 9.0f;  // tutamaç karesi (px; tasarımda 12 px @ 1,35× önizleme)
 };
+
+// Yazı boyutu çarpanı (Ayarlar › Görüntü › Yazı boyutu; S18 arayuz.yazi_boyutu "kucuk" | "orta" | "buyuk"): bütün yazı
+// ölçeği ve yazıya bağlı modül ölçüleri aynı oranla büyür; AnaPencere arayüz ölçeğini DPI × çarpan kurar. Bilinmeyen → 1.
+inline float YaziCarpani(std::string_view kod) {
+    for (const belirtec::YaziBoyutu& b : belirtec::YAZI_BOYUTLARI)
+        if (kod == b.kimlik) return b.carpan;
+    return 1.0f;
+}
 
 struct Tema {
     Renkler r;

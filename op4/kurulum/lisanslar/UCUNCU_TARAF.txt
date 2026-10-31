@@ -1,0 +1,30 @@
+op4 — üçüncü taraf bileşenleri ve lisansları
+============================================
+
+op4 (Opus Fortis) aşağıdaki açık kaynak bileşenleri içerir. Lisans metinleri bu klasördedir (kurulu programda
+<uygulama>\lisanslar\); gömülü Python'unkiler python\ ve python\Lib\site-packages\*.dist-info\ altındadır.
+Liste op4/kurulum/lisanslar/UCUNCU_TARAF.txt'ten, metinler derlemede bağımlılıkların kaynak ağaçlarından kurulur
+(op4/CMakeLists.txt, op4/cmake/bagimlilik_*.cmake; MIMARI §19).
+
+Bileşen                     Sürüm                   Lisans                       Metin
+--------------------------  ----------------------  ---------------------------  ----------------------------------
+FreeType                    2.13.3                  FTL (FreeType Project        FreeType-FTL.txt
+                                                    License; op4 FTL'yi seçer)
+Dear ImGui (docking)        1.92.9b                 MIT                          DearImGui-LICENSE.txt
+nlohmann/json               3.12.0                  MIT                          nlohmann-json-LICENSE.txt
+miniz                       3.0.2                   MIT                          miniz-LICENSE.txt
+quickjs-ng                  0.17.0                  MIT                          quickjs-ng-LICENSE.txt
+Noto Sans SemiCondensed     2.015 (statik örnek)    SIL Open Font License 1.1    notosans-OFL.txt
+Inter (sembol yedeği,       4.001                   SIL Open Font License 1.1    inter-OFL.txt
+  açılış ekranı)
+Cormorant Garamond          4.001                   SIL Open Font License 1.1    cormorantgaramond-OFL.txt
+  (açılış ekranı)
+CPython (gömülebilir)       3.14                    PSF License                  python\LICENSE.txt
+numpy, sympy, mpmath        2.5.3, 1.14.0, 1.3.0    BSD-3 / BSD                  python\Lib\site-packages\*.dist-info\
+
+Yazı tipleri op4.exe'ye alt kümelenmiş statik örnekler olarak gömülüdür (op4/araclar/kimlik_uret.py --yazi); ayrı yazı
+tipi dosyası kurulmaz.
+
+FreeType atfı (FTL, "Credits"):
+
+    Portions of this software are copyright © 2024 The FreeType Project (www.freetype.org).  All rights reserved.

@@ -8,7 +8,7 @@
 //   3. Hizmetler::iletisim ← yerel IFileDialog / TaskDialog (test kipinde kabuğun betikli yedeği kalır).
 //   4. DosyaIslemleri (platformdan bağımsız akış; cekirdek/proje_islemleri.h): dosya.* komutları, model ve önizleme
 //      katkıları, kapatmaOnayi, otomatik kayıt, kurtarma, son dosyalar, ayar kalıcılığı.
-//   5. Kancalar (C çizer, Stüdyo belirteçleriyle): "Kurtarma" ve "Şablondan yeni" yüzen kartları, "Dosya/Son dosyalar"
+//   5. Kancalar (C çizer; renkler C'nin tema belirteçlerinden, dosya/kart_cizimi.h): "Kurtarma" ve "Şablondan yeni" yüzen kartları, "Dosya/Son dosyalar"
 //      menü katkısı, Ayarlar › "Dosya ve otomatik kayıt" sayfası.
 //   6. Kare işi: pencere başlığı ("op4 — ad •"), tek örnek borusundan gelen "öne gel" isteği.
 #include <windows.h>
@@ -22,7 +22,7 @@
 #include "cekirdek/proje_islemleri.h"
 #include "cekirdek/proje_zip.h"
 #include "dosya/dosya_win.h"
-#include "dosya/studyo_tema.h"
+#include "dosya/kart_cizimi.h"
 #include "imgui.h"
 #include "platform/dosya_sistemi.h"
 
@@ -87,9 +87,9 @@ struct DosyaModulu {
             h.bildirim->KomutYaz(hata);
     }
 
-    // ---- Stüdyo kartları -------------------------------------------------------------------------------------------
+    // ---- kartlar -----------------------------------------------------------------------------------------------
     void KurtarmaKarti() {
-        using namespace studyo;
+        using namespace kart;
         if (!islemler->KurtarmaSorusuAcik()) {
             h.arayuz->PanelGoster("kurtarma", false);
             return;
@@ -102,10 +102,10 @@ struct DosyaModulu {
         for (size_t i = 0; i < kayitlar.size(); ++i) {
             const KurtarmaKaydi& k = kayitlar[i];
             ImGui::PushID(static_cast<int>(i));
-            ImGui::PushStyleColor(ImGuiCol_Text, METIN);
+            ImGui::PushStyleColor(ImGuiCol_Text, R().metin);
             ImGui::TextUnformatted(k.baslik.c_str());
             ImGui::PopStyleColor();
-            ImGui::PushStyleColor(ImGuiCol_Text, METIN3);
+            ImGui::PushStyleColor(ImGuiCol_Text, R().metin3);
             ImGui::TextUnformatted(k.asilYol.empty() ? "Hiç kaydedilmemiş proje" : k.asilYol.c_str());
             ImGui::TextUnformatted(("Otomatik kayıt: " + YerelZaman(k.zaman)).c_str());
             ImGui::PopStyleColor();
@@ -129,7 +129,7 @@ struct DosyaModulu {
     }
 
     void SablonKarti() {
-        using namespace studyo;
+        using namespace kart;
         if (sablonlar.empty()) sablonlar = islemler->Sablonlar();
         Baslik("Şablondan yeni proje", "Hazır yapı şablonları hesap motoru olmadan açılır; açılan model \"Adsız\" yeni bir "
                                        "projedir.");
@@ -138,9 +138,9 @@ struct DosyaModulu {
             const SablonBilgisi& s = sablonlar[i];
             ImGui::PushID(static_cast<int>(i));
             const bool secili = secilenSablon == static_cast<int>(i);
-            ImGui::PushStyleColor(ImGuiCol_Header, ALTIN_DOLGU);
-            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ALTIN_ZEMIN);
-            ImGui::PushStyleColor(ImGuiCol_Text, METIN);
+            ImGui::PushStyleColor(ImGuiCol_Header, R().seciliDolgu);
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, R().hover);
+            ImGui::PushStyleColor(ImGuiCol_Text, R().metin);
             if (ImGui::Selectable(s.baslik.c_str(), secili, ImGuiSelectableFlags_AllowDoubleClick)) {
                 secilenSablon = static_cast<int>(i);
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -151,15 +151,15 @@ struct DosyaModulu {
                 }
             }
             ImGui::PopStyleColor(3);
-            Rozet(s.sistem == "celik" ? "Çelik" : "Betonarme", YUZEY3, METIN2);
+            Rozet(s.sistem == "celik" ? "Çelik" : "Betonarme", R().yuzey3, R().metin2);
             ImGui::SameLine();
-            Rozet((std::to_string(s.kat) + " kat").c_str(), YUZEY3, METIN2);
+            Rozet((std::to_string(s.kat) + " kat").c_str(), R().yuzey3, R().metin2);
             if (!s.aks.empty()) {
                 ImGui::SameLine();
-                Rozet(("Aks " + s.aks).c_str(), YUZEY3, METIN2);
+                Rozet(("Aks " + s.aks).c_str(), R().yuzey3, R().metin2);
             }
             if (secili) {
-                ImGui::PushStyleColor(ImGuiCol_Text, METIN3);
+                ImGui::PushStyleColor(ImGuiCol_Text, R().metin3);
                 ImGui::PushTextWrapPos(0.0f);
                 ImGui::TextUnformatted(s.aciklama.c_str());
                 ImGui::PopTextWrapPos();
@@ -199,7 +199,7 @@ struct DosyaModulu {
     }
 
     void AyarSayfasi(Ayarlar& a) {
-        using namespace studyo;
+        using namespace kart;
         DosyaAyarlari& d = a.dosya;
         Baslik("Otomatik kayıt", "Kaydedilmemiş değişiklikler kurtarma klasörüne yazılır; beklenmedik kapanıştan sonra "
                                  "açılışta \"Kurtar / Sil / Sonra\" sorulur.");

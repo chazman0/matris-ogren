@@ -192,7 +192,7 @@ TEST_CASE("D2 Türkçe karakterli yol: ProjeYaz / ProjeOku") {
 
 TEST_CASE("D3 eski biçimler: Faz 0 JSON .op4, .matris, bina .json, IFC, tanınmayan") {
     GeciciDizin d;
-    // Faz 0 denemesinin ProjeKaydet çıktısı (op4/kaynak/proje.cpp biçimi).
+    // Faz 0 denemesinin ProjeKaydet çıktısı (eski op4/kaynak/proje.cpp biçimi; dosya F1'de kaldırıldı, okuma D'dedir).
     DosyaYaz(d.Yol("deneme.op4"),
              "{\n  \"bicim\": \"op4-proje\",\n  \"bicim_surumu\": 1,\n  \"uygulama\": \"op4 0.0.1\",\n"
              "  \"kaydedildi\": \"2026-10-30T10:00:00\",\n"

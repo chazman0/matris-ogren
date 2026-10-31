@@ -71,6 +71,7 @@ bool AyarlariOku(std::string_view metin, Ayarlar& a, std::string& hata) {
         Al(g, "acilis_ekrani", a.arayuz.acilisEkrani);
         Al(g, "vurgu", a.arayuz.vurgu);
         Al(g, "yogunluk", a.arayuz.yogunluk);
+        Al(g, "yazi_boyutu", a.arayuz.yaziBoyutu);  // C eklentisi (31.10.2026, Yazı boyutu)
         Al(g, "etiket_boyu", a.arayuz.etiketBoyu);
         Al(g, "dil", a.arayuz.dil);
         Al(g, "ondalik", a.arayuz.ondalik);
@@ -116,6 +117,7 @@ bool AyarlariOku(std::string_view metin, Ayarlar& a, std::string& hata) {
     a.grafik.cubukKalinlik = std::clamp(a.grafik.cubukKalinlik, 0.5, 3.0);
     a.grafik.seciliKalinlik = std::clamp(a.grafik.seciliKalinlik, 1.0, 4.0);
     a.arayuz.etiketBoyu = std::clamp(a.arayuz.etiketBoyu, 9.0, 16.0);
+    if (a.arayuz.yaziBoyutu != "kucuk" && a.arayuz.yaziBoyutu != "orta" && a.arayuz.yaziBoyutu != "buyuk") a.arayuz.yaziBoyutu = "orta";
     // Bilinmeyen üst düzey anahtarlar korunur.
     json b = json::object();
     for (auto i = j.begin(); i != j.end(); ++i)
@@ -143,7 +145,7 @@ std::string AyarlariYaz(const Ayarlar& a) {
                    {"yorunge", a.arayuz.yorunge}, {"donme_duyarliligi", a.arayuz.donmeDuyarliligi},
                    {"klasik_menu", a.arayuz.klasikMenu}, {"tema", a.arayuz.tema},
                    {"acilis", a.arayuz.acilis}, {"acilis_ekrani", a.arayuz.acilisEkrani},
-                   {"vurgu", a.arayuz.vurgu}, {"yogunluk", a.arayuz.yogunluk},
+                   {"vurgu", a.arayuz.vurgu}, {"yogunluk", a.arayuz.yogunluk}, {"yazi_boyutu", a.arayuz.yaziBoyutu},
                    {"etiket_boyu", a.arayuz.etiketBoyu}, {"dil", a.arayuz.dil}, {"ondalik", a.arayuz.ondalik},
                    {"binlik_ayirici", a.arayuz.binlikAyirici}, {"birim_sistemi", a.arayuz.birimSistemi},
                    {"varsayilan_kuvvet", a.arayuz.varsayilanKuvvet}, {"varsayilan_uzunluk", a.arayuz.varsayilanUzunluk}};

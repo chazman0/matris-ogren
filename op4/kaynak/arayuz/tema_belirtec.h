@@ -81,13 +81,22 @@ struct YaziRolu {
     float boy;
     int agirlik;  // 400 · 500 · 600
 };
-// Yazı ölçeği (Inter; boyut px @1×, ağırlık)
+// Yazı ölçeği (Noto Sans SemiCondensed; boyut px @1×, ağırlık)
+inline constexpr const char* YAZI_AILESI = "Noto Sans SemiCondensed";
 struct YaziOlcegi {
     YaziRolu sayfa, pencere, baslik, govde, govde_orta, govde_kalin;
     YaziRolu etiket, etiket_ince, kucuk, rozet, bolum;
 };
 inline constexpr YaziOlcegi Y = {{20.0f, 600}, {15.0f, 600}, {13.0f, 600}, {12.0f, 400}, {12.0f, 500}, {12.0f, 600},
     {11.0f, 500}, {11.0f, 400}, {10.0f, 500}, {9.0f, 600}, {9.0f, 600}};
+// Yazı boyutu çarpanları (Ayarlar › Görüntü › Yazı boyutu; arayüz ölçeği = DPI × çarpan)
+struct YaziBoyutu {
+    const char* kimlik;  // ayar değeri ("kucuk" | "orta" | "buyuk")
+    float carpan;
+};
+inline constexpr int YAZI_BOYUTU_SAYISI = 3;
+inline constexpr YaziBoyutu YAZI_BOYUTLARI[YAZI_BOYUTU_SAYISI] = {{"kucuk", 0.916667f}, {"orta", 1.0f},
+    {"buyuk", 1.16667f}};
 
 // Modül ölçüleri; "rahat" ≥ 1600×900, "siki" daha küçük ekranda
 struct Olcu {

@@ -140,9 +140,22 @@ LRESULT Uygulama::Yordam(HWND h, UINT m, WPARAM w, LPARAM l) {
             SetWindowPos(h, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
             return 0;
         }
-        case WM_GETMINMAXINFO:
-            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {960, 600};
+        case WM_GETMINMAXINFO: {
+            // En küçük istemci alanı: yerleşimin alt sınırı (tasarim.md §9; tema Olculer::enAz*, 1024 × 640 mantıksal px)
+            // × arayüz ölçeği (DPI × Ayarlar › Görüntü › Yazı boyutu). Özel kromda istemci alanı bütün penceredir.
+            const tema::Olculer& o = tema::Etkin().o;
+            const float s = olcek_ * (ana_ ? ana_->YaziCarpani() : 1.0f);
+            RECT r{0, 0, static_cast<LONG>(std::lround(o.enAzGenislik * s)), static_cast<LONG>(std::lround(o.enAzYukseklik * s))};
+            if (!ozelKrom_) AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, FALSE, 0, GetDpiForWindow(h));
+            LONG g = r.right - r.left, y = r.bottom - r.top;
+            MONITORINFO mi{sizeof(mi)};  // küçük ekranda (ör. Büyük yazı, %125) çalışma alanını aşmasın
+            if (GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) {
+                g = std::min(g, mi.rcWork.right - mi.rcWork.left);
+                y = std::min(y, mi.rcWork.bottom - mi.rcWork.top);
+            }
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {g, y};
             return 0;
+        }
         case WM_SYSCOMMAND:
             if ((w & 0xfff0) == SC_KEYMENU) return 0;  // Alt menü tuşu ImGui'ye kalsın
             break;
