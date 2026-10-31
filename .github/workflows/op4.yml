@@ -88,16 +88,18 @@ jobs:
           cmake --version | head -1
 
       - name: Yapılandır ve derle (ön ayar linux-cekirdek-asan; clang, -Werror, ASan + UBSan)
+        working-directory: op4  # CMakePresets.json op4/ altında
         run: |
           cmake --preset linux-cekirdek-asan -DPython3_EXECUTABLE="$(command -v python)"
           cmake --build --preset linux-cekirdek-asan
 
       - name: Sına — C++ (ctest; motor istemcisi ↔ python -m op4_sunucu)
+        working-directory: op4
         run: |
           kod=0
           ctest --preset linux-cekirdek-asan || kod=$?
           echo "::group::OP4OLCUM (ctest)"
-          grep -h "^OP4OLCUM" op4/yapi/linux-cekirdek-asan/Testing/Temporary/LastTest.log || true
+          grep -h "^OP4OLCUM" yapi/linux-cekirdek-asan/Testing/Temporary/LastTest.log || true
           echo "::endgroup::"
           exit "$kod"
 
@@ -172,7 +174,7 @@ jobs:
           bas=$(date +%s)
           # ctest'teki motor sınamaları bu Python'u çocuk süreç olarak başlatır (ileri eğik çizgili yol).
           py=$(python -c "import sys; print(sys.executable.replace(chr(92), '/'))")
-          cmake --preset win-surum -B op4-yapi -DOP4_SURUM="$OP4_SURUM" -DPython3_EXECUTABLE="$py"
+          cmake -S op4 --preset win-surum -B op4-yapi -DOP4_SURUM="$OP4_SURUM" -DPython3_EXECUTABLE="$py"  # ön ayarlar op4/ altında
           echo "SURE_YAPILANDIR=$(( $(date +%s) - bas ))" >> "$GITHUB_ENV"
 
       - name: Derle (Release)
