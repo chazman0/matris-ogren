@@ -102,8 +102,8 @@ public:
     std::function<void(MotorRolu, const std::string&, float)> durumBildirimi;
 };
 
-// Süreç tabanlı istemci (A, 1.2). Win32 ve POSIX; platform/surec.h üstüne kurulu. Faz 1 taslağı: Baslat motoru
-// "henüz uygulanmadı" hatasıyla hazır-başarısız yapar, Gonder isteklerini MotorHatasi ("motor_yok") ile yanıtlar.
+// Süreç tabanlı istemci (A, 1.2). Win32 ve POSIX; platform/surec.h üstüne kurulu (uygulama: cekirdek/motor_istemci.*).
+// op4motor.exe sürecini başlatır, tel protokolüyle konuşur; iptal, kilitlenmede sonlandır → yeniden başlat.
 std::unique_ptr<MotorHizmeti> MotorIstemcisiOlustur();
 
 }  // namespace op4

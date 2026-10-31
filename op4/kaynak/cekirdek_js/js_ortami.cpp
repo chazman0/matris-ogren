@@ -309,7 +309,7 @@ bool JsOrtami::Kur(std::string& hata) {
     if (sinir == 0) sinir = sizeof(void*) >= 8 ? size_t(3) * 1024 * 1024 * 1024 : size_t(1536) * 1024 * 1024;
     JS_SetMemoryLimit(i.rt, sinir);
 #if defined(_WIN32)
-    JS_SetMaxStackSize(i.rt, 640 * 1024);  // ana iş parçacığı yığını 1 MB (MSVC varsayılanı)
+    JS_SetMaxStackSize(i.rt, 3 * 1024 * 1024);  // op4.exe ve sınama ikilisi 4 MB yığınla bağlanır (CMakeLists, OP4_YIGIN)
 #else
     JS_SetMaxStackSize(i.rt, 4 * 1024 * 1024);
 #endif

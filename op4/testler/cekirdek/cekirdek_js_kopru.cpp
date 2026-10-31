@@ -231,19 +231,19 @@ TEST_CASE("cekirdek_js B4: C1 genel modele geçiş — Vazgeç modeli değiştir
     CHECK(m["kolonlar"].empty());
     CHECK(m["temeller"]["tip"] == "surekli");      // docs C11: genel model motoru mütemadi temeli çözer, temel korunur
     CHECK(c->Sahne()->cubuklar.size() == cubuk);  // genel görünüm kimlikleri dönüşümde korunur
-    // sahne aynı: eleman farkı yok; içerik değiştiği için tek geçersiz kimlik işareti (S11'de içerik bayrağı yok)
+    // sahne aynı: eleman farkı yok; model metni değiştiği için içerik bayrağı (S11 icerikDegisti)
     CHECK(r.eklenen.empty());
     CHECK(r.silinen.empty());
-    REQUIRE(r.degisen.size() == 1);
-    CHECK(r.degisen[0] == ICERIK_DEGISTI_ISARETI);
-    CHECK_FALSE(r.degisen[0].Gecerli());
+    CHECK(r.degisen.empty());
+    CHECK(r.icerikDegisti);
     for (const SahneTemeli& t : c->Sahne()->temeller) CHECK(t.tur == TemelTuru::Surekli);
     bool uyari = false;
     for (const std::string& u : r.uyarilar) uyari = uyari || u.find("genelleştirildi") != std::string::npos;
     CHECK(uyari);
-    // geri al: aks–kat modeline döner (aynı bayt), yine işaretli rapor
+    // geri al: aks–kat modeline döner (aynı bayt), yine içerik bayraklı rapor
     const IslemRaporu g = GeriAlUygula(h);
     CHECK(g.ModelDegisti());
+    CHECK(g.icerikDegisti);
     CHECK(c->Metin() == once);
 }
 

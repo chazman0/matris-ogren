@@ -269,10 +269,8 @@ private:
         Anahtarlar(c, r.v(), "silinen", rp.silinen, hata);
         Anahtarlar(c, r.v(), "degisen", rp.degisen, hata);
         if (!hata.empty()) IcHata(yol, hata);
-        // S11'de içerik bayrağı yok: eleman farkı boş ama model metni değiştiyse (başlık, genel modele geçiş, kesit tablosu …)
-        // ModelDegisti() doğru dönsün diye geçersiz kimlik işareti konur (quickjs_cekirdek.h).
-        if (rp.basarili && Evet(j, "icerik_degisti") && rp.eklenen.empty() && rp.silinen.empty() && rp.degisen.empty())
-            rp.degisen.push_back(ICERIK_DEGISTI_ISARETI);
+        // Eleman farkı boş olsa da model metni değişmiş olabilir (başlık, genel modele geçiş, kesit tablosu …).
+        rp.icerikDegisti = rp.basarili && Evet(j, "icerik_degisti");
         Yenile();
         rp.sahneSurumu = sahneSurumu_;
         return rp;

@@ -19,10 +19,4 @@ struct GeriAlSiniri {
 
 std::unique_ptr<ModelCekirdegi> QuickJsCekirdegiOlustur(const CekirdekAyari& ayar, const GeriAlSiniri& sinir, std::string& hata);
 
-// İçerik değişti ama eleman farkı boş olan raporun (baslikDegistir, genellestir, kesit tablosu …) `degisen` listesindeki
-// işareti. S11 IslemRaporu::ModelDegisti() boş olmayan bir eleman listesi ister; bu geçersiz kimlik (tür Yok) listeye tek
-// başına konur ki kirli işareti, sonuç eskime ve sahneDegisti olayları yine çalışsın. Gecerli() false olduğu için seçim,
-// vurgu ve sahne aramaları onu yok sayar.
-inline constexpr ElemanKimligi ICERIK_DEGISTI_ISARETI{};
-
 }  // namespace op4

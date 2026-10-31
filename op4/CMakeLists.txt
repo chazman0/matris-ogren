@@ -84,6 +84,16 @@ endif()
 op4_uyarilar(op4_cekirdek)
 
 # ---------------------------------------------------------------------------------------------- op4_cekirdek_js
+# Model çekirdeğini (QuickJS) çalıştıran ikililer Windows'ta 4 MB ana yığınla bağlanır (varsayılan 1 MB); JS yığın sınırı
+# 3 MB'dir (js_ortami.cpp). Linux'ta ana yığın ulimit'ten gelir (çoğunlukla 8 MB).
+set(OP4_YIGIN 4194304)
+function(op4_yigin hedef)
+  if(MSVC)
+    target_link_options(${hedef} PRIVATE /STACK:${OP4_YIGIN})
+  elseif(MINGW)
+    target_link_options(${hedef} PRIVATE -Wl,--stack,${OP4_YIGIN})
+  endif()
+endfunction()
 op4_kaynaklar(OP4_CEKIRDEK_JS_KAYNAKLARI kaynak/cekirdek_js)
 add_library(op4_cekirdek_js STATIC ${OP4_CEKIRDEK_JS_KAYNAKLARI})
 target_link_libraries(op4_cekirdek_js PUBLIC op4_cekirdek)
@@ -95,6 +105,7 @@ if(OP4_TESTLER)
   list(SORT OP4_TEST_KAYNAKLARI)
   add_executable(op4_cekirdek_testleri ${OP4_TEST_KAYNAKLARI})
   target_link_libraries(op4_cekirdek_testleri PRIVATE op4_cekirdek_js op4::doctest)
+  op4_yigin(op4_cekirdek_testleri)
   # Sınamalar depo dosyalarını (op4/veri, op4/testler/ortak, docs/) bu yollardan okur.
   get_filename_component(_op4_depo "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
   target_compile_definitions(op4_cekirdek_testleri PRIVATE OP4_KAYNAK_DIZINI="${CMAKE_CURRENT_SOURCE_DIR}"
@@ -148,6 +159,7 @@ elseif(MINGW)
   target_compile_options(op4 PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
   target_link_options(op4 PRIVATE -municode -static)
 endif()
+op4_yigin(op4)
 
 # ---------------------------------------------------------------------------------------------- op4motor.exe (Windows)
 # Hesap motoru süreci (MIMARI §8.1): python\python3XX.dll'i yükler, Py_Main(-X utf8 -B -m op4_sunucu …). Konsol alt

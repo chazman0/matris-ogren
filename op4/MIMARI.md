@@ -1629,10 +1629,10 @@ sözleşme işlemesinde gelen uygulamanın durumunu gösterir: **tam** = kullan�
 | S8 | `kaynak/cekirdek/secme.h` | `GorusIzdusumu` (double), `SecmeDizini` (BVH: EnYakin, Adaylar, Pencere, IsinVurusu, Sinir) | C | C | taslak (izdüşüm tam, BVH boş) |
 | S9 | `kaynak/cekirdek/gorunum.h` | `GorunumDurumu` (kip, renk kipi, ızgara, üzerindeki eleman, `SonucBoyamasi`, çizim / sığdır istekleri) | C | C okur, D sonuç yazar | tam |
 | S10 | `kaynak/cekirdek/gezgin.h` | Model gezgini ağacı (kat → alt tür → kullanım yeri; sayılar, kimlikler) | C | C | taslak |
-| S11 | `kaynak/cekirdek/model_cekirdegi.h` | `ModelCekirdegi`: YeniBos, Yukle, Uygula (beyaz liste), GeriAl, Yinele, GeriAlBilgisi, Sahne, Oznitelikler, Ozet, Denetle, Metin, SonucEsle, IfcDisari; `IslemRaporu` (eklenen / silinen / değişen, C1 geçiş onayı) | B | C, D | taslak (geçici C++ çekirdeği: boş model, yükle, metin) |
+| S11 | `kaynak/cekirdek/model_cekirdegi.h` | `ModelCekirdegi`: YeniBos, Yukle, Uygula (beyaz liste), GeriAl, Yinele, GeriAlBilgisi, Sahne, Oznitelikler, Ozet, Denetle, Metin, SonucEsle, IfcDisari; `IslemRaporu` (eklenen / silinen / değişen, `icerikDegisti`, C1 geçiş onayı) | B | C, D | tam (QuickJS-ng çekirdeği) |
 | S12 | `kaynak/cekirdek/motor_protokol.h`, `motor/op4_protokol.py`, `testler/ortak/motor_protokol.json` | Tel protokolü: çerçeve, ileti biçimleri (bağlayıcı alan sırası), Y1–Y4 değişmezleri, süreç komut satırı, çıkış kodları; C++ ve Python kodlayıcıları ortak vektörlerle | S | A | tam |
-| S13 | `kaynak/cekirdek/motor_hizmeti.h` | `MotorHizmeti` (eşzamansız Gonder / Iptal / Pompala; işleyiciler UI iş parçacığında, her istek için tam bir kez), `MotorRoluSec` (§8.3), `MotorIstemcisiOlustur` | A | D, C, A | Windows'ta süreç içi gömülü motor uyarlayıcısı (`motor_modulu.cpp`); süreç istemcisi taslak |
-| S14 | `kaynak/platform/surec.h` | Alt süreç + iki anonim boru (Win32 / POSIX) | A | A | taslak |
+| S13 | `kaynak/cekirdek/motor_hizmeti.h` | `MotorHizmeti` (eşzamansız Gonder / Iptal / Pompala; işleyiciler UI iş parçacığında, her istek için tam bir kez), `MotorRoluSec` (§8.3), `MotorIstemcisiOlustur` | A | D, C, A | tam (süreç istemcisi `motor_istemci.*`; `OP4_MOTOR=gomulu` yalnız tanı) |
+| S14 | `kaynak/platform/surec.h` | Alt süreç + iki anonim boru (Win32 / POSIX) | A | A | tam |
 | S15 | `kaynak/cekirdek/proje_belgesi.h` | `ProjeBelgesi`: yol, ad ("Adsız N"), pencere başlığı ("op4 — ad •"), kirli işareti, **kaydetme katkıları** (her modül kendi ZIP girdisini yazar / okur), olaylar | D | C başlık, hepsi katkı | tam |
 | S16 | `kaynak/cekirdek/proje_dosyasi.h` | `.op4` ZIP okuma / yazma, `BicimSapta`, manifest, son dosyalar, kurtarma kayıtları | D | D | taslak (BicimSapta, SonDosyaEkle tam) |
 | S17 | `kaynak/platform/dosya_sistemi.h` | Atomik yazma, okuma, kullanıcı klasörleri (`OP4_KULLANICI_DIZINI` sınama yönlendirmesi) | D | hepsi | taşınabilir tam; Windows sağlamlaştırması D |
@@ -1643,9 +1643,9 @@ sözleşme işlemesinde gelen uygulamanın durumunu gösterir: **tam** = kullan�
 | S22 | `kaynak/cekirdek/hizmetler.h` | `Hizmetler`: paketlerin TEK buluşma noktası (işaretçiler, olaylar `modelDegisti` / `modelYuklendi` / `sahneDegisti`, `kapatmaOnayi`, kare işleri); `ModelIslemiUygula` (C1 onay döngüsü + kirli + seçim ayıklama + sonuç eski), `GeriAlUygula`, `YineleUygula`, `ModelYuklendi` | S | hepsi | tam |
 | S23 | `kaynak/cekirdek/kabuk.h`, `kaynak/moduller_listesi.cpp` | `UygulamaKabugu` (ortak nesnelerin sahibi; ayarlar ve katalog yükleme; boş "Adsız 1"), `ModulOrtami` (sahiplik, ana pencere, test kipi, açılış dosyası), modül sırası A → B → C → D(dosya) → D(çözüm) | S | uygulama | tam; modüller taslak |
 | S24 | `kaynak/secenekler.h`, `kaynak/test_kipleri.h` | F1 komut satırı bayraklarının tamamı (`--senaryo`, `--oz-sinama`, `--yeni-ornek`, `--acilis-yok`, `--grafik-denetim`, `--golgelendirici-dizini` …); test kiplerinin dağılımı | A | hepsi | tam (senaryo ve öz sınama taslak) |
-| S25 | `kaynak/grafik/golgelendirici_bayt.h` | Derlemede üretilmiş gölgelendirici bayt kodu; grafik.cpp önce bunu sorar, yoksa çalışma anında derler | A | C | taslak (boş) |
-| S26 | `js/op4_ops.js` | Yeni saf işlemler; JSDoc imzaları ve dönüş biçimleri; `KODLAR`, `OZNITELIK_IDLERI`, `TASLAK` listesi | B | B cephesi | `bosModel` tam; diğerleri biçimce doğru boş |
-| S27 | `js/op4_cekirdek.js` | QuickJS cephesi (`olustur()` örneği): yöntemler S11 ile birebir; `ISLEMLER` beyaz listesi; hata kuralı; geri al kuralı | B | B'nin C++ köprüsü | yeniBos, yukle, metin, ozet tam; diğerleri taslak |
+| S25 | `kaynak/grafik/golgelendirici_bayt.h` | Derlemede üretilmiş gölgelendirici bayt kodu; grafik.cpp önce bunu sorar, yoksa çalışma anında derler | A | C | tam (FXC SM 5.1, 7 giriş noktası) |
+| S26 | `js/op4_ops.js` | Yeni saf işlemler; JSDoc imzaları ve dönüş biçimleri; `KODLAR`, `OZNITELIK_IDLERI`, `TASLAK` listesi | B | B cephesi | tam (`TASLAK` boş) |
+| S27 | `js/op4_cekirdek.js` | QuickJS cephesi (`olustur()` örneği): yöntemler S11 ile birebir; `ISLEMLER` beyaz listesi; hata kuralı; geri al kuralı | B | B'nin C++ köprüsü | tam |
 
 **Bağlayıcı kurallar (sözleşmeler arası):**
 1. Model değişikliği her zaman `ModelIslemiUygula` / `GeriAlUygula` / `YineleUygula` yolundan geçer; böylece kirli işareti,
@@ -1845,6 +1845,8 @@ Her paket kendi işlemesinden sonra Linux (`cekirdek-linux`) ve Windows (`window
 | Tarih | Kod | Değişiklik | Paket |
 |---|---|---|---|
 | 2026-10-30 | S1–S27 | İlk sürüm: başlıklar, taslaklar, kabuk, komut kataloğu (37 komut), öznitelik şeması (23 alan), sahne kodları, tel protokolü ve ortak vektörler, sahiplik tablosu | S |
+| 2026-10-30 | S13, S14, S25 (uygulama notu; imza değişmedi) | A'nın uygulaması: `MotorAyari::sunucuDizini` platformun yol ayırıcısıyla (POSIX `:`, Windows `;`) PYTHONPATH'tir; `Iptal` true döndüyse işleyici her zaman `Iptal` görür (iptal ile yanıt yarışırsa sonuç atılır), kuyruktaki iptal hemen çözülür (aynı no için ikinci `Iptal` false); `CalistirBekle` süre dolunca `MotorHatasi` + `hataTuru` "iptal" döner. `--golgelendirici-dizini`, `GomuluGolgelendirici`'nin geliştirici kipidir (`grafik/golgelendirici_bayt_gelistirme.h`). README: A bölümleri (op4motor, ön ayarlar, komut satırı) | A |
+| 2026-10-31 | S11 (eklemeli) | `IslemRaporu::icerikDegisti`: eleman farkı boş ama model metni değişen işlemler (başlık, kesit / malzeme tablosu, genel modele geçiş) `ModelDegisti()` true döndürür; B'nin geçersiz kimlik işareti kalktı. Fabrika yorumu QuickJS-ng çekirdeğine göre güncellendi. op4.exe ve sınama ikilisi Windows'ta 4 MB yığınla bağlanır (`op4_yigin`, JS yığın sınırı 3 MB) | S (B isteği) |
 
 ### 24.7 Paket kabul denetimleri
 
