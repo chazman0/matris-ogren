@@ -49,7 +49,13 @@ function tabloMetni(yerel) {
 }
 
 function gomulu() {
-  return "  const HARMAN = {\n    tr: \"" + tabloMetni("tr") + "\",\n    kok: \"" + tabloMetni("en") + "\",\n  };\n";
+  return "  const HARMAN = {\n    icu: \"" + process.versions.icu + "\",\n    tr: \"" + tabloMetni("tr") + "\",\n    kok: \"" +
+    tabloMetni("en") + "\",\n  };\n";
+}
+/** Ön yüklemeye gömülü tablonun üretildiği ICU sürümü (yoksa null). */
+function gomuluIcu(metin) {
+  const m = /^\s*icu: "([^"]*)",$/m.exec(metin);
+  return m ? m[1] : null;
 }
 
 const BAS = "  // HARMAN_TABLOSU_BAS (op4/testler/js/harman_uret.js üretir; elle değiştirmeyin)\n";
@@ -63,4 +69,4 @@ if (require.main === module) {
   process.stderr.write("harman: tr " + tablo("tr").length + ", kök " + tablo("en").length + " karakter → " + path.relative(process.cwd(), ONYUKLEME) + "\n");
 }
 
-module.exports = { BAS: BAS, SON: SON, gomulu: gomulu, tablo: tablo, karakterler: karakterler };
+module.exports = { BAS: BAS, SON: SON, gomulu: gomulu, gomuluIcu: gomuluIcu, tablo: tablo, karakterler: karakterler };

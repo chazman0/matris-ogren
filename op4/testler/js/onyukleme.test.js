@@ -37,10 +37,14 @@ test("ön yükleme: self, window / document yok, console → günlük, determini
   assert.equal(vm.runInContext("String.prototype.localeCompare === lc && typeof self === 'object'", yerli), true);
 });
 
-test("harmanlama tablosu ICU'dan güncel (node op4/testler/js/harman_uret.js)", () => {
+test("harmanlama tablosu ICU'dan güncel (node op4/testler/js/harman_uret.js)", (t) => {
   const m = fs.readFileSync(ONYUKLEME, "utf8");
   const a = m.indexOf(H.BAS), s = m.indexOf(H.SON);
   assert.ok(a > 0 && s > a);
+  const icu = H.gomuluIcu(m.slice(a, s));
+  assert.ok(icu, "tabloda ICU sürümü yok");
+  // başka ICU sürümünde tablo birebir aynı olmayabilir; davranış yine aşağıdaki sınamayla ICU'ya karşı denetlenir
+  if (icu !== process.versions.icu) { t.skip("tablo ICU " + icu + " ile üretildi, bu node ICU " + process.versions.icu); return; }
   assert.equal(m.slice(a + H.BAS.length, s), H.gomulu());
 });
 

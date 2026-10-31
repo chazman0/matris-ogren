@@ -386,3 +386,32 @@ test("girdi değişmez: işlevler modeli yerinde değiştirmez", () => {
     assert.equal(JSON.stringify(m), once, ad);
   }
 });
+
+test("katUyeligi + kullanimYeri: betonarme-3kat-3x3 — her katta 4 köşe, 4 kenar, 1 iç kolon (4 × 3 köşe kolon); dış / iç kiriş; temel düğümleri", () => {
+  const m = sablon("betonarme-3kat-3x3");
+  const C = O.cozumle(m);
+  const k = O.katUyeligi(m, { cozum: C }), u = O.kullanimYeri(m, { cozum: C });
+  const sayac = {};
+  for (let i = 0; i < C.nc; i++) {
+    const no = C.cel[i].no, y = u.cubuk[no];
+    if (y.alt_tur !== "kolon" && y.alt_tur !== "kiris") continue;
+    assert.equal(k.cubuk[no].length, 1, "çubuk " + no);
+    const a = y.alt_tur + "|" + k.cubuk[no][0] + "|" + y.yer;
+    sayac[a] = (sayac[a] || 0) + 1;
+  }
+  for (const kat of [1, 2, 3]) {
+    assert.equal(sayac["kolon|" + kat + "|kose"], 4, "kat " + kat);
+    assert.equal(sayac["kolon|" + kat + "|kenar"], 4, "kat " + kat);
+    assert.equal(sayac["kolon|" + kat + "|ic"], 1, "kat " + kat);
+    assert.equal(sayac["kiris|" + kat + "|dis"], 8, "kat " + kat);   // 3 × 3 aks (2 × 2 göz): her kenarda 2 parça
+    assert.equal(sayac["kiris|" + kat + "|ic"], 4, "kat " + kat);
+  }
+  const kose = Object.keys(sayac).filter((a) => /^kolon\|\d\|kose$/.test(a)).reduce((t, a) => t + sayac[a], 0);
+  assert.equal(kose, 4 * 3);
+  // temel seviyesindeki 9 düğüm "temel", kolon üst uçları "kolon-ustu"
+  const dy = Object.values(u.dugum).map((x) => x.yer);
+  assert.equal(dy.filter((y) => y === "temel").length, 9);
+  assert.equal(dy.filter((y) => y === "kolon-ustu").length, 27);
+  for (const [no, kl] of Object.entries(k.dugum)) assert.equal(kl.length, 1, "düğüm " + no);
+  assert.deepEqual(k.seviyeler.map((s) => s.kat), [0, 1, 2, 3]);
+});
