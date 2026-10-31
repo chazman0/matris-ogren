@@ -261,7 +261,23 @@ jobs:
           # Gölgelendiriciler derlemede gömülü (MIMARI D12, kabul A4): çalışma anı derlemesi yok.
           grep -E "Gölgelendiriciler" ekran.log || true
           grep -q "gömülü bayt kodu (FXC, SM 5.1" ekran.log || { echo "::error::gölgelendiriciler gömülü bayt kodundan yüklenmedi"; kod=2; }
-          echo "GOLGELENDIRICI=$(tr -d '\r' < ekran.log | grep -o 'Gölgelendiriciler derlendi ([0-9.]* ms)' | head -1); $(tr -d '\r' < ekran.log | grep -o 'aygit_ms=[0-9.]*' | head -1)" >> "$GITHUB_ENV"
+          # Kabul A4 ölçümü, aynı çalıştırmada art arda (ılık): gömülü bayt kodu ↔ çalışma anı derlemesi (Faz 0 yolu;
+          # OP4_GOLGELENDIRICI=calisma_ani gömülü bayt kodunu kapatır). Gölgelendirici hazırlığı ve aygıt süresi kazancı.
+          ./paket/op4.exe --test-ekran ab-gomulu.png --boyut 640x360 --gunluk ab-gomulu.log > /dev/null || kod=$?
+          OP4_GOLGELENDIRICI=calisma_ani ./paket/op4.exe --test-ekran ab-calisma-ani.png --boyut 640x360 --gunluk ab-calisma-ani.log > /dev/null || kod=$?
+          grep -q "gömülü bayt kodu kapalı" ab-calisma-ani.log || { echo "::error::OP4_GOLGELENDIRICI=calisma_ani gömülü bayt kodunu kapatmadı"; kod=2; }
+          olc() { tr -d '\r' < "$1" | sed -n "s/.*$2\([0-9.]*\).*/\1/p" | head -1; }
+          g_ms=$(olc ab-gomulu.log 'Gölgelendiriciler derlendi (')
+          c_ms=$(olc ab-calisma-ani.log 'Gölgelendiriciler derlendi (')
+          g_ay=$(olc ab-gomulu.log 'aygit_ms=')
+          c_ay=$(olc ab-calisma-ani.log 'aygit_ms=')
+          satir=$(awk -v g="${g_ms:-0}" -v c="${c_ms:-0}" -v ga="${g_ay:-0}" -v ca="${c_ay:-0}" 'BEGIN {
+            printf "OP4OLCUM senaryo=golgelendirici gomulu_ms=%.1f calisma_ani_ms=%.1f kazanc_ms=%.1f aygit_gomulu_ms=%.1f aygit_calisma_ani_ms=%.1f aygit_kazanc_ms=%.1f", g, c, c - g, ga, ca, ca - ga }')
+          echo "$satir"
+          # Gömülü yol hiç hızlı değilse bayt kodu kullanılmıyor demektir (hata); 40 ms eşiği gürültülü olduğundan uyarıdır.
+          awk -v g="${g_ms:-0}" -v c="${c_ms:-0}" 'BEGIN { exit !(c > g) }' || { echo "::error::gömülü gölgelendiriciler çalışma anı derlemesinden hızlı değil: $satir"; kod=2; }
+          awk -v ga="${g_ay:-0}" -v ca="${c_ay:-0}" 'BEGIN { exit !(ca - ga > 40) }' || echo "::warning::aygıt süresi gömülü gölgelendiricilerle 40 ms'den az kısaldı (kabul A4; ölçüm gürültülü): $satir"
+          echo "GOLGELENDIRICI=${satir#OP4OLCUM senaryo=golgelendirici }" >> "$GITHUB_ENV"
           # Günlükteki kopyalar 256 renge indirgenir (≈ 3 kat küçük); asıl PNG'ler yapıt olarak saklanır.
           python op4/araclar/gunluk_png_yaz.py onizleme=onizleme.png sahne=sahne.png acilis=acilis.png || kod=$?
           exit "$kod"

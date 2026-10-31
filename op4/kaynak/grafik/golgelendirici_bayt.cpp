@@ -3,6 +3,8 @@
 // Bayt kodu cmake/Golgelendiriciler.cmake'in ürettiği golgelendirici_gomulu.cpp tablosundadır (FXC, SM 5.1). Tablo boşsa
 // (fxc yok) ya da giriş adı tabloda yoksa boş dönülür; grafik.cpp çalışma anında derler. Geliştirici kipinde
 // (--golgelendirici-dizini) <klasör>\op4.hlsl çalışma anında derlenir (golgelendirici_bayt_gelistirme.h).
+// Ölçüm kipi (kabul A4; CI'daki aynı çalıştırmada karşılaştırma): OP4_GOLGELENDIRICI=calisma_ani ortam değişkeni gömülü
+// bayt kodunu kapatır; grafik.cpp Faz 0'daki gibi çalışma anında derler ("Gölgelendiriciler derlendi (… ms)" ikisinde de).
 #include <windows.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
@@ -33,12 +35,26 @@ std::mutex g_kilit;
 std::wstring g_dizin;
 std::map<std::string, Microsoft::WRL::ComPtr<ID3DBlob>> g_gelistirme;
 bool g_yazildi = false;
+bool g_gomuluKapali = false;
+
+// OP4_GOLGELENDIRICI=calisma_ani → gömülü bayt kodu kullanılmaz (yalnız ölçüm; kabul A4).
+bool GomuluKapaliMi() {
+    wchar_t deger[32] = {};
+    const DWORD n = GetEnvironmentVariableW(L"OP4_GOLGELENDIRICI", deger, 32);
+    return n > 0 && n < 32 && std::wstring(deger) == L"calisma_ani";
+}
 
 void BirKezYaz() {
     if (g_yazildi) return;
     g_yazildi = true;
+    g_gomuluKapali = GomuluKapaliMi();
     if (!g_dizin.empty()) {
         Gunluk("Gölgelendiriciler: geliştirici kipi — %s\\op4.hlsl çalışma anında derlenir", Utf8(g_dizin).c_str());
+        return;
+    }
+    if (g_gomuluKapali) {
+        Gunluk("Gölgelendiriciler: gömülü bayt kodu kapalı (OP4_GOLGELENDIRICI=calisma_ani; ölçüm kipi) — çalışma anında "
+               "derlenecek");
         return;
     }
     size_t bayt = 0;
@@ -86,6 +102,7 @@ GolgelendiriciBayt GomuluGolgelendirici(const char* giris) {
     BirKezYaz();
     if (!giris) return {};
     if (!g_dizin.empty()) return GelistirmeDerle(giris);
+    if (g_gomuluKapali) return {};
     for (size_t i = 0; i < golgelendirici_gomulu::kGirdiSayisi; ++i)
         if (std::strcmp(golgelendirici_gomulu::kGirdiler[i].ad, giris) == 0)
             return {golgelendirici_gomulu::kGirdiler[i].veri, golgelendirici_gomulu::kGirdiler[i].boyut};

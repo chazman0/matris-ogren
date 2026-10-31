@@ -16,6 +16,7 @@
 //           --yeni-ornek (tek örnek borusunu atla)   --acilis-yok
 //           --golgelendirici-dizini <klasör> (geliştirici: <klasör>\op4.hlsl çalışma anında derlenir)
 //   ortam:  OP4_MOTOR=gomulu (tanı: Faz 0 süreç içi gömülü motor)   OP4_KULLANICI_DIZINI (sınama klasörleri)
+//           OP4_GOLGELENDIRICI=calisma_ani (ölçüm: gömülü bayt kodu yerine çalışma anı derlemesi; CI kabul A4)
 // Ölçümler günlüğe "OP4OLCUM anahtar=değer …" satırları olarak da yazılır (MIMARI §20.3).
 // Çıkış kodları: 0 başarılı, 1 kullanım hatası, 2 test hatası, 3 zaman aşımı, 5 çökme.
 #include <windows.h>

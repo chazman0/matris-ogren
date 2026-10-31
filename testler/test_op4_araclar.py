@@ -238,5 +238,10 @@ def test_op4_is_akisi_motor_ve_linux_matrisi():
     assert py and py[0]["with"]["python-version"] == "3.14"
     win_run = "\n".join(a.get("run", "") for a in win["steps"])
     for parca in ("--preset win-surum", "op4motor.exe --denetle", "motor/op4_sunucu.py", "--test-motor",
-                  "gömülü bayt kodu (FXC, SM 5.1", "--oz-sinama", "OP4_MOTOR_SINAMA_ZORUNLU"):
+                  "gömülü bayt kodu (FXC, SM 5.1", "--oz-sinama", "OP4_MOTOR_SINAMA_ZORUNLU",
+                  "OP4_GOLGELENDIRICI=calisma_ani", "OP4OLCUM senaryo=golgelendirici"):
         assert parca in win_run or parca in str(win), parca
+    # Kabul A4 ölçüm kipi: CI'nın kapattığı gömülü yol golgelendirici_bayt.cpp'de; günlük satırı CI'nın aradığıyla aynı.
+    bayt = (KOK / "op4" / "kaynak" / "grafik" / "golgelendirici_bayt.cpp").read_text(encoding="utf-8")
+    assert 'L"OP4_GOLGELENDIRICI"' in bayt and 'L"calisma_ani"' in bayt and "gömülü bayt kodu kapalı" in bayt
+    assert "gömülü bayt kodu (FXC, SM 5.1" in bayt
