@@ -201,7 +201,7 @@ std::string IsoZaman(std::time_t t) {
     int64_t y = 0;
     unsigned m = 0, d = 0;
     TakvimdenGunlere(gun, y, m, d);
-    char b[32];
+    char b[64];
     std::snprintf(b, sizeof(b), "%04lld-%02u-%02uT%02d:%02d:%02dZ", static_cast<long long>(y), m, d,
                   static_cast<int>(kalan / 3600), static_cast<int>(kalan / 60 % 60), static_cast<int>(kalan % 60));
     return b;

@@ -126,7 +126,7 @@ TEST_CASE("D2 Windows yolu (sahte): yarım yazma ve kalıcı hata hedefi bozmaz;
     CHECK_FALSE(AtomikYazIle(fs.Islemler(), "", "x", false, hata));
 }
 
-TEST_CASE("D2 POSIX yolu (gerçek işlemler + kilit benzetimi), Türkçe karakterli yol") {
+TEST_CASE("D2 gerçek platform işlemleri (POSIX / Win32) + kilit benzetimi, Türkçe karakterli yol") {
     GeciciDizin d;
     const std::string klasor = d.Kur("Proje ŞĞİı");
     const std::string hedef = klasor + "/dene.op4";
@@ -201,7 +201,30 @@ TEST_CASE("Oturum kilidi: tutulurken başkası alamaz, bırakınca dosya silinir
         CHECK(b.Al(yol));
     }
     CHECK_FALSE(KilitTutuluyorMu(yol));
+}
+
+TEST_CASE("D2 proje okuma kilidi: kaydetmeden önce bırakılır (Win32'de açıkken yerine koyma paylaşım ihlali verir)") {
+    GeciciDizin d;
+    const std::string yol = d.Yol("açık proje.op4");
+    std::string hata;
+    REQUIRE(AtomikYaz(yol, "ilk", false, hata));
     ProjeOkumaKilidi k;
-    CHECK(k.Ac(yol));
+    REQUIRE(k.Ac(yol));
+    CHECK(k.Yol() == yol);
+    CHECK(DosyaIcerigi(yol) == "ilk");  // kilit varken okunabilir
+    AtomikYazmaAyari hizli;
+    hizli.aralikMs = 10;
+    int deneme = 0;
+    const bool yazildi = AtomikYazIle(PlatformAtomikIslemleri(), yol, "ikinci", false, hata, hizli, &deneme);
+#if defined(_WIN32)
+    CHECK_FALSE(yazildi);  // FILE_SHARE_READ tanıtıcısı açık: ReplaceFileW paylaşım ihlali, 5 deneme
+    CHECK(deneme == 5);
+    CHECK(DosyaIcerigi(yol) == "ilk");
+#else
+    CHECK(yazildi);  // POSIX'te okuma kilidi yok
+#endif
     k.Birak();
+    CHECK(k.Yol().empty());
+    REQUIRE_MESSAGE(AtomikYaz(yol, "üçüncü", false, hata), hata);
+    CHECK(DosyaIcerigi(yol) == "üçüncü");
 }
