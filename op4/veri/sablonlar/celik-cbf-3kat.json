@@ -1,0 +1,4215 @@
+{
+ "tur": "bina",
+ "surum": 3,
+ "sablon": "celik-cbf-3kat",
+ "baslik": "3 katlı çelik merkezi çaprazlı çerçeve (ters V ve X)",
+ "aciklama": "3 × 6 m (X) ve 2 × 6 m (Y) planlı, 3 katlı (3,5 m) çelik bina. Kirişler mafsallı (basit), kolonlar sürekli: yatay yükü yalnız merkezi çaprazlar taşır. X yönünde 1 ve 3 akslarının B–C gözlerinde ters V (chevron) çaprazlar kiriş ortasındaki bölme düğümüne bağlanır; Y yönünde A ve D akslarının 1–2 gözlerinde X çaprazlar (A aksı 1. katta kesişim düğümlü). 12 cm betonarme döşeme (rijit diyafram), ofis yükü. TBDY 2018 SDY merkezi çaprazlı çerçeve (C13, R = 5, D = 2): çapraz KL/i ≤ 200, Tablo 9.3 genişlik/kalınlık sınırları denetlenir.",
+ "sistem": "celik",
+ "birim": {
+  "kuvvet": "kN",
+  "uzunluk": "m"
+ },
+ "akslar": {
+  "x": [
+   {
+    "ad": "A",
+    "konum": 0.0
+   },
+   {
+    "ad": "B",
+    "konum": 6.0
+   },
+   {
+    "ad": "C",
+    "konum": 12.0
+   },
+   {
+    "ad": "D",
+    "konum": 18.0
+   }
+  ],
+  "y": [
+   {
+    "ad": "1",
+    "konum": 0.0
+   },
+   {
+    "ad": "2",
+    "konum": 6.0
+   },
+   {
+    "ad": "3",
+    "konum": 12.0
+   }
+  ],
+  "z": [
+   {
+    "ad": "±0.00",
+    "konum": 0.0,
+    "kat": 0
+   },
+   {
+    "ad": "+3.50",
+    "konum": 3.5,
+    "kat": 1
+   },
+   {
+    "ad": "+7.00",
+    "konum": 7.0,
+    "kat": 2
+   },
+   {
+    "ad": "+10.50",
+    "konum": 10.5,
+    "kat": 3
+   }
+  ]
+ },
+ "katlar": [
+  {
+   "no": 0,
+   "ad": "±0.00",
+   "kot": 0.0
+  },
+  {
+   "no": 1,
+   "ad": "+3.50",
+   "kot": 3.5
+  },
+  {
+   "no": 2,
+   "ad": "+7.00",
+   "kot": 7.0
+  },
+  {
+   "no": 3,
+   "ad": "+10.50",
+   "kot": 10.5
+  }
+ ],
+ "malzemeler": {
+  "S275": {
+   "kutuphane": "S275"
+  },
+  "S355": {
+   "kutuphane": "S355"
+  }
+ },
+ "kesitler": {
+  "KOLON": {
+   "tip": "profil",
+   "profil": "HEB 240",
+   "malzeme": "S355"
+  },
+  "KIRIS": {
+   "tip": "profil",
+   "profil": "IPE 330",
+   "malzeme": "S275"
+  },
+  "KIRIS-CAPRAZLI": {
+   "tip": "profil",
+   "profil": "IPE 400",
+   "malzeme": "S275"
+  },
+  "CAPRAZ-V": {
+   "tip": "profil",
+   "profil": "BORU 168.3x6.3",
+   "malzeme": "S275"
+  },
+  "CAPRAZ-X": {
+   "tip": "profil",
+   "profil": "BORU 168.3x6.3",
+   "malzeme": "S275"
+  }
+ },
+ "dugumler": [
+  {
+   "no": 100001,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/1, +3.50"
+  },
+  {
+   "no": 100002,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/3, +3.50"
+  },
+  {
+   "no": 100003,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/1, +7.00"
+  },
+  {
+   "no": 100004,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/3, +7.00"
+  },
+  {
+   "no": 100005,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/1, +10.50"
+  },
+  {
+   "no": 100006,
+   "tur": "bolme",
+   "cubuk_i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "cubuk_j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "oran": 0.5,
+   "ad": "Ters V düğümü B–C/3, +10.50"
+  },
+  {
+   "no": 100007,
+   "tur": "kesisim",
+   "a": [
+    {
+     "aks": [
+      "A",
+      "1"
+     ],
+     "z": "±0.00"
+    },
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "b": [
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "±0.00"
+    },
+    {
+     "aks": [
+      "A",
+      "1"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "ad": "X çapraz kesişimi A/1–2, 1. kat"
+  }
+ ],
+ "cubuklar": [
+  {
+   "no": 1,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 2,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 3,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 4,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 5,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 6,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 7,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 8,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 9,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 10,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 11,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 12,
+   "i": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 1
+  },
+  {
+   "no": 13,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 14,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100001
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 15,
+   "i": {
+    "dugum": 100001
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 16,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 17,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 18,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 19,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 20,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 21,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100002
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 22,
+   "i": {
+    "dugum": 100002
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 23,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 24,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 25,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 26,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 27,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 28,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 29,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 30,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 31,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 1
+  },
+  {
+   "no": 32,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100001
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 1
+  },
+  {
+   "no": 33,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100001
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 1
+  },
+  {
+   "no": 34,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100002
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 1
+  },
+  {
+   "no": 35,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100002
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 1
+  },
+  {
+   "no": 36,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100007
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 37,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100007
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 38,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "dugum": 100007
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 39,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100007
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 40,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 41,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "±0.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 1
+  },
+  {
+   "no": 42,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 43,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 44,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 45,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 46,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 47,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 48,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 49,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 50,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 51,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 52,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 53,
+   "i": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 2
+  },
+  {
+   "no": 54,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 55,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100003
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 56,
+   "i": {
+    "dugum": 100003
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 57,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 58,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 59,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 60,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 61,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 62,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100004
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 63,
+   "i": {
+    "dugum": 100004
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 64,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 65,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 66,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 67,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 68,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 69,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 70,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 71,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 72,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 2
+  },
+  {
+   "no": 73,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100003
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 2
+  },
+  {
+   "no": 74,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100003
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 2
+  },
+  {
+   "no": 75,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100004
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 2
+  },
+  {
+   "no": 76,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "dugum": 100004
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 2
+  },
+  {
+   "no": 77,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 2
+  },
+  {
+   "no": 78,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 2
+  },
+  {
+   "no": 79,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 2
+  },
+  {
+   "no": 80,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+3.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 2
+  },
+  {
+   "no": 81,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 82,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 83,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 84,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 85,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 86,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 87,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 88,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 89,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 90,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 91,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 92,
+   "i": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kolon",
+   "kesit": "KOLON",
+   "grup": "KOLON",
+   "kat": 3
+  },
+  {
+   "no": 93,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 94,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "dugum": 100005
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 95,
+   "i": {
+    "dugum": 100005
+   },
+   "j": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 96,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 97,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 98,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 99,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 100,
+   "i": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 101,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "dugum": 100006
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 102,
+   "i": {
+    "dugum": 100006
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS-CAPRAZLI",
+   "serbest": {
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 103,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 104,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 105,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 106,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 107,
+   "i": {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 108,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 109,
+   "i": {
+    "aks": [
+     "C",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 110,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 111,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "3"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "kiris",
+   "kesit": "KIRIS",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "KIRIS",
+   "kat": 3
+  },
+  {
+   "no": 112,
+   "i": {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100005
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 3
+  },
+  {
+   "no": 113,
+   "i": {
+    "aks": [
+     "C",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100005
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 3
+  },
+  {
+   "no": 114,
+   "i": {
+    "aks": [
+     "B",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100006
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 3
+  },
+  {
+   "no": 115,
+   "i": {
+    "aks": [
+     "C",
+     "3"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "dugum": 100006
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-V",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "TERS-V",
+   "kat": 3
+  },
+  {
+   "no": 116,
+   "i": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 3
+  },
+  {
+   "no": 117,
+   "i": {
+    "aks": [
+     "A",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "A",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 3
+  },
+  {
+   "no": 118,
+   "i": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 3
+  },
+  {
+   "no": 119,
+   "i": {
+    "aks": [
+     "D",
+     "2"
+    ],
+    "z": "+7.00"
+   },
+   "j": {
+    "aks": [
+     "D",
+     "1"
+    ],
+    "z": "+10.50"
+   },
+   "tur": "capraz",
+   "kesit": "CAPRAZ-X",
+   "serbest": {
+    "i": [
+     "My",
+     "Mz"
+    ],
+    "j": [
+     "My",
+     "Mz"
+    ]
+   },
+   "grup": "X-CAPRAZ",
+   "kat": 3
+  }
+ ],
+ "paneller": [
+  {
+   "no": 1,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 2,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "A",
+      "3"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 3,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 4,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 5,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "D",
+      "1"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 6,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "D",
+      "3"
+     ],
+     "z": "+3.50"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+3.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 1
+  },
+  {
+   "no": 7,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 8,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "A",
+      "3"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 9,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 10,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 11,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "D",
+      "1"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 12,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "D",
+      "3"
+     ],
+     "z": "+7.00"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+7.00"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "ofis",
+   "kar": false,
+   "dagitim": "iki",
+   "kat": 2
+  },
+  {
+   "no": 13,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  },
+  {
+   "no": 14,
+   "kose": [
+    {
+     "aks": [
+      "A",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "A",
+      "3"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  },
+  {
+   "no": 15,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  },
+  {
+   "no": 16,
+   "kose": [
+    {
+     "aks": [
+      "B",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "B",
+      "3"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  },
+  {
+   "no": 17,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "D",
+      "1"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  },
+  {
+   "no": 18,
+   "kose": [
+    {
+     "aks": [
+      "C",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "D",
+      "2"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "D",
+      "3"
+     ],
+     "z": "+10.50"
+    },
+    {
+     "aks": [
+      "C",
+      "3"
+     ],
+     "z": "+10.50"
+    }
+   ],
+   "tur": "doseme",
+   "kalinlik": 0.12,
+   "g": 1.5,
+   "kullanim": "cati-gezilen",
+   "kar": true,
+   "dagitim": "iki",
+   "kat": 3
+  }
+ ],
+ "mesnetler": [],
+ "ek_yukler": [],
+ "temeller": {
+  "tip": "tekil",
+  "varsayilan": {
+   "B": 2.0,
+   "L": 2.0,
+   "h": 0.7
+  },
+  "zemin": {
+   "q_em": 250,
+   "k0": 25000
+  },
+  "mesnet": "mafsal",
+  "ozel": []
+ },
+ "yuk_durumlari": {
+  "G": {
+   "acik": true
+  },
+  "Q": {
+   "acik": true
+  },
+  "S": {
+   "acik": true,
+   "bolge": 3,
+   "rakim": 0
+  },
+  "W": {
+   "acik": true
+  },
+  "E": {
+   "acik": true
+  }
+ },
+ "deprem": {
+  "etkin": true,
+  "SS": 1.0,
+  "S1": 0.3,
+  "SS_DD3": 0.4,
+  "S1_DD3": 0.12,
+  "zemin_sinifi": "ZC",
+  "DD": "DD-2",
+  "BKS": 3,
+  "tasiyici": "celik-merkezi-capraz",
+  "periyot": "otomatik",
+  "diyafram": "rijit",
+  "dismerkezlik": 0.05,
+  "dolgu": "bitisik"
+ },
+ "kombinasyon_kumesi": "cythye_ydkt",
+ "analiz": {
+  "diyagram_nokta": 11
+ }
+}

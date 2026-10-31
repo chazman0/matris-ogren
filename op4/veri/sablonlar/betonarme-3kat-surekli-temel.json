@@ -1,0 +1,1176 @@
+{
+ "tur": "bina",
+ "surum": 1,
+ "baslik": "3 katlı betonarme konut, mütemadi temel (3×3 aks)",
+ "aciklama": "Akslar A–B–C (0, 5, 10 m) ve 1–2–3 (0, 4,5, 9 m), üç kat (3 m); 40×40 kolonlar, 25×50 kirişler, 14 cm döşeme, konut yükü; deprem açık (TBDY 2018, ZC). Orta sıkı zemin (q_em = 150 kN/m², k0 = 15000 kN/m³): kolonlar her iki doğrultudaki aks boyunca ters T kesitli temel kirişlerine oturur (B = 1,3 m tabla, 35 cm tabla, 50 × 100 cm gövde, 0,6 m taşma). Temel kirişleri Winkler yaylarına oturur; taban basıncı, oturma, temel kirişi ve tabla donatısı 'Temel ve zemin' adımında.",
+ "sistem": "betonarme",
+ "birim": {
+  "kuvvet": "kN",
+  "uzunluk": "m"
+ },
+ "akslar": {
+  "x": [
+   {
+    "ad": "A",
+    "konum": 0.0
+   },
+   {
+    "ad": "B",
+    "konum": 5.0
+   },
+   {
+    "ad": "C",
+    "konum": 10.0
+   }
+  ],
+  "y": [
+   {
+    "ad": "1",
+    "konum": 0.0
+   },
+   {
+    "ad": "2",
+    "konum": 4.5
+   },
+   {
+    "ad": "3",
+    "konum": 9.0
+   }
+  ]
+ },
+ "katlar": [
+  {
+   "no": 0,
+   "ad": "Temel",
+   "kot": 0.0
+  },
+  {
+   "no": 1,
+   "ad": "1. kat",
+   "kot": 3.0
+  },
+  {
+   "no": 2,
+   "ad": "2. kat",
+   "kot": 6.0
+  },
+  {
+   "no": 3,
+   "ad": "Çatı",
+   "kot": 9.0
+  }
+ ],
+ "malzemeler": {
+  "C30": {
+   "kutuphane": "C30/37"
+  },
+  "B420C": {
+   "kutuphane": "B420C"
+  }
+ },
+ "kesitler": {
+  "S40x40": {
+   "tip": "dikdortgen",
+   "b": 0.4,
+   "h": 0.4,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  },
+  "K25x50": {
+   "tip": "dikdortgen",
+   "b": 0.25,
+   "h": 0.5,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  }
+ },
+ "kolonlar": [
+  {
+   "no": 1,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 2,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 3,
+   "aks": [
+    "A",
+    "3"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 4,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 5,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 6,
+   "aks": [
+    "B",
+    "3"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 7,
+   "aks": [
+    "C",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 8,
+   "aks": [
+    "C",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 9,
+   "aks": [
+    "C",
+    "3"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 10,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 11,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 12,
+   "aks": [
+    "A",
+    "3"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 13,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 14,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 15,
+   "aks": [
+    "B",
+    "3"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 16,
+   "aks": [
+    "C",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 17,
+   "aks": [
+    "C",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 18,
+   "aks": [
+    "C",
+    "3"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 19,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 20,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 21,
+   "aks": [
+    "A",
+    "3"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 22,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 23,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 24,
+   "aks": [
+    "B",
+    "3"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 25,
+   "aks": [
+    "C",
+    "1"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 26,
+   "aks": [
+    "C",
+    "2"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 27,
+   "aks": [
+    "C",
+    "3"
+   ],
+   "kat": 3,
+   "kesit": "S40x40",
+   "yon": "x"
+  }
+ ],
+ "kirisler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 2,
+   "kat": 1,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "C",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 3,
+   "kat": 1,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 4,
+   "kat": 1,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 5,
+   "kat": 1,
+   "bas": [
+    "A",
+    "3"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 6,
+   "kat": 1,
+   "bas": [
+    "B",
+    "3"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 7,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 8,
+   "kat": 1,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "A",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 9,
+   "kat": 1,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 10,
+   "kat": 1,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 11,
+   "kat": 1,
+   "bas": [
+    "C",
+    "1"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 12,
+   "kat": 1,
+   "bas": [
+    "C",
+    "2"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 13,
+   "kat": 2,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 14,
+   "kat": 2,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "C",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 15,
+   "kat": 2,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 16,
+   "kat": 2,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 17,
+   "kat": 2,
+   "bas": [
+    "A",
+    "3"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 18,
+   "kat": 2,
+   "bas": [
+    "B",
+    "3"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 19,
+   "kat": 2,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 20,
+   "kat": 2,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "A",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 21,
+   "kat": 2,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 22,
+   "kat": 2,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 23,
+   "kat": 2,
+   "bas": [
+    "C",
+    "1"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 24,
+   "kat": 2,
+   "bas": [
+    "C",
+    "2"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 25,
+   "kat": 3,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 26,
+   "kat": 3,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "C",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 27,
+   "kat": 3,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 28,
+   "kat": 3,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 29,
+   "kat": 3,
+   "bas": [
+    "A",
+    "3"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 30,
+   "kat": 3,
+   "bas": [
+    "B",
+    "3"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 31,
+   "kat": 3,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 32,
+   "kat": 3,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "A",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 33,
+   "kat": 3,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 34,
+   "kat": 3,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "B",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 35,
+   "kat": 3,
+   "bas": [
+    "C",
+    "1"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 36,
+   "kat": 3,
+   "bas": [
+    "C",
+    "2"
+   ],
+   "son": [
+    "C",
+    "3"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  }
+ ],
+ "dosemeler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 2,
+   "kat": 1,
+   "kose": [
+    [
+     "A",
+     "2"
+    ],
+    [
+     "B",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 3,
+   "kat": 1,
+   "kose": [
+    [
+     "B",
+     "1"
+    ],
+    [
+     "C",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 4,
+   "kat": 1,
+   "kose": [
+    [
+     "B",
+     "2"
+    ],
+    [
+     "C",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 5,
+   "kat": 2,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 6,
+   "kat": 2,
+   "kose": [
+    [
+     "A",
+     "2"
+    ],
+    [
+     "B",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 7,
+   "kat": 2,
+   "kose": [
+    [
+     "B",
+     "1"
+    ],
+    [
+     "C",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 8,
+   "kat": 2,
+   "kose": [
+    [
+     "B",
+     "2"
+    ],
+    [
+     "C",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 9,
+   "kat": 3,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 10,
+   "kat": 3,
+   "kose": [
+    [
+     "A",
+     "2"
+    ],
+    [
+     "B",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 11,
+   "kat": 3,
+   "kose": [
+    [
+     "B",
+     "1"
+    ],
+    [
+     "C",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 12,
+   "kat": 3,
+   "kose": [
+    [
+     "B",
+     "2"
+    ],
+    [
+     "C",
+     "3"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  }
+ ],
+ "duvarlar": {
+  "tugla19": {
+   "kutuphane": "tugla-delikli-19"
+  }
+ },
+ "ek_yukler": [],
+ "temeller": {
+  "tip": "surekli",
+  "varsayilan": {
+   "B": 1.8,
+   "L": 1.8,
+   "h": 0.6
+  },
+  "zemin": {
+   "q_em": 150,
+   "k0": 15000,
+   "gamma": 18
+  },
+  "mesnet": "ankastre",
+  "ozel": [],
+  "surekli": {
+   "yon": "xy",
+   "akslar": "tum",
+   "B": 1.3,
+   "h_tabla": 0.35,
+   "b_govde": 0.5,
+   "h_govde": 1.0,
+   "tasma": 0.6,
+   "ag": 0.5
+  }
+ },
+ "yuk_durumlari": {
+  "G": {
+   "acik": true
+  },
+  "Q": {
+   "acik": true
+  },
+  "S": {
+   "acik": false,
+   "bolge": 3,
+   "rakim": 0,
+   "mu": 0.8
+  },
+  "W": {
+   "acik": false,
+   "C": 1.2
+  },
+  "E": {
+   "acik": true
+  }
+ },
+ "deprem": {
+  "etkin": true,
+  "SS": 1.0,
+  "S1": 0.3,
+  "zemin_sinifi": "ZC",
+  "DD": "DD-2",
+  "BKS": 3,
+  "tasiyici": "betonarme-cerceve-yuksek",
+  "periyot": "otomatik",
+  "diyafram": "rijit",
+  "dismerkezlik": 0.05,
+  "dolgu": "bitisik"
+ },
+ "kombinasyon_kumesi": "ts500",
+ "analiz": {
+  "catlamis_rijitlik": true,
+  "diyagram_nokta": 11
+ },
+ "sablon": "betonarme-3kat-surekli-temel"
+}
