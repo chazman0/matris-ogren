@@ -1,0 +1,87 @@
+{
+ "bicim": 1,
+ "kaynak": "docs/web_kopru.py bina_sablonlar + bina_sablon (op4/araclar/sablon_dok.py)",
+ "sablonlar": [
+  {
+   "ad": "betonarme-tek-aciklik",
+   "baslik": "Tek açıklıklı betonarme çerçeve (1×1 aks, 1 kat)",
+   "aciklama": "5 × 4 m planlı, 3 m yüksekliğinde dört kolonlu tek katlı betonarme çerçeve; 12 cm döşeme, konut yükü. Yük akışının en küçük örneği: bir döşeme, dört kiriş, dört kolon, dört temel. Tek katta zemin kat duvarları temele oturur; çatı kirişlerinde yalnız 1 m parapet.",
+   "sistem": "betonarme",
+   "kat": 1,
+   "aks": "2×2",
+   "dosya": "betonarme-tek-aciklik.json"
+  },
+  {
+   "ad": "betonarme-2kat-3x2",
+   "baslik": "2 katlı betonarme konut (3×2 aks)",
+   "aciklama": "Akslar A–B–C (0, 5, 9 m) ve 1–2 (0, 4 m); iki kat (3 m); 40×40 kolonlar, 25×50 kirişler, 14 cm döşeme; dış kirişlerde 19 cm delikli tuğla duvar (çatıda 1 m parapet). Varsayılan örnek: çift doğrultulu (m = 1,25) ve 4×5 panellerle üçgen/trapez dağılım.",
+   "sistem": "betonarme",
+   "kat": 2,
+   "aks": "3×2",
+   "dosya": "betonarme-2kat-3x2.json"
+  },
+  {
+   "ad": "betonarme-3kat-3x3",
+   "baslik": "3 katlı betonarme büro (3×3 aks)",
+   "aciklama": "5 + 5 m ve 4 + 4 m aks aralıkları, üç kat (3,2 m); 45×45 kolonlar, 25×55 kirişler, 15 cm döşeme, ofis yükü (2 kN/m²); iç kolonların yük alanı dört panelin çeyreğidir. Deprem (TBDY 2018: S_S = 1,0, S_1 = 0,3, DD-3 S_S = 0,4, S_1 = 0,12, ZC, BKS 3, A11; çatlamış kesit rijitliği Tablo 4.2), kar (bölge 3) ve rüzgâr açık; tam TS 500 + TS 498 + TBDY 4.4.4 kombinasyon kümesi. Dış kirişlerde tuğla duvar, çatıda 1 m parapet. Yönetmeliği sağlar: D/C ≤ 1, λδ/h ≤ 0,008.",
+   "sistem": "betonarme",
+   "kat": 3,
+   "aks": "3×3",
+   "dosya": "betonarme-3kat-3x3.json"
+  },
+  {
+   "ad": "celik-1kat-depo",
+   "baslik": "Tek katlı çelik depo / atölye (2×1 aks, IPE/HEB)",
+   "aciklama": "6 + 6 m × 6 m planlı, 5 m yüksekliğinde çelik çerçeve: HEB 240 kolonlar, IPE 400 ana kirişler (Y), IPE 300 kirişler (X), 12 cm betonarme döşeme, hafif atölye yükü (5 kN/m²); kombinasyonlar ÇYTHYE YDKT (deprem/rüzgâr/kar açılırsa TBDY 9.2.5 satırlarıyla).",
+   "sistem": "celik",
+   "kat": 1,
+   "aks": "3×2",
+   "dosya": "celik-1kat-depo.json"
+  },
+  {
+   "ad": "betonarme-4kat-4x3",
+   "baslik": "4 katlı betonarme konut (4×3 aks)",
+   "aciklama": "Akslar A–D (4 m aralık) ve 1–3 (5 m aralık), dört kat (3 m); 50×50 kolonlar, 30×60 kirişler, 15 cm döşeme; dış kirişlerde duvar, çatıda 1 m parapet. 60 düğüm, 360 SD: tarayıcıda hâlâ hızlı çözülen büyükçe bir örnek.",
+   "sistem": "betonarme",
+   "kat": 4,
+   "aks": "4×3",
+   "dosya": "betonarme-4kat-4x3.json"
+  },
+  {
+   "ad": "betonarme-3kat-surekli-temel",
+   "baslik": "3 katlı betonarme konut, mütemadi temel (3×3 aks)",
+   "aciklama": "Akslar A–B–C (0, 5, 10 m) ve 1–2–3 (0, 4,5, 9 m), üç kat (3 m); 40×40 kolonlar, 25×50 kirişler, 14 cm döşeme, konut yükü; deprem açık (TBDY 2018, ZC). Orta sıkı zemin (q_em = 150 kN/m², k0 = 15000 kN/m³): kolonlar her iki doğrultudaki aks boyunca ters T kesitli temel kirişlerine oturur (B = 1,3 m tabla, 35 cm tabla, 50 × 100 cm gövde, 0,6 m taşma). Temel kirişleri Winkler yaylarına oturur; taban basıncı, oturma, temel kirişi ve tabla donatısı 'Temel ve zemin' adımında.",
+   "sistem": "betonarme",
+   "kat": 3,
+   "aks": "3×3",
+   "dosya": "betonarme-3kat-surekli-temel.json"
+  },
+  {
+   "ad": "betonarme-4kat-radye",
+   "baslik": "4 katlı betonarme konut, radye temel (4×3 aks)",
+   "aciklama": "Akslar A–D (4 m aralık) ve 1–3 (5 m aralık), dört kat (3 m); 50×50 kolonlar, 30×60 kirişler, 15 cm döşeme; dış kirişlerde duvar, çatıda 1 m parapet; deprem açık (TBDY 2018, ZC). Zayıf zemin (q_em = 120 kN/m², k0 = 12000 kN/m³): bütün planı 1 m taşmayla kaplayan 70 cm kirişsiz radye; plak 1 m aralıklı ızgara (grillage) ile Winkler yaylarına oturur. Taban basıncı haritası, oturma, iki doğrultuda m başına donatı ve kolonlarda zımbalama (TS 500 md. 8.3) 'Temel ve zemin' adımında.",
+   "sistem": "betonarme",
+   "kat": 4,
+   "aks": "4×3",
+   "dosya": "betonarme-4kat-radye.json"
+  },
+  {
+   "ad": "celik-sanayi-4hol",
+   "baslik": "Çelik sanayi yapısı: 4 hol (4 × 20 m), 7 çerçeve, kren yolu",
+   "aciklama": "4 açıklıklı (4 × 20 m) beşik çatılı çelik sanayi yapısı; 7 çerçeve @ 6 m, saçak 8 m, mahya 9,75 m (α ≈ 10°). Çerçeveler: HEA kolonlar (tabanda ankastre), vuteli IPE mertekler (vute 2 m, +40 cm), dere ve saçak kirişleri mafsallı; aşıklar (mahya + ara aşık) mafsallı, ara aşıklar çatı eğimiyle döndürülmüş (aci). Boyuna doğrultuda uç gözlerde çatı X çaprazları (aşık aralığı başına) ve bütün kolon akslarında düşey X çaprazlar; kalkan duvarlarda mahya akslarında rüzgâr kolonları. Sac çatı paneli (kalınlık 0: taşıyıcı değil) aşıklara, cephe panelleri kolonlara tek doğrultuda yük aktarır; çatı seviyesinde esnek diyafram. 1. holde kren yolu (A ve C aksları, 6 m kotunda; K yük durumu, 5 konum). Tüm düğümler aks kesişimi ya da mertek bölme noktasıdır (aks taşınınca birlikte taşınır).",
+   "sistem": "celik",
+   "kat": 1,
+   "aks": "9×7",
+   "dosya": "celik-sanayi-4hol.json"
+  },
+  {
+   "ad": "celik-cbf-3kat",
+   "baslik": "3 katlı çelik merkezi çaprazlı çerçeve (ters V ve X)",
+   "aciklama": "3 × 6 m (X) ve 2 × 6 m (Y) planlı, 3 katlı (3,5 m) çelik bina. Kirişler mafsallı (basit), kolonlar sürekli: yatay yükü yalnız merkezi çaprazlar taşır. X yönünde 1 ve 3 akslarının B–C gözlerinde ters V (chevron) çaprazlar kiriş ortasındaki bölme düğümüne bağlanır; Y yönünde A ve D akslarının 1–2 gözlerinde X çaprazlar (A aksı 1. katta kesişim düğümlü). 12 cm betonarme döşeme (rijit diyafram), ofis yükü. TBDY 2018 SDY merkezi çaprazlı çerçeve (C13, R = 5, D = 2): çapraz KL/i ≤ 200, Tablo 9.3 genişlik/kalınlık sınırları denetlenir.",
+   "sistem": "celik",
+   "kat": 3,
+   "aks": "4×3",
+   "dosya": "celik-cbf-3kat.json"
+  }
+ ]
+}

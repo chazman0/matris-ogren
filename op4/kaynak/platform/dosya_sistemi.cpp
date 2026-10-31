@@ -1,11 +1,18 @@
-// op4 platform — dosya sistemi, taşınabilir uygulama (std::filesystem). Sözleşme S17. Sahibi: D (dosya-cozum); Windows'a
-// özgü sağlamlaştırma (ReplaceFileW, yeniden deneme) dosya_sistemi_win.cpp'ye taşınacak (F1 iş 1.6).
+// op4 platform — dosya sistemi, ortak kısım (sözleşme S17). Sahibi: D (dosya-cozum).
+//
+// Atomik yazma ALGORİTMASI buradadır (platform işlemlerinden bağımsız; dosya_sistemi_atomik.h). Platform işlemleri:
+// dosya_sistemi_win.cpp (CreateFileW + FlushFileBuffers + ReplaceFileW / MoveFileExW, paylaşım ihlali eşlemesi) ve
+// dosya_sistemi_posix.cpp (open + fsync + rename + klasör fsync). Okuma, klasör ve kullanıcı dizinleri std::filesystem
+// ile taşınabilir yazılmıştır (UTF-8 yollar u8 yolu üzerinden; Windows'ta içeride UTF-16).
 #include "platform/dosya_sistemi.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+
+#include "platform/dosya_sistemi_atomik.h"
 
 namespace op4 {
 namespace fs = std::filesystem;
@@ -36,38 +43,47 @@ std::string Ortam(const char* ad) {
 
 }  // namespace
 
-bool AtomikYaz(const std::string& yol, std::string_view veri, bool bak, std::string& hata) {
-    const fs::path hedef = Yol(yol);
-    fs::path gecici = hedef;
-    gecici += ".op4-yaziliyor";
-    {
-        std::ofstream f(gecici, std::ios::binary | std::ios::trunc);
-        if (!f) {
-            hata = "Geçici dosya açılamadı: " + Utf8(gecici);
-            return false;
-        }
-        f.write(veri.data(), static_cast<std::streamsize>(veri.size()));
-        f.flush();
-        if (!f) {
-            hata = "Yazılamadı (disk dolu olabilir): " + Utf8(gecici);
-            std::error_code e;
-            fs::remove(gecici, e);
-            return false;
-        }
-    }
-    std::error_code e;
-    if (bak && fs::exists(hedef, e)) {
-        fs::path b = hedef;
-        b += ".bak";
-        fs::copy_file(hedef, b, fs::copy_options::overwrite_existing, e);
-    }
-    fs::rename(gecici, hedef, e);
-    if (e) {
-        hata = "Dosya yerine konamadı: " + yol + " (" + e.message() + ")";
-        fs::remove(gecici, e);
+std::string GeciciDosyaAdi(const std::string& yol) {
+    static std::atomic<uint32_t> sayac{0};
+    return yol + ".~op4-" + std::to_string(SurecNo()) + "-" + std::to_string(++sayac) + ".tmp";
+}
+
+bool AtomikYazIle(const AtomikYazmaIslemleri& is, const std::string& yol, std::string_view veri, bool bak,
+                  std::string& hata, const AtomikYazmaAyari& ayar, int* denemeSayisi) {
+    if (denemeSayisi) *denemeSayisi = 0;
+    if (yol.empty()) {
+        hata = "Dosya yolu boş.";
         return false;
     }
-    return true;
+    const std::string gecici = GeciciDosyaAdi(yol);
+    std::string h;
+    if (!is.geciciYaz(gecici, veri, h)) {
+        if (is.sil) is.sil(gecici);  // yarım yazılmış geçici kalmasın; hedefe hiç dokunulmadı
+        hata = h.empty() ? "Geçici dosya yazılamadı: " + gecici : h;
+        return false;
+    }
+    const int deneme = ayar.deneme < 1 ? 1 : ayar.deneme;
+    YerineKoymaSonucu s = YerineKoymaSonucu::Hata;
+    for (int i = 0; i < deneme; ++i) {
+        if (i > 0 && is.bekle) is.bekle(ayar.aralikMs);
+        h.clear();
+        s = is.yerineKoy(gecici, yol, bak, h);
+        if (denemeSayisi) *denemeSayisi = i + 1;
+        if (s != YerineKoymaSonucu::PaylasimIhlali) break;
+    }
+    if (s == YerineKoymaSonucu::Tamam) return true;
+    if (is.sil) is.sil(gecici);
+    if (s == YerineKoymaSonucu::PaylasimIhlali)
+        hata = "Dosya başka bir program tarafından kullanılıyor (" + std::to_string(deneme) +
+               " deneme): " + yol + ". Dosyayı açık tutan programı (eşitleme istemcisi, virüs tarayıcısı, başka bir op4 "
+               "penceresi) kapatıp yeniden kaydedin; dosyanın eski hâli değişmedi.";
+    else
+        hata = (h.empty() ? "Dosya yerine konamadı: " + yol : h) + " Dosyanın eski hâli değişmedi.";
+    return false;
+}
+
+bool AtomikYaz(const std::string& yol, std::string_view veri, bool bak, std::string& hata) {
+    return AtomikYazIle(PlatformAtomikIslemleri(), yol, veri, bak, hata);
 }
 
 bool DosyaOku(const std::string& yol, std::string& veri, std::string& hata, size_t enFazlaBayt) {
