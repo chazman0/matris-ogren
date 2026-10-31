@@ -19,3 +19,14 @@ sayısal/metin koşullar, süzgeç olarak kaydet → seçim, görünüm, renk ku
 başına "komplike", ölçüt listeli seçim "pratik"; ikisinin harmanı. Belge `secsuz.md`; görseller `*.webp`; üreteç
 `secsuz_uret.py` (+ `ozn.py`; Atölye üretecinin `uret.py`, `tuval.py`, `sahne.py` dosyalarını `../taslaklar/atolye/`
 klasöründen kullanır).
+
+## Yönetmelik sihirbazı (taslak)
+
+`sihirbaz/` — yeni proje öncesi analiz için dış verileri yönetmelik sırasıyla
+toplayan 8 adımlı sihirbaz: Proje ve yapı türü → Malzemeler → Yükler
+(TS 498:2021) → Deprem (TBDY 2018) → Zemin ve temel → Yük birleşimleri →
+Analiz seçenekleri → Özet. Belirtim `sihirbaz.md`; her alanın motor anahtarı,
+birimi, varsayılanı, aralığı ve yönetmelik maddesi oradadır. Görsellerdeki
+hesaplanan değerler (S_DS, S_D1, F_S, F_1, DTS, BYS, T_pA, λ) motorun kendi
+işlevleriyle üretildi; saha değerleri temsilîdir. Renkler `uret.py` içindeki
+`PALETLER` sözlüğünden gelir (geçici: kobalt).
