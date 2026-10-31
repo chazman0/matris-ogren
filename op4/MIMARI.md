@@ -1943,3 +1943,26 @@ görsel ve yerleşim kararlarının **önüne geçer**; §5'te çelişen her şe
   olarak sunulur, varsayılan açık. Referans kareler (`kare-*.png`) WARP ekran sınamasının görsel hedefidir.
 - **Kabul:** Windows CI'da `--test-ekran` ile alınan 1920×1080 ve 1366×768 görüntüler taslak görsellerle yan yana
   karşılaştırılır; yerleşim, renk, tipografi ve boşluklar taslakla örtüşmelidir (piksel eşitliği aranmaz, gözle denetim).
+
+### 25.1 Yön değişikliği (31.10.2026, kullanıcı) — "Atölye", modernize; tunç vurgu yok
+
+Kullanıcı Stüdyo kararını geri aldı: arayüz **B — "Atölye"** yerleşimiyle, **modernize edilerek** yapılır; yukarıdaki
+Stüdyo maddeleri (yüzen paneller, yüzen komut çubuğu, yüzen ray) geçersizdir, gezinme ve açılış ekranı kuralları aynen
+geçerlidir. Bağlayıcı kaynak `op4/tasarim/taslaklar/atolye/` (yerleşim) ve hazırlanmakta olan modernize tasarım
+(belirteçler; birleşince bu bölüme bağlanır).
+
+- **Korunacaklar (kullanıcının beğendiği):** üst çubuk + şerit, soldaki model ağacı, sağdaki Özellikler ve dikey pencere
+  şeridi; ayrıca Atölye'nin ince sol rayı, sekmeli alt rıhtım (Komut / Mesajlar / Tablolar), kat kapsamı anahtarı +
+  "Etkin kat" seçicisi olan durum çubuğu.
+- **Renk:** arayüzde **tunç / kahve–altın vurgu kullanılmaz**. Vurgu rengi modernize tasarımın üç seçeneğinden
+  (kobalt mavisi / petrol yeşili / grafit) kullanıcı seçimiyle belirlenir; bütün renkler tek belirteç başlığından gelir.
+  Opus Fortis logoları ve açılış ekranı (marka) değişmez.
+- **Ayarlar penceresi (zorunlu):** Program ayarları, Görüntü ayarları, Dil ayarları sayfaları; Dil: Türkçe / English
+  arayüz (çalışma anında), sayı biçimi, birim sistemi → bütün arayüz metinleri yerelleştirme tablosundan gelir.
+- **Yönetmelik sihirbazı (yeni):** yeni projeye başlamadan önce, analiz için dışarıdan gelen veriler (malzemeler, TS 498
+  yükleri, TBDY 2018 deprem parametreleri, zemin ve temel, yük birleşimleri, analiz seçenekleri) yönetmelik sırasına göre,
+  seçimlerle ilerleyen adımlarla girilir; değerler bina modeline yazılır ve sonradan "Proje › Yönetmelik verileri" ile
+  düzenlenir. Tasarım hazırlanmaktadır.
+- **Seç & Süz:** tek tip kural düzenleyicisi (Stüdyo/Atölye taslaklarındaki `secsuz`) reddedildi; varsayılan katman
+  sayılı ölçüt listeleriyle pratik seçim, isteğe bağlı "Gelişmiş" katman sadeleşmiş kural düzenleyicisi (harman tasarım
+  hazırlanmaktadır; Faz 3).
