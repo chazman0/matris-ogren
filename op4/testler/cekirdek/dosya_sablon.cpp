@@ -85,7 +85,7 @@ TEST_CASE("D6 şablon dökümü: dizin.json ve 9 şablon; her biri bina JSON'u")
 
 TEST_CASE("D6 döküm güncel (python3 -I op4/araclar/sablon_dok.py --denetle)") {
 #ifdef OP4_PYTHON
-    std::string komut = std::string("\"") + OP4_PYTHON + "\" -I \"" + OP4_KAYNAK_DIZINI + "/araclar/sablon_dok.py\" --denetle";
+    std::string komut = std::string("\"") + OP4_PYTHON + "\" -I -X utf8 \"" + OP4_KAYNAK_DIZINI + "/araclar/sablon_dok.py\" --denetle";
 #if defined(_WIN32)
     komut = "\"" + komut + "\"";  // cmd /c ilk ve son tırnağı atar
 #endif

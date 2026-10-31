@@ -115,6 +115,10 @@ def yanit_fikstur(zip_yolu: Path, adlar: list[str], wk) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # -I ortam değişkenlerini (PYTHONUTF8) yok sayar; Windows'ta boruya yazılan çıktı cp1252 olur ve "ş" ile çöker.
+    for akis in (sys.stdout, sys.stderr):
+        if hasattr(akis, "reconfigure"):
+            akis.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(description="op4 şablon dökümü (op4/veri/sablonlar/)")
     p.add_argument("--cikti", type=Path, default=VARSAYILAN_CIKTI)
     p.add_argument("--denetle", action="store_true", help="döküm güncel mi (yazmaz)")

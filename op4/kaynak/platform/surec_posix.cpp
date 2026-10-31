@@ -1,7 +1,7 @@
 // op4 platform — alt süreç + iki anonim boru, POSIX (sözleşme S14; F1 iş 1.2). Uygulayan: A (derleme-motor).
 //
 // pipe2(O_CLOEXEC) + posix_spawn. Çocuğun boru uçları fd 3 (istek, okur) ve 4 (yanıt, yazar) olarak verilir; "{istek}" /
-// "{yanit}" yer tutucuları "3" / "4" olur. Diğer bütün tanımlayıcılar O_CLOEXEC ile kapanır. stdout + stderr ciktiDosyasi'na
+// "{yanit}" yer tutucuları "3" / "4" olur. Diğer bütün tanımlayıcılar O_CLOEXEC ve closefrom (glibc ≥ 2.34) ile kapanır. stdout + stderr ciktiDosyasi'na
 // eklenir (yoksa /dev/null), stdin /dev/null'dur. Bellek sınırı POSIX'te yok sayılır (op4.exe yalnız Windows'tadır; bu
 // uygulama Linux sınamaları — `python3 -m op4_sunucu` — içindir).
 //
@@ -104,6 +104,10 @@ public:
         posix_spawn_file_actions_adddup2(&fa, 1, 2);
         posix_spawn_file_actions_adddup2(&fa, cocukIstek, kCocukIstekFd);
         posix_spawn_file_actions_adddup2(&fa, cocukYanit, kCocukYanitFd);
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
+        // Üst sürecin CLOEXEC'siz devraldığı tanımlayıcılar (ör. CI çalıştırıcısının açık bıraktıkları) çocuğa geçmesin.
+        posix_spawn_file_actions_addclosefrom_np(&fa, kCocukYanitFd + 1);
+#endif
 #if defined(__GLIBC__) || defined(__APPLE__)
         if (!a.calismaDizini.empty()) posix_spawn_file_actions_addchdir_np(&fa, a.calismaDizini.c_str());
 #endif
