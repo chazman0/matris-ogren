@@ -30,3 +30,13 @@ birimi, varsayılanı, aralığı ve yönetmelik maddesi oradadır. Görsellerde
 hesaplanan değerler (S_DS, S_D1, F_S, F_1, DTS, BYS, T_pA, λ) motorun kendi
 işlevleriyle üretildi; saha değerleri temsilîdir. Renkler `uret.py` içindeki
 `PALETLER` sözlüğünden gelir (geçici: kobalt).
+
+## Atölye · modern (§25.1, onay bekliyor)
+
+`atolye-modern/` — Atölye iskeleti (şerit, sol ray, model ağacı, Özellikler +
+dikey pencere şeridi, rıhtım, komut satırı, kat kapsamlı durum çubuğu) korunur;
+tunç vurgu kaldırıldı. Üç vurgu seçeneği: **A Kobalt** (#2563EB, önerilen),
+**B Petrol** (#0F766E), **C Grafit** (tek renk; mavi yalnız seçim ve odakta).
+Ayarlar penceresi: Program, Görüntü, Dil sayfaları (`ayarlar-*.webp`).
+Bütün renk, yarıçap, aralık ve yazı değerleri tek modülde: `belirtec.py`
+(`VARSAYILAN_PALET`). Belirtim `tasarim.md`; ImGui eşlemesi §10'da.

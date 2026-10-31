@@ -336,7 +336,7 @@ Proje
 - **Yazı tipleri:** sistemdeki Segoe UI, sonra Arial, sonra Tahoma (denemede çalışıyor). Bunlara simge ve matematik glifleri için Segoe UI Symbol ve Cambria Math birleştirilir. Paketli Noto Sans (OFL) yedek olarak kalır. Komut satırında JetBrains Mono (OFL) kullanılır.
 - **Faz 2:** imgui_freetype ile hafif ipucu ve ImGui 1.92 dinamik yazı tipleri; `WM_DPICHANGED`'de yazı tipi atlası yeniden kurulmaz.
 - **DPI:** manifestte PerMonitorV2, UTF-8 kod sayfası ve longPathAware bildirilir (denemede var).
-- **Tema:** kimlik paleti; antrasit #14181B zemin, kahve #8A6B3C vurgu, altın #B08950 seçim, krem #EDE6D8 yazı (denemede var). Açık tema da vardır. Eleman türü renkleri mevcut 3B anlamlarını korur.
+- **Tema:** §25.1 Atölye-modern belirteçleri (`op4/tasarim/atolye-modern/belirtec.py`): açık nötr yüzeyler, tek soğuk vurgu (Kobalt #2563EB varsayılan; Petrol #0F766E; Grafit #262B31 + seçimde mavi #2F6FDB), Ayarlar › Görüntü'den değiştirilir. Kimlik paleti (antrasit, kahve, altın, krem) yalnız logo ve açılış ekranındadır. Eleman türü renkleri mevcut 3B anlamlarını korur.
 
 ### 5.10 Belge penceresi ilişkisi
 
