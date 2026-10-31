@@ -654,7 +654,7 @@ TBDY_DEPREM_KURALLAR = {
     "lambda": "λ = S_ae(T_p; DD-3)/S_ae(T_p; DD-2) — md. 4.9.1.4",
     "kappa": {"betonarme": 1.0, "celik": 0.5},
     "theta": "θ_II,i = (Δ_i)ort·Σ_{k≥i} w_k/(V_i·h_i) ≤ 0,12·D/(C_h·R); aşılırsa β_II = 0,88 + (C_h·R/D)·θ_II,max ≥ 1 — Denk. (4.35)–(4.37)",
-    "Ch": {"betonarme": 0.5, "celik": 1.0},
+    "Ch": {"betonarme": 0.5, "celik": 1.0},     # Denk. (4.36): betonarme binalarda 0,5; çelik ve kompozit kolonlu binalarda 1
     "drift_notu": "Δ_i hesabında 4.7.3.2'deki 1,4·T_pA sınırı ve Denk. (4.19) alt sınırı uygulanmaz (md. 4.9.1.1)",
     "tek_katli_celik": "Tek katlı çelik moment çerçevede drift sınırları en çok %50 artırılabilir (4.9.1.5)",
 }
@@ -700,11 +700,17 @@ EK_KURALLAR = {
                           "kaynak": "motor kuralı", "dogrulandi": False},
     "karma.yukseklik": {"kural": ("Yükseklik boyunca farklı sistemde bütün binaya en küçük R'li satır (TBDY 4.3.6 koşulları "
                                   "denetlenmez)"), "kaynak": "motor kuralı, güvenli taraf", "dogrulandi": False},
-    "karma.kappa_Ch": {"kural": ("Betonarme ve çelik sistem birlikte: κ = min (0,5), C_h = max (1,0) bütün katlarda "
-                                 "(md. 4.9.1.3, Denk. 4.37 karma binayı ayrıca tanımlamaz)"), "kaynak": "motor kuralı, güvenli taraf",
-                         "dogrulandi": False},
-    "karma.Ct": {"kural": "Farklı sistemlerde C_t = sistemlerin varsayılan C_t'lerinin en küçüğü (kısa T_pA)",
-                 "kaynak": "motor kuralı, güvenli taraf (Denk. 4.27)", "dogrulandi": False},
+    "karma.kappa_Ch": {"kural": ("Karma binada κ (md. 4.9.1.3, Denk. 4.34) ve C_h (Denk. 4.36) kat ve doğrultu başına o katın "
+                                 "sisteminden: betonarme / önüretimli κ = 1, C_h = 0,5; çelik κ = 0,5, C_h = 1; aynı katta aynı "
+                                 "doğrultuda ikisi birlikte κ = 0,5, C_h = 1 (yönetmelik değerleri bina için verir; kata uygulama "
+                                 "yorumdur — kullanıcı kararı 31.10.2026). Kat sistemi belirlenemezse binanın 'sistem'i"),
+                         "kaynak": "TBDY 2018 md. 4.9.1.3 (κ), md. 4.9.2 Denk. (4.36) (C_h: betonarme 0,5; çelik ve kompozit "
+                                   "kolonlu 1); kata uygulama motor kuralı", "dogrulandi": False},
+    "karma.Ct": {"kural": ("C_t doğrultu başına o doğrultunun yönetici Tablo 4.1 satırından (Denk. 4.27: betonarme çerçeve 0,10, "
+                           "çelik 0,08, diğer 0,07); perdeli sistemde Denk. (4.28) uygulanmaz (A_t için perde alanları modelde yok) "
+                           "→ 0,07; deprem.Ct_x / Ct_y ile girilebilir"),
+                 "kaynak": "TBDY 2018 md. 4.7.3.4 Denk. (4.27)–(4.28); doğrultuya uygulama motor kuralı (kullanıcı kararı 31.10.2026)",
+                 "dogrulandi": False},
     "azaltma.deprem": {"kural": ("TS 498 hareketli yük azaltması dayanım ve servis birleşimlerinde uygulanır; deprem birleşimlerinde "
                                  "(TBDY 4.4.4) Q azaltılmaz"), "kaynak": "motor kuralı (TS 498 deprem birleşimini düzenlemez)",
                        "dogrulandi": False},
