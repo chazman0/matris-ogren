@@ -1671,6 +1671,7 @@ bir satıra uymalıdır; yeni dosya, sahibinin klasörüne ya da adlandırma ön
 ```sahiplik
 op4/MIMARI.md                                   S
 op4/README.md                                   S
+op4/IS_TAKIP.md                                 S
 op4/kimlik/**                                   -
 op4/tasarim/**                                  -
 op4/cmake/JsGom.cmake                           B
