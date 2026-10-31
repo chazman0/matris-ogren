@@ -117,7 +117,7 @@ GRUPLAR_TASARIM = [
     ("Göster", [("dc", "D/C haritası", "basili"), ("deform", "Deformasyon", ""), ("diyagram", "Diyagram", "")],
      [("etiket", "Değerler", False), ("analiz", "N · V · M", True), ("katman", "1,2G + 1,6Q", True)], True),
     ("Sonuç", [("tablo", "Tablolar", ""), ("rapor", "Rapor", "")],
-     [("sec", "Etkileşimli tasarım", False), ("excel", "Excel'e aktar", False), ("kutuphane", "Tablo kümeleri", False)], False),
+     [("sec", "Etkileşimli tasarım", False), ("tablo_disa", "Tabloya aktar", False), ("kutuphane", "Tablo kümeleri", False)], False),
 ]
 
 
@@ -689,7 +689,7 @@ def tablo_icerik(t, x0, y0, w, h):
         else:
             t.yazi(x, taban(y0, rh, 11), b, 11, 600, C["metin2"])
         x += kw
-    t.yazi_sag(x0 + w - 12, taban(y0, rh, 10), "263 satır · süzgeç: D/C > 0,60 · Excel'e aktar", 10, 400, C["metin3"])
+    t.yazi_sag(x0 + w - 12, taban(y0, rh, 10), "263 satır · süzgeç: D/C > 0,60 · CSV'ye aktar", 10, 400, C["metin3"])
     y = y0 + rh
     for i, sat in enumerate(TABLO_SATIR):
         if y + rh > y0 + h:

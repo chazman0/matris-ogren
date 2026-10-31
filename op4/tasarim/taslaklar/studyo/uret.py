@@ -244,7 +244,7 @@ GRUPLAR_TASARIM = [
     ('Yönetmelik', [('b', 'yonetmelik', 'Yönetmelik'), ('k', [('disli', 'Tercihler'), ('kat', 'Kombinasyonlar'), ('tablo', 'Otomatik liste')])]),
     ('Tasarım', [('b', 'celik', 'Çelik tasarım'), ('b', 'beton', 'Betonarme'), ('b', 'kompozit', 'Kompozit')]),
     ('Göster', [('b', 'dc', 'D/C renkleri', 'aktif'), ('b', 'deform', 'Şekil değiştirme'), ('b', 'diyagram', 'N / V / M'), ('b', 'reaksiyon', 'Reaksiyonlar')]),
-    ('Tablolar', [('b', 'tablo', 'Tablolar'), ('k', [('kaydet', 'Tablo kümesi'), ('disa', "Excel'e aktar"), ('kalem', 'Etkileşimli düzenle')])]),
+    ('Tablolar', [('b', 'tablo', 'Tablolar'), ('k', [('kaydet', 'Tablo kümesi'), ('disa', "CSV'ye aktar"), ('kalem', 'Etkileşimli düzenle')])]),
     ('Rapor', [('b', 'rapor', 'Rapor'), ('k', [('yonetmelik', 'Şablon'), ('disa', 'PDF'), ('kopyala', 'Pano')])]),
 ]
 
@@ -942,7 +942,7 @@ def ciz_dock(t, L, dock_h):
     t.ikon('tablo', x + w - 390, y + 10, 16, R['metin2'])
     t.yazi(x + w - 368, y + 22, 'Tablo seç…', 11.5, 500, R['metin2'])
     alan(t, x + w - 280, y + 8, 150, 24, 'Küme: Tasarım özeti', acilir=True, boy=11)
-    dugme(t, x + w - 120, y + 7, 108, 26, "Excel'e aktar", 'disa', boy=11)
+    dugme(t, x + w - 120, y + 7, 108, 26, "CSV'ye aktar", 'disa', boy=11)
     t.yatay(x, x + w, y + 36, R['cizgi'])
     # tablo
     kol = [('Eleman', 70), ('Kat', 60), ('Kesit', 80), ('Kombinasyon', 150), ('Kontrol', 110), ('D/C', 70), ('Durum', 110), ('Öneri', 180)]

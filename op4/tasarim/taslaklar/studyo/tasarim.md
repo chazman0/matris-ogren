@@ -10,7 +10,7 @@ Stüdyo, op4'ü **beyaz kâğıt üstünde çalışan bir stüdyo masası** gibi
 
 1. **Beyaz yüzey, tek vurgu**: tüm kromda tek nötr aile; Altın yalnız "şu an etkin/seçili" demektir, kırmızı/turuncu yalnız sonuç ve hata.
 2. **Nefes alan yoğunluk**: 8 px ızgara, 24–26 px satırlar, 16 px kart kenar boşluğu; ama her dosya maddesi (yönerge, kapsam, birim, koordinat, sayaç) yerinde.
-3. **Komut mantığı Tekla, kat mantığı ETABS**: komut → özellikler yan panelde → noktalar; kat kapsamı anahtarı durum çubuğunda her işlemi kapsar.
+3. **Komut mantığı M programı, kat mantığı A programı**: komut → özellikler yan panelde → noktalar; kat kapsamı anahtarı durum çubuğunda her işlemi kapsar.
 4. **Her şey süzülebilir ve kaydedilebilir**: Seç & Süz motoru seçim, görünüm süzgeci ve renk kuralı için tek motor; `.filtre` dosyaları firma profiliyle paylaşılır.
 5. **Yüzen ama sabit**: ray, çipler, mini araç çubuğu ve komut çubuğu görünüm kartının içinde sabit kenar boşluklarında durur; dar ekranda içerik kısalır, yer değiştirmez.
 
@@ -37,7 +37,7 @@ Stüdyo, op4'ü **beyaz kâğıt üstünde çalışan bir stüdyo masası** gibi
 | `hata` / `uyari` / `tamam` | `#C8372D` / `#D9A13B` / `#4C9A63` | Yetersiz / uyarı / uygun |
 | `eksen_x/y/z` | `#B5553F` / `#4F8F5A` / `#3F6FAF` | Köşedeki eksen üçlüsü |
 
-Model renkleri (görünüm): arka plan beyaz → `#E7E8EA` düşey gradyan (ETABS arka plan değişince renk çifti değişir ilkesi; koyu tema için ayrı çift tasarlanır). Nesne türü varsayılanları: kolon `#8E99A6`, kiriş `#AAB3BD`, aşık/ikincil `#C2C8CF`, çapraz `#B39C7E`, döşeme `#DAD7D1` %24 saydam; kenarlar yüz renginin %50 koyusu, 0,5 px. **Seçim** = Altın kontur 1,4 px + `#E9D3A8` dolgu; **hover** = Kahve 1 px kontur + küçük etiket çipi. D/C 5 eşik: `#5B8FC9` ≤0,50 · `#55A86E` ≤0,70 · `#D9B13B` ≤0,90 · `#E07B2A` ≤1,00 · `#C8372D` >1,00 (açık ve koyu zeminde okunur).
+Model renkleri (görünüm): arka plan beyaz → `#E7E8EA` düşey gradyan (A programı arka plan değişince renk çifti değişir ilkesi; koyu tema için ayrı çift tasarlanır). Nesne türü varsayılanları: kolon `#8E99A6`, kiriş `#AAB3BD`, aşık/ikincil `#C2C8CF`, çapraz `#B39C7E`, döşeme `#DAD7D1` %24 saydam; kenarlar yüz renginin %50 koyusu, 0,5 px. **Seçim** = Altın kontur 1,4 px + `#E9D3A8` dolgu; **hover** = Kahve 1 px kontur + küçük etiket çipi. D/C 5 eşik: `#5B8FC9` ≤0,50 · `#55A86E` ≤0,70 · `#D9B13B` ≤0,90 · `#E07B2A` ≤1,00 · `#C8372D` >1,00 (açık ve koyu zeminde okunur).
 
 ## 4. Tipografi
 
@@ -139,7 +139,7 @@ Model ağacı kartı kapanır ve rayın tepesine "Model ağacı" düğmesi olara
 | 17 | Kopyala/Taşı/Çoğalt diyalogu | Düzenle sekmesi (kopyala, taşı, ayna, çoğalt ikonları `tuval.py`'de hazır); açık kalan diyalog deseni §6 (bu makette açılmadı) |
 | 18 | Yük modeli, geçerli yük deseni | Şerit sağ ucu "Geçerli yük deseni: G — Ölü yük"; Özellikler Yükler bölümü "G 4,2 kN/m · Q 6,0 kN/m"; ağaçta "desen 5 · durum 6 · komb. 12" |
 | 19 | Mesnet/serbestlik formu | Serbestlikler bölümü: Başlangıç (Altın) / Bitiş (Kahve) parçalı anahtar, ön ayar "Mafsal", Ux Uy Uz Rx Ry Rz dolu/boş, kısmi/yay notu (`detay-panel.png`) |
-| 20 | Sonuç gösterimi | `sonuc.png`: D/C renk haritası + 5 eşik lejantı görünüm altında (sayılarla), "Maks 1,04 (K2-05)" işareti; Şekil değiştirmiş şekil kartı (durum/kombo, ölçek, gölge, kübik eğri, kontur, N/V2/V3/T/M2/M3, animasyon); durum çubuğunda animasyon + hız; alt dock tablolar (Tablo seç, küme, Excel) |
+| 20 | Sonuç gösterimi | `sonuc.png`: D/C renk haritası + 5 eşik lejantı görünüm altında (sayılarla), "Maks 1,04 (K2-05)" işareti; Şekil değiştirmiş şekil kartı (durum/kombo, ölçek, gölge, kübik eğri, kontur, N/V2/V3/T/M2/M3, animasyon); durum çubuğunda animasyon + hız; alt dock tablolar (Tablo seç, küme, elektronik tablo) |
 | 21 | Model ağacı | Sol kart: Model/Göster/Tablolar/Raporlar; katlar → Kolonlar/Kirişler/İkincil/Çaprazlar/Döşemeler/Düğümler; Kütüphane, Yükler, Gruplar; seçili satırlar vurgulu (`detay-panel.png`) |
 | 22 | Görsel dil (açık tema) | Zemin/kart/altın belirteçleri §3; model beyaz→açık gri gradyan; seçim Altın kontur + dolgu; hover Kahve; "Yalnız seçili" (Seçim çipi ve göz düğmesi) |
 | 23 | Render modları, çubuk ↔ ekstrüzyon | Rayda çubuk/ekstrüzyon düğmeleri (Ctrl+1/Ctrl+4 ipucu) ve görünüm sağ üstünde parçalı anahtar; model ekstrüde I-profillerle (`ana.png`) |

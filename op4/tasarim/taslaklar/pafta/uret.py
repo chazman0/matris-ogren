@@ -625,7 +625,7 @@ def _(K):
     K.L([(6, 3), (14, 3), (19, 8), (19, 21), (6, 21)], True); K.L([(9, 11), (16, 11)]); K.L([(9, 15), (16, 15)]); K.L([(9, 18), (13, 18)])
 
 
-@ikon('excel')
+@ikon('tablo_disa')
 def _(K):
     K.L([(5, 3), (19, 3), (19, 21), (5, 21)], True); K.L([(8, 8), (16, 16)]); K.L([(16, 8), (8, 16)])
 
@@ -1349,7 +1349,7 @@ SERIT = {
         ('Sonuçlar', [('deform', 'Şekil\ndeğiştirme', False), ('diyagram', 'N / V / M', False), ('reaksiyon', 'Reaksiyon', False)],
          [('komb', 'Zarf (12 komb.)', True), ('olcek', 'Ölçek: Otomatik', True), ('anim', 'Animasyon', False)]),
         ('Tablolar', [('tablo', 'Tablo\nseç', False), ('rapor', 'Rapor', False)],
-         [('excel', 'Excel’e aktar', False), ('kume', 'Tablo kümeleri', False)]),
+         [('tablo_disa', 'CSV’ye aktar', False), ('kume', 'Tablo kümeleri', False)]),
     ],
 }
 BUYUK_W = 68
@@ -2273,7 +2273,7 @@ def ciz_dock(t, L):
         x += w + 20
     t.yatay(vx0, vx1, y0 + 31, CIZGI)
     rx = vx1 - 16
-    for ad, ik in (('Excel’e aktar', 'excel'), ('Tablo kümesi', 'kume'), ('Süz…', 'suz')):
+    for ad, ik in (('CSV’ye aktar', 'tablo_disa'), ('Tablo kümesi', 'kume'), ('Süz…', 'suz')):
         w = t.gen(ad, 11, 500)
         t.yazi(rx, y0 + 21, ad, 11, 500, METIN2, anchor='rs')
         t.ikon(ik, rx - w - 11, y0 + 16, 14, METIN2, 1.4)

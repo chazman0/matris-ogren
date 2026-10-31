@@ -14,7 +14,7 @@ Taslak görselleri bu klasördeki `uret.py` üretir (`python3 uret.py`; yardımc
 
 ## 1. Kavram
 
-**Atölye** bir mühendislik iş istasyonudur: nötr açık gri yüzeyler, sıkı yoğunluk, en büyük alan 3B görünüme. İki ticari referansın *fikirleri* (Tekla'nın şerit + yan panel + seçim anahtarları + doğrudan değiştirme; ETABS'ın kat kavramı, kat kapsamı anahtarı, Model Explorer, D/C lejantı, tablolar) tek bir iskelete yerleştirilir; marka, ikon sanatı ya da renk kopyalanmaz.
+**Atölye** bir mühendislik iş istasyonudur: nötr açık gri yüzeyler, sıkı yoğunluk, en büyük alan 3B görünüme. İki ticari referansın *fikirleri* (M programının şerit + yan panel + seçim anahtarları + doğrudan değiştirme; A programının kat kavramı, kat kapsamı anahtarı, Model Explorer, D/C lejantı, tablolar) tek bir iskelete yerleştirilir; marka, ikon sanatı ya da renk kopyalanmaz.
 
 İskelet (1920×1080, 1×):
 
@@ -114,7 +114,7 @@ Gövde 78 px: gruplar; büyük düğme = 24 px simge + 11 px etiket (min 48 px g
 
 Model sekmesi (taslak): **Aks & Kat** (Aks, Kat | Aks sistemi…, Kat verisi…, Çalışma düzlemi ▾) · **Kolon** (Kolon | Çelik, Betonarme, Kompozit) · **Kiriş** (Kiriş [basılı] | Ana kiriş, Tali kiriş, Aşık) · **Çapraz** (Çapraz | X, V/Λ, Tek diyagonal) · **Döşeme** (Döşeme | Betonarme, Kompozit, Boşluk) · **Duvar** (Duvar | Perde, Dolgu, Açıklık) · **Temel** (Temel | Tekil, Sürekli, Radye) · **Hızlı kolon / kiriş** (Hızlı kolon, Hızlı kiriş | Hızlı çapraz, Tali kirişler…, Kat kopyala…) · **Seç** (Seç, Seç & Süz | Benzerini seç, Kata göre ▾, Tersine çevir).
 
-Tasarım sekmesi (sonuc.png): **Yönetmelik** (ÇYTHYE 2018 ▾ | Tercihler…, Kombinasyonlar, Malzeme katsayıları) · **Çelik** (Tasarla, Kontrol et | Otomatik kesit ▾, Yanal tutma, Birleşimler) · **Betonarme** (Tasarla | Donatı, Kesme, Detay) · **Göster** (D/C haritası [basılı], Deformasyon, Diyagram | Değerler, N · V · M ▾, 1,2G + 1,6Q ▾) · **Sonuç** (Tablolar, Rapor | Etkileşimli tasarım, Excel'e aktar, Tablo kümeleri).
+Tasarım sekmesi (sonuc.png): **Yönetmelik** (ÇYTHYE 2018 ▾ | Tercihler…, Kombinasyonlar, Malzeme katsayıları) · **Çelik** (Tasarla, Kontrol et | Otomatik kesit ▾, Yanal tutma, Birleşimler) · **Betonarme** (Tasarla | Donatı, Kesme, Detay) · **Göster** (D/C haritası [basılı], Deformasyon, Diyagram | Değerler, N · V · M ▾, 1,2G + 1,6Q ▾) · **Sonuç** (Tablolar, Rapor | Etkileşimli tasarım, elektronik tablo'e aktar, Tablo kümeleri).
 
 Diğer sekmeler (kurgu): Düzenle (Kopyala/Taşı/Döndür/Ayna/Çoğalt, Böl/Birleştir/Uzat/Kırp, Kat kopyala, Toplu düzenle), Yükler (Desenler, Durumlar, Kombinasyonlar, Geçerli desen ▾, Düğüm/Çubuk/Alan yükü ata, Mesnet, Göster/Temizle), Analiz (Model kontrolü, Çöz F5, Seçenekler, Kütle kaynağı), Görünüm (Yeni görünüm ▾, Plan/Yükselti, Kesit düzlemi, Render Ctrl+1…5, Tema, Bina görünüm sınırları), Raporlar (Tablo seç, Tablo kümeleri, Rapor, Dışa aktar).
 
@@ -143,7 +143,7 @@ Tek renkli çizgi simgeler, 24 birimlik ızgara, **1,5 px** kalem (küçüklerde
 | Özellikler | `BeginTable` 2 sütun (etiket 108 px sabit); bölüm `CollapsingHeader` stilinde özel başlık; değer hücresi türe göre `InputText` / `Combo` / salt metin / onay; "…" düğmesi katalog penceresini açar; çoklu seçimde "(farklı)" ve yazılan değer tümüne |
 | Pencere şeridi | Özel dikey sekme çubuğu: simge + döndürülmüş metin (metin `ImFont` glifleriyle `AddText` yerine döndürülmüş dörtlülerle, `ImRotate` tekniği) |
 | 3B görünüm | DirectX 12 render hedefi `ImTextureID` olarak `Image`; üstündeki pil/düğmeler/mini araç çubuğu/lejant `Begin` + `NoDecoration|NoDocking|AlwaysAutoResize` yüzen pencereler; tutamaçlar, ölçü etiketleri ve imleç ipucu `GetForegroundDrawList` ile ekran uzayında |
-| Rıhtım | Sekmeli `BeginTabBar`; Komut: geçmiş listesi; Tablolar: `BeginTable` (sıralama, süzgeç, Excel'e aktar) |
+| Rıhtım | Sekmeli `BeginTabBar`; Komut: geçmiş listesi; Tablolar: `BeginTable` (sıralama, süzgeç, elektronik tablo'e aktar) |
 | Komut satırı | `InputText` + `CallbackCompletion|CallbackHistory`; Ctrl+Q odaklar; sonuç listesi Son/Şerit/Menü/Tümü sekmeli açılır pencere; Türkçe + İngilizce takma adlar aynı tabloda |
 | Durum çubuğu | Özel; kat kapsamı üç durumlu segmentli anahtar (`Alt+1/2/3`), önizleme balonu `BeginTooltip` yerine kalıcı küçük pencere |
 | İletişim kutuları | Modsuz `Begin` pencereleri (NoDocking), "Uygula ile açık kalır"; Seç ve Süz kural satırları `BeginTable` |
@@ -174,11 +174,11 @@ Tek renkli çizgi simgeler, 24 birimlik ızgara, **1,5 px** kalem (küçüklerde
 | 17 | Kopyala/Taşı/Çoğalt diyalogu | Mini araç çubuğunda kopyala/taşı; şerit "Kat kopyala…"; Düzenle sekmesi kurgusu (§7) |
 | 18 | Yük modeli | Özellikler → Yükler bölümü: "Geçerli desen: G · Sabit ▾", çizgisel yük G/Q, öz ağırlık; ağaçta Yük desenleri (5) / Yük durumları (5) / Kombinasyonlar (14) |
 | 19 | Mesnet/serbestlik formu | Özellikler → Serbestlikler: Başlangıç ucu (altın kare) / Bitiş ucu (kahve kare) / Mesnet "Bağlı"; rayda Mesnet aracı |
-| 20 | Sonuç gösterimi | `sonuc.png`: D/C renk haritası, görünüm altında 5 eşikli lejant (düzenlenebilir eşik kutuları, "1 eleman > 1,00" rozeti), "Sonuç gösterimi" kartı (kombinasyon, D/C–Deformasyon–M3, ölçek, gölge, kübik eğri, animasyon + hız), Tablolar rıhtımı (D/C rozetli satırlar, Excel'e aktar), Özellikler → Tasarım/Sonuç bölümleri |
+| 20 | Sonuç gösterimi | `sonuc.png`: D/C renk haritası, görünüm altında 5 eşikli lejant (düzenlenebilir eşik kutuları, "1 eleman > 1,00" rozeti), "Sonuç gösterimi" kartı (kombinasyon, D/C–Deformasyon–M3, ölçek, gölge, kübik eğri, animasyon + hız), Tablolar rıhtımı (D/C rozetli satırlar, elektronik tablo'e aktar), Özellikler → Tasarım/Sonuç bölümleri |
 | 21 | Model ağacı | Sol panel: Model/Göster/Tablolar/Raporlar sekmeleri; Katlar → Kat 2 → Kolonlar (20), Kirişler · IPE400 (31) → Ana çerçeve [6 seçili]…, Tali kirişler, Çaprazlar, Döşemeler; Kesitler, Malzemeler, Yükler, Gruplar, Analiz modeli |
 | 22 | Görsel dil (açık tema) | Nötr açık gri krom, beyaz→açık gri model zemini, tür bazlı nötr nesne renkleri, altın seçim konturu + açık dolgu, ince kahve hover; "Yalnız seçiliyi göster" ve görünüm süzgeci %85 saydam (`secsuz.png` seçeneği) |
 | 23 | Render modları | Görünüm pilinde çubuk ↔ ekstrüde anahtarı (ekstrüde etkin); Ctrl+1…5 Görünüm sekmesinde |
 | 24 | Navigasyon | Sağ altta "Orta tuş: kaydır · Ctrl+orta: döndür", durum çubuğunda orta tuş modu, sol altta küçük eksen üçlüsü (küp yok), sağ üstte tam görünüm / seçiliye yakınlaş |
 | 25 | Komut tutarlılığı | Komut satırı (Türkçe + İngilizce takma ad, Tab tamamlama, geçmiş), "Uygula ile açık kalır" iletişim kutuları, Özellikler'de Uygula/Al, listelerde Ekle/Kopyasını ekle/Değiştir/Sil deseni (Kataloglar) |
 
-Not: Taslak modelde Kat 2'de 31 IPE400 kiriş vardır (A–D × 1–5 aks ızgarasında 15 çerçeve + 16 bağ kirişi); ağaçta bu nedenle "Kirişler · IPE400 (31)" yazılmıştır. Kat kapsamı anahtarı 3B görünümde de etkin gösterilmiştir çünkü op4'te kapsam, plan penceresine değil "Etkin kat" bağlamına bağlıdır (ETABS'tan sapma, bilinçli).
+Not: Taslak modelde Kat 2'de 31 IPE400 kiriş vardır (A–D × 1–5 aks ızgarasında 15 çerçeve + 16 bağ kirişi); ağaçta bu nedenle "Kirişler · IPE400 (31)" yazılmıştır. Kat kapsamı anahtarı 3B görünümde de etkin gösterilmiştir çünkü op4'te kapsam, plan penceresine değil "Etkin kat" bağlamına bağlıdır (A programından sapma, bilinçli).

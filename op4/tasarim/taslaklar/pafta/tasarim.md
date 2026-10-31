@@ -149,9 +149,9 @@ Etkin sekme altında 2 px altın çizgi; sağ uçta yardım ve şeridi daraltma.
 | Düzenle | Kopyala/Taşı (Doğrusal, Dairesel, Ayna, **Kat** — açık kalan diyalog, dx/dy/dz×n, Orijinali sil, Hangi atamalar) · Böl/Birleştir/Uzat/Kırp · Kat kopyala · Tablodan düzenle · Geri/Yinele |
 | Yükler | Yük desenleri (Ad/Tür/Öz ağırlık/Otomatik yanal) → Durumlar → Kombinasyonlar · Geçerli yük deseni ▾ · Ata: Düğüm/Çubuk/Alan (Ekle/Değiştir/Sil) · Mesnet (6 DOF + ankastre/mafsal/kayıcı/serbest, Bağlı/Mesnetli, yay, kısmi 0–1) · Atamaları göster/temizle |
 | Analiz | Model kontrolü · Çöz (F5) · Seçenekler · Analiz modeli görünümü |
-| Tasarım (taslak) | **Yönetmelik** TS EN 1993 · Tercihler…, Kombinasyonlar, Tasarım grupları — **Tasarım** Tasarımı başlat, Kontrol et · Yalnız seçili, Yinele, Kesitleri kilitle — **Göster** D/C oranı (etkin), P–M oranı, Ayrıntı · Eşikler…, Değerleri yaz, Gösterimi temizle — **Sonuçlar** Şekil değiştirme, N/V/M, Reaksiyon · Zarf ▾, Ölçek ▾, Animasyon — **Tablolar** Tablo seç, Rapor · Excel'e aktar, Tablo kümeleri |
+| Tasarım (taslak) | **Yönetmelik** TS EN 1993 · Tercihler…, Kombinasyonlar, Tasarım grupları — **Tasarım** Tasarımı başlat, Kontrol et · Yalnız seçili, Yinele, Kesitleri kilitle — **Göster** D/C oranı (etkin), P–M oranı, Ayrıntı · Eşikler…, Değerleri yaz, Gösterimi temizle — **Sonuçlar** Şekil değiştirme, N/V/M, Reaksiyon · Zarf ▾, Ölçek ▾, Animasyon — **Tablolar** Tablo seç, Rapor · elektronik tablo'e aktar, Tablo kümeleri |
 | Görünüm | Yeni görünüm (plan/yükselti/3B/iki nokta) · Kesit düzlemi, Kesit kutusu · Görünüm sınırları · Render (Ctrl+1…5) · Tema (model arka planı) · Pencereler |
-| Raporlar | Tablo seç · Tablo kümeleri · Rapor şablonu · Dışa aktar (Excel/CSV/PDF/IFC) |
+| Raporlar | Tablo seç · Tablo kümeleri · Rapor şablonu · Dışa aktar (elektronik tablo/CSV/PDF/IFC) |
 
 Özelleştirme: sekme başlığına gelince sağında 14 px göz simgesi belirir (gizle); sekmeler sürüklenerek sıralanır; "Kullanıcı"
 sekmesi JSON tanımıyla (`arayuz/serit.json`) firma profiline girer. Dar ekranda önce küçük düğme listeleri gizlenir ("dar" kipi),
@@ -230,7 +230,7 @@ glif atlası), `Ozellikler` (bölüm + satır + alan + "…" düğmesi + çip + 
 `ModelAgaci` (`TreeNodeEx` + özel satır zemini ve sayım sütunu), `SegmentAnahtar`, `KatKapsami` (durum çubuğu + önizleme popover),
 `KomutSatiri` (Ctrl+Q açılır listesi, takma ad tablosu TR/EN), `DurumCubugu`, `YuzenCubuk` (gölge = 3 katmanlı yarı saydam
 yuvarlak dikdörtgen), `MiniAracCubugu` (seçim merkezine bağlı, profil dosyası ile özelleştirilir), `SecSuz` (kural tablosu
-`BeginTable`), `TabloBolmesi` (`BeginTable` + sıralama + Excel), `Lejant`, `PaftaKosesi`.
+`BeginTable`), `TabloBolmesi` (`BeginTable` + sıralama + elektronik tablo), `Lejant`, `PaftaKosesi`.
 
 **Simgeler**: 24 birimlik yol tanımları (`arayuz/simgeler.json`) → çalışma anında `PathLineTo/PathStroke` ile 1,5 px × DPI ölçeği;
 sık kullanılanlar MSAA'lı atlasa önceden rasterize edilir (16/24/30 px).
