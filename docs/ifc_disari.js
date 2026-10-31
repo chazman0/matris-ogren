@@ -31,16 +31,20 @@
      adları {profil: "BORU 168.3x6.3" | "KUTU 150x8" | "KUTU 200x100x6" | "L 100x10" | "2L 70x7 s=10" | "UPN 200"} (mm; köşe
      yarıçapları ve A, Iy, Iz, J tasarim.kesit_ozellik ile aynı → basitProfil); {tip: "kutu"|"boru"|"L"|"2L"|"U", boyutlar: {.. mm}};
      üst düzey ölçüler {tip: "boru", D, t} (m; > 5 ise mm); {tip: "vute", temel, ek_yukseklik, boy, derin_uc}: temel kesitin profili,
-     vute boyunca IfcExtrudedAreaSolidTapered (derin uçta h + ek_yukseklik, üst yüz hizalı, alta büyür) + Pset_MatrisVute.
+     vute boyunca IfcExtrudedAreaSolidTapered (derin uçta h + ek_yukseklik, üst yüz hizalı, alta büyür; temel kesit I, dikdörtgen,
+     kutu ya da U) + Pset_MatrisVute. Boru/dolu daire/L/2L temelli vutede konik profil yok: temel kesitli düz katı + Pset ve uyarı.
      Tanımsız/eksik kesit uyarıları kesit adı başına bir kez, kullanım sayısıyla.
    - Malzeme (IfcMaterial, IfcMaterialProfileSet/Usage), Pset_*Common, Pset_ConcreteElementGeneral, Pset_MatrisOgren (D/C).
    - Yapısal analiz modeli (secenek.analiz, varsayılan açık): IfcStructuralAnalysisModel, IfcStructuralPointConnection +
      IfcBoundaryNodeCondition, IfcStructuralCurveMember (IfcEdge/IfcVertexPoint), IfcRelConnectsStructuralMember (uç serbestlikleri),
      IfcStructuralLoadCase / IfcStructuralLoadGroup (birleşimler, IfcRelAssignsToGroupByFactor), veri varsa yükler
-     (IfcStructuralLinearAction / IfcStructuralCurveAction POLYGONAL, IfcStructuralPointAction): aks–kat G ve Q (kiriş yükleri,
-     döşeme payları, kolon öz ağırlığı); surum 3 G, Q ve S (veri.yukler.cubuklar öz ağırlık/duvar, veri.yukler.paneller kenar
-     dağılımları, bina.ek_yukler çubuk/düğüm yükleri; ayrıntı: genelYukler). Analiz üyesi ↔ fiziksel eleman (IfcRelAssignsToProduct)
-     ve D/C (Pset_MatrisOgren) surum 3'te motorun çubuk no'suyla eşlenir.
+     (IfcStructuralLinearAction / IfcStructuralCurveAction POLYGONAL, IfcStructuralPointAction): aks–kat G, Q ve S (kiriş yükleri,
+     döşeme payları, kolon öz ağırlığı; kar çatı katı döşeme paylarından, veri.kar.s); surum 3 G, Q ve S (veri.yukler.cubuklar öz
+     ağırlık/duvar, veri.yukler.paneller kenar dağılımları, bina.ek_yukler çubuk/düğüm yükleri; ayrıntı: genelYukler); iki modelde
+     rüzgâr (W±X/W±Y), deprem (EX±/EY±; EZ = G_carpani × G) ve kren (K…) eylemleri veri.yukler.eylemler'den (rijit diyafram efendi
+     düğümü "Kat k diyafram merkezi" bağlantısı ve kat düğümlerine rijit bağlarıyla; efendi bir kat düğümüyle çakışıyorsa merkez o
+     düğüm) ve mütemadi/radye temel öz ağırlığı veri.temel.oz_yuk'tan (yükler ayrıntısı: yukler).
+     Analiz üyesi ↔ fiziksel eleman (IfcRelAssignsToProduct) ve D/C (Pset_MatrisOgren) surum 3'te motorun çubuk no'suyla eşlenir.
    - Düğüm başvuruları (REF): §12.1 {"dugum"} | {"aks", "kat"} | {"X", "Y", "Z"}; §19.2 {"aks", "z"} | {"sistem", "aks", "z"} ve
      dugumler kayıtlarında "bolme" (cubuk_i, cubuk_j, oran) ve "kesisim" (a, b doğruları) düğümleri. Aynı konumdaki (1 mm) REF'ler tek düğüm.
    - Sahiplik: IfcOwnerHistory + IfcApplication (uygulama adı yalnız "Matris Öğren").
@@ -510,7 +514,8 @@
   // basitProfil(ad) → {tur: "boru"|"kutu"|"L"|"2L"|"U", ad (motorun yazdığı biçim), boyutlar (m), h, b (m; dış ölçüler),
   //                    A (m²), Iy, Iz (m⁴; Iy yatay y ekseni etrafında = tasarim.kesit_ozellik ile aynı), J (m⁴)} | null.
   // Dilbilgisi (büyük/küçük harf duyarsız; x, X, × ya da *; ondalık nokta ya da virgül; ölçüler mm):
-  //   "BORU D x t" (CHS) | "KUTU a x t" (kare) | "KUTU h x b x t" (RHS/SHS) | "L a x t" | "L a x b x t" | "2L a x t s=g" | "UPN n".
+  //   "BORU D x t" (CHS) | "KUTU a x t" (kare) | "KUTU h x b x t" (RHS/SHS) | "L a x t" | "L a x a x t" | "2L a x t s=g" | "UPN n".
+  //   Motorla aynı (tasarim._ad_coz): korniyer yalnız eşit kollu ("L 100x80x8" → null); UPN boyu int(round(n)) ile tabloda aranır.
   // boyutlar: boru {D, t}; kutu {h, b, t, r_o, r_i}; L {h (düşey kol), b (yatay kol), t, r1, r2}; 2L {h, b, t, s, r1, r2};
   //           U {h, b, tw, tf, r, r2, egim}. Köşe yarıçapları motordaki gibi: kutu sıcak r_o = 1,5t, r_i = t (EN 10210-2);
   //           korniyer kök r1 (EN 10056-1 tablosu), uç r2 = r1/2; UPN r = tf, r2 = tf/2, başlık iç yüz eğimi %8.
@@ -519,6 +524,7 @@
   const L_KOK = { "40|4": 6, "45|5": 7, "50|5": 7, "50|6": 7, "60|6": 8, "65|7": 9, "70|7": 9, "75|8": 10, "80|8": 10, "90|9": 11,
     "100|10": 12, "120|12": 13, "150|15": 16, "160|16": 17, "180|18": 18, "200|20": 18 };                                     // "b|t": r1 mm
   const IKI_L_ARA = 10;            // mm, çift korniyer varsayılan bayrak levhası aralığı (motorla aynı)
+  const VUTE_KONIK = { I: true, dikdortgen: true, kutu: true, U: true };   // derin uç profili olan (konik katılı) vute temel türleri
   const BASIT_TIP = { KUTU: "kutu", RHS: "kutu", SHS: "kutu", BORU: "boru", CHS: "boru", L: "L", KORNIYER: "L", "2L": "2L",
     CIFT_KORNIYER: "2L", U: "U", UPN: "U" };
 
@@ -641,16 +647,23 @@
     if (tur === "kutu" && (n.length === 2 || n.length === 3)) return basitHesap(tur, n.length === 2 ? { H: n[0], B: n[0], t: n[1] } : { H: n[0], B: n[1], t: n[2] });
     if (tur === "boru" && n.length === 2) return basitHesap(tur, { D: n[0], t: n[1] });
     if ((tur === "L" || tur === "2L") && (n.length === 2 || n.length === 3)) {
-      const b = { h: n[0], b: n.length === 3 ? n[1] : n[0], t: n[n.length - 1] };
+      if (n.length === 3 && n[0] !== n[1]) return null;                   // motor: "yalnız eşit kollu korniyer desteklenir"
+      const b = { h: n[0], b: n[0], t: n[n.length - 1] };
       if (tur === "2L") b.s = m[3] !== undefined ? +m[3] : IKI_L_ARA;
       return basitHesap(tur, b);
     }
     if (tur === "U" && n.length === 1) {
-      const h = Math.round(n[0]), u = UPN_TABLO[h];
-      if (!u || Math.abs(n[0] - h) > 1e-9) return null;
+      // motor gibi int(round(n)): Python round() yarımda çifte yuvarlar ("UPN 200.4" → UPN 200, "UPN 200.5" → UPN 200)
+      const h = yuvarlaCifte(n[0]), u = UPN_TABLO[h];
+      if (!u) return null;
       return basitHesap("U", { h: h, b: u[0], tw: u[1], tf: u[2], r: u[2], r2: u[2] / 2, egim: 0.08, ad: "UPN " + h });
     }
     return null;
+  }
+  // Python round(x) (ondalıksız): en yakın tamsayı, tam yarıda çift olana (banker yuvarlaması)
+  function yuvarlaCifte(x) {
+    const f = Math.floor(x), d = x - f;
+    return d > 0.5 ? f + 1 : (d < 0.5 ? f : (f % 2 === 0 ? f : f + 1));
   }
   // Motorun {tip, boyutlar (mm)} biçimi: kutu {H, B, t}, boru {D, t}, L {b, t}, 2L {b, t, s}, U {h, b, tw, tf} → kesit | null
   // tip "basit" (motorun iç kesit kartındaki genel ad): tür ölçü adlarından (D → boru; tw, tf → U; s → 2L; H/B → kutu; b, t → L)
@@ -700,9 +713,13 @@
       }
       yol[String(ad)] = true;
       const t = kesitCoz(Bm, temel, uyarilar, yol);
-      const boy = sayi(k.boy, null);
+      const boy = sayi(k.boy, null), ek = Math.max(0, sayi(k.ek_yukseklik, 0));
+      if (ek > 1e-6 && !VUTE_KONIK[t.tur]) {
+        uyarilar.push("vute temel kesiti " + temel + ": konik katı yazılmadı (bu kesit için konik profil yok); temel kesitli düz katı ve " +
+          "Pset_MatrisVute yazıldı.");
+      }
       return Object.assign({}, t, { ad: sonuc.ad, malzeme: k.malzeme || t.malzeme, vute: { temel: temel, temelProfil: t.profil || t.ad,
-        ek_yukseklik: Math.max(0, sayi(k.ek_yukseklik, 0)), boy: boy !== null && boy > 0 ? boy : null,
+        ek_yukseklik: ek, boy: boy !== null && boy > 0 ? boy : null,
         derin_uc: String(k.derin_uc || "i").trim().toLowerCase() === "j" ? "j" : "i" } });
     }
     if (tip === "profil" || k.profil) {
@@ -993,13 +1010,14 @@
     const anahtar = k.ad;
     if (this.profil[anahtar]) return this.profil[anahtar];
     const w = this.w, ad = k.profil || k.ad;
-    let ref, derinlik = k.h || k.D || 0.3, derin = null;
+    let ref, derinlik = k.h || k.D || 0.3, derin = null, kutuR = null;
     if (k.tur === "I") {
       ref = w.ekle("IFCISHAPEPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.tw, k.tf, k.r || null, null, null]);
     } else if (k.tur === "kutu") {
       // köşe yarıçapları IFC kurallarına sığdırılır (r_i ≤ min(b, h)/2 − t, r_o ≤ min(b, h)/2; kalın et/küçük kutu)
       const yari = Math.min(k.b, k.h) / 2, ri = k.ri ? Math.min(k.ri, yari - k.t) : 0, ro = k.ro ? Math.min(k.ro, yari) : 0;
-      ref = w.ekle("IFCRECTANGLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.t, ri > 0 ? ri : null, ro > 0 ? ro : null]);
+      kutuR = [ri > 0 ? ri : null, ro > 0 ? ro : null];
+      ref = w.ekle("IFCRECTANGLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.b, k.h, k.t, kutuR[0], kutuR[1]]);
     } else if (k.tur === "boru") {
       ref = w.ekle("IFCCIRCLEHOLLOWPROFILEDEF", [E("AREA"), ad, null, k.D / 2, k.t]);
       derinlik = k.D;
@@ -1027,14 +1045,20 @@
     } else {
       ref = w.ekle("IFCRECTANGLEPROFILEDEF", [E("AREA"), ad, null, k.b, k.h]);
     }
-    // vute: derin uç profili (aynı tür; başlıklar aynı, gövde ek yükseklik kadar uzun — motorun kaynaklı I yaklaşımı).
-    // Üst yüz temel profille aynı hizada kalsın diye −ek/2 kaydırılır (vute alta doğru büyür).
-    if (k.vute && k.vute.ek_yukseklik > 1e-6 && (k.tur === "I" || k.tur === "dikdortgen")) {
+    // vute: derin uç profili (aynı tür; başlıklar/et aynı, gövde ek yükseklik kadar uzun — motorun _derin_kesit yaklaşımı:
+    // I kaynaklı I, dikdörtgen b × (h + ek), kutu ve U derinliği h + ek; kutuda köşe yarıçapları temel profilinkiyle aynı).
+    // Üst yüz temel profille aynı hizada kalsın diye −ek/2 kaydırılır (vute alta doğru büyür). Boru, dolu daire, L ve 2L'nin
+    // konik karşılığı yok: temel kesitli düz katı (uyarı kesitCoz'da).
+    if (k.vute && k.vute.ek_yukseklik > 1e-6 && VUTE_KONIK[k.tur]) {
       const dh = k.vute.ek_yukseklik;
       const yer = w.ekle("IFCAXIS2PLACEMENT2D", [this.nokta2([0, -dh / 2]), null]);
       const dad = ad + " (vute derin uç, h = " + sy(k.h + dh) + " m)";
-      derin = k.tur === "I" ? w.ekle("IFCISHAPEPROFILEDEF", [E("AREA"), dad, yer, k.b, k.h + dh, k.tw, k.tf, k.r || null, null, null])
-        : w.ekle("IFCRECTANGLEPROFILEDEF", [E("AREA"), dad, yer, k.b, k.h + dh]);
+      if (k.tur === "I") derin = w.ekle("IFCISHAPEPROFILEDEF", [E("AREA"), dad, yer, k.b, k.h + dh, k.tw, k.tf, k.r || null, null, null]);
+      else if (k.tur === "kutu") derin = w.ekle("IFCRECTANGLEHOLLOWPROFILEDEF", [E("AREA"), dad, yer, k.b, k.h + dh, k.t, kutuR[0], kutuR[1]]);
+      else if (k.tur === "U") {
+        derin = w.ekle("IFCUSHAPEPROFILEDEF", [E("AREA"), dad, yer, k.h + dh, k.b, k.tw, k.tf, k.r1 || null, k.r2 || null,
+          k.egim ? Math.atan(k.egim) : null]);
+      } else derin = w.ekle("IFCRECTANGLEPROFILEDEF", [E("AREA"), dad, yer, k.b, k.h + dh]);
     }
     this.profil[anahtar] = { ref: ref, derinlik: derinlik, derin: derin };
     return this.profil[anahtar];
@@ -1169,7 +1193,8 @@
       this.pset(o.anahtar, "Pset_MatrisVute", [
         ["TemelKesit", T("IFCLABEL", v.temel)], ["TemelProfil", T("IFCLABEL", v.temelProfil)],
         ["EkYukseklik", T("IFCLENGTHMEASURE", v.ek_yukseklik)], ["Boy", T("IFCPOSITIVELENGTHMEASURE", boy)],
-        ["DerinUc", T("IFCLABEL", v.derin_uc)], ["DerinUcYuksekligi", o.k.h ? T("IFCPOSITIVELENGTHMEASURE", o.k.h + v.ek_yukseklik) : null],
+        ["DerinUc", T("IFCLABEL", v.derin_uc)],
+        ["DerinUcYuksekligi", (o.k.h || o.k.D) ? T("IFCPOSITIVELENGTHMEASURE", (o.k.h || o.k.D) + v.ek_yukseklik) : null],
       ], [ref]);
     }
     this.fizik[o.anahtar] = ref;
@@ -1731,6 +1756,7 @@
         null, yer, sek, mesnetKosulu[no] || null, null]);
       uyeler.push(baglanti[no]);
     });
+    this.diyaframMerkezleri(yer, baglanti, uyeler, tepe);
     // çubuklar → IfcStructuralCurveMember
     this.yapisalUye = {};
     const fizikIliski = {};
@@ -1780,6 +1806,86 @@
     if (this.s.yukler !== false) this.yukler(baglanti);
   };
 
+  // Rijit diyafram efendi düğümleri (C16): eylem (kat kuvveti, burulma momenti) taşıyan her efendi düğüm "Kat k diyafram merkezi"
+  // IfcStructuralPointConnection'ı olur (veri.ag.dugumler, yoksa veri.ag.diyaframlar konumunda; baglanti[efendi no]). IFC4'te
+  // diyafram kısıtı varlığı yok ve her yapısal bağlantı en az bir üyeye bağlı olmalı (IfcStructuralConnection.ConnectsStructuralMembers
+  // SET [1:?]); motorun modeli birebir şöyle yazılır: efendi düğümün yalnız ux, uy, rz serbestliği var (uz, rx, ry tutulu koşul) ve
+  // kat düğümlerine (veri.ag.diyaframlar[].dugumler) kesitsiz rijit bağ üyeleriyle bağlanır; bağın kat düğümü ucunda düşey kesme,
+  // burulma ve yatay eksenli eğilme serbest (Vy, T, Mz) — bağ yalnız yatay ötelemeyi ve düşey eksen etrafında dönmeyi aktarır.
+  // Efendi düğüm bir kat düğümüyle çakışıyorsa (1 mm; simetrik planda ortadaki kolon) ayrı merkez bağlantısı yazılmaz: aynı konumda
+  // iki bağlantı olur, ortak düğüm diyaframa bağlanmaz ve düğümleri birleştiren okuyucuda merkezin uz, rx, ry koşulu kat düğümünü
+  // mesnetlerdi. Merkez o kat düğümünün kendi bağlantısıdır (eylemler ona, rijit bağlar ondan öteki kat düğümlerine).
+  Uretici.prototype.diyaframMerkezleri = function (yer, baglanti, uyeler, tepe) {
+    const Bm = this.Bm, w = this.w, self = this, dug = this.dug;
+    const Y = Bm.veri && Bm.veri.yukler;
+    this.diyaframNo = {};
+    if (!Bm.ag || this.s.yukler === false || !Y || !Y.eylemler || typeof Y.eylemler !== "object") return;
+    const efendi = {}, diy = {}, gerekli = {};
+    Bm.ag.dugumler.forEach(function (d) { if (d && d.efendi) efendi[+d.no] = d; });
+    dizi(Bm.ag.diyaframlar).forEach(function (d) { if (d && d.ana !== undefined && d.ana !== null) diy[+d.ana] = d; });
+    Object.keys(Y.eylemler).forEach(function (dr) {
+      dizi(sozluk(Y.eylemler[dr]).dugumler).forEach(function (n) {
+        const no = n ? +n.dugum : NaN;
+        if ((efendi[no] || diy[no]) && !baglanti[no]) gerekli[no] = true;
+      });
+    });
+    let kosul = null, ucKosul = null;
+    Object.keys(gerekli).map(Number).sort(function (a, b) { return a - b; }).forEach(function (no) {
+      const d = efendi[no] || {}, g = diy[no] || {};
+      const P = [sayi(d.X, sayi(g.X, NaN)), sayi(d.Y, sayi(g.Y, NaN)), sayi(d.Z, sayi(g.Z, NaN))];
+      if (!P.every(isFinite)) return;               // konumsuz: yükü "karşılığı olmayan düğüm" sayılır
+      // bağlanacak kat düğümleri (analiz modelinde olan); efendiyle çakışan kat düğümü (ortak) merkezin kendisi olur
+      const gor = {}, kole = [];
+      let ortak = null;
+      dizi(g.dugumler).forEach(function (n) {
+        const x = dug.no[+n];
+        if (!x || !baglanti[x.no] || gor[x.no]) return;
+        gor[x.no] = true;
+        if (!ortak && vboy(vfark([x.X, x.Y, x.Z], P)) < 1e-3) ortak = x;
+        else kole.push(x);
+      });
+      if (!kole.length && !ortak) return;
+      const km = d.kat !== undefined && d.kat !== null ? d.kat : (/(\d+)/.exec(String(g.ad || "")) || [])[1];
+      const kat = km !== undefined && km !== null ? "Kat " + km : "Diyafram " + no;
+      if (kole.length && !ucKosul) {
+        ucKosul = w.ekle("IFCBOUNDARYNODECONDITION", ["Diyafram bağı ucu (Vy, T, Mz serbest)", T("IFCBOOLEAN", true), T("IFCBOOLEAN", false),
+          T("IFCBOOLEAN", true), T("IFCBOOLEAN", false), T("IFCBOOLEAN", true), T("IFCBOOLEAN", false)]);
+      }
+      let merkez, vp, Pm = P;
+      if (ortak) {
+        merkez = baglanti[ortak.no];
+        vp = tepe[ortak.no];
+        Pm = [ortak.X, ortak.Y, ortak.Z];
+      } else {
+        if (!kosul) {
+          kosul = w.ekle("IFCBOUNDARYNODECONDITION", ["Diyafram merkezi (uz, rx, ry tutulu; ux, uy, rz kat düğümlerine rijit bağlı)",
+            T("IFCBOOLEAN", false), T("IFCBOOLEAN", false), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", true), T("IFCBOOLEAN", false)]);
+        }
+        vp = w.ekle("IFCVERTEXPOINT", [self.nokta(P)]);
+        const rep = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Vertex", [vp]]);
+        const sek = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [rep]]);
+        merkez = w.ekle("IFCSTRUCTURALPOINTCONNECTION", [self.gid("yd:" + no), null, kat + " diyafram merkezi",
+          "Rijit diyafram efendi düğümü N" + no + " (kütle merkezi; " + kole.length + " kat düğümüne rijit bağlı)", null, yer, sek, kosul, null]);
+        uyeler.push(merkez);
+      }
+      baglanti[no] = merkez;
+      self.diyaframNo[no] = true;
+      kole.forEach(function (x) {
+        const t = vbirim(vfark([x.X, x.Y, x.Z], Pm)), dd = derinlikYonu(t, 0);
+        const ed = w.ekle("IFCEDGE", [vp, tepe[x.no]]);
+        const r2 = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Edge", [ed]]);
+        const s2 = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [r2]]);
+        const uye = w.ekle("IFCSTRUCTURALCURVEMEMBER", [self.gid("ydb:" + no + ":" + x.no), null, kat + " diyafram bağı → " + (x.ad || "N" + x.no),
+          "Rijit diyafram bağı (kesitsiz kinematik bağ; yatay öteleme ve düşey eksen etrafında dönme aktarır)", null, yer, s2,
+          E("RIGID_JOINED_MEMBER"), self.yon(dd)]);
+        uyeler.push(uye);
+        w.ekle("IFCRELCONNECTSSTRUCTURALMEMBER", [self.gid("ydbb:" + no + ":" + x.no + ":i"), null, null, null, uye, merkez, null, null, null, null]);
+        w.ekle("IFCRELCONNECTSSTRUCTURALMEMBER", [self.gid("ydbb:" + no + ":" + x.no + ":j"), null, null, null, uye, baglanti[x.no], ucKosul, null, null,
+          self.eksen3([x.X, x.Y, x.Z], vdis(t, dd), t)]);
+      });
+    });
+  };
+
   function eylemTipi(ad) {
     const a = String(ad);
     if (a === "G" || a.indexOf("G~") === 0) return ["PERMANENT_G", "DEAD_LOAD_G", "Sabit yük (G)"];
@@ -1788,7 +1894,7 @@
     if (a[0] === "W") return ["VARIABLE_Q", "WIND_W", "Rüzgâr yükü (" + a + ")"];
     if (a[0] === "E") return ["EXTRAORDINARY_A", "EARTHQUAKE_E", "Deprem etkisi (" + a + ")"];
     if (a === "T") return ["VARIABLE_Q", "TEMPERATURE_T", "Sıcaklık / büzülme / oturma (T)"];
-    if (a === "K") return ["VARIABLE_Q", "NOTDEFINED", "Kren yükü (K)"];
+    if (a[0] === "K") return ["VARIABLE_Q", "NOTDEFINED", "Kren yükü (" + a + ")"];       // K ve kren alt durumları (K1.1a…)
     return ["NOTDEFINED", "NOTDEFINED", a];
   }
   Uretici.prototype.yukGruplari = function () {
@@ -1804,6 +1910,7 @@
         Object.keys(sozluk(k.katsayilar)).forEach(ekle);
         birlesimler.push(k);
       });
+      Object.keys(sozluk(sozluk(veri.yukler).eylemler)).forEach(ekle);     // eylemi olan her durumun yük durumu var (C16)
     } else {
       const yd = sozluk(Bm.bina.yuk_durumlari);
       if (sozluk(yd.S).acik) ekle("S");
@@ -1832,10 +1939,16 @@
     return liste;
   };
 
-  // Yükler (yalnız veri varsa). Aks–kat: G ve Q, veri.yukler.kirisler/dosemeler/kolonlar'dan kiriş parçasına (yayılı, kN/m, aşağı +)
-  // ve düğüme (tekil). surum 3 (genel model): G, Q ve S, veri.yukler.cubuklar/paneller ve bina.ek_yukler'den (genelYukler).
+  // Yükler (yalnız veri varsa). Aks–kat: G, Q ve S, veri.yukler.kirisler/dosemeler/kolonlar'dan kiriş parçasına (yayılı, kN/m, aşağı +)
+  // ve düğüme (tekil); kar yalnız çatı katı (veri.kar.kat) döşeme paylarında, tepe s·lx/2 (motordaki gibi). surum 3 (genel model):
+  // G, Q ve S, veri.yukler.cubuklar/paneller ve bina.ek_yukler'den (genelYukler).
+  // Rüzgâr, deprem ve kren (C16): veri.yukler.eylemler[durum] o durumun yük durumuna — cubuklar[].yayili/tekil (genel model; bina
+  // eksenlerinde q·vek, FE parçalarına bölünür), dugumler[].F düğüme (rijit diyafram efendi düğümü kendi bağlantısında:
+  // diyaframMerkezleri); EZ = G_carpani × (bütün G eylemleri). eylemler_not ya da eylemler yoksa bu etkiler yalnız yük
+  // durumu/birleşim olarak kalır (uyarı). Temel öz ağırlığı (C11, mütemadi/radye): veri.temel.oz_yuk G eylemleri olarak temel
+  // analiz üyelerine (q) ve temel düğümlerine (P); eski çözümde γ·A yaklaşığı (uyarı).
   // Yayılı yükler analiz üyesi × yük durumu × doğrultu başına bir IfcStructuralLinearAction (düzgün) ya da IfcStructuralCurveAction
-  // (POLYGONAL; konumlar üyenin i ucundan, m). Rüzgâr, deprem ve kren etkileri yük durumu/birleşim olarak vardır, eylem olarak yazılmaz.
+  // (POLYGONAL; konumlar üyenin i ucundan, m).
   const ASAGI = [0, 0, -1];
   const ASAGI_ANAHTAR = ASAGI.map(R).join(",");
   Uretici.prototype.yukler = function (baglanti) {
@@ -1856,30 +1969,115 @@
     dizi(Y.kirisler).forEach(function (r) {
       const kn = sozluk(r.kN_m);
       const g = sayi(kn.oz, 0) + sayi(kn.duvar, 0) + sayi(kn.ek_G, 0), q = sayi(kn.ek_Q, 0);
+      // kar ek yükü (kirişe S durumunda düzgün yayılı ek yük): kN_m'de yok, toplamı S.ek (kN) = q·L
+      const L = sayi(r.L, 0), s = L > 0 ? sayi(sozluk(r.S).ek, 0) / L : 0;
       dizi(parcaElemanlari[r.no]).forEach(function (p) {
         if (g) ekle(p.no, "G", [[0, p.L, g, g]]);
         if (q) ekle(p.no, "Q", [[0, p.L, q, q]]);
+        if (s) ekle(p.no, "S", [[0, p.L, s, s]]);
       });
     });
+    // kar (S): yalnız çatı katı (veri.kar.kat) döşemelerinde s = μ·Ce·Ct·Sk (kN/m²); döşeme payının tepe değeri motordaki gibi s·lx/2
+    // (G ve Q payıyla aynı birim şekil, parcalar_birim)
+    const kar = sozluk(veri.kar), sKar = sayi(kar.s, 0);
     dizi(Y.dosemeler).forEach(function (d) {
+      const tepeS = sKar > 0 && kar.kat !== undefined && +d.kat === +kar.kat ? sKar * sayi(d.lx, 0) / 2 : 0;
       dizi(d.paylar).forEach(function (p) {
         if (!self.yapisalUye[p.eleman]) return;
         const pb = dizi(p.parcalar_birim);
         if (!pb.length) return;
         if (sayi(p.tepe_g, 0)) ekle(p.eleman, "G", pb.map(function (s) { return [s[0], s[1], s[2] * p.tepe_g, s[3] * p.tepe_g]; }));
         if (sayi(p.tepe_q, 0)) ekle(p.eleman, "Q", pb.map(function (s) { return [s[0], s[1], s[2] * p.tepe_q, s[3] * p.tepe_q]; }));
+        const ts = sayi(p.tepe_s, tepeS);
+        if (ts) ekle(p.eleman, "S", pb.map(function (s) { return [s[0], s[1], s[2] * ts, s[3] * ts]; }));
       });
     });
-    // tekil düğüm yükleri: kolon öz ağırlığı (G, üst düğüm), ek düğüm yükleri, dağıtımsız panel payları
+    // tekil düğüm yükleri: kolon öz ağırlığı (G, üst düğüm), ek düğüm yükleri, dağıtımsız panel payları, eylemler, temel öz ağırlığı
     const tekil = {};     // "durum|dugum" → [FX, FY, FZ, MX, MY, MZ]
     const tekilEkle = function (durum, dno, v) {
       if (!baglanti[dno] || !self.durumRef[durum]) return;
       const a = durum + "|" + dno, r = tekil[a] = tekil[a] || [0, 0, 0, 0, 0, 0];
       for (let i = 0; i < 6; i++) r[i] += v[i];
     };
-    const uyeTekil = [];  // çubuk üzerindeki tekil yükler (surum 3 ek yükleri): {eno, durum, x, P, F}
+    const uyeTekil = [];  // çubuk üzerindeki tekil yükler (surum 3 ek yükleri, kren tekerlekleri): {eno, durum, x, P, F}
     const genel = dizi(Y.cubuklar).length > 0;
     if (genel) this.genelYukler(Y, ekle, tekilEkle, uyeTekil);
+    // düğüm no (veri.ag / bina REF numarası) → baglanti anahtarı (aynı konumdaki düğümler tek bağlantı; efendi düğüm kendi bağlantısı)
+    const dugumAnahtar = function (dno) {
+      const d = self.dug.no[dno];
+      if (d && baglanti[d.no]) return d.no;
+      return baglanti[dno] ? dno : null;
+    };
+    // --- rüzgâr / deprem / kren düğüm eylemleri (C16; aks–kat ve genel) ---
+    const eyl = Y.eylemler && typeof Y.eylemler === "object" && !Array.isArray(Y.eylemler) ? Y.eylemler : null;
+    let eylemDugumEksik = 0;
+    if (eyl) {
+      Object.keys(eyl).forEach(function (dr) {
+        if (!self.durumRef[dr]) return;
+        dizi(sozluk(eyl[dr]).dugumler).forEach(function (n) {
+          const F = [0, 1, 2, 3, 4, 5].map(function (i) { return sayi(dizi(n && n.F)[i], 0); });
+          if (F.every(function (x) { return !x; })) return;
+          const k = n ? dugumAnahtar(+n.dugum) : null;
+          if (k === null) { eylemDugumEksik += 1; return; }
+          tekilEkle(dr, k, F);
+        });
+      });
+    }
+    this.temelOzYukleri(ekle, tekilEkle, dugumAnahtar);
+    const kolonUst = {};
+    Object.keys(this.yapisalUye).forEach(function (no) {
+      const e = self.yapisalUye[no].e;
+      if (e.tur === "kolon") kolonUst[e.kaynakNo] = e.j.Z >= e.i.Z ? e.j.no : e.i.no;
+    });
+    dizi(Y.kolonlar).forEach(function (c) {
+      if (kolonUst[c.no] !== undefined && sayi(c.oz_kN, 0)) tekilEkle("G", kolonUst[c.no], [0, 0, -c.oz_kN, 0, 0, 0]);
+    });
+    dizi(Bm.bina.ek_yukler).forEach(function (y) {
+      if (!y || y.tur !== "dugum") return;
+      let d = null;
+      if (y.dugum !== undefined) d = self.dug.ref(y.dugum);
+      else {
+        const a = aksXY(Bm, y.aks);
+        if (a) d = self.dug.no[aksDugumNo(y.kat === undefined ? 1 : +y.kat, a.ix, a.iy)];
+      }
+      if (!d) return;
+      tekilEkle(String(y.durum || "G").toUpperCase(), d.no, ["FX", "FY", "FZ", "MX", "MY", "MZ"].map(function (a) { return sayi(y[a], 0); }));
+    });
+    // --- EZ = G_carpani × G (TBDY Denk. 4.10): bütün G eylemleri (temel öz ağırlığı dahil) ölçeklenip EZ yük durumuna ---
+    const ezC = eyl && self.durumRef.EZ ? sayi(sozluk(eyl.EZ).G_carpani, null) : null;
+    if (ezC) {
+      const ezKaynak = "düşey deprem (EZ = " + sy(ezC) + " × G)";
+      Object.keys(yayili).forEach(function (eno) {
+        const r = yayili[eno];
+        dizi(r.G).forEach(function (k) {
+          (r.EZ = r.EZ || []).push({ sekil: k.sekil.map(function (x) { return [x[0], x[1], x[2] * ezC, x[3] * ezC]; }), vek: k.vek, kaynak: ezKaynak });
+        });
+      });
+      Object.keys(tekil).filter(function (a) { return a.indexOf("G|") === 0; }).forEach(function (a) {
+        tekilEkle("EZ", +a.slice(2), tekil[a].map(function (x) { return x * ezC; }));
+      });
+      uyeTekil.filter(function (t) { return t.durum === "G"; }).forEach(function (t) {
+        uyeTekil.push({ eno: t.eno, durum: "EZ", x: t.x, P: t.P, F: volc(t.F, ezC), kaynak: ezKaynak });
+      });
+    }
+    // eylemi yazılamayan rüzgâr / deprem / kren durumları: yük durumu/birleşim olarak kalırlar
+    const yanal = Object.keys(this.durumRef).filter(function (d) { return /^(W|EX|EY|EZ|EH|K)/.test(d); });
+    if (yanal.length) {
+      if (Y.eylemler_not || !eyl) {
+        this.uyarilar.push("IFC yükleri: rüzgâr, deprem ve kren etkileri yük durumu/birleşim olarak vardır, eylem olarak yazılmadı (" +
+          (Y.eylemler_not ? String(Y.eylemler_not).replace(/\.$/, "") : "çözümde eylem kayıtları yok; binayı yeniden çözün") + ").");
+      } else {
+        const yok = yanal.filter(function (d) { return !eyl[d]; });
+        if (yok.length) {
+          this.uyarilar.push("IFC yükleri: " + yok.join(", ") + " durum" + (yok.length > 1 ? "larının" : "unun") + " eylemi çözümde yok; " +
+            "yalnız yük durumu/birleşim olarak yazıldı.");
+        }
+      }
+    }
+    if (eylemDugumEksik) {
+      this.uyarilar.push("IFC yükleri: " + eylemDugumEksik + " düğüm eyleminin (rüzgâr/deprem/kren) analiz modelinde karşılığı (düğüm) " +
+        "bulunamadı; yazılmadı.");
+    }
     const atananlar = { G: [], Q: [] };
     const fdeger = function (sekil, x) {
       for (let i = 0; i < sekil.length; i++) {
@@ -1923,7 +2121,8 @@
       });
       return P;
     };
-    const KAYNAK_SIRA = ["öz ağırlık", "duvar", "panel payı", "panel payı (düzgün eşdeğer)", "ek yük"];
+    const KAYNAK_SIRA = ["öz ağırlık", "duvar", "panel payı", "panel payı (düzgün eşdeğer)", "ek yük", "temel öz ağırlığı", "rüzgâr",
+      "deprem", "kren"];
     const yonAdi = function (v) {
       const eks = ["X", "Y", "Z"];
       for (let i = 0; i < 3; i++) if (Math.abs(Math.abs(v[i]) - 1) < 1e-9) return (v[i] > 0 ? "+" : "−") + eks[i];
@@ -1960,7 +2159,9 @@
               const c = g.vek.map(function (x) { return Math.abs(x) < 1e-12 ? null : v * x; });
               return w.ekle("IFCSTRUCTURALLOADLINEARFORCE", [ad_, c[0], c[1], c[2], null, null, null]);
             };
-            const kaynak = genel ? ": " + KAYNAK_SIRA.filter(function (k) { return g.kaynaklar.indexOf(k) >= 0; }).join(" + ") : "";
+            const sira = KAYNAK_SIRA.filter(function (k) { return g.kaynaklar.indexOf(k) >= 0; })
+              .concat(g.kaynaklar.filter(function (k) { return KAYNAK_SIRA.indexOf(k) < 0; }));
+            const kaynak = sira.length ? ": " + sira.join(" + ") : "";
             let eylem;
             if (noktalar.every(function (p) { return Math.abs(p[1] - noktalar[0][1]) < 1e-9; })) {
               const yk = kuvvet(ad, noktalar[0][1]);
@@ -1978,30 +2179,13 @@
           });
         });
     });
-    const kolonUst = {};
-    Object.keys(this.yapisalUye).forEach(function (no) {
-      const e = self.yapisalUye[no].e;
-      if (e.tur === "kolon") kolonUst[e.kaynakNo] = e.j.Z >= e.i.Z ? e.j.no : e.i.no;
-    });
-    dizi(Y.kolonlar).forEach(function (c) {
-      if (kolonUst[c.no] !== undefined && sayi(c.oz_kN, 0)) tekilEkle("G", kolonUst[c.no], [0, 0, -c.oz_kN, 0, 0, 0]);
-    });
-    dizi(Bm.bina.ek_yukler).forEach(function (y) {
-      if (!y || y.tur !== "dugum") return;
-      let d = null;
-      if (y.dugum !== undefined) d = self.dug.ref(y.dugum);
-      else {
-        const a = aksXY(Bm, y.aks);
-        if (a) d = self.dug.no[aksDugumNo(y.kat === undefined ? 1 : +y.kat, a.ix, a.iy)];
-      }
-      if (!d) return;
-      tekilEkle(String(y.durum || "G").toUpperCase(), d.no, ["FX", "FY", "FZ", "MX", "MY", "MZ"].map(function (a) { return sayi(y[a], 0); }));
-    });
     Object.keys(tekil).sort().forEach(function (a) {
       const p = a.split("|"), durum = p[0], dno = +p[1], v = tekil[a];
       const ad = durum + " / N" + dno;
       const yk = w.ekle("IFCSTRUCTURALLOADSINGLEFORCE", [ad, v[0], v[1], v[2], v[3], v[4], v[5]]);
-      const eylem = w.ekle("IFCSTRUCTURALPOINTACTION", [self.gid("yt:" + a), null, ad, "Tekil düğüm yükü (kN, kN·m)", null, self.yYapisal, null, yk,
+      const eylem = w.ekle("IFCSTRUCTURALPOINTACTION", [self.gid("yt:" + a), null, ad,
+        self.diyaframNo && self.diyaframNo[dno] ? "Diyafram merkezinde kat kuvveti ve burulma momenti (kN, kN·m)" : "Tekil düğüm yükü (kN, kN·m)",
+        null, self.yYapisal, null, yk,
         E("GLOBAL_COORDS"), null]);
       w.ekle("IFCRELCONNECTSSTRUCTURALACTIVITY", [self.gid("rel:yt:" + a), null, null, null, baglanti[dno], eylem]);
       (atananlar[durum] = atananlar[durum] || []).push(eylem);
@@ -2014,7 +2198,8 @@
       const rep = w.ekle("IFCTOPOLOGYREPRESENTATION", [self.ctxRef, "Reference", "Vertex", [vp]]);
       const sek = w.ekle("IFCPRODUCTDEFINITIONSHAPE", [null, null, [rep]]);
       const yk = w.ekle("IFCSTRUCTURALLOADSINGLEFORCE", [ad, t.F[0], t.F[1], t.F[2], 0, 0, 0]);
-      const eylem = w.ekle("IFCSTRUCTURALPOINTACTION", [self.gid("ytc:" + kimlik), null, ad, "Çubuk üzerinde tekil yük (kN); üyenin i ucundan " + sy(t.x) + " m",
+      const eylem = w.ekle("IFCSTRUCTURALPOINTACTION", [self.gid("ytc:" + kimlik), null, ad, "Çubuk üzerinde tekil yük (kN" +
+        (t.kaynak ? "; " + t.kaynak : "") + "); üyenin i ucundan " + sy(t.x) + " m",
         null, self.yYapisal, sek, yk, E("GLOBAL_COORDS"), null]);
       w.ekle("IFCRELCONNECTSSTRUCTURALACTIVITY", [self.gid("rel:ytc:" + kimlik), null, null, null, self.yapisalUye[t.eno].ref, eylem]);
       (atananlar[t.durum] = atananlar[t.durum] || []).push(eylem);
@@ -2025,6 +2210,64 @@
     });
   };
 
+  // Temel öz ağırlığı (C11; mütemadi / radye, iki model): veri.temel.oz_yuk = {elemanlar: [{no: FE no, q (kN/m, aşağı +)}],
+  // dugumler: [{dugum, P (kN, aşağı +; kesişim düzeltmesi eksi olabilir)}], W} → G durumunda temel analiz üyelerine düzgün yayılı
+  // (IfcStructuralLinearAction) ve temel düğümlerine tekil (IfcStructuralPointAction); Σq·L + ΣP = W. oz_yuk yoksa (eski çözüm):
+  // temel üyelerine γ·A (veri.temel kesiti: ters T / dikdörtgen; radyede iki doğrultunun şeritleri plağı ikişer kez kapladığından
+  // plak payı yarım), uyarıyla.
+  Uretici.prototype.temelOzYukleri = function (ekle, tekilEkle, dugumAnahtar) {
+    const vt = this.veriTemel(), self = this;
+    if (!vt || !this.durumRef.G) return;
+    const boy = function (e) { return vboy(vfark([e.j.X, e.j.Y, e.j.Z], [e.i.X, e.i.Y, e.i.Z])); };
+    const oz = vt.oz_yuk && typeof vt.oz_yuk === "object" && (Array.isArray(vt.oz_yuk.elemanlar) || Array.isArray(vt.oz_yuk.dugumler)) ? vt.oz_yuk : null;
+    if (oz) {
+      let eksik = 0;
+      dizi(oz.elemanlar).forEach(function (x) {
+        const q = sayi(x && x.q, 0), u = x ? self.yapisalUye[x.no] : null;
+        if (!q) return;
+        if (!u) { eksik += 1; return; }
+        const L = boy(u.e);
+        ekle(+x.no, "G", [[0, L, q, q]], ASAGI, "temel öz ağırlığı");
+      });
+      dizi(oz.dugumler).forEach(function (x) {
+        const P = sayi(x && x.P, 0);
+        if (!P) return;
+        const k = dugumAnahtar(+x.dugum);
+        if (k === null) { eksik += 1; return; }
+        tekilEkle("G", k, [0, 0, -P, 0, 0, 0]);
+      });
+      if (eksik) {
+        this.uyarilar.push("IFC yükleri: temel öz ağırlığının " + eksik + " kaydının (veri.temel.oz_yuk) analiz modelinde karşılığı (temel " +
+          "elemanı/düğümü) bulunamadı; yazılmadı.");
+      }
+      return;
+    }
+    const malz = betonMalzeme(this.Bm), gam = sayi(sozluk(this.Bm.malzemeler[malz.anahtar]).gamma, 25);
+    const radye = String(vt.tip) === "radye", md = sozluk(vt.model);
+    let n = 0;
+    Object.keys(this.yapisalUye).map(Number).sort(function (a, b) { return a - b; }).forEach(function (no) {
+      const e = self.yapisalUye[no].e, k = e.kesitObj;
+      if ((e.tur !== "temel-kirisi" && e.tur !== "radye-serit") || !k) return;
+      let A, plak = 0;
+      if (k.tur === "tersT") { A = k.B * k.ht + k.bg * (k.hg - k.ht); plak = k.B * k.ht; } else { A = k.b * k.h; plak = k.b * k.h; }
+      if (radye) {
+        if (e.tur === "radye-serit") A -= plak / 2;
+        else if (k.tur === "tersT") A -= plak / 2;
+        else A -= Math.min(sayi(md.ag, 0) * sayi(md.h, 0), plak) / 2;      // RK b × h: plak payı ≈ ağ aralığı × plak kalınlığı
+      }
+      const q = gam * A;
+      if (!(q > 0)) return;
+      ekle(no, "G", [[0, boy(e), q, q]], ASAGI, "temel öz ağırlığı");
+      n += 1;
+    });
+    if (n) {
+      this.uyarilar.push("IFC yükleri: çözümde temel öz ağırlığı yükleri yok (veri.temel.oz_yuk; eski çözüm): " + n + " temel " +
+        (radye ? "şeridi/kirişi" : "kirişi") + " analiz üyesine γ·A = " + sy(gam) + " kN/m³ × kesit alanı yazıldı" +
+        (radye ? "; radye plağının öz ağırlığı yaklaşıktır (iki doğrultunun şeritlerine yarı yarıya)" : "; kesişimlerde ortak tabla hacmi iki kez sayılır") +
+        ". Binayı yeniden çözün.");
+    }
+  };
+
   // surum 3 (genel model) yükleri → analiz üyelerine (FE parçaları), G, Q, S:
   // - öz ağırlık ve duvar: veri.yukler.cubuklar[].<durum>.oz / duvar toplamından düzgün yayılı (vute çubuğu birden çok FE parçasıysa
   //   parçalara, motorun parça kesitleri gibi A(h_orta)·boy ile orantılı);
@@ -2033,7 +2276,8 @@
   //   kenar zinciri kuralıyla (u kenar başından; çubuğun i ucu kenarın sonuna yakınsa ters). Eşlenemeyen kalan (eski çözüm, eksik geometri)
   //   çubuğun panel toplamından düzgün eşdeğer olarak; dağıtımı "yok" olan panelin yükü köşe düğümlerine eşit tekil pay;
   // - ek yükler (bina.ek_yukler): tur "cubuk" yayılı (q, q1–q2, x1–x2; global X/Y/Z ya da yerel x′/y′/z′; oransal; izdusum) ya da
-  //   tekil (x, P); tur "dugum" ortak düğüm yükü yolundan; tur "panel" panelin g/q/s yoğunluğuna katılmış olduğundan ayrıca yazılmaz.
+  //   tekil (x, P); tur "dugum" ortak düğüm yükü yolundan; tur "panel" panelin g/q/s yoğunluğuna katılmış olduğundan ayrıca yazılmaz;
+  // - rüzgâr / deprem / kren çubuk eylemleri (veri.yukler.eylemler[durum].cubuklar; C16): yayılı q·vek ve tekil P·vek, aynı kurallarla.
   Uretici.prototype.genelYukler = function (Y, ekle, tekilEkle, uyeTekil) {
     const Bm = this.Bm, self = this, ag = Bm.ag || {}, dug = this.dug;
     const konum = function (d) { return [d.X, d.Y, d.Z]; };
@@ -2223,6 +2467,55 @@
       cubugaYayili(cno, dr, [[x1, x2, q1, q2]], vek, "ek yük");
       ekYazilan[a] = (ekYazilan[a] || 0) - (q1 + q2) / 2 * (x2 - x1) * vek[2];
     });
+    // --- rüzgâr / deprem / kren çubuk eylemleri (C16): veri.yukler.eylemler[durum].cubuklar = [{no, yayili: [{x1, x2, q1, q2, vek}],
+    //     tekil: [{x, P, vek}]}]; x çubuğun i ucundan (m), q (kN/m) ve P (kN) bina eksenlerindeki birim vek doğrultusunda.
+    //     Yayılı yükler FE parçalarına bölünür (öz ağırlık / panel payı gibi; +Z yönlüsü −Z'de ters işaretle), aynı noktadaki tekil
+    //     yükler (kren tekerleğinin düşey, yanal ve fren kuvvetleri) tek nokta eyleminde toplanır ---
+    const eyl = Y.eylemler && typeof Y.eylemler === "object" && !Array.isArray(Y.eylemler) ? Y.eylemler : {};
+    const vekOku = function (v) {
+      const x = dizi(v).map(Number);
+      return x.length === 3 && x.every(isFinite) && vboy(x) > 1e-9 ? x : null;
+    };
+    const kaynakAdi = function (dr) { return dr[0] === "W" ? "rüzgâr" : (dr[0] === "K" ? "kren" : "deprem"); };
+    const eylemTekil = {};
+    let vekHatali = 0;
+    Object.keys(eyl).forEach(function (dr) {
+      if (!durumVar(dr)) return;
+      dizi(sozluk(eyl[dr]).cubuklar).forEach(function (c) {
+        const cno = Math.round(sayi(c && c.no, NaN));
+        const yay = dizi(c && c.yayili), tek = dizi(c && c.tekil);
+        if (!isFinite(cno) || (!yay.length && !tek.length)) return;
+        const b = bilgi(cno);
+        if (!b) { eksik[cno] = true; return; }
+        const kes = function (x) { return Math.min(Math.max(x, 0), b.L); };
+        yay.forEach(function (y) {
+          const v0 = vekOku(y && y.vek);
+          if (!v0) { vekHatali += 1; return; }
+          const yukari = Math.abs(v0[0]) < 1e-12 && Math.abs(v0[1]) < 1e-12 && v0[2] > 0;
+          const vek = yukari ? volc(v0, -1) : v0, isaret = yukari ? -1 : 1;
+          const x1 = kes(sayi(y.x1, 0)), x2 = kes(sayi(y.x2, b.L));
+          const q1 = sayi(y.q1, 0) * isaret, q2 = sayi(y.q2, sayi(y.q1, 0)) * isaret;
+          if (!(x2 - x1 > 1e-9) || (!q1 && !q2)) return;
+          cubugaYayili(cno, dr, [[x1, x2, q1, q2]], vek, kaynakAdi(dr));
+        });
+        tek.forEach(function (t) {
+          const v = vekOku(t && t.vek), P = sayi(t && t.P, 0);
+          if (!v) { vekHatali += 1; return; }
+          if (!P) return;
+          const x = kes(sayi(t.x, 0));
+          const p = b.parcalar.filter(function (q) { return x >= q.x0 - 1e-9 && x <= q.x1 + 1e-9; })[0];
+          if (!p) return;
+          const xl = p.ters ? p.x1 - x : x - p.x0, a = dr + "|" + p.eno + "|" + Math.round(xl * 1e6);
+          let r = eylemTekil[a];
+          if (!r) {
+            r = eylemTekil[a] = { eno: p.eno, durum: dr, x: xl, P: vtop(b.Pi, volc(b.x, x)), F: [0, 0, 0], kaynak: dr[0] === "K" ? "kren tekerleği" : kaynakAdi(dr) };
+            uyeTekil.push(r);
+          }
+          r.F = vtop(r.F, volc(v, P));
+        });
+      });
+    });
+    if (vekHatali) self.uyarilar.push("IFC yükleri: " + vekHatali + " rüzgâr/deprem/kren çubuk eyleminin doğrultusu (vek) anlaşılamadı; yazılmadı.");
     let ekFarkli = 0;
     Object.keys(ekCozum).concat(Object.keys(ekYazilan)).filter(function (a, i, l) { return l.indexOf(a) === i; }).forEach(function (a) {
       const c = ekCozum[a] || 0, m = ekYazilan[a] || 0;

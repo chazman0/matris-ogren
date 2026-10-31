@@ -19,7 +19,8 @@
 
    Genel model kapısı (sözleşme C1): aks–kat (surum 1) modelini genel modele (surum 3) çeviren her yol — seçimli değiştirme
    işlemleri, mesnet, çubuk/çapraz/panel çizimi, üreteçler — önce kullanıcıya sorar (genelModeleGec → genellestirHazirla;
-   mütemadi/radye temel tekil olur). Model çevirmeden yapılabilenler aks–kat biçiminde yazılır: ek yükler (C10: düğüm, kiriş,
+   temeller aynen kalır: genel model motoru tekil, mütemadi ve radye temeli çözer — sözleşme C11). Model çevirmeden yapılabilenler
+   aks–kat biçiminde yazılır: ek yükler (C10: düğüm, kiriş,
    döşeme), kolon/kiriş kesit, kolon yönü, kiriş duvarı. Motorun her zaman reddettiği yeni bozukluk üreten işlem uygulanmaz. */
 (function (kok, fabrika) {
   "use strict";
@@ -333,7 +334,8 @@
     return { model: m, parametreler: parametreler, eklenen: eklenen, uyarilar: uy };
   }
   /**
-   * Makas planı. p = {tip, bas: REF, son: REF (aynı Z aksında iki kesişim), yukseklik (m; beşik tiplerde mahya yüksekliği), goz, kesitler, uc_yukseklik?, mafsalli_govde?}
+   * Makas planı. p = {tip, bas: REF, son: REF (aynı Z aksında iki kesişim), yukseklik (m; beşik tiplerde mahya yüksekliği), goz, kesitler, uc_yukseklik?, mafsalli_govde?,
+   *   yanal_tutma? ("uc-dikme" varsayılan: uç dikmeleri / ilk-son diyagonaller rijit, düzlem dışı mekanizma olmaz | "yok": bütün gövde mafsallı)}
    * Eksik üst başlık / mahya Z aksı ve (beşik tiplerde) açıklık ortası aksı eklenir. Dönüş: {model, parametre, eklenen}
    */
   function makasPlan(bina, p) {
@@ -353,6 +355,7 @@
       else if (Math.abs(Pb[0] - Ps[0]) < TOL) { r = aksSagla(m, "y", orta[1]); m = r.model; if (r.eklendi) eklenen.push("mahya Y aksı " + r.ad); }
     }
     const par = { tip: tip, bas: kopya(p.bas), son: kopya(p.son), goz: Math.round(+p.goz || 6), kesitler: kopya(p.kesitler || {}), mafsalli_govde: p.mafsalli_govde !== false };
+    if (p.yanal_tutma != null && p.yanal_tutma !== "") par.yanal_tutma = String(p.yanal_tutma) === "yok" ? "yok" : "uc-dikme";
     if (besik) { par.yukseklik = h; if (+p.uc_yukseklik > 0) par.uc_yukseklik = +p.uc_yukseklik; } else par.yukseklik = h;
     return { model: m, parametre: par, eklenen: eklenen };
   }
@@ -420,16 +423,29 @@
   function aksKatElemanVar(b) { return liste(b, "kolonlar").length + liste(b, "kirisler").length + liste(b, "dosemeler").length > 0; }
   /** Genel model gerektiren bir işlemden önce modelin çevrilmesi (ve kullanıcıya sorulması) gerekiyor mu. */
   function genelGecisGerekli(b) { return !!b && (!genelMi(b) || aksKatElemanVar(b)); }
-  function temelTipi(b) { return String((b && b.temeller && b.temeller.tip) || "tekil").trim().toLowerCase(); }
-  /** Çevirme onayı metni (temel mütemadi/radye ise tekil temel mesnetlerine döndüğü de söylenir). */
+  /**
+   * Çevirme onayı metni. islem: işlemin ADI (ad / eylem adı: "Taşıma", "Mesnet", "Böl" — GENEL_ISLEM_ADLARI; geçmiş zamanlı sonuç
+   * etiketi değil); verilmezse ön ek yazılmaz. Temel tipi (tekil / mütemadi / radye) çevirmede değişmez (C11), metinde geçmez.
+   */
   function genelGecisMetni(b, islem) {
-    const t = temelTipi(b);
-    const temel = t === "surekli" ? ", mütemadi (sürekli) temel tekil temel mesnetlerine döner" : t === "radye" ? ", radye temel tekil temel mesnetlerine döner" : "";
-    return (islem ? islem + " — " : "") + "Model genel (surum 3) modele çevrilecek: kolon/kiriş/döşemeler çubuk ve panel olur, adım adım anlatım kısalır" + temel + ". Devam edilsin mi?";
+    void b;
+    return (islem ? islem + " — " : "") + "Model genel (surum 3) modele çevrilecek: kolon/kiriş/döşemeler çubuk ve panel olur, adım adım anlatım kısalır. Devam edilsin mi?";
   }
   /**
-   * ModelOps.genellestir'in arayüz sarmalı: aks–kat elemanları çubuk/panel olur (surum 3). Genel model motoru mütemadi/radye temeli
-   * çözmediği için temeller.tip "tekil" yapılır ve not düşülür. Dönüş: {model, notlar: [metin], temelDegisti, rapor}
+   * Genel model kapısının işlem adları (K-23): her komutun onay metnindeki ön eki — ad ya da eylem adı ("Taşıma"), geçmiş zamanlı
+   * sonuç etiketi ("Taşındı") değil. Arayüz kapıdan geçen her uygula() / secimli() çağrısına bunlardan birini sc.genel olarak verir.
+   */
+  const GENEL_ISLEM_ADLARI = Object.freeze({
+    tasi: "Taşıma", dondur: "Döndürme", ayna: "Ayna", "dogrusal-dizi": "Dizi", yapistir: "Yapıştır", bol: "Böl", "kesisimde-bol": "Kesişimde böl",
+    "duzlemle-bol": "Düzlemle böl", birlestir: "Birleştirme", mafsal: "Mafsal", "dugum-birlestir": "Düğüm birleştir", mesnet: "Mesnet", "yuk-ata": "Yük ata",
+    "ozellik-ata": "Özellik ata", "kesit-degistir": "Kesit değiştir", aci: "Yerel eksen açısı", "yalniz-cekme": "Yalnız çekme",
+    "cubuk-ciz": "Çubuk çiz", "egik-cubuk": "Eğik çubuk", "hizli-cubuk": "Hızlı çubuk", "hizli-kolon": "Hızlı kolon", "hizli-kiris": "Hızlı kiriş",
+    "hizli-panel": "Hızlı panel", "hizli-capraz": "Hızlı çapraz", makas: "Makas üreteci", "besik-cerceve": "Beşik çerçeve", asik: "Aşık üreteci",
+    "kren-yolu": "Kren yolu", uretec: "Üreteç",
+  });
+  /**
+   * ModelOps.genellestir'in arayüz sarmalı: aks–kat elemanları çubuk/panel olur (surum 3). temeller aynen kalır (sözleşme C11: genel
+   * model motoru mütemadi ve radye temeli de çözer). Dönüş: {model, notlar: [metin], temelDegisti: false (API uyumu), rapor}
    */
   function genellestirHazirla(model) {
     const r = MO().genellestir(model);
@@ -437,15 +453,8 @@
     const g = (r.uyarilar || []).filter(function (u) { return /genelleştirildi/.test(u); });
     if (g.length) notlar.push(g.join(" "));
     else if (!genelMi(model)) notlar.push("Model genel (surum 3) modele çevrildi.");
-    const t = temelTipi(m);
-    let temelDegisti = false;
-    if (t === "surekli" || t === "radye") {
-      m.temeller = Object.assign({}, m.temeller, { tip: "tekil" });
-      temelDegisti = true;
-      notlar.push((t === "radye" ? "Radye" : "Mütemadi (sürekli)") + " temel tekil temele çevrildi: genel model motoru bu temel tipini çözmüyor; kolon tabanları tekil temel mesnetidir.");
-    }
     m.surum = 3;
-    return { model: m, notlar: notlar, temelDegisti: temelDegisti, rapor: r };
+    return { model: m, notlar: notlar, temelDegisti: false, rapor: r };
   }
   /** Aks–kat düğüm adresi {aks: [x, y], kat} (GLOBAL kat düzlemindeki kesişim); değilse null. ref: {aks, kat} | {aks, z} | {dugum: no < 100001} */
   function aksKatAdresi(bina, ref) {
@@ -491,11 +500,16 @@
     const parca = l.filter(function (x) { return x && x.kaynak && x.kaynak.aks_kat === k.aks_kat && +x.kaynak.no === +k.no; }).length;
     return parca > 1 && k.parca != null ? ad + ", " + k.parca + ". parça" : ad;
   }
-  /** İletideki çubuk numaralarının yanına aks–kat adresi: "Çubuk 13, 14 …" → "Çubuk 13 (kiriş 1), 14 (kiriş 2) …". */
+  /**
+   * İletideki çubuk numaralarının yanına aks–kat adresi: "Çubuk 13, 14 …" → "Çubuk 13 (kiriş 1), 14 (kiriş 2) …"; ayraçlı liste de
+   * ("başka çubuk bağlı (3, 9, 18)" → "(3 (kiriş 1), 9 (…), 18 (…))"; "çubuk" sözcüğünden sonra en çok 40 ayraçsız karakter). Listede
+   * virgülden sonra boşluk aranır: ondalık sayı ("(0,5 mm)") liste sayılmaz.
+   */
   function cubukAdlari(model, metin) {
-    return String(metin == null ? "" : metin).replace(/([Çç]ubuk(?:lar)?\s+)(\d+(?:\s*(?:,|ve|–)\s*\d+)*)/g, function (t, bas, l) {
-      return bas + l.replace(/\d+/g, function (n) { const a = cubukAksKatAdi(model, n); return a ? n + " (" + a + ")" : n; });
-    });
+    const adla = function (n) { const a = cubukAksKatAdi(model, n); return a ? n + " (" + a + ")" : n; };
+    return String(metin == null ? "" : metin)
+      .replace(/([Çç]ubuk(?:lar)?\s+)(\d+(?:\s*(?:,|ve|–)\s*\d+)*)/g, function (t, bas, l) { return bas + l.replace(/\d+/g, adla); })
+      .replace(/([Çç]ubuk[^()\n]{0,40}\()(\d+(?:\s*,\s+\d+)*)(\))/g, function (t, bas, l, son) { return bas + l.replace(/\d+/g, adla) + son; });
   }
   /**
    * Aks–kat kolon/kiriş seçimine GENELLEŞTİRMEDEN özellik yazar (bina.js Özellikler paneli gibi): kesit, grup, kolonda açı 0/90 → yon
@@ -606,10 +620,32 @@
   }
 
   // ================================================================= kesit önerisi (bina_kesit_oner, sözleşme C4)
-  /** Öneri satırının adı: aks–kat kaynağı varsa "kolon 2", yoksa "capraz 32". */
+  /**
+   * Çubuk türlerinin Türkçe adları (sözleşme C18; bina.js CUBUK_TURLERI'nin küçük harflisi, motorun yapi_serbest.TUR_ADI'siyle aynı):
+   * motor adresi "Ç{no} ({ad})" bunlarla yazılır. Makine alanı `tur` değişmez.
+   */
+  const TUR_ADI = Object.freeze({ kolon: "kolon", kiris: "kiriş", capraz: "çapraz", "makas-ust": "makas üst başlık", "makas-alt": "makas alt başlık",
+    "makas-dikme": "makas dikmesi", "makas-diyagonal": "makas diyagonali", asik: "aşık", kren: "kren kirişi", bag: "bağ", diger: "diğer" });
+  /**
+   * Öneri satırının adı (C18): aks–kat kaynağı varsa "kolon 2" / "kiriş 3", yoksa "Ç32 (çapraz)" (türü bilinmiyorsa "Ç32"; çubuk
+   * numarası yoksa türün adı).
+   */
   function oneriEtiketi(o) {
     if (o && o.kaynak && o.kaynak.aks_kat) return (o.kaynak.aks_kat === "kiris" ? "kiriş" : o.kaynak.aks_kat) + " " + o.kaynak.no;
-    return ((o && o.tur) || "çubuk") + " " + (o && o.cubuk != null ? o.cubuk : "");
+    const tur = o && o.tur != null && o.tur !== "" ? String(o.tur) : null;
+    const ad = tur ? (TUR_ADI[tur] || tur) : null;
+    if (!o || o.cubuk == null) return ad || "çubuk";
+    return "Ç" + o.cubuk + (ad ? " (" + ad + ")" : "");
+  }
+  /**
+   * Çözümün tasarım kaydının adı (veri.tasarim.elemanlar[]): motorun adı (ad) varsa o; yoksa öneri satırıyla aynı kural (aks–kat
+   * kaynağı "kiriş 3", genel model çubuğu "Ç32 (çapraz)", aks–kat çözümünün kaydı "kolon 2").
+   */
+  function tasarimEtiketi(e) {
+    if (!e) return "";
+    if (e.ad) return String(e.ad);
+    if (e.cubuk == null && (e.tur === "kolon" || e.tur === "kiris")) return (e.tur === "kiris" ? "kiriş" : "kolon") + " " + e.no;
+    return oneriEtiketi({ cubuk: e.cubuk != null ? e.cubuk : e.no, tur: e.tur === "cubuk" ? null : e.tur, kaynak: e.kaynak });
   }
   /**
    * Öneri uygulanabilir mi (sözleşme K1): öneri var, değişim "aynı" değil, motor uygulamayı reddetmemiş (uygula null değil) ve modele
@@ -625,13 +661,15 @@
   function boslukSiz(s) { return String(s == null ? "" : s).replace(/\s+/g, ""); }
   /**
    * Öneri satırı (K1): "kolon 1: S45x45 → B30x30-ρ%2.00 (30x30)" — uygula.ad gösterilir (öneri ondan farklıysa ayraçta), D/C "tahmini
-   * (mevcut iç kuvvetlerle)" etiketlidir; yinele ile yeniden çözüldüyse "yeniden çözümle". Dönüş: {ad, oneri, dc, dcEtiket} (metin).
+   * (mevcut iç kuvvetlerle)" etiketlidir; yinele ile yeniden çözüldüyse "yeniden çözümle". Parçalı aks–kat elemanının önerisi (C19
+   * `cubuklar`, grup kaydı değil) "N parça" taşır. Dönüş: {ad, oneri, dc, dcEtiket, parca} (metin).
    */
   function oneriSatiri(o, yeniden) {
     const ad = oneriAdi(o), on = o && o.oneri != null ? String(o.oneri) : "";
     const dcS = yeniden && o.dc_sonra != null ? o.dc_sonra : o.dc_oneri;
+    const n = o && Array.isArray(o.cubuklar) && !(o.grup && typeof o.grup === "object") ? o.cubuklar.length : 0;
     return { ad: ad || "—", oneri: on && boslukSiz(on) !== boslukSiz(ad) ? on : "",
-      dc: fmt(o.dc_once) + " → " + fmt(dcS), dcEtiket: yeniden ? "yeniden çözümle" : "tahmini (mevcut iç kuvvetlerle)" };
+      dc: fmt(o.dc_once) + " → " + fmt(dcS), dcEtiket: yeniden ? "yeniden çözümle" : "tahmini (mevcut iç kuvvetlerle)", parca: n > 1 ? n + " parça" : "" };
   }
   /**
    * "Hepsini uygula" (yinele) yanıtının özeti (K1): dc = son çözümün D/C maks (dc_sonra); asan = son çözümde D/C > 1 kalan çubuklar
@@ -651,6 +689,104 @@
     const once = (y && y.uyarilar) || [];
     const tum = ((y2 && y2.uyarilar) || []).filter(function (u) { return u && once.indexOf(u) < 0; }).map(String);
     return { tum: tum, diger: tum.filter(function (u) { return !/turda yakınsamadı/.test(u); }) };
+  }
+  /**
+   * "Hepsini uygula" yanıtının açıklamasında ilk yanıtta olmayan ek (motor yinele turlarının özeti — ör. K-27: "0. turda göreli kat
+   * ötelemesi … sınırın %90'ını aşacağından şu gruplar küçültülmedi: …"). Model hiç değişmediyse kullanıcı nedenini buradan öğrenir.
+   * Öteleme satırı (otelemeSatiri) ayrıca yazılıyorsa (otelemeVar) motorun "Göreli kat ötelemesi (…): öneriden önce …; sonra …."
+   * cümlesi tekrar edilmez. Ek yoksa "".
+   */
+  function hepsiAciklamaEki(y2, y, otelemeVar) {
+    const a2 = String((y2 && y2.aciklama) || ""), a1 = String((y && y.aciklama) || "");
+    if (!a2 || !a1 || a2.length <= a1.length || a2.slice(0, a1.length) !== a1) return "";
+    let ek = a2.slice(a1.length);
+    if (otelemeVar) ek = ek.replace(/\s*Göreli kat ötelemesi \([^)]*\): öneriden önce [^;]*; sonra [^.]*\./, "");
+    return ek.trim();
+  }
+  /**
+   * "Hepsini uygula" bekleme notu (K-31): "Hesaplanıyor: en çok 4 çözüm, yaklaşık N s" — N = görünen çözümün süresi
+   * (veri.ozet.cozum_sure_ms; yoksa yedekMs: ilk öneri yanıtının sure_ms'i) × (yinele + 1) × 1,3 / 1000, yuvarlanmış (en az 1);
+   * süre bilinmiyorsa "yaklaşık birkaç saniye".
+   */
+  function sureTahmini(veri, yinele, yedekMs) {
+    const n = Math.max(0, Math.round(+yinele || 0)) + 1;
+    const ms = veri && veri.ozet && +veri.ozet.cozum_sure_ms > 0 ? +veri.ozet.cozum_sure_ms : (+yedekMs > 0 ? +yedekMs : null);
+    const s = ms != null ? Math.max(1, Math.round(ms * n * 1.3 / 1000)) : null;
+    return "Hesaplanıyor: en çok " + n + " çözüm, yaklaşık " + (s != null ? s + " s" : "birkaç saniye");
+  }
+  /** Yanıtın motor süresi (K-31, C19 sure_ms): "Süre: 4,2 s" (10 s ve üstü tam saniye; 0,05 s'den kısa "< 0,1 s"); süre yoksa "". */
+  function sureMetni(ms) {
+    if (ms == null || ms === "" || !isFinite(+ms) || +ms < 0) return "";
+    const s = +ms / 1000;
+    return "Süre: " + (s < 0.05 ? "< " + fmt(0.1, 1) : s < 10 ? fmt(s, 1) : String(Math.round(s))) + " s";
+  }
+  /**
+   * Yinele yanıtının göreli kat ötelemesi satırı (K-27, C19 oteleme {sinir, once: {X: [δ/h], Y}, sonra}): her yönün en büyük δ/h'si
+   * sınıra bölünür — "Göreli kat ötelemesi (en büyük δ/h ÷ sınır): önce X 0,82 · Y 0,77 → sonra X 0,95 · Y 0,90"; öneriden sonra
+   * sınırı aşan yön varsa sonuna " ⚠". Yanıtta öteleme yoksa "".
+   */
+  function otelemeSatiri(ot) {
+    if (!ot || typeof ot !== "object" || !ot.once || !ot.sonra || !(+ot.sinir > 0)) return "";
+    const s = +ot.sinir;
+    const en = function (l) { const v = (Array.isArray(l) ? l : []).map(function (x) { return Math.abs(+x); }).filter(isFinite); return v.length ? Math.max.apply(null, v) / s : null; };
+    const yaz = function (o) { return ["X", "Y"].map(function (d) { const r = en(o[d]); return r == null ? null : d + " " + fmt(r); }).filter(Boolean).join(" · "); };
+    const a = yaz(ot.once), b = yaz(ot.sonra);
+    if (!a && !b) return "";
+    const asan = ["X", "Y"].some(function (d) { const r = en(ot.sonra[d]); return r != null && r > 1 + 1e-9; });
+    return "Göreli kat ötelemesi (en büyük δ/h ÷ sınır): önce " + (a || "—") + " → sonra " + (b || "—") + (asan ? " ⚠" : "");
+  }
+  /**
+   * Kesit grubu (K-32): tıklanan elemanla aynı (kesit, tür) — eleman bir grup adı taşıyorsa aynı grup — çubuklar ve aks–kat
+   * kolon/kirişleri (kendisi dahil, model sırasıyla): [{tur: "cubuk" | "kolon" | "kiris", no}]. Motorun "Hepsini uygula" grup kuralıyla
+   * (yapi_serbest._oneri_uygula: aynı kesit ve tür) aynıdır; aks–kat kolonu "kolon", kirişi "kiris" türündedir. Kesitsiz eleman: [].
+   */
+  function grupUyeleri(model, hedef) {
+    if (!hedef || hedef.no == null) return [];
+    const t = hedef.tur === "kolon" || hedef.tur === "kiris" ? hedef.tur : "cubuk";
+    const k = liste(model, t === "kolon" ? "kolonlar" : t === "kiris" ? "kirisler" : "cubuklar").filter(function (x) { return x && +x.no === +hedef.no; })[0];
+    if (!k || k.kesit == null || k.kesit === "") return [];
+    const grupAdi = function (x) { return x && x.grup != null && String(x.grup).trim() !== "" ? String(x.grup).trim() : null; };
+    const kesit = String(k.kesit), tur = t === "cubuk" ? String(k.tur || "diger") : t, grup = grupAdi(k);
+    const es = function (x, xTur) { if (!x) return false; return grup ? grupAdi(x) === grup : String(x.kesit == null ? "" : x.kesit) === kesit && xTur === tur; };
+    const out = [];
+    liste(model, "kolonlar").forEach(function (x) { if (es(x, "kolon")) out.push({ tur: "kolon", no: +x.no }); });
+    liste(model, "kirisler").forEach(function (x) { if (es(x, "kiris")) out.push({ tur: "kiris", no: +x.no }); });
+    liste(model, "cubuklar").forEach(function (x) { if (es(x, String((x && x.tur) || "diger"))) out.push({ tur: "cubuk", no: +x.no }); });
+    return out;
+  }
+  /** Tek öneri penceresinin grup düğmesi metni (K-32): grupta tıklanan elemandan başka üye varsa "Kesit grubuna uygula (N çubuk)", yoksa "". */
+  function grupDugmeMetni(uyeler) {
+    const n = Array.isArray(uyeler) ? uyeler.length : 0;
+    return n >= 2 ? "Kesit grubuna uygula (" + n + " çubuk)" : "";
+  }
+  /**
+   * Grup önerisi uygulanamıyorsa (oneriUygulanir false) iletisi (K-32): önerilen kesit mevcutla aynıysa "Kesit grubu değişmedi: …";
+   * motor öneri vermediyse ya da uygulamayı reddettiyse (uygula null) "Kesit grubu uygulanamadı: …" ve gerekçenin son satırı.
+   */
+  function grupUygulanmazMetni(o, n) {
+    const dc = o && o.dc_oneri != null ? "; D/C maks " + dcFmt(+o.dc_oneri) + " tahmini" : "";
+    const ayni = !!o && (o.degisim === "aynı" || (!!o.oneri && o.uygula !== null && boslukSiz(oneriAdi(o)) === boslukSiz(o.kesit)));
+    if (ayni) return "Kesit grubu değişmedi: önerilen kesit mevcut kesitle aynı (" + n + " çubuk" + dc + ").";
+    const g = o && Array.isArray(o.gerekce) && o.gerekce.length ? String(o.gerekce[o.gerekce.length - 1]) : "";
+    return "Kesit grubu uygulanamadı: motor grup için uygulanabilir bir kesit vermedi (" + n + " çubuk" + dc + ")." + (g ? " " + g : "");
+  }
+  /** Çözümde grup üyelerinin en büyük D/C'si (elemanDc; parçalı aks–kat elemanında parçaların en büyüğü); hiçbiri yoksa null. */
+  function grupDcMaks(veri, uyeler) {
+    const l = (uyeler || []).map(function (u) { return elemanDc(veri, u); }).filter(function (v) { return v != null; });
+    return l.length ? Math.max.apply(null, l) : null;
+  }
+  /**
+   * Önerinin sahnede vurgulanacak elemanları (K-13): parçalı aks–kat elemanının bütün parçaları (C19 `cubuklar`) modelde çubuksa
+   * onlar; değilse aks–kat kaynağı (kolon / kiriş, model surum 1'de tek eleman); yoksa önerinin çubuğu. Seçim listesi [{tur, no}].
+   */
+  function oneriVurgusu(model, o) {
+    if (!o) return [];
+    const varC = function (no) { return liste(model, "cubuklar").some(function (c) { return c && +c.no === +no; }); };
+    const parca = Array.isArray(o.cubuklar) ? o.cubuklar.filter(varC).map(function (no) { return { tur: "cubuk", no: +no }; }) : [];
+    if (parca.length) return parca;
+    const k = o.kaynak;
+    if (k && (k.aks_kat === "kolon" || k.aks_kat === "kiris") && liste(model, k.aks_kat === "kolon" ? "kolonlar" : "kirisler").some(function (x) { return x && +x.no === +k.no; })) return [{ tur: k.aks_kat, no: +k.no }];
+    return o.cubuk != null && varC(o.cubuk) ? [{ tur: "cubuk", no: +o.cubuk }] : [];
   }
   /** D/C metni: 1'e 0,005'ten yakınsa (yuvarlama "1,00" gösterip 1'in hangi yanında olduğunu gizlerdi) üç ondalık. */
   function dcFmt(v) { return typeof v === "number" && isFinite(v) && Math.abs(v - 1) < 0.005 && Math.abs(v - 1) > 1e-9 ? fmt(v, 3) : fmt(v); }
@@ -716,13 +852,8 @@
     if (!kesitler[ad]) ekle[ad] = tanim;
     return { ad: ad, ekle: ekle };
   }
-  /**
-   * Öneriyi modele uygular (kopya): kesit tanımları eklenir, hedefe atanır — aks–kat kolon/kiriş (öneri kaynağı ya da tıklanan
-   * hedef) ise kolonlar/kirisler[].kesit, değilse cubuklar[o.cubuk].kesit. kesitler'de olmayan bir ad ASLA atanmaz (hata).
-   * Dönüş: {model, ad, hedef: {tur, no}}
-   */
-  function oneriUygula(model, o, hedef) {
-    const m = kopya(model);
+  /** Önerinin kesit tanımlarını modele (yerinde) ekler; atanacak adı döndürür. kesitler'de olmayan bir ad ASLA atanmaz (hata). */
+  function oneriKesitleriEkle(m, o) {
     if (!m.kesitler || typeof m.kesitler !== "object") m.kesitler = {};
     const k = oneriKesiti(o, m.kesitler);
     if (k.hata) throw new Error(k.hata);
@@ -732,17 +863,49 @@
       if (t && t.tip === "profil" && t.malzeme) { if (!m.malzemeler) m.malzemeler = {}; if (!m.malzemeler[t.malzeme]) m.malzemeler[t.malzeme] = { kutuphane: t.malzeme }; }
     });
     if (!m.kesitler[k.ad]) throw new Error("Kesit “" + k.ad + "” tanımlanamadı; atanmadı.");
+    return k.ad;
+  }
+  /**
+   * Öneriyi modele uygular (kopya): kesit tanımları eklenir, hedefe atanır — aks–kat kolon/kiriş (öneri kaynağı ya da tıklanan
+   * hedef) modelde varsa BİR KEZ kolonlar/kirisler[].kesit (parçalı elemanın bütün parçaları bu kayıttan türer; K-13), değilse
+   * çubuklar: önerinin bütün parçaları (C19 `cubuklar`, genelleştirilmiş modelde aks–kat elemanının çubukları) ya da cubuklar[o.cubuk].
+   * Dönüş: {model, ad, hedef: {tur, no}, hedefler: [{tur, no}]}
+   */
+  function oneriUygula(model, o, hedef) {
+    const m = kopya(model);
+    const ad = oneriKesitleriEkle(m, o);
     const kay = o.kaynak && (o.kaynak.aks_kat === "kolon" || o.kaynak.aks_kat === "kiris") ? o.kaynak
       : (hedef && (hedef.tur === "kolon" || hedef.tur === "kiris") ? { aks_kat: hedef.tur, no: hedef.no } : null);
     if (kay) {
       const e = liste(m, kay.aks_kat === "kolon" ? "kolonlar" : "kirisler").filter(function (x) { return +x.no === +kay.no; })[0];
-      if (e) { e.kesit = k.ad; return { model: m, ad: k.ad, hedef: { tur: kay.aks_kat, no: +kay.no } }; }
+      if (e) { e.kesit = ad; const h = { tur: kay.aks_kat, no: +kay.no }; return { model: m, ad: ad, hedef: h, hedefler: [h] }; }
     }
-    const no = o.cubuk != null ? +o.cubuk : (hedef && hedef.tur === "cubuk" ? +hedef.no : null);
-    const c = liste(m, "cubuklar").filter(function (x) { return x && +x.no === no; })[0];
-    if (!c) throw new Error("Çubuk " + no + " modelde yok; öneri uygulanamadı.");
-    c.kesit = k.ad;
-    return { model: m, ad: k.ad, hedef: { tur: "cubuk", no: no } };
+    const tek = o.cubuk != null ? +o.cubuk : (hedef && hedef.tur === "cubuk" ? +hedef.no : null);
+    const grupKaydi = !!(o.grup && typeof o.grup === "object");
+    const nolar = !grupKaydi && Array.isArray(o.cubuklar) && o.cubuklar.length ? o.cubuklar.map(Number) : (tek == null ? [] : [tek]);
+    const cs = nolar.map(function (no) { return liste(m, "cubuklar").filter(function (x) { return x && +x.no === no; })[0] || null; });
+    const yok = nolar.filter(function (no, i) { return !cs[i]; });
+    if (!nolar.length || yok.length) throw new Error("Çubuk " + (yok.length ? yok.join(", ") : tek) + " modelde yok; öneri uygulanamadı.");
+    cs.forEach(function (c) { c.kesit = ad; });
+    const hl = nolar.map(function (no) { return { tur: "cubuk", no: no }; });
+    return { model: m, ad: ad, hedef: hl[0], hedefler: hl };
+  }
+  /**
+   * Grup önerisini (K-32, C19 grup kaydı: tek zarf kartı `uygula`) bütün üyelere tek seferde uygular (kopya; arayüzde tek geri al
+   * adımı): kesit tanımları bir kez eklenir; aks–kat üyelerde kolonlar/kirisler[].kesit, çubuklarda cubuklar[].kesit. Modelde
+   * bulunmayan üye atlanır (eksik); hiçbiri yoksa hata. Dönüş: {model, ad, hedefler, eksik}
+   */
+  function grupUygula(model, o, uyeler) {
+    const m = kopya(model);
+    const ad = oneriKesitleriEkle(m, o);
+    const hedefler = [], eksik = [];
+    (uyeler || []).forEach(function (u) {
+      const l = u.tur === "kolon" ? "kolonlar" : u.tur === "kiris" ? "kirisler" : "cubuklar";
+      const e = liste(m, l).filter(function (x) { return x && +x.no === +u.no; })[0];
+      if (e) { e.kesit = ad; hedefler.push({ tur: u.tur === "kolon" || u.tur === "kiris" ? u.tur : "cubuk", no: +u.no }); } else eksik.push(u);
+    });
+    if (!hedefler.length) throw new Error("Grubun elemanları modelde yok; öneri uygulanamadı.");
+    return { model: m, ad: ad, hedefler: hedefler, eksik: eksik };
   }
 
   // ================================================================= ön ayarlar, mesnet, yük
@@ -759,24 +922,136 @@
     "kayici-x": { ad: "Kayıcı (X serbest)", ux: false, uy: true, uz: true, rx: false, ry: false, rz: false },
     "kayici-y": { ad: "Kayıcı (Y serbest)", ux: true, uy: false, uz: true, rx: false, ry: false, rz: false },
     "kayici-xy": { ad: "Kayıcı (X, Y serbest)", ux: false, uy: false, uz: true, rx: false, ry: false, rz: false },
+    // yaylı mesnet (sözleşme C13): rijitlikler "Yaylı mesnet" penceresinden (mesnetAta sec.yay); bina eksenlerinde, > 0
+    yay: { ad: "Yaylı (elastik)", yay: true },
     kaldir: { ad: "Mesnedi kaldır" },
   });
+  /** Yaylı mesnet anahtarları (C13; bina eksenleri), tuttukları yön, pencere etiketi ve birimi. */
+  const YAY_ANAHTARLARI = Object.freeze([
+    { a: "kx", yon: "ux", etiket: "k_x (kN/m)", ad: "k_x", birim: "kN/m" }, { a: "ky", yon: "uy", etiket: "k_y (kN/m)", ad: "k_y", birim: "kN/m" },
+    { a: "kz", yon: "uz", etiket: "k_z (kN/m)", ad: "k_z", birim: "kN/m" }, { a: "krx", yon: "rx", etiket: "k_rx (kN·m/rad)", ad: "k_rx", birim: "kN·m/rad" },
+    { a: "kry", yon: "ry", etiket: "k_ry (kN·m/rad)", ad: "k_ry", birim: "kN·m/rad" }, { a: "krz", yon: "rz", etiket: "k_rz (kN·m/rad)", ad: "k_rz", birim: "kN·m/rad" },
+  ]);
+  const YAY_VARSAYILAN = Object.freeze({ kz: 10000 });
+  /**
+   * "Yaylı mesnet" penceresinin değerleri → {kx?, …, krz?}: boş ya da ≤ 0 alan yazılmaz (C13: her anahtar > 0 ya da yok). Dolu ama
+   * sayı olmayan alan hata verir (yazım yanlışı o yönü sessizce serbest bırakmasın: "5 000" binlik ayraçlı yazılmış olabilir). Hiç
+   * pozitif alan yoksa hata (pencere kapanmaz).
+   */
+  function yayDegerleri(o) {
+    const r = {};
+    YAY_ANAHTARLARI.forEach(function (y) {
+      const ham = o && o[y.a] != null ? o[y.a] : "", v = sayi(ham);
+      if (v == null && String(ham).trim() !== "") throw new Error("Yaylı mesnet: " + y.etiket + " alanı sayı değil (“" + String(ham).trim() + "”); ondalık için virgül ya da nokta kullanın, binlik ayraç yazmayın.");
+      if (v != null && v > 0) r[y.a] = v;
+    });
+    if (!Object.keys(r).length) throw new Error("Yaylı mesnet için en az bir yay rijitliği girin (k_x … k_rz; pozitif sayı, kN/m ya da kN·m/rad).");
+    return r;
+  }
+  /** Rijit diyafram sorusunun doğurduğu yönler (C14): ux, uy, rz ve bunların yayları kx, ky, krz bütün katın yatay hareketini tutar. */
+  const DIYAFRAM_YONLERI = Object.freeze(["ux", "uy", "rz", "kx", "ky", "krz"]);
+  function depremVar(b) {
+    const E = b && b.yuk_durumlari && typeof b.yuk_durumlari.E === "object" && !Array.isArray(b.yuk_durumlari.E) ? b.yuk_durumlari.E : {};
+    const d = b && b.deprem && typeof b.deprem === "object" && !Array.isArray(b.deprem) ? b.deprem : {};
+    return !!E.acik || !!d.etkin;
+  }
+  /** Modelin kat seviyeleri (yapi_serbest._model_oku ile aynı): kat işaretli GLOBAL Z aksları; yoksa katlar listesi. [{no, ad, kot}] */
+  function katSeviyeleri(b) {
+    const z = b && b.akslar && Array.isArray(b.akslar.z) ? b.akslar.z.filter(function (a) { return a && a.kat != null && a.kat !== ""; }) : [];
+    const l = z.length ? z.map(function (a) { return { no: +a.kat, ad: String(a.ad), kot: +a.konum }; })
+      : liste(b, "katlar").map(function (k, i) { return { no: k.no != null ? +k.no : i, ad: String(k.ad || (k.no ? k.no + ". kat" : "Temel")), kot: +k.kot }; });
+    return l.filter(function (k) { return isFinite(k.no) && isFinite(k.kot); }).sort(function (a, c) { return a.no - c.no; });
+  }
+  /**
+   * Düğümün kat seviyesinin diyafram biçimi (sözleşme C14; yapi_serbest._diyafram_modu ile aynı kural). Düğüm bir kat kotunda
+   * (1e-4 m) değilse, en alt seviyedeyse ya da deprem tanımlı değilse null. Biçim: analiz.diyafram[String(kat)] (ya da dize
+   * analiz.diyafram) önce; yoksa deprem.diyafram (varsayılan "rijit"); "rijit" istenen seviyede kalınlığı > 0 olan ve bütün
+   * köşeleri bu seviyede bulunan panel yoksa "esnek". Dönüş: {mod: "rijit" | "esnek", kat, katAdi, kaynak} | null
+   */
+  function diyaframModu(b, ref) {
+    if (!b || !depremVar(b)) return null;
+    let P = null;
+    try { P = MA().refKoordinat(b, ref); } catch (e) { P = null; }
+    if (!P) return null;
+    const kl = katSeviyeleri(b);
+    if (kl.length < 2) return null;
+    const kat = kl.filter(function (k) { return Math.abs(P[2] - k.kot) < 1e-4; })[0];
+    if (!kat || kat.no === kl[0].no) return null;
+    const an = b.analiz && b.analiz.diyafram;
+    let v = null;
+    if (an && typeof an === "object" && !Array.isArray(an) && an[String(kat.no)] != null) v = String(an[String(kat.no)]).trim().toLowerCase();
+    else if (typeof an === "string") v = an.trim().toLowerCase();
+    if (v === "rijit" || v === "esnek") return { mod: v, kat: kat.no, katAdi: kat.ad, kaynak: "analiz.diyafram" };
+    const istek = String((b.deprem && b.deprem.diyafram) || "rijit").trim().toLowerCase();
+    if (istek !== "rijit") return { mod: istek === "esnek" ? "esnek" : istek, kat: kat.no, katAdi: kat.ad, kaynak: "deprem.diyafram" };
+    const dosemeli = liste(b, "paneller").some(function (p) {
+      if (!p || p.kalinlik == null || !(+p.kalinlik > 0) || !Array.isArray(p.kose) || !p.kose.length) return false;
+      try { return p.kose.every(function (r) { return Math.abs(MA().refKoordinat(b, r)[2] - kat.kot) < 1e-4; }); } catch (e) { return false; }
+    });
+    return dosemeli ? { mod: "rijit", kat: kat.no, katAdi: kat.ad, kaynak: "deprem.diyafram" }
+      : { mod: "esnek", kat: kat.no, katAdi: kat.ad, kaynak: "seviyede betonarme döşeme paneli yok" };
+  }
+  /**
+   * Mesnet aracının rijit diyafram sorusu (K-15, C14): ön ayar ux, uy ya da rz (yaylı mesnette kx, ky, krz) yazıyorsa ve düğüm
+   * rijit diyaframlı bir kat seviyesindeyse {baslik: "Rijit diyaframlı kat", metin, kat, katAdi, secenekler}; değilse null. Model
+   * aks–kat ise genelleştirilmiş kopyasında bakılır (aks–kat döşemeleri panel olur). adres verilmezse REF'ten.
+   */
+  function mesnetDiyaframSorusu(bina, ref, onAyar, sec) {
+    sec = sec || {};
+    const o = MESNET_ON_AYAR[onAyar];
+    if (!o || onAyar === "kaldir") return null;
+    const yayl = o.yay ? (sec.yay || {}) : {};
+    if (!DIYAFRAM_YONLERI.some(function (a) { return o.yay ? yayl[a] != null && +yayl[a] > 0 : !!o[a]; })) return null;
+    let m = bina, r = ref;
+    if (genelGecisGerekli(bina)) { try { m = genellestirHazirla(bina).model; r = aksRefZ(m, ref); } catch (e) { m = bina; } }
+    const d = diyaframModu(m, r);
+    if (!d || d.mod !== "rijit") return null;
+    const adres = sec.adres || refAdi(r);
+    return { baslik: "Rijit diyaframlı kat", kat: d.kat, katAdi: d.katAdi,
+      metin: adres + " rijit diyaframlı " + d.katAdi + " seviyesinde. Yatay (ux, uy) ve rz mesnedi bu noktada bütün katın yatay hareketini tutar (diyafram bağı).",
+      secenekler: [["aynen", "Olduğu gibi uygula"], ["dusey", "Yalnız düşey mesnet (uz, rx, ry)"], ["esnek", "Bu katın diyaframını esnek yap"], ["vazgec", "Vazgeç"]] };
+  }
+  /** REF'in kısa adı: "C2 / +3.50" (sistemli "KANAT: A1 / +3.00"), düğüm no ya da metin. */
+  function refAdi(ref) {
+    if (ref && typeof ref === "object" && Array.isArray(ref.aks)) return (ref.sistem && ref.sistem !== "GLOBAL" ? ref.sistem + ": " : "") + ref.aks.join("") + " / " + (ref.z != null ? ref.z : "kat " + ref.kat);
+    if (ref && typeof ref === "object" && ref.dugum != null) return "Düğüm " + ref.dugum;
+    return typeof ref === "number" ? "Düğüm " + ref : String(ref == null ? "" : ref);
+  }
+  /** analiz.diyafram'da bu kat seviyesini esnek yapar; dize analiz.diyafram önce kat başına sözlüğe açılır (öteki katlar korunur). */
+  function katDiyaframiEsnek(m, kat) {
+    if (!m.analiz || typeof m.analiz !== "object" || Array.isArray(m.analiz)) m.analiz = {};
+    let an = m.analiz.diyafram;
+    if (typeof an === "string") {
+      const v = an.trim().toLowerCase(), d = {};
+      katSeviyeleri(m).slice(1).forEach(function (k) { d[String(k.no)] = v; });
+      an = d;
+    } else if (!an || typeof an !== "object" || Array.isArray(an)) an = {};
+    else an = Object.assign({}, an);
+    an[String(kat)] = "esnek";
+    m.analiz.diyafram = an;
+  }
   /**
    * Düğüme mesnet ata / kaldır (aynı düğümdeki kayıt değişir). Mesnet genel model kaydıdır (sözleşme C1): aks–kat modeline mesnet
-   * eklenirken model önce genelleştirilir (genellestirHazirla: surum 3, mütemadi/radye temel → tekil) ve {aks, kat} REF'i {aks, z} olur.
-   * Dönüş: {model, eylem: "eklendi"|"degisti"|"kaldirildi"|"yok", notlar: [metin], genellesti, temelDegisti}
+   * eklenirken model önce genelleştirilir (genellestirHazirla: surum 3; temeller aynen) ve {aks, kat} REF'i {aks, z} olur.
+   * sec: {yay: {kx…krz} ("yay" ön ayarı; yayDegerleri), diyafram: "aynen" | "dusey" | "esnek" (mesnetDiyaframSorusu yanıtı)}.
+   *   - "yay": kayıt {dugum, <verilen yay anahtarları>}; düğümde açık mesnet kaydı varsa onun yaysız yönlerdeki tutulu serbestlikleri
+   *     korunur, yaylı yönlerin boolean'ı yazılmaz (C13: bir yön hem tutulu hem yaylı olamaz).
+   *   - diyafram "dusey": yalnız uz, rx, ry (ve kz, krx, kry) yazılır; "esnek": ön ayar aynen, analiz.diyafram[kat] = "esnek".
+   * Dönüş: {model, eylem: "eklendi"|"degisti"|"kaldirildi"|"yok", notlar: [metin], genellesti, temelDegisti (her zaman false)}
    */
-  function mesnetAta(bina, ref, onAyar) {
+  function mesnetAta(bina, ref, onAyar, sec) {
+    sec = sec || {};
     const o = MESNET_ON_AYAR[onAyar];
     if (!o) throw new Error("Mesnet türü tanımsız: " + onAyar);
-    let m = kopya(bina), notlar = [], genellesti = false, temelDegisti = false;
+    const yay = o.yay ? yayDegerleri(sec.yay || YAY_VARSAYILAN) : null;
+    let m = kopya(bina), notlar = [], genellesti = false;
     const A = MA();
     if (onAyar !== "kaldir" && genelGecisGerekli(bina)) {
       const g = genellestirHazirla(bina);
-      m = g.model; notlar = g.notlar; genellesti = true; temelDegisti = g.temelDegisti;
+      m = g.model; notlar = g.notlar; genellesti = true;
       ref = aksRefZ(m, ref);
     }
-    const sonuc = function (eylem) { return { model: m, eylem: eylem, notlar: notlar, genellesti: genellesti, temelDegisti: temelDegisti }; };
+    const sonuc = function (eylem) { return { model: m, eylem: eylem, notlar: notlar, genellesti: genellesti, temelDegisti: false }; };
     if (!Array.isArray(m.mesnetler)) m.mesnetler = [];
     const k = A.refAnahtar(m, ref);
     let P = null; try { P = A.refKoordinat(m, ref); } catch (e) { P = null; }
@@ -788,7 +1063,17 @@
     });
     if (onAyar === "kaldir") { if (i < 0) return sonuc("yok"); m.mesnetler.splice(i, 1); return sonuc("kaldirildi"); }
     const kayit = { dugum: kopya(ref) };
-    ["ux", "uy", "uz", "rx", "ry", "rz"].forEach(function (a) { kayit[a] = !!o[a]; });
+    const dusey = sec.diyafram === "dusey";
+    if (yay) {
+      const eski = i >= 0 ? m.mesnetler[i] : null;
+      YAY_ANAHTARLARI.forEach(function (y) { if (eski && !(y.a in yay) && eski[y.yon] === true && !(dusey && DIYAFRAM_YONLERI.indexOf(y.yon) >= 0)) kayit[y.yon] = true; });
+      YAY_ANAHTARLARI.forEach(function (y) { if (y.a in yay && !(dusey && DIYAFRAM_YONLERI.indexOf(y.a) >= 0)) kayit[y.a] = yay[y.a]; });
+      if (!YAY_ANAHTARLARI.some(function (y) { return y.a in kayit; })) throw new Error("Yalnız düşey yönlerde yay kalmadı (k_z, k_rx, k_ry boş): yaylı mesnet yazılmadı.");
+    } else ["ux", "uy", "uz", "rx", "ry", "rz"].forEach(function (a) { kayit[a] = !!o[a] && !(dusey && DIYAFRAM_YONLERI.indexOf(a) >= 0); });
+    if (sec.diyafram === "esnek") {
+      const d = diyaframModu(m, ref);
+      if (d) { katDiyaframiEsnek(m, d.kat); notlar = notlar.concat([d.katAdi + " seviyesinin diyaframı esnek yapıldı (analiz.diyafram)."]); }
+    }
     if (i >= 0) { m.mesnetler[i] = kayit; return sonuc("degisti"); }
     m.mesnetler.push(kayit);
     return sonuc("eklendi");
@@ -1018,7 +1303,8 @@
       const a = aksZ(kayit.bas), b = aksZ(kayit.son);
       if (!a || !b || a.y !== b.y || a.z !== b.z) return { hata: "Makas mesnetleri aynı Y aksı ve Z aksındaki iki aks kesişimi değil; düzenlenemiyor (silip yeniden üretin)." };
       return { tur: tur, tip: String(kayit.tip || "pratt"), xa: a.x, xb: b.x, y0: a.y, y1: a.y, z: a.z, h: sKot(kayit.yukseklik), goz: String(kayit.goz || 6),
-        uc: sKot(kayit.uc_yukseklik || 0), ust: ks.ust || "", alt: ks.alt || "", dikme: ks.dikme || "", diyagonal: ks.diyagonal || "", mafsal: kayit.mafsalli_govde !== false };
+        uc: sKot(kayit.uc_yukseklik || 0), ust: ks.ust || "", alt: ks.alt || "", dikme: ks.dikme || "", diyagonal: ks.diyagonal || "", mafsal: kayit.mafsalli_govde !== false,
+        yanal: kayit.yanal_tutma === "yok" ? "yok" : "uc-dikme" };
     }
     if (tur === "besik-cerceve") {
       const a = aksZ(kayit.taban1), b = aksZ(kayit.taban2);
@@ -1055,14 +1341,20 @@
     aksSihirbazUygula: aksSihirbazUygula, yeniModel: yeniModel, serbestleriBagla: serbestleriBagla, aksaBaglaHepsi: aksaBaglaHepsi,
     aksSagla: aksSagla, besikPlan: besikPlan, makasPlan: makasPlan, krenPlan: krenPlan,
     mesnetAta: mesnetAta, yukEkle: yukEkle, secimAyir: secimAyir, genelSecim: genelSecim, bolmeNoktalari: bolmeNoktalari,
+    // yaylı mesnet (C13) ve rijit diyafram sorusu (C14)
+    YAY_ANAHTARLARI: YAY_ANAHTARLARI, YAY_VARSAYILAN: YAY_VARSAYILAN, yayDegerleri: yayDegerleri, katSeviyeleri: katSeviyeleri, depremVar: depremVar,
+    diyaframModu: diyaframModu, mesnetDiyaframSorusu: mesnetDiyaframSorusu, katDiyaframiEsnek: katDiyaframiEsnek, refAdi: refAdi,
     ekrandanDuzleme: ekrandanDuzleme, aksEkleKonumu: aksEkleKonumu, ozet: ozet, caprazSecenek: caprazSecenek, kesenDuzlemler: kesenDuzlemler,
     // genel model kapısı (C1) ve aks–kat yolları
-    genelMi: genelMi, surumSayi: surumSayi, aksKatElemanVar: aksKatElemanVar, genelGecisGerekli: genelGecisGerekli, genelGecisMetni: genelGecisMetni,
+    genelMi: genelMi, surumSayi: surumSayi, aksKatElemanVar: aksKatElemanVar, genelGecisGerekli: genelGecisGerekli, genelGecisMetni: genelGecisMetni, GENEL_ISLEM_ADLARI: GENEL_ISLEM_ADLARI,
     genellestirHazirla: genellestirHazirla, aksKatAdresi: aksKatAdresi, aksRefZ: aksRefZ, cubukAksKatAdi: cubukAksKatAdi, cubukAdlari: cubukAdlari,
     aksKatOzellikYaz: aksKatOzellikYaz, ENGEL_KODLARI: ENGEL_KODLARI, yeniEngeller: yeniEngeller, tasiyanKenarMi: tasiyanKenarMi, aksSilEngelleri: aksSilEngelleri,
     // kesit önerisi (C4)
-    oneriEtiketi: oneriEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri, hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, dcFmt: dcFmt, elemanDc: elemanDc,
-    oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
+    TUR_ADI: TUR_ADI, oneriEtiketi: oneriEtiketi, tasarimEtiketi: tasarimEtiketi, oneriUygulanir: oneriUygulanir, oneriAdi: oneriAdi, oneriSatiri: oneriSatiri,
+    hepsiOzeti: hepsiOzeti, hepsiEkUyarilari: hepsiEkUyarilari, hepsiAciklamaEki: hepsiAciklamaEki, dcFmt: dcFmt, elemanDc: elemanDc, oneriKesiti: oneriKesiti, oneriUygula: oneriUygula,
+    // kesit önerisi ekleri (C19): parçalı eleman, kesit grubu, süre, öteleme
+    sureTahmini: sureTahmini, sureMetni: sureMetni, otelemeSatiri: otelemeSatiri, grupUyeleri: grupUyeleri, grupDugmeMetni: grupDugmeMetni, grupUygulanmazMetni: grupUygulanmazMetni,
+    grupDcMaks: grupDcMaks, grupUygula: grupUygula, oneriVurgusu: oneriVurgusu,
     // üreteç düzenleme
     uretecKaydi: uretecKaydi, uretecFormu: uretecFormu,
   };
@@ -1200,8 +1492,8 @@
     function hata(e) { toast((e && e.message) || String(e)); }
     /**
      * Genel model kapısı: model aks–kat (C1'e göre genel değil) ya da aks–kat elemanı taşıyorsa kullanıcıya sorulur; onaylanırsa
-     * genellestirHazirla (surum 3; mütemadi/radye temel → tekil), vazgeçilirse null ve "İşlem iptal edildi." Gerekmiyorsa model aynen.
-     * Dönüş: {model, notlar, temelDegisti, cevrildi} | null
+     * genellestirHazirla (surum 3; temeller aynen — C11), vazgeçilirse null ve "İşlem iptal edildi." Gerekmiyorsa model aynen.
+     * islemAdi: GENEL_ISLEM_ADLARI'ndan işlem adı (onay metninin ön eki; verilmezse ön ek yok). Dönüş: {model, notlar, temelDegisti, cevrildi} | null
      */
     function genelModeleGec(m, islemAdi) {
       if (!genelGecisGerekli(m)) return { model: m, notlar: [], temelDegisti: false, cevrildi: false };
@@ -1212,7 +1504,8 @@
     }
     /**
      * fn(model) → ModelOps raporu; aks sistemine bağlar, binaAyarla ile uygular (tek geri al yığını).
-     * sc: {bagla (false: aksaBaglaHepsi yok), secim(r, m), sessiz, genel (true | işlem adı: önce genel model kapısı), notlar: [metin],
+     * sc: {bagla (false: aksaBaglaHepsi yok), secim(r, m), sessiz, genel (işlem adı — GENEL_ISLEM_ADLARI — ya da true: önce genel model
+     *      kapısı; onay metninin ön eki yalnız işlem adıdır, geçmiş zamanlı `etiket` değil), notlar: [metin],
      *      model (fn'e verilecek model; varsayılan B() — secimli genelleştirilmiş modeli verir)}
      * Ret: rapor reddedildiyse ya da sonuç motorun her zaman reddettiği YENİ bir bozukluk (sıfır boy, bozuk panel, çakışan çubuk)
      * içeriyorsa model değişmez, neden bildirilir. Model değişmediyse "Değişiklik yok" (ya da işlemin uyarısı) bildirilir.
@@ -1222,7 +1515,7 @@
       let m0 = sc.model || B(), notlar = (sc.notlar || []).slice(), cevrildi = !!sc.cevrildi;
       if (sc.genel) {
         let g;
-        try { g = genelModeleGec(m0, typeof sc.genel === "string" ? sc.genel : etiket); } catch (e) { hata(e); return null; }
+        try { g = genelModeleGec(m0, typeof sc.genel === "string" ? sc.genel : (sc.islem || null)); } catch (e) { hata(e); return null; }
         if (!g) return null;
         m0 = g.model; notlar = notlar.concat(g.notlar); cevrildi = cevrildi || !!g.cevrildi;
       }
@@ -1263,7 +1556,8 @@
     }
     /**
      * Seçim üzerinde işlem: aks–kat elemanları seçiliyse önce genel model kapısı (onay; reddedilen işlemde model aynen kalır).
-     * fn(model, ayrik) → rapor. İletilerdeki çubuk numaralarına aks–kat adresi eklenir (uygula).
+     * fn(model, ayrik) → rapor. İletilerdeki çubuk numaralarına aks–kat adresi eklenir (uygula). sc.genel: kapının işlem adı
+     * (GENEL_ISLEM_ADLARI; etiket geçmiş zamanlı sonuç iletisidir, onay metnine yazılmaz).
      */
     function secimli(etiket, fn, sc) {
       sc = sc || {};
@@ -1285,7 +1579,7 @@
           toast(S.sonUyari); MB.ipucuYenile(); return null;
         }
         let g;
-        try { g = genelModeleGec(m, etiket); } catch (e) { hata(e); return null; }
+        try { g = genelModeleGec(m, typeof sc.genel === "string" ? sc.genel : null); } catch (e) { hata(e); return null; }
         if (!g) return null;
         m = g.model; notlar = g.notlar; ay = secimAyir(genelSecim(m, secim)); cevrildi = !!g.cevrildi;
       }
@@ -1324,7 +1618,7 @@
       if (no == null || !(no >= 100001 && no < 800001)) throw new Error("Çubuk kesişiminde düğüm oluşturulamadı.");
       return { model: mm, ref: { dugum: no } };
     }
-    /** İki nokta arasına çubuk (tür verilmezse geometriden). Aynı iki nokta arasında çubuk varsa kaldırır (sil: true ise). */
+    /** İki nokta arasına çubuk (tür verilmezse geometriden). Aynı iki nokta arasında çubuk varsa kaldırır (sil: true ise). sc.islem: kapının işlem adı. */
     function cubukCiz(yi, yj, tur, sc) {
       sc = sc || {};
       return uygula(function (m0) {
@@ -1339,9 +1633,9 @@
         if (c) throw new Error("Burada aks–kat " + (c.tur === "kolon" ? "kolonu" : "kirişi") + " " + c.no + " var; çakışan çubuk çizilmedi.");
         const m2 = kopya(m), ks = kesitSagla(m2, t);
         return MOp.cubukCiz(m2, ri, rj, { tur: t, kesit: ks });
-      }, sc.etiket || "Çubuk çizildi", { genel: sc.etiket || "Çubuk çiz", secim: function (r) { return r.no != null ? [{ tur: "cubuk", no: r.no }] : undefined; } });
+      }, sc.etiket || "Çubuk çizildi", { genel: sc.islem || GENEL_ISLEM_ADLARI["cubuk-ciz"], secim: function (r) { return r.no != null ? [{ tur: "cubuk", no: r.no }] : undefined; } });
     }
-    /** Çok sayıda REF çifti (hızlı kolon/kiriş/çubuk sürükleme): mevcut olanlar atlanır. */
+    /** Çok sayıda REF çifti (hızlı kolon/kiriş/çubuk sürükleme): mevcut olanlar atlanır. etiket: işlem adı (GENEL_ISLEM_ADLARI; kapının ön eki da odur). */
     function cubuklarCiz(ciftler, turFn, etiket) {
       if (!ciftler.length) return null;
       return uygula(function (m0) {
@@ -1487,7 +1781,7 @@
         const a = S.ilk.P, c = y.P;
         if (Math.abs(a[2] - c[2]) < TOL) { toast("İki nokta aynı Z aksında: eğik çubuk için farklı kotta bir kesişim seçin (yatay çubuk için Hızlı kiriş)."); return; }
         if (Math.hypot(a[0] - c[0], a[1] - c[1]) < TOL) { toast("İki nokta aynı düşey üzerinde: kolon için Hızlı kolon aracını kullanın."); return; }
-        cubukCiz(S.ilk, y, "kiris", { etiket: "Eğik çubuk çizildi" });
+        cubukCiz(S.ilk, y, "kiris", { etiket: "Eğik çubuk çizildi", islem: GENEL_ISLEM_ADLARI["egik-cubuk"] });
         S.ilk = null; tazele(); MB.ipucuYenile();
       },
     });
@@ -1512,9 +1806,9 @@
         },
       }, eski);
     }
-    parcaKipi("hizli-cubuk", function () { return null; }, null, "Hızlı çubuk",
+    parcaKipi("hizli-cubuk", function () { return null; }, null, GENEL_ISLEM_ADLARI["hizli-cubuk"],
       "Hızlı çubuk: bir aks parçasına dokunun (iki komşu kesişim arası; varsa kaldırır) ya da birden çok parça boyunca sürükleyin.");
-    parcaKipi("kiris", function () { return yatay; }, function () { return "kiris"; }, "Hızlı kiriş",
+    parcaKipi("kiris", function () { return yatay; }, function () { return "kiris"; }, GENEL_ISLEM_ADLARI["hizli-kiris"],
       "Hızlı kiriş: etkin düzlemde yatay bir aks parçasına dokunun ya da sürükleyin (çoklu). Varolan kiriş çubuğuna dokunmak kaldırır.", function () { return MB.aksKatModu(); });
     // Hızlı kolon: planda kesişim (bu Z aksı ile altındaki), cephede düşey aks parçası; "Tüm katlara uygula" → en alttan bu Z aksına
     function kolonCiftleriNokta(p) {
@@ -1541,11 +1835,11 @@
         const k = kolonCiftleriNokta(p);
         if (!k || !k.ciftler.length) { toast(duzlem().tur === "cephe" ? "Düşey bir aks parçasına dokunun." : "Bir aks kesişimine dokunun (en alttaki Z aksında kolon olmaz; düzlemi PgUp ile yukarı alın)."); return; }
         if (k.ciftler.length === 1) { const v = mevcutCubuk(B(), k.ciftler[0][0], k.ciftler[0][1]); if (v != null) { uygula(function (m) { return MOp.cubukSil(m, [v]); }, "Kolon çubuğu " + v + " kaldırıldı"); return; } }
-        cubuklarCiz(k.ciftler, function () { return "kolon"; }, "Hızlı kolon");
+        cubuklarCiz(k.ciftler, function () { return "kolon"; }, GENEL_ISLEM_ADLARI["hizli-kolon"]);
       },
       surukleBasla: function (p) { const k = kolonCiftleriNokta(p); if (!k) return false; S.surukle = { ciftler: new Map(), kesisimler: new Map(), parcalar: new Map() }; kolonSurukle(p); return true; },
       surukle: kolonSurukle,
-      surukleBitir: function () { const l = S.surukle ? Array.from(S.surukle.ciftler.values()) : []; S.surukle = null; tazele(); cubuklarCiz(l, function () { return "kolon"; }, "Hızlı kolon"); },
+      surukleBitir: function () { const l = S.surukle ? Array.from(S.surukle.ciftler.values()) : []; S.surukle = null; tazele(); cubuklarCiz(l, function () { return "kolon"; }, GENEL_ISLEM_ADLARI["hizli-kolon"]); },
     }, function () { return MB.aksKatModu(); });
 
     // Hızlı panel: göze dokun (dört kesişim) → panel; tür seçeneği (döşeme / çatı / cephe; kalınlık 0 = sac)
@@ -1569,7 +1863,7 @@
         const r = { model: m, eklenen: { paneller: eklenen }, silinen: {}, degisen: {}, uyarilar: uy };
         if (!eklenen.length) r.reddedildi = true;
         return r;
-      }, "Panel", { genel: "Hızlı panel", secim: function (r) { return (r.eklenen.paneller || []).map(function (no) { return { tur: "panel", no: no }; }); } });
+      }, "Panel", { genel: GENEL_ISLEM_ADLARI["hizli-panel"], secim: function (r) { return (r.eklenen.paneller || []).map(function (no) { return { tur: "panel", no: no }; }); } });
     }
     function panelGozu(p, h) {
       if (h && h.kind === "nesne" && h.nesne === "panel") return null;
@@ -1623,7 +1917,7 @@
         const r = { model: m, eklenen: { cubuklar: eklenen }, silinen: {}, degisen: {}, uyarilar: uy };
         if (!eklenen.length) r.reddedildi = true;
         return r;
-      }, (MAr && MAr.CAPRAZ_SECENEKLERI ? (MAr.CAPRAZ_SECENEKLERI.filter(function (s) { return s.id === tip; })[0] || { ad: tip }).ad : tip), { genel: "Hızlı çapraz" });
+      }, (MAr && MAr.CAPRAZ_SECENEKLERI ? (MAr.CAPRAZ_SECENEKLERI.filter(function (s) { return s.id === tip; })[0] || { ad: tip }).ad : tip), { genel: GENEL_ISLEM_ADLARI["hizli-capraz"] });
     }
     kip("hizli-capraz", {
       ipucu: function () { const t = MAr ? MAr.CAPRAZ_SECENEKLERI.filter(function (s) { return s.id === S.capraz; })[0] : null; return "Hızlı çapraz (" + (t ? t.ad : S.capraz) + "): cephede bir göze ya da çatı paneline dokunun; sürükleyerek çoklu. Tip: sağ tık / Alt+↓."; },
@@ -1634,7 +1928,45 @@
       surukleBitir: function () { const l = S.surukle ? Array.from(S.surukle.gozler.values()) : []; S.surukle = null; tazele(); caprazYap(l); },
     });
 
-    // Mesnet: düğüme dokun → mesnet türü (seçenek)
+    // Mesnet: düğüme dokun → mesnet türü (seçenek). Mesnet genel model kaydıdır (C1): aks–kat modelinde önce genel model kapısı
+    // (onay; temeller aynen — C11). "Yaylı (elastik)" önce rijitlik penceresini açar (C13); ux/uy/rz yazan ön ayar rijit diyaframlı
+    // kat seviyesindeyse önce "Rijit diyaframlı kat" sorulur (C14).
+    function mesnetYaz(y, tur, sec) {
+      return uygula(function (m) {
+        const r = mesnetAta(m, aksRefZ(m, y.ref), tur, sec);
+        return { model: r.model, eklenen: {}, silinen: {}, degisen: {}, uyarilar: r.eylem === "yok" ? ["Bu düğümde açık mesnet kaydı yok."] : r.notlar, eylem: r.eylem, reddedildi: r.eylem === "yok" };
+      }, MESNET_ON_AYAR[tur].ad + " — " + (y.etiket || ""), { bagla: false, genel: tur !== "kaldir" ? GENEL_ISLEM_ADLARI.mesnet : false });
+    }
+    function mesnetDiyaframli(y, tur, sec) {
+      let q = null;
+      try { q = mesnetDiyaframSorusu(B(), y.ref, tur, Object.assign({ adres: y.etiket }, sec || {})); } catch (e) { q = null; }
+      if (!q) { mesnetYaz(y, tur, sec); return; }
+      const k = MB.kaplamaAc("mesnet-diyafram", q.baslik, { kucuk: true, odak: "[data-diyafram=dusey]" });
+      k.govde.innerHTML = '<p class="bc-diyafram-metin">' + kacis(q.metin) + "</p>" + '<div class="dugmeler bc-dikey" role="group" aria-label="' + kacis(q.baslik) + '">' +
+        q.secenekler.map(function (x) { return '<button type="button" class="dugme' + (x[0] === "dusey" ? " ana" : "") + '" data-diyafram="' + kacis(x[0]) + '">' + kacis(x[1]) + "</button>"; }).join("") + "</div>";
+      k.govde.addEventListener("click", function (e) {
+        const t = e.target.closest("[data-diyafram]");
+        if (!t) return;
+        const s_ = t.getAttribute("data-diyafram");
+        MB.kaplamaKapat();
+        if (s_ === "vazgec") { toast("İşlem iptal edildi."); return; }
+        mesnetYaz(y, tur, Object.assign({}, sec || {}, { diyafram: s_ }));
+      });
+    }
+    function yayPenceresi(y) {
+      const k = MB.kaplamaAc("mesnet-yay", "Yaylı mesnet", { kucuk: true, odak: "[data-a=kz]" });
+      k.govde.innerHTML = '<p class="not">' + kacis((y.etiket || refAdi(y.ref)) + ": bina eksenlerinde yay rijitlikleri. Boş ya da ≤ 0 alan yazılmaz; yaysız yönlerde düğümün mevcut açık mesnet kaydının tutulu serbestlikleri korunur (kayıt yoksa serbesttir).") + "</p>" +
+        '<div class="bn-iki">' + YAY_ANAHTARLARI.map(function (a) { return alan(a.etiket, girdi(a.a, YAY_VARSAYILAN[a.a] != null ? String(YAY_VARSAYILAN[a.a]) : "", ' inputmode="decimal"')); }).join("") + "</div>" +
+        '<div class="dugmeler"><button type="button" class="dugme ana" data-tamam>Uygula</button><button type="button" class="dugme" data-kaplama-kapat>Vazgeç</button></div>';
+      const tamam = function () {
+        let v;
+        try { v = yayDegerleri(oku(k.govde)); } catch (x) { hata(x); return; }
+        MB.kaplamaKapat();
+        mesnetDiyaframli(y, "yay", { yay: v });
+      };
+      k.govde.querySelector("[data-tamam]").addEventListener("click", tamam);
+      k.govde.addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target && e.target.matches && e.target.matches("input")) { e.preventDefault(); tamam(); } });
+    }
     kip("mesnet", {
       ipucu: function () { return "Mesnet (" + MESNET_ON_AYAR[S.mesnet].ad + "): bir düğüme ya da aks kesişimine dokunun. Tür: sağ tık / Alt+↓."; },
       hareket: hover(function (p) { S.yakalanan = yakala(p, { turler: ["dugum", "aks"] }); }),
@@ -1642,12 +1974,9 @@
         const y = yakala(p, { turler: ["dugum", "aks"] });
         if (!y || !y.ref) { toast("Bir düğüme ya da aks kesişimine dokunun."); return; }
         const tur = S.mesnet, b0 = B();
-        // mesnet genel model kaydıdır (C1): aks–kat modelinde önce genel model kapısı (onay; mütemadi/radye temel → tekil)
         if (tur === "kaldir" && !liste(b0, "mesnetler").length) { toast("Modelde açık mesnet kaydı yok" + (genelMi(b0) ? "." : " (aks–kat modelinde temel mesnetleri kendiliğinden)." )); return; }
-        uygula(function (m) {
-          const r = mesnetAta(m, aksRefZ(m, y.ref), tur);
-          return { model: r.model, eklenen: {}, silinen: {}, degisen: {}, uyarilar: r.eylem === "yok" ? ["Bu düğümde açık mesnet kaydı yok."] : r.notlar, eylem: r.eylem, reddedildi: r.eylem === "yok" };
-        }, MESNET_ON_AYAR[tur].ad + " — " + (y.etiket || ""), { bagla: false, genel: tur !== "kaldir" ? "Mesnet" : false });
+        if (tur === "yay") { yayPenceresi(y); return; }
+        mesnetDiyaframli(y, tur);
       },
     });
 
@@ -1788,7 +2117,7 @@
     const secimYok = function () { return cubukSecimiVar() || MB.secim().some(function (s) { return s.tur === "panel" || s.tur === "doseme"; }) ? null : "Önce taşınacak / çoğaltılacak elemanları seçin (Seç aracı)."; };
     function secimNesnesi(ay) { return { cubuklar: ay.cubuklar, paneller: ay.paneller }; }
     ikiNoktaKipi("tasi", "Taşı: önce elemanları seçin, sonra kaynak kesişime ve hedef kesişime dokunun (aks aralığı kadar ötelenir).", secimYok, function (d) {
-      secimli("Taşındı", function (m, ay) { return MOp.tasi(m, secimNesnesi(ay), d[0], d[1], d[2]); }, { panel: true });
+      secimli("Taşındı", function (m, ay) { return MOp.tasi(m, secimNesnesi(ay), d[0], d[1], d[2]); }, { panel: true, genel: GENEL_ISLEM_ADLARI.tasi });
     });
     ikiNoktaKipi("dogrusal-dizi", "Doğrusal dizi: seçili elemanlar için kaynak kesişime, sonra bir aks aralığı ötedeki kesişime dokunun; sonra kopya sayısını girin.", secimYok, function (d) {
       const k = MB.kaplamaAc("dizi", "Doğrusal dizi", { kucuk: true, odak: "[data-a=adet]" });
@@ -1798,7 +2127,7 @@
         const n = Math.round(sayi(oku(k.govde).adet) || 0);
         if (!(n >= 1 && n <= 50)) { toast("Kopya sayısı 1–50 olmalı."); return; }
         MB.kaplamaKapat();
-        secimli(n + " kopya", function (m, ay) { return MOp.dogrusalDizi(m, secimNesnesi(ay), d[0], d[1], d[2], n); }, { panel: true });
+        secimli(n + " kopya", function (m, ay) { return MOp.dogrusalDizi(m, secimNesnesi(ay), d[0], d[1], d[2], n); }, { panel: true, genel: GENEL_ISLEM_ADLARI["dogrusal-dizi"] });
       });
     });
     ikiNoktaKipi("yapistir", "Yapıştır: kaynak kesişime, sonra hedef kesişime dokunun; panodaki elemanlar ötelenerek kopyalanır.", function () {
@@ -1811,7 +2140,7 @@
           paneller: pn.s3.paneller.filter(function (n) { return liste(m, "paneller").some(function (c) { return +c.no === n; }); }) };
         if (!var_.cubuklar.length && !var_.paneller.length) throw new Error("Panodaki elemanlar artık modelde yok.");
         return MOp.dogrusalDizi(m, var_, d[0], d[1], d[2], 1);
-      }, "Yapıştırıldı");
+      }, "Yapıştırıldı", { islem: GENEL_ISLEM_ADLARI.yapistir });
     });
     kip("dondur", {
       ipucu: "Döndür: önce elemanları seçin, sonra dönme merkezi olacak kesişime dokunun (eksen düşey Z; açı sorulur).",
@@ -1829,7 +2158,7 @@
           if (aci == null) { toast("Açı sayı olmalı."); return; }
           MB.kaplamaKapat();
           const yon = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[o.eksen] || [0, 0, 1];
-          secimli("Döndürüldü (" + fmtK(aci) + "°)", function (m, ay) { return MOp.dondur(m, secimNesnesi(ay), { nokta: y.P, yon: yon }, aci, { kopya: !!o.kopya, adet: Math.max(1, Math.round(sayi(o.adet) || 1)) }); }, { panel: true });
+          secimli("Döndürüldü (" + fmtK(aci) + "°)", function (m, ay) { return MOp.dondur(m, secimNesnesi(ay), { nokta: y.P, yon: yon }, aci, { kopya: !!o.kopya, adet: Math.max(1, Math.round(sayi(o.adet) || 1)) }); }, { panel: true, genel: GENEL_ISLEM_ADLARI.dondur });
         });
       },
     });
@@ -1849,7 +2178,7 @@
         k.govde.querySelector("[data-tamam]").addEventListener("click", function () {
           const o = oku(k.govde);
           MB.kaplamaKapat();
-          secimli("Aynalandı", function (m, ay) { return MOp.ayna(m, secimNesnesi(ay), d, { kopya: !!o.kopya }); }, { panel: true });
+          secimli("Aynalandı", function (m, ay) { return MOp.ayna(m, secimNesnesi(ay), d, { kopya: !!o.kopya }); }, { panel: true, genel: GENEL_ISLEM_ADLARI.ayna });
         });
       },
     });
@@ -2060,7 +2389,7 @@
         const o = oku(k.govde);
         try { hesapla(o, B()); } catch (e) { hata(e); return; }
         MB.kaplamaKapat();
-        uygula(function (m0) { return hesapla(o, m0).rapor; }, duzen ? "Üreteç güncellendi (" + baslik + ")" : baslik, { genel: baslik });
+        uygula(function (m0) { return hesapla(o, m0).rapor; }, duzen ? "Üreteç güncellendi (" + baslik + ")" : baslik, { genel: duzen ? GENEL_ISLEM_ADLARI.uretec : baslik });
       });
       onizle();
       return k;
@@ -2090,7 +2419,7 @@
         onay("asik", "Aşıklar", f ? f.asik : true) + '<div class="bn-iki">' + alan("Aşık aralığı (m)", girdi("asikAralik", v("asikAralik", "2.5"), ' inputmode="decimal"')) + alan("Aşık kesiti", sec("asikKesit", kesitSecenek(b, "asik", f && f.asikKesit), v("asikKesit", kesitSagla(kopya(b), "asik")))) + "</div>" +
         onay("panel", "Çatı kaplaması (sac panel, kalınlık 0)", f ? f.panel : true) +
         '<p class="not">Eksik saçak / mahya Z aksları ve her açıklığın ortasındaki mahya X aksı kendiliğinden eklenir; düğümler aks kesişimi ya da mertek bölme noktasıdır.</p>';
-      ureticiPencere("besik-cerceve", "Beşik çerçeve", form, function (o, m0) {
+      ureticiPencere("besik-cerceve", GENEL_ISLEM_ADLARI["besik-cerceve"], form, function (o, m0) {
         const kx = xs.filter(function (a) { return o["kx_" + a.ad]; }).map(function (a) { return a.ad; });
         if (kx.length < 2) throw new Error("En az iki kolon aksı işaretleyin.");
         if (duzen && kx.length !== 2) throw new Error("Üreteç düzenlenirken tek açıklık (iki kolon aksı) işaretleyin.");
@@ -2140,8 +2469,10 @@
         '<div class="bn-iki">' + alan("Göz sayısı", girdi("goz", v("goz", "8"), ' inputmode="numeric"')) + alan("Uç yüksekliği (beşik; m)", girdi("uc", v("uc", "0"), ' inputmode="decimal"')) + "</div>" +
         '<div class="bn-iki">' + alan("Üst başlık", sec("ust", kesitSecenek(b, "makas-ust", f && f.ust), v("ust", kesitSagla(kopya(b), "makas-ust")))) + alan("Alt başlık", sec("alt", kesitSecenek(b, "makas-alt", f && f.alt), v("alt", kesitSagla(kopya(b), "makas-alt")))) + "</div>" +
         '<div class="bn-iki">' + alan("Dikme", sec("dikme", kesitSecenek(b, "makas-dikme", f && f.dikme), v("dikme", kesitSagla(kopya(b), "makas-dikme")))) + alan("Diyagonal", sec("diyagonal", kesitSecenek(b, "makas-diyagonal", f && f.diyagonal), v("diyagonal", kesitSagla(kopya(b), "makas-diyagonal")))) + "</div>" +
-        onay("mafsal", "Gövde çubukları mafsallı (kafes)", f ? f.mafsal : true) + '<p class="not">Üst başlık / mahya Z aksı ve beşik tiplerde açıklık ortası aksı yoksa eklenir; ara düğümler bölme noktasıdır.</p>';
-      ureticiPencere("makas", "Makas üreteci", form, function (o, m0) {
+        onay("mafsal", "Gövde çubukları mafsallı (kafes)", f ? f.mafsal : true) +
+        alan("Düzlem dışı tutma (mafsallı gövdede)", sec("yanal", [["uc-dikme", "Uç dikmeleri rijit (paralel başlıklı ve K makasta mekanizma olmaz)"], ["yok", "Yok (bütün gövde mafsallı)"]], v("yanal", "uc-dikme"))) +
+        '<p class="not">Üst başlık / mahya Z aksı ve beşik tiplerde açıklık ortası aksı yoksa eklenir; ara düğümler bölme noktasıdır. Üst başlığın düzlem dışı burkulma boyu, aşık ya da düzlem dışı bağ yoksa bütün açıklıktır.</p>';
+      ureticiPencere("makas", GENEL_ISLEM_ADLARI.makas, form, function (o, m0) {
         const yi = ys.findIndex(function (a) { return a.ad === o.y0; }), yj = ys.findIndex(function (a) { return a.ad === o.y1; });
         const yl = ys.slice(Math.min(yi, yj), Math.max(yi, yj) + 1).map(function (a) { return a.ad; });
         if (o.xa === o.xb) throw new Error("Sol ve sağ mesnet farklı aks olmalı.");
@@ -2149,7 +2480,8 @@
         const kes = { ust: kesitHazirla(m, o.ust, "makas-ust"), alt: kesitHazirla(m, o.alt, "makas-alt"), dikme: kesitHazirla(m, o.dikme, "makas-dikme"), diyagonal: kesitHazirla(m, o.diyagonal, "makas-diyagonal") };
         let rapor = null;
         yl.forEach(function (y) {
-          const p = makasPlan(m, { tip: o.tip, bas: { aks: [o.xa, y], z: o.z }, son: { aks: [o.xb, y], z: o.z }, yukseklik: sayi(o.h), goz: sayi(o.goz), kesitler: kes, uc_yukseklik: sayi(o.uc) || 0, mafsalli_govde: !!o.mafsal });
+          const p = makasPlan(m, { tip: o.tip, bas: { aks: [o.xa, y], z: o.z }, son: { aks: [o.xb, y], z: o.z }, yukseklik: sayi(o.h), goz: sayi(o.goz), kesitler: kes, uc_yukseklik: sayi(o.uc) || 0,
+            mafsalli_govde: !!o.mafsal, yanal_tutma: o.yanal === "yok" ? "yok" : "uc-dikme" });
           m = p.model; p.eklenen.forEach(function (x) { if (eklAks.indexOf(x) < 0) eklAks.push(x); });
           if (duzen && !(sayi(o.uc) > 0)) delete p.parametre.uc_yukseklik;
           const r = duzen ? MOp.uretecGuncelle(m, duzen.no, Object.assign({ uc_yukseklik: 0 }, p.parametre)) : MOp.makasUret(m, p.parametre);
@@ -2171,7 +2503,7 @@
       const form = '<p class="not">Hedef: ' + kacis(hedefMetin) + (f ? " (üretecin hedefi)" : " (seçim)") + '.</p><div class="bn-iki">' + alan("Aşık aralığı (m)", girdi("aralik", v("aralik", "1.5"), ' inputmode="decimal"')) +
         alan("Aşık kesiti", sec("kesit", kesitSecenek(b, "asik", f && f.kesit), v("kesit", kesitSagla(kopya(b), "asik")))) + "</div>" + onay("uclar", "Saçak ve mahyada da aşık", f ? f.uclar : true) + onay("mafsal", "Aşıklar mafsallı (basit kiriş)", f ? f.mafsal : true) +
         '<p class="not">Aşık noktaları mertek üzerinde bölme düğümüdür (aks taşınınca birlikte taşınır); aşık yerel ekseni çatı eğimine döndürülür.</p>';
-      ureticiPencere("asik", "Aşık üreteci", form, function (o, m0) {
+      ureticiPencere("asik", GENEL_ISLEM_ADLARI.asik, form, function (o, m0) {
         const m = kopya(m0), ks = kesitHazirla(m, o.kesit, "asik");
         let r;
         if (duzen) r = MOp.uretecGuncelle(m, duzen.no, { aralik: sayi(o.aralik), kesit: ks, secenek: { uclar: !!o.uclar, mafsalli: !!o.mafsal } });
@@ -2198,7 +2530,7 @@
         '<div class="bn-iki">' + alan("H yanal (kN)", girdi("Hy", v("Hy", "8"), ' inputmode="decimal"')) + alan("H fren (kN)", girdi("Hf", v("Hf", "6"), ' inputmode="decimal"')) + "</div>" +
         '<div class="bn-iki">' + alan("Tekerlek aralığı (m)", girdi("ara", v("ara", "3.5"), ' inputmode="decimal"')) + alan("Dinamik katsayı", girdi("din", v("din", "1.25"), ' inputmode="decimal"')) + "</div>" +
         '<p class="not">Kren kotunda Z aksı yoksa “Kren” adıyla eklenir; kolonlar bu kotta bölünür. Kren yükleri K yük durumunda (konum başına alt durum).' + (genelGecisGerekli(b) ? " Aks–kat modelinde kren yolu çubuk kolon gerektirir: uygularken model genel modele çevrilir (onay sorulur)." : "") + "</p>";
-      ureticiPencere("kren-yolu", "Kren yolu", form, function (o, m0) {
+      ureticiPencere("kren-yolu", GENEL_ISLEM_ADLARI["kren-yolu"], form, function (o, m0) {
         let m = kopya(m0);
         const not = [];
         // aks–kat kolonları kren kotunda bölünemez: önizlemede genelleştirilmiş kopya (uygulamada genel model kapısı sorar)
@@ -2288,7 +2620,7 @@
           let mm = m, parca = [];
           a.cubuklar.forEach(function (no) { const r = MOp.bol(mm, no, s); mm = r.model; parca = parca.concat(r.parcalar || []); });
           return { model: mm, eklenen: { cubuklar: parca.filter(function (n) { return a.cubuklar.indexOf(n) < 0; }) }, silinen: {}, degisen: {}, uyarilar: [], parcalar: parca };
-        }, { secim: function (r) { return (r.parcalar || []).map(function (no) { return { tur: "cubuk", no: no }; }); } });
+        }, { genel: GENEL_ISLEM_ADLARI.bol, secim: function (r) { return (r.parcalar || []).map(function (no) { return { tur: "cubuk", no: no }; }); } });
       });
     }
     function birlestirIslem(nolar) {
@@ -2300,9 +2632,9 @@
         if (!(r.birlesen || []).length) r.reddedildi = true;
         return r;
       };
-      if (nolar) return uygula(function (m) { return f(m, null); }, "Birleştirildi", { secim: function (r) { return (r.birlesen || []).map(function (x) { return { tur: "cubuk", no: x.no != null ? x.no : x }; }); } });
+      if (nolar) return uygula(function (m) { return f(m, null); }, "Birleştirildi", { islem: GENEL_ISLEM_ADLARI.birlestir, secim: function (r) { return (r.birlesen || []).map(function (x) { return { tur: "cubuk", no: x.no != null ? x.no : x }; }); } });
       void sec0;
-      return secimli("Birleştirildi", f, { secim: function (r) { return (r.birlesen || []).map(function (x) { return { tur: "cubuk", no: x.no != null ? x.no : x }; }); } });
+      return secimli("Birleştirildi", f, { genel: GENEL_ISLEM_ADLARI.birlestir, secim: function (r) { return (r.birlesen || []).map(function (x) { return { tur: "cubuk", no: x.no != null ? x.no : x }; }); } });
     }
     const SERB = ["N", "Vy", "Vz", "T", "My", "Mz"];
     function mafsalPenceresi(hedef) {
@@ -2327,7 +2659,7 @@
         SERB.forEach(function (s) { ["i", "j"].forEach(function (u) { if (o[u + "_" + s]) ayar[u].push(s); }); });
         MB.kaplamaKapat();
         secimli("Uç serbestlikleri atandı", function (m, a) { const r = MOp.serbestlikAta(m, a.cubuklar, ayar); r.degisen = { cubuklar: a.cubuklar }; return r; },
-          { secim: function (r, mm) { void mm; return secimAyir(MB.secim()).cubuklar.length ? MB.secim() : undefined; } });
+          { genel: GENEL_ISLEM_ADLARI.mafsal, secim: function (r, mm) { void mm; return secimAyir(MB.secim()).cubuklar.length ? MB.secim() : undefined; } });
       });
     }
     function ozellikPenceresi() {
@@ -2366,7 +2698,7 @@
         if (!Object.keys(oz).length) { toast("Değiştirilecek alanı işaretleyin."); return; }
         MB.kaplamaKapat();
         if (aksKatOzellik("Özellikler atandı", oz)) return;
-        secimli("Özellikler atandı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, oz); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false });
+        secimli("Özellikler atandı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, oz); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false, genel: GENEL_ISLEM_ADLARI["ozellik-ata"] });
       });
       return true;
     }
@@ -2392,7 +2724,7 @@
         if (aksKatOzellik("Kesit " + ad + " atandı", { kesit: ad }, kesitEkle(B()))) return;
         secimli("Kesit " + ad + " atandı", function (m, a) {
           const r = MOp.ozellikAta(kesitEkle(m), a.cubuklar, { kesit: ad }); r.degisen = { cubuklar: a.cubuklar }; return r;
-        }, { bagla: false });
+        }, { bagla: false, genel: GENEL_ISLEM_ADLARI["kesit-degistir"] });
       });
     }
     function aciPenceresi() {
@@ -2405,7 +2737,7 @@
         if (v == null) { toast("Açı sayı olmalı."); return; }
         MB.kaplamaKapat();
         if (aksKatOzellik("Açı " + fmtK(v) + "° atandı", { aci: v })) return;
-        secimli("Açı " + fmtK(v) + "° atandı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, { aci: v }); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false });
+        secimli("Açı " + fmtK(v) + "° atandı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, { aci: v }); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false, genel: GENEL_ISLEM_ADLARI.aci });
       });
     }
     function duzlemleBolPenceresi() {
@@ -2425,7 +2757,7 @@
         if (!a) return;
         const d = {}; d[p[0].toUpperCase()] = a.konum;
         MB.kaplamaKapat();
-        secimli(p[0].toUpperCase() + " aksı " + a.ad + " düzleminde bölündü", function (m, ay) { return MOp.duzlemleBol(m, ay.cubuklar, d); });
+        secimli(p[0].toUpperCase() + " aksı " + a.ad + " düzleminde bölündü", function (m, ay) { return MOp.duzlemleBol(m, ay.cubuklar, d); }, { genel: GENEL_ISLEM_ADLARI["duzlemle-bol"] });
       });
     }
     function dugumBirlestirPenceresi() {
@@ -2436,7 +2768,7 @@
         const t = sayi(oku(k.govde).tol);
         if (!(t > 0 && t <= 1)) { toast("Tolerans 0 ile 1 m arasında olmalı."); return; }
         MB.kaplamaKapat();
-        uygula(function (m) { const r = MOp.dugumleriBirlestir(m, t); if (!(r.birlesen || []).length) { r.uyarilar = ["Birleştirilecek çakışık düğüm yok."]; r.reddedildi = true; } return r; }, "Düğümler birleştirildi");
+        uygula(function (m) { const r = MOp.dugumleriBirlestir(m, t); if (!(r.birlesen || []).length) { r.uyarilar = ["Birleştirilecek çakışık düğüm yok."]; r.reddedildi = true; } return r; }, "Düğümler birleştirildi", { islem: GENEL_ISLEM_ADLARI["dugum-birlestir"] });
       });
     }
     function yukPenceresi(h) {
@@ -2512,7 +2844,7 @@
         MB.binaAyarla(r.model, { etiket: ad + ": " + (h.tur === "doseme" ? "ek" : o.durum) + " yükü eklendi." });
       });
     }
-    // kesit önerisi (köprüde bina_kesit_oner; genel model motoru — sözleşme C4). hedef: {tur: "cubuk"|"kolon"|"kiris", no} | null (bütün çubuklar)
+    // kesit önerisi (köprüde bina_kesit_oner; genel model motoru — sözleşme C4, C19). hedef: {tur: "cubuk"|"kolon"|"kiris", no} | null (bütün çubuklar)
     let s3Destek = null;
     function kesitOner(hedef) {
       MB.motorS3().then(function (var_) {
@@ -2528,45 +2860,93 @@
           g.hedef = hepsi ? "hepsi" : [{ tur: tur, no: hedef.no }];
           return Promise.resolve(A.motorIstegi({ islem: "bina_kesit_oner", girdi: Object.assign(g, ek || {}) }));
         };
+        // tıklanan elemanın kesit grubu (K-32): aynı (kesit, tür) ya da aynı grup adındaki çubuklar ve aks–kat kolon/kirişleri
+        const uyeler = hepsi ? [] : grupUyeleri(B(), { tur: tur, no: hedef.no });
         const satir = function (o, i, l) {
-          const r = oneriSatiri(o, false);
-          return '<div class="bc-oneri"><p><b>' + kacis(oneriEtiketi(o)) + "</b>: " + kacis(o.kesit || "?") + " → <b>" + kacis(r.ad) + "</b>" + (r.oneri ? " (" + kacis(r.oneri) + ")" : "") +
+          const r = oneriSatiri(o, false), j = l.indexOf(o);
+          return '<div class="bc-oneri"><p><b>' + kacis(oneriEtiketi(o)) + "</b>" +
+            (r.parca ? ' <button type="button" class="dugme kucuk bc-oneri-parca" data-oneri-goster="' + j + '" title="Parçaları sahnede seç">' + kacis(r.parca) + "</button>" : "") +
+            ": " + kacis(o.kesit || "?") + " → <b>" + kacis(r.ad) + "</b>" + (r.oneri ? " (" + kacis(r.oneri) + ")" : "") +
             (o.degisim ? ' <span class="not">' + kacis(o.degisim) + "</span>" : "") +
             " · D/C " + kacis(r.dc) + ' <span class="not">' + kacis(r.dcEtiket) + "</span></p>" +
             "<ul>" + (o.gerekce || []).map(function (g) { return "<li>" + kacis(g) + "</li>"; }).join("") + "</ul>" +
-            (oneriUygulanir(o) ? '<button type="button" class="dugme kucuk ana" data-oneri="' + l.indexOf(o) + '">Uygula</button>' : "") + "</div>";
+            (oneriUygulanir(o) ? '<button type="button" class="dugme kucuk ana" data-oneri="' + j + '">Uygula</button>' : "") + "</div>";
         };
         const notlar = function (y) {
           return (y.aciklama ? '<p class="not bc-oneri-aciklama">' + kacis(y.aciklama) + "</p>" : "") +
             ((y.uyarilar || []).length ? '<ul class="bc-oneri-uyari">' + y.uyarilar.map(function (u) { return '<li class="not">' + kacis(u) + "</li>"; }).join("") + "</ul>" : "");
         };
+        const sureNotu = function (metin) {
+          let n = k.govde.querySelector(".bc-oneri-sure");
+          if (!n) { n = document.createElement("p"); n.className = "not bn-bekle bc-oneri-sure"; n.setAttribute("role", "status"); k.govde.insertBefore(n, k.govde.firstChild); }
+          n.innerHTML = '<span class="bn-donen" aria-hidden="true"></span> ' + kacis(metin);
+        };
+        const ekMetin = function (y2) { return [otelemeSatiri(y2 && y2.oteleme), sureMetni(y2 && y2.sure_ms)].filter(Boolean).join(" · "); };
         // Hepsini uygula sonrası: binaAyarla + yeniden çöz (görünen sonuç taze olsun); D/C > 1 kaldıysa ⚠ ve aşan çubuklar; motorun
-        // yinele turlarında eklediği uyarılar (göreli kat ötelemesi sınırı, hiç tur uygulanamadı…) da söylenir (hepsiEkUyarilari)
+        // yinele turlarında eklediği uyarılar (göreli kat ötelemesi sınırı, hiç tur uygulanamadı…) da söylenir (hepsiEkUyarilari);
+        // göreli kat ötelemesi önce / sonra (K-27) ve motor süresi (K-31) sonuç iletisinin sonundadır
         const hepsiUygula = function (y2, y) {
-          const oz = hepsiOzeti(y2), ek = hepsiEkUyarilari(y2, y);
+          const oz = hepsiOzeti(y2), ek = hepsiEkUyarilari(y2, y), son = ekMetin(y2);
           const deg = (y2.turlar || []).reduce(function (t, x) { return t + ((x.degisen || []).length); }, 0);
           const asanMetin = oz.asan.slice(0, 6).map(function (a) { return a.etiket + " (" + dcFmt(a.dc) + ")"; }).join(", ") + (oz.asan.length > 6 ? " … (+" + (oz.asan.length - 6) + ")" : "");
           const etiket = "Kesit önerileri uygulandı" + (deg ? " (" + deg + " kesit grubu değişti" + (oz.dc != null ? "; D/C maks " + dcFmt(oz.dc) : "") + ")" : "") +
             (oz.asiyor ? " — ⚠ D/C maks " + dcFmt(oz.dc) + " > 1, öneriler yetmedi" + (asanMetin ? ": " + asanMetin : "") + "." : ".");
           MB.kaplamaKapat();
           if (MB.binaAyarla(y2.bina, { etiket: etiket }) === false) {
-            S.sonUyari = "Kesit önerileri modeli değiştirmedi." + (ek.tum.length ? " ⚠ " + ek.tum.join(" ") : "");
+            // neden (ör. öteleme koruması küçültmeyi engelledi) motorun yinele açıklamasındadır: ilk yanıtta olmayan kısmı söylenir
+            const neden = hepsiAciklamaEki(y2, y, !!otelemeSatiri(y2 && y2.oteleme));
+            S.sonUyari = "Kesit önerileri modeli değiştirmedi." + (neden ? " " + neden : "") + (ek.tum.length ? " ⚠ " + ek.tum.join(" ") : "") + (son ? " " + son + "." : "");
             toast(S.sonUyari); MB.ipucuYenile(); return;
           }
           S.sonUyari = oz.asiyor ? etiket : "";
           Promise.resolve(MB.coz()).then(function (ok) {
             if (!ok) return;
             const v = MB.veri(), dcM = v && v.tasarim ? v.tasarim.en_buyuk_dc : null;
-            const ekMetin = ek.diger.length ? " ⚠ " + ek.diger.join(" ") : "";
+            const ekM = (ek.diger.length ? " ⚠ " + ek.diger.join(" ") : "") + (son ? " " + son + "." : "");
             if (dcM != null && +dcM > 1 + 1e-9) {
               const asan = ((v.tasarim.elemanlar) || []).filter(function (e) { return e && +e.dc > 1 + 1e-9; }).sort(function (a, b) { return b.dc - a.dc; });
               S.sonUyari = "⚠ Yeniden çözüm: D/C maks " + dcFmt(+dcM) + " > 1 — " + asan.length + " eleman aşıyor (" +
-                asan.slice(0, 6).map(function (e) { return (e.ad || ((e.tur || "çubuk") + " " + (e.cubuk != null ? e.cubuk : e.no))) + " " + dcFmt(+e.dc); }).join(", ") + (asan.length > 6 ? " …" : "") +
-                "). Bu elemanların kesitini elle büyütün ya da Kesit öner'i yeniden çalıştırın." + ekMetin;
-            } else if (dcM != null) S.sonUyari = ek.diger.length ? "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "." + ekMetin : "";
+                asan.slice(0, 6).map(function (e) { return tasarimEtiketi(e) + " " + dcFmt(+e.dc); }).join(", ") + (asan.length > 6 ? " …" : "") +
+                "). Bu elemanların kesitini elle büyütün ya da Kesit öner'i yeniden çalıştırın." + ekM;
+            } else if (dcM != null) S.sonUyari = ek.diger.length ? "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "." + ekM : "";
             else return;
-            toast(S.sonUyari || "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "."); MB.ipucuYenile();
+            toast(S.sonUyari || "Kesit önerileri uygulandı ve model yeniden çözüldü: D/C maks " + dcFmt(+dcM) + "." + ekM); MB.ipucuYenile();
           }, hata);
+        };
+        // Kesit grubuna uygula (K-32): grup isteği (C19 grup: true, hedef = üyeler, yinele 1) → zarf kartı bütün üyelere tek geri al
+        // adımında; model yeniden çözülür ve grubun gerçek D/C maksimumu söylenir. Grup kaydı gelmezse (eski motor) yinele yanıtının
+        // uygulanmış modeli (bina) kullanılır.
+        const grupAkisi = function (d, y) {
+          d.disabled = true; d.textContent = "Grup hesaplanıyor ve yeniden çözülüyor…";
+          sureNotu(sureTahmini(MB.veri(), 1, y && y.sure_ms));
+          Promise.resolve(A.motorIstegi({ islem: "bina_kesit_oner", girdi: Object.assign(MB.cozumKimligi() ? { cozum_kimligi: MB.cozumKimligi(), bina: B() } : { bina: B() },
+            { hedef: uyeler.map(function (u) { return { tur: u.tur, no: u.no }; }), grup: true, yinele: 1 }) })).then(function (y3) {
+            MB.kaplamaKapat();
+            if (!y3 || y3.hata) { toast((y3 && y3.hata) || "Boş yanıt."); return; }
+            const o3 = (y3.oneriler || [])[0] || null, gk = !!(o3 && o3.grup && typeof o3.grup === "object");
+            let model = null, ad = null, n = uyeler.length;
+            if (gk) {
+              if (!oneriUygulanir(o3)) { toast(grupUygulanmazMetni(o3, n) + (sureMetni(y3.sure_ms) ? " " + sureMetni(y3.sure_ms) + "." : "")); return; }
+              let r;
+              try { r = grupUygula(B(), o3, uyeler); } catch (x) { hata(x); return; }
+              model = r.model; ad = r.ad; n = r.hedefler.length;
+            } else if (y3.bina) model = y3.bina;
+            else { toast("Bu kurulumdaki motor kesit grubu önerisini vermedi; önerileri tek tek uygulayın."); return; }
+            const dcT = gk && o3.dc_oneri != null ? "; D/C maks " + dcFmt(+o3.dc_oneri) + " tahmini" : "";
+            const sonuc = uygula(function () { return { model: model, eklenen: {}, silinen: {}, degisen: { cubuklar: uyeler.filter(function (u) { return u.tur === "cubuk"; }).map(function (u) { return u.no; }) }, uyarilar: [] }; },
+              "Kesit grubuna uygulandı" + (ad ? ": " + ad : "") + " (" + n + " çubuk" + dcT + ")", { bagla: false, secim: function () { return uyeler.map(function (u) { return { tur: u.tur, no: u.no }; }); } });
+            if (!sonuc) return;
+            Promise.resolve(MB.coz()).then(function (ok) {
+              if (!ok) return;
+              let dc = grupDcMaks(MB.veri(), uyeler);
+              if (dc == null && o3 && o3.dc_sonra != null) dc = +o3.dc_sonra;
+              if (dc == null) return;
+              const sm = sureMetni(y3.sure_ms);
+              const asar = dc > 1 + 1e-9;
+              S.sonUyari = asar ? "⚠ Grubun gerçek D/C maks: " + dcFmt(dc) + " > 1 — kesit değişince iç kuvvetler yeniden dağıldı; bir üst kesit deneyin ya da Kesit öner'i yeniden çalıştırın." + (sm ? " " + sm + "." : "") : "";
+              toast(S.sonUyari || "Grubun gerçek D/C maks: " + dcFmt(dc) + (sm ? " · " + sm : "") + "."); MB.ipucuYenile();
+            }, hata);
+          }, function (x) { MB.kaplamaKapat(); hata(x); });
         };
         istek().then(function (y) {
           if (!k.govde.isConnected) return;
@@ -2586,12 +2966,22 @@
               '<div class="dugmeler"><button type="button" class="dugme ana" data-oneri-hepsi>Hepsini uygula</button></div>';
           }
           h += gorunen.map(function (o, i) { return satir(o, i, l); }).join("");
+          const gm = grupDugmeMetni(uyeler);
+          if (gm) h += '<div class="dugmeler"><button type="button" class="dugme" data-oneri-grup>' + kacis(gm) + "</button></div>" +
+            '<p class="not">Kesit grubu: aynı kesit ve türdeki çubuklar ve aks–kat elemanları (eleman bir grup adı taşıyorsa aynı gruptakiler); grubun zarf kesiti hepsine uygulanır ve model yeniden çözülür.</p>';
           h += notlar(y);
           k.govde.innerHTML = h;
+          // tek öneri parçalı aks–kat elemanınınsa (K-13) bütün parçaları sahnede seçilir
+          if (!hepsi && l.length === 1 && oneriSatiri(l[0], false).parca) { const v = oneriVurgusu(B(), l[0]); if (v.length) MB.seciliAyarla(v); }
           k.govde.addEventListener("click", function (e) {
+            const gs = e.target.closest("[data-oneri-goster]");
+            if (gs) { const v = oneriVurgusu(B(), l[+gs.getAttribute("data-oneri-goster")]); if (v.length) MB.seciliAyarla(v); return; }
+            const gd = e.target.closest("[data-oneri-grup]");
+            if (gd) { grupAkisi(gd, y); return; }
             if (e.target.closest("[data-oneri-hepsi]")) {
               const d = e.target.closest("[data-oneri-hepsi]");
               d.disabled = true; d.textContent = "Uygulanıyor ve yeniden çözülüyor…";
+              sureNotu(sureTahmini(MB.veri(), 3, y.sure_ms));
               istek({ yinele: 3 }).then(function (y2) {
                 if (!y2 || y2.hata || !y2.bina) {
                   // yanıt bina taşımıyorsa öneriler tek tek uygulanır (yeniden çözülmeden)
@@ -2613,13 +3003,15 @@
             let r;
             try { r = oneriUygula(B(), o, hedef); } catch (x) { hata(x); return; }
             MB.kaplamaKapat();
-            const sonuc = uygula(function () { return { model: r.model, eklenen: {}, silinen: {}, degisen: { cubuklar: r.hedef.tur === "cubuk" ? [r.hedef.no] : [] }, uyarilar: [] }; },
-              "Kesit " + r.ad + " uygulandı (" + oneriEtiketi(o) + "; D/C " + fmt(o.dc_oneri) + " tahmini, mevcut iç kuvvetlerle)", { bagla: false });
+            const parca = oneriSatiri(o, false).parca;
+            const sonuc = uygula(function () { return { model: r.model, eklenen: {}, silinen: {}, degisen: { cubuklar: r.hedefler.filter(function (x) { return x.tur === "cubuk"; }).map(function (x) { return x.no; }) }, uyarilar: [] }; },
+              "Kesit " + r.ad + " uygulandı (" + oneriEtiketi(o) + (parca ? ", " + parca : "") + "; D/C " + fmt(o.dc_oneri) + " tahmini, mevcut iç kuvvetlerle)",
+              { bagla: false, secim: parca ? function (rr, mm) { const v = oneriVurgusu(mm, o); return v.length ? v : undefined; } : undefined });
             if (!sonuc) return;
             // tahmin mevcut iç kuvvetlerle: rijitlik değişince kuvvetler yeniden dağılır — yeniden çözüp gerçek D/C söylenir
             Promise.resolve(MB.coz()).then(function (ok) {
               if (!ok) return;
-              const dcY = elemanDc(MB.veri(), r.hedef);
+              const dcY = grupDcMaks(MB.veri(), r.hedefler);
               if (dcY == null) return;
               if (dcY > 1 + 1e-9) {
                 S.sonUyari = "⚠ Yeniden çözümde " + oneriEtiketi(o) + " D/C = " + dcFmt(dcY) + " > 1 (tahmin " + dcFmt(o.dc_oneri) + "): kesit değişince iç kuvvetler yeniden dağıldı; bir üst kesit deneyin ya da Kesit öner'i yeniden çalıştırın.";
@@ -2725,12 +3117,12 @@
       "yalniz-cekme": { tur: "anahtar", etkin: ycUygun, secili: ycDurum, neden: ycNedeni, calistir: function () {
         if (!ycUygun()) { toast(ycNedeni()); return; }
         const ac = !ycDurum();
-        secimli(ac ? "Yalnız çekme açıldı" : "Yalnız çekme kapatıldı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, { yalniz_cekme: ac ? true : null }); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false });
+        secimli(ac ? "Yalnız çekme açıldı" : "Yalnız çekme kapatıldı", function (m, a) { const r = MOp.ozellikAta(m, a.cubuklar, { yalniz_cekme: ac ? true : null }); r.degisen = { cubuklar: a.cubuklar }; return r; }, { bagla: false, genel: GENEL_ISLEM_ADLARI["yalniz-cekme"] });
       }, ipucu: "Seçili çapraz / bağ çubuklarını yalnız çekme çubuğu yapar (basınçta devre dışı; kolon ve kirişte kullanılmaz)." },
       // Değiştirme
       bol: { calistir: bolPenceresi, etkin: secimGerekli, neden: secimNedeni },
       "kesisimde-bol": { etkin: secimGerekli, neden: secimNedeni, calistir: function () {
-        secimli("Kesişimlerde bölündü", function (m, a) { const r = MOp.kesisimlerdeBol(m, a.cubuklar); if (!r.kesisim_sayisi) { r.uyarilar = (r.uyarilar || []).concat(["Seçili çubuklar birbirini kesmiyor (en az iki kesişen çubuk seçin)."]); r.reddedildi = true; } return r; });
+        secimli("Kesişimlerde bölündü", function (m, a) { const r = MOp.kesisimlerdeBol(m, a.cubuklar); if (!r.kesisim_sayisi) { r.uyarilar = (r.uyarilar || []).concat(["Seçili çubuklar birbirini kesmiyor (en az iki kesişen çubuk seçin)."]); r.reddedildi = true; } return r; }, { genel: GENEL_ISLEM_ADLARI["kesisimde-bol"] });
       } },
       "duzlemle-bol": { calistir: duzlemleBolPenceresi, etkin: secimGerekli, neden: secimNedeni },
       birlestir: { calistir: function () { birlestirIslem(); }, etkin: secimGerekli, neden: secimNedeni },

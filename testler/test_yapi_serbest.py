@@ -477,14 +477,16 @@ def test_kesit_onerisi_yinele_yakinsar_ve_rho_grubu():
     assert o["turlar"][-1]["asan"] == 0
     son = coz(o["bina"]).veri
     assert son["tasarim"]["en_buyuk_dc"] == pytest.approx(o["dc_sonra"], abs=1e-4)
-    # öneriler (0. tur kirişleri küçültür) göreli kat ötelemesini yeni aşan katlar doğurursa yanıt bunu söyler: 'yakınsadı' (D/C ≤ 1)
-    # ötelemeyi kapsamaz (eskiden uyarısızdı)
+    # K-27: 'yinele' göreli kat ötelemesini de izler — öneriler sınırı (TBDY 2018 md. 4.9.1) yeni aşan kat doğurmaz (eskiden 0. tur
+    # kirişleri küçültür ve X/Y yönünde yeni aşan katlar kalırdı; o beklenti hatayı kodluyordu), uyarı da yok; oteleme alanı önce/sonra
     asan = lambda v: {y: {k["kat"] for k in v["deprem"]["katlar"] if k.get(f"uygun_{y}") is False} for y in "xy"}  # noqa: E731
     a0, a1 = asan(coz(_rc_30()).veri), asan(son)
-    yeni = {y: sorted(a1[y] - a0[y]) for y in "xy" if a1[y] - a0[y]}
-    u = [x for x in o["uyarilar"] if "göreli kat ötelemesi" in x]
-    assert yeni and len(u) == 1 and "(öneriden önce bu katlarda sağlanıyordu)" in u[0]
-    assert all(f"{y.upper()} yönü kat {', '.join(map(str, k))}" in u[0] for y, k in yeni.items())
+    assert not {y: a1[y] - a0[y] for y in "xy" if a1[y] - a0[y]}
+    assert not [x for x in o["uyarilar"] if "göreli kat ötelemesi" in x]
+    ot = o["oteleme"]
+    assert ot["katlar"] == [k["kat"] for k in son["deprem"]["katlar"]] and ot["sinir"] == pytest.approx(son["deprem"]["katlar"][0]["sinir"])
+    assert ot["sonra"]["X"] == [pytest.approx(k["oran_x"], rel=1e-4) for k in son["deprem"]["katlar"]]
+    assert "Göreli kat ötelemesi (TBDY 2018 md. 4.9.1, sınır 0,008): öneriden önce en büyük X" in o["aciklama"]
 
 
 def test_oteleme_uyarisi():
@@ -495,7 +497,7 @@ def test_oteleme_uyarisi():
     assert u.startswith("Önerilen kesitlerle göreli kat ötelemesi sınırı (TBDY 2018 md. 4.9.1) aşılıyor: X yönü kat 1, 3; Y yönü kat 3 "
                         "(öneriden önce bu katlarda sağlanıyordu).")
     u = YS._oteleme_uyarisi(None, {"x": [1], "y": []})
-    assert "aşılıyor: X yönü kat 1. Öneriler yalnız eleman D/C'sine göre" in u and "sağlanıyordu" not in u
+    assert "aşılıyor: X yönü kat 1. Onarım turları ötelemeyi sınıra indiremedi" in u and "sağlanıyordu" not in u
     assert YS._oteleme_asan(None) == {"x": [], "y": []}
     assert YS._oteleme_asan({"katlar": [{"kat": 1, "uygun_x": True, "uygun_y": False}, {"kat": 2, "uygun_x": False}]}) == {"x": [2], "y": [1]}
 
@@ -610,7 +612,7 @@ def test_akis_sankey_g_q_s(sablonlar, ad):
     """AKIS-QS: panel → çubuk bantları her düşey yük durumunda (G, Q, kar varsa S); bir çubuğa gelen bantların toplamı
     veri.yukler.cubuklar[].<durum>.panel ile, durum toplamı korunum 'paneller' (dağıtılan) ile aynı. Eskiden yalnız G vardı."""
     v = sablonlar[ad].veri
-    sk = v["akis"]["sankey"]
+    sk = [e for e in v["akis"]["sankey"] if e.get("tur", "panel-cubuk") == "panel-cubuk"]      # K-41: öteki kenar türleri ayrı
     durumlar = {e["durum"] for e in sk}
     assert durumlar == {"G", "Q", "S"} if v["kar"] else {"G", "Q"}
     assert all(e["kaynak"].startswith("P") and e["hedef"].startswith("Ç") and e["kN"] > 0 for e in sk)
@@ -847,22 +849,34 @@ def test_cozum_kimligi_cozmeden(ad):
     assert yapi.cozum_kimligi(b2) == coz(b2).veri["cozum_kimligi"]
 
 
-def test_mutemadi_radye_genel_modelde_hata():
-    for tip in ("surekli", "radye"):
-        b = yapi.bina_sablon("celik-cbf-3kat")
-        b["temeller"]["tip"] = tip
-        with pytest.raises(mo.MatrisHatasi, match="henüz çözülmüyor"):
-            coz(b)
-        r = YS.bina_coz(b, goster="yok", anlat=False, _temel_tekil=True)         # yalnız kesit önerisi: tekil temelle, uyarıyla
-        assert r.veri["bina"]["temeller"]["tip"] == "tekil" and any("genel modelde çözülmüyor" in u for u in r.veri["uyarilar"])
+def test_mutemadi_radye_genel_model_hatalari():
+    """Mütemadi / radye genel modelde çözülür (eskiden 'henüz çözülmüyor'); kalan öğretici hatalar (C11)."""
     b = yapi.bina_sablon("celik-cbf-3kat")
     b["temeller"]["tip"] = "kazik"
     with pytest.raises(mo.MatrisHatasi, match="tanımsız"):
         coz(b)
-    b = yapi.bina_sablon("betonarme-4kat-radye")                  # aks–kat modeline mesnet: genel motor + radye → öğretici hata
+    # ek aks sistemindeki taban (GLOBAL ızgaranın dışında): mütemadi temelde öğretici hata
+    b = kutu_bina(0.0, deprem=False)
+    b["aks_sistemleri"] = [{"ad": "R", "tur": "kartezyen", "orijin": [3, 3, 0], "aci": 30, "x": [{"ad": "P", "konum": 0}],
+                            "y": [{"ad": "Q", "konum": 0}]}]
+    b["cubuklar"] += [{"no": 20, "i": {"sistem": "R", "aks": ["P", "Q"], "z": "±0.00"}, "j": {"sistem": "R", "aks": ["P", "Q"], "z": "Çatı"},
+                       "tur": "kolon", "kesit": "K"},
+                      {"no": 21, "i": {"sistem": "R", "aks": ["P", "Q"], "z": "Çatı"}, "j": R("A", "1", "Çatı"), "tur": "kiris", "kesit": "B"}]
+    b["temeller"] = {"tip": "surekli", "surekli": {"yon": "xy", "B": 1.0, "tasma": 0.5}}
+    with pytest.raises(mo.MatrisHatasi, match="GLOBAL X/Y aks kesişiminde değil") as h:
+        coz(copy.deepcopy(b))
+    assert str(h.value).startswith("Mütemadi temel: taban düğümü") and "R:PQ/±0.00" in str(h.value)
+    # açık mesnet temel ağının üzerinde (A1 temel kotunda)
+    b["temeller"] = {"tip": "radye", "radye": {"h": 0.5, "tasma": 0.5}}
+    b["mesnetler"] = [{"dugum": R("A", "1", "±0.00"), "ux": True, "uy": True, "uz": True}]
+    with pytest.raises(mo.MatrisHatasi, match=r"açık mesnetli \('mesnetler'\) ve radye ağının üzerinde"):
+        coz(copy.deepcopy(b))
+    # aks–kat modeline (genel motor) üst katta açık mesnet: artık radyeyle çözülür
+    b = yapi.bina_sablon("betonarme-4kat-radye")
     b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "kat": 1}, "uz": True}]
-    with pytest.raises(mo.MatrisHatasi, match="radye temel genel"):
-        coz(b)
+    v = coz(b).veri
+    assert v["model"] == "genel" and v["temel"]["tip"] == "radye" and v["bina"]["temeller"]["tip"] == "radye"
+    assert len(v["akis"]["mesnetler"]) == 1 and v["akis"]["temeller"] == []
 
 
 def test_akis_temel_ve_acik_mesnet_kayitlari():
@@ -912,26 +926,29 @@ def test_ek_aks_sistemi_kolon_tabanlari_mesnetli():
 
 
 def test_rijit_diyafram_seviyesinde_acik_mesnet():
+    """C14: rijit diyaframlı seviyedeki ux/uy/rz mesnedi ceza rijitlikli yayla uygulanır (eskiden öğretici hata: 'yatay ux/uy ve
+    dönme rz ayrıca mesnetlenemez'); uz/rx/ry mesnet olarak kalır."""
     b = yapi.bina_sablon("celik-cbf-3kat")
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uy": True}]
-    with pytest.raises(mo.MatrisHatasi, match=r"rijit diyaframlı \+3\.50 seviyesinde: yatay ux/uy ve dönme rz ayrıca mesnetlenemez") as h:
-        coz(b)
-    assert "analiz" in str(h.value) and "esnek" in str(h.value) and "efendi düğüm 9" not in str(h.value)
-    # ipucu önce arayüz ayarını söyler (DIYAFRAM-IPUCU; eskiden yalnız JSON düzenlemesi önerilirdi)
-    assert "Bina sayfası › Deprem sekmesi › Diyafram: «Esnek»" in str(h.value)
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uy": True, "uz": True}]
+    r = coz(b)
+    v = r.veri
+    assert v["ag"]["diyafram_seviye"]["1"]["mod"] == "rijit"
+    assert any(u.startswith("Düğüm") and "(A1/+3.50) rijit diyaframlı +3.50 seviyesinde: ux/uy/rz mesnedi diyafram bağıyla (ceza "
+               "rijitliği) uygulandı; bu nokta bütün katın yatay hareketini tutar." in u for u in v["uyarilar"])
+    m = v["akis"]["mesnetler"]
+    assert len(m) == 1 and m[0]["adres"] == "A1/+3.50"
+    yay = [y for y in v["durumlar"]["G"]["yaylar"] if y.get("tur") == "diyafram-mesnet"]
+    assert [y["bilesen"] for y in yay] == ["Fz"]                        # bina uy → motor z
+    assert all(not str(e).startswith("rijit diyaframlı") for e in v["uyarilar"])
     b2 = copy.deepcopy(b)
-    b2["deprem"]["diyafram"] = "esnek"                                                  # arayüzün yazdığı alan
-    assert coz(b2).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
-    b2 = copy.deepcopy(b)
-    b2["analiz"]["diyafram"] = {"1": "rijit"}                                            # JSON'da kat bazında rijit: ayar geçmez
-    with pytest.raises(mo.MatrisHatasi, match=r"analiz\.diyafram rijit verilmiş") as h:
-        coz(b2)
-    assert '"analiz": {"diyafram": {"1": "esnek"}}' in str(h.value) and "Deprem sekmesi" not in str(h.value)
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet verilebilir
-    assert coz(b).veri["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
-    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "ux": True}]
-    b["analiz"]["diyafram"] = {"1": "esnek"}                                             # önerilen çıkış yolu
-    assert coz(b).veri["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    b2["deprem"]["diyafram"] = "esnek"                                  # esnek diyaframda olağan mesnet (yay yok)
+    v2 = coz(b2).veri
+    assert v2["ag"]["diyafram_seviye"]["1"]["mod"] == "esnek"
+    assert not any(y.get("tur") == "diyafram-mesnet" for y in v2["durumlar"]["G"]["yaylar"])
+    b["mesnetler"] = [{"dugum": {"aks": ["A", "1"], "z": "+3.50"}, "uz": True}]          # düşey mesnet: ceza yayı gerekmez
+    v3 = coz(b).veri
+    assert v3["akis"]["mesnetler"][0]["adres"] == "A1/+3.50"
+    assert not any(y.get("tur") == "diyafram-mesnet" for y in v3["durumlar"]["G"]["yaylar"])
 
 
 def test_panel_ek_yuku_durumu():

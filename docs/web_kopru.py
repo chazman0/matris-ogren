@@ -29,7 +29,11 @@ Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_coz":       girdi {"bina": {...} | "JSON metni"} → {"ad": "bina", "bloklar", "veri" (yapi.bina_coz şeması: bina, ag,
                     yukler, durumlar, kombinasyonlar, sonuclar, zarf, akis, ozet, fe_model, deprem, ruzgar, kar, kutle_merkezi,
                     cozum_kimligi), "sonuc_metin", "zincir": false, "hata"}; çözümün iç paketi tembel kombinasyonlar için
-                    önbelleğe alınır
+                    önbelleğe alınır. Genel modelde veri.akis.sankey [{kaynak, hedef, durum (G | Q | S), kN, tur}]: tur
+                    "panel-cubuk" (P{n} → Ç{n}), "cubuk-cubuk" (Ç → Ç), "cubuk-mesnet" (Ç → M{düğüm}), "dugum-cubuk" (D{düğüm} →
+                    Ç), "dugum-mesnet" (D → M); durum başına en çok 600 panel bandı + 600 öteki kenar (atılan sayı
+                    veri.akis.sankey_kesildi {durum: n}). "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı; aynı değer
+                    veri.ozet.cozum_sure_ms)
   "bina_kutuphane": → {"malzemeler", "kesit_katalogu", "kullanim_siniflari", "duvarlar", "kaplamalar", "kombinasyon_kumeleri",
                     "sablonlar", "dogrulanmamis", ..., "hata": null}
   "bina_sablonlar": → {"sablonlar": [{ad, baslik, sistem, aciklama, kat, aks}], "hata": null}
@@ -47,7 +51,7 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     Genel (surum 3) modelde "tur": "cubuk" ve "no" çubuk numarasıdır (tam eşleşme; kayıtta "cubuk" alanı varsa
                     bunu gönderin); "kolon"/"kiris" + no: genel modelde aynı türden çubuk numarası, yalnız aks–kat girdisinin
                     genel motorla çözümünde aks–kat no'su (kaynak).
-  "bina_kesit_oner": girdi {"cozum_kimligi" | "bina", "hedef": "hepsi" | [{"tur", "no"}], "yinele": 0..3} → {"oneriler":
+  "bina_kesit_oner": girdi {"cozum_kimligi" | "bina", "hedef": "hepsi" | [{"tur", "no"}], "yinele": 0..3, "grup"?: true} → {"oneriler":
                     [{cubuk, tur, kesit, oneri (profil adı ya da "bxh" cm), sistem ("celik" | "betonarme"), malzeme, b, h (m,
                     betonarme), kaynak ({aks_kat, no} | null), gerekce [metin], dc_once (tasarım tablosundaki D/C), dc_oneri
                     (önerilen kesitle aynı kural), dc_sonra, degisim ("büyüt" | "küçült" | "aynı" | "donatı": betonarme kolonda b × h aynı, gerekli ρ büyük), uygula ({ad, tanim, yeni,
@@ -56,8 +60,15 @@ Bina işlemleri (yapi.py + yapi_veri.py):
                     "dc_sonra", "donati_azaltma" ([{kesit, yeni, donati_orani, rho_once, cubuklar}]: yakınsamadan sonra en küçük yeterli ρ), "bina" (yinele > 0: öneriler uygulanmış bina JSON'u; aynı (kesit, tür) grubuna grubun en ağır
                     önerisi), "uyarilar" [metin], "cozum_kimligi", "aciklama", "hata": null}. yinele > 0: öneri uygulanıp yeniden
                     çözülür (rijitlik değişince kuvvetler değişir), en çok 3 tur. Aks–kat çözümünde (kimlik) bina genel motorla bir
-                    kez yeniden çözülüp önbelleğe alınır (mütemadi/radye temel tekil temel mesnetleriyle, uyarıyla); dc_once
-                    görünen aks–kat tasarım tablosundandır.
+                    kez yeniden çözülüp önbelleğe alınır (gerçek temel tipiyle: tekil, mütemadi ya da radye); dc_once
+                    görünen aks–kat tasarım tablosundandır. "sure_ms": işlemin motordaki duvar süresi (ms, tam sayı). Depremli
+                    modelde yinele > 0 yanıtı "oteleme" {sinir, katlar, once: {X: [δ/h kat sırasıyla], Y}, sonra: {X, Y}} taşır
+                    (TBDY 2018 md. 4.9.1; aciklama önce/sonra en büyük oranları yazar); "turlar"da oteleme_asan (sınırı yeni aşan
+                    katlar) ve oteleme_kisiti ({katlar, gruplar}: 0. turda küçültülmeyen gruplar), degisen[].neden "öteleme".
+                    "grup": true (hedef üye listesiyle; üyelerin kesiti ve türü aynı olmalı): tek öneri — grup {kesit, tur, uye},
+                    cubuklar (üye çubukları), uygula ortak kart (betonarme: en büyük b × h, kolonda ρ üyeler doğrulanarak; çelik:
+                    en ağır üye önerisi), dc_oneri üyelerin en büyüğü; yinele ≥ 1'de kart bütün üyelere uygulanır, dc_sonra
+                    üyelerin gerçek D/C'lerinin en büyüğü, "bina" uygulanmış model.
   "bina_eleman_bilgi": girdi {"cozum_kimligi", "tur": "cubuk" | "kolon" | "kiris" | "fe", "no", "durum"? (yük durumu,
                     kombinasyon, "zarf+"/"zarf-"/"Zarf"; varsayılan "G"), "bina"?} → {"paket": {"sekmeler": {"ic": [bölüm],
                     "yer": [bölüm]}, "sekme_adlari", "uyarilar": [], "durum", "fe"}, "cozum_kimligi", "hata": null}. Eleman bilgi
@@ -101,6 +112,7 @@ import ast
 import importlib
 import json
 import sys
+import time
 import traceback
 from collections import OrderedDict
 
@@ -516,11 +528,20 @@ def _bina_girdisi(girdi: dict):
     return bina
 
 
+def _sure_ms(t0: float) -> int:
+    """time.perf_counter() başlangıcından bu yana geçen duvar süresi (ms, tam sayı; C19 sure_ms)."""
+    return int(round((time.perf_counter() - t0) * 1000.0))
+
+
 def _bina_coz_yaniti(girdi: dict) -> dict:
+    t0 = time.perf_counter()
     yapi = _yapi_zorunlu()
     bina = _bina_girdisi(girdi)
     r = yapi.bina_coz(bina, goster="yok")
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
+    sure = _sure_ms(t0)
+    if isinstance(veri.get("ozet"), dict):
+        veri["ozet"]["cozum_sure_ms"] = sure
     ic = getattr(r, "ic", None)
     if isinstance(ic, dict):        # rapor/tablolar yeniden çözmeden üretilsin diye çözüm verisi ve model de saklanır
         if isinstance(bina, str):
@@ -535,7 +556,7 @@ def _bina_coz_yaniti(girdi: dict) -> dict:
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
         "sonuc_metin": f"{veri['ozet']['sd_sayisi']} SD, {veri['ozet']['kombinasyon_sayisi']} kombinasyon; "
                        f"G = {veri['ozet']['toplam_G']} kN, Q = {veri['ozet']['toplam_Q']} kN",
-        "zincir": False, "hata": None, "veri": veri,
+        "zincir": False, "hata": None, "veri": veri, "sure_ms": sure,
     }
 
 
@@ -613,6 +634,7 @@ def _genel_ic(serbest, ic: dict) -> dict:
 def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
     """Kesit önerisi (genel model motoru; aks–kat çözümü genel motorla yeniden çözülür ve önbelleğe alınır, D/C önce görünen
     aks–kat tasarım tablosundan): öneri, gerekçe, D/C önce/sonra, uygula (C4)."""
+    t0 = time.perf_counter()
     _yapi_zorunlu()
     try:
         serbest = importlib.import_module("yapi_serbest")
@@ -631,13 +653,14 @@ def _bina_kesit_oner_yaniti(girdi: dict) -> dict:
     if hedef not in (None, "hepsi") and not isinstance(hedef, list):
         raise mo.MatrisHatasi('hedef "hepsi" ya da [{"tur": "cubuk", "no": 3}] listesi olmalı.')
     yinele = girdi.get("yinele", 0)
+    grup = bool(girdi.get("grup"))
     if ic is not None and not ic.get("serbest"):          # aks–kat çözümü: genel motor paketi önbellekten, D/C önce görünenden
-        r = serbest.kesit_oner(None, ic=_genel_ic(serbest, ic), hedef=hedef or "hepsi", yinele=yinele, gorunen=ic)
+        r = serbest.kesit_oner(None, ic=_genel_ic(serbest, ic), hedef=hedef or "hepsi", yinele=yinele, gorunen=ic, grup=grup)
     elif ic is not None:
-        r = serbest.kesit_oner(None, ic=ic, hedef=hedef or "hepsi", yinele=yinele)
+        r = serbest.kesit_oner(None, ic=ic, hedef=hedef or "hepsi", yinele=yinele, grup=grup)
     else:
-        r = serbest.kesit_oner(bina, hedef=hedef or "hepsi", yinele=yinele)
-    return dict(_sonlu_sayilar(r), hata=None)
+        r = serbest.kesit_oner(bina, hedef=hedef or "hepsi", yinele=yinele, grup=grup)
+    return dict(_sonlu_sayilar(r), hata=None, sure_ms=_sure_ms(t0))
 
 
 def _bina_rapor_yaniti(girdi: dict) -> dict:

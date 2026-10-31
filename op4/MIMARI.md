@@ -1916,3 +1916,30 @@ yeşilken teslim eder. Sayısal eşikler §6.13, §7.4, §8.4 ve §9.5'tendir.
 - Gezinme bütçeleri ve K1–K4 korunur; etkileşimli boş çalışma alanı ≤ 1,5 s (`OP4OLCUM`).
 - `pytest testler`, `node --test testler/js/*.test.js`, bekçi testi, `cekirdek-linux` ve `windows` işleri yeşil.
 - TASARIM §20–§22 yazılmış; `op4/README.md` güncel; §24.2 "Taslak" sütununda taslak kalmamış.
+
+## 25. Arayüz tasarım kararı (31.10.2026, kullanıcı)
+
+İlk iskeletin varsayılan Dear ImGui görünümü kullanıcı tarafından bütünüyle reddedildi (görünüm, yerleşim, yazı tipi,
+yoğunluk, çalışma mantığı). Üç taslak yönü (`op4/tasarim/taslaklar/`) arasından **C — "Stüdyo"** seçildi. Bu bölüm §5'in
+görsel ve yerleşim kararlarının **önüne geçer**; §5'te çelişen her şey için Stüdyo geçerlidir.
+
+- **Bağlayıcı kaynaklar:** `op4/tasarim/taslaklar/studyo/tasarim.md` (renk belirteçleri, tipografi ölçeği, 8 px ızgara,
+  panel ve şerit yapısı, ikon biçimi, seçim/üzerinde renkleri, küçük ekran davranışı, Dear ImGui eşlemesi) ve taslak
+  görselleri `ana.webp` (1920×1080), `kucuk.webp` (1366×768), `secsuz.webp`, `sonuc.webp`; üreteç `uret.py`, `tuval.py`
+  (ikon çizimleri), `sahne.py`. Kullanım mantığı: `op4/tasarim/ARAYUZ_ILKELERI.md` (25 ilke).
+- **Özet:** açık tema; beyaza yakın yüzeyler, yumuşak gölgeli 6–8 px yuvarlatılmış **yüzen paneller**; ince sekme şeridi
+  (Dosya · Model · Düzenle · Yükler · Analiz · Tasarım · Görünüm · Raporlar) + bağlamsal grup satırı; solda yüzen ikon
+  rayı (ipuçlu); sağda kayan denetçi (Özellikler / Kataloglar / Model ağacı / Filtre & görünürlük / Sorgu); altta yüzen
+  yuvarlak komut çubuğu (Ctrl+Q hızlı başlat ile birleşik); durum çubuğunda yönerge, Orto / Akıllı yakalama, X/Y/Z kilidi,
+  **kat kapsamı anahtarı (Bu kat / Benzer katlar / Tüm katlar, Alt+1/2/3)**, birim, koordinat, seçili sayısı; görünümde
+  eksen üçlüsü (küp yok), yüzen "Seçim" çipi ve seçimin yanında bağlamsal mini araç çubuğu; Kahve/Altın geçişli renk
+  yalnız birincil eylemde (Çöz F5); seçim = altın kontur + açık dolgu, üzerinde = ince kahve kontur.
+- **Yazı tipi:** Inter (değişken, OFL; `op4/kimlik/fontlar/`), ImGui'ye 1× ve 2× DPI için önceden işlenmiş atlaslar;
+  sistem yazı tipi kullanılmaz.
+- **Gezinme (kullanıcı isteği 8, bağlayıcı):** sol sürükle = kaydır, **Shift+sol sürükle = döndür**, tekerlek = imlece
+  yakınlaş, orta sürükle = kaydır, sol tık = seç, Ctrl+sol sürükle = pencere seçimi.
+- **Açılış ekranı:** `op4/kimlik/acilis/` ("Kemer Çizgisi", açık zemin; kilit taşı ışığı, düz ilerleme çizgisi) Direct2D +
+  DirectWrite ile ayrı iş parçacığında birebir uygulanır; koyu ikiz `op4/kimlik/acilis-koyu/` Ayarlar › Arayüz'de seçenek
+  olarak sunulur, varsayılan açık. Referans kareler (`kare-*.png`) WARP ekran sınamasının görsel hedefidir.
+- **Kabul:** Windows CI'da `--test-ekran` ile alınan 1920×1080 ve 1366×768 görüntüler taslak görsellerle yan yana
+  karşılaştırılır; yerleşim, renk, tipografi ve boşluklar taslakla örtüşmelidir (piksel eşitliği aranmaz, gözle denetim).

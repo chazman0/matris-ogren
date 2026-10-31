@@ -223,7 +223,8 @@
     return ekr;
   }
   // Mesnet simgesi (kolon tabanı): ankastre = taralı çizgi, mafsal = üçgen, elastik = zikzak
-  function mesnet(sahne, T, b, P, tur, ek) {
+  // tur: "ankastre" | "mafsal" | "elastik" (yay); baslik verilirse simgenin ipucu (<title>)
+  function mesnet(sahne, T, b, P, tur, ek, baslik) {
     const q = izdusum(P[0], P[1], P[2], b), x = T.x(q[0]), y = T.y(q[1]);
     let s = "";
     if (tur === "mafsal") {
@@ -238,7 +239,11 @@
       s += '<path class="b3-mes-c" d="M' + pt(x - 14, y + 1) + " L" + pt(x + 14, y + 1) + '"/>';
       for (let v = -12; v <= 12; v += 6) s += '<path class="b3-mes-t" d="M' + pt(x + v, y + 1) + " L" + pt(x + v - 5, y + 7) + '"/>';
     }
-    sahne.ekle(derinlik(P[0], P[1], P[2], b) - 1e-3, '<g class="b3-mesnet"' + (ek || "") + ">" + s + "</g>", 1);
+    const ip = baslik ? "<title>" + String(baslik).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }) + "</title>" : "";
+    // ek içinde class="…" verilirse (Winkler yayı, soluk kat) b3-mesnet sınıfıyla birleştirilir (ikinci class özniteliği yok sayılırdı)
+    let sinif = "b3-mesnet";
+    const ek2 = String(ek || "").replace(/\s*class="([^"]*)"/, function (m, c) { sinif = (" " + c + " ").indexOf(" b3-mesnet ") >= 0 ? c : "b3-mesnet " + c; return ""; });
+    sahne.ekle(derinlik(P[0], P[1], P[2], b) - 1e-3, '<g class="' + sinif + '"' + ek2 + ">" + ip + s + "</g>", 1);
     return [x, y];
   }
 

@@ -39,6 +39,25 @@ function filtreNormal(liste) {
   });
 }
 
+// Bina sayfasının kısayol listesi (sözleşme C22) → ana süreç: [{tus, ad, grup}], en çok 400 satır, alanlar en çok 120 karakterlik
+// metin (tus ve ad dolu); uymayan satır atılır, denetim karakterleri boşluk olur. lib/menu.js kisayolListesiTemizle ile aynı kural
+// (testler ikisini karşılaştırır); ana süreç gelen listeyi ayrıca temizler.
+function kisayolListesiTemizle(liste) {
+  const sonuc = [];
+  if (!Array.isArray(liste)) return sonuc;
+  const n = Math.min(liste.length, 4000);
+  for (let i = 0; i < n && sonuc.length < 400; i++) {
+    const s = liste[i];
+    if (!s || typeof s !== "object") continue;
+    const alan = [s.tus, s.ad, s.grup];
+    if (!alan.every(function (x) { return typeof x === "string" && x.length <= 120; })) continue;
+    const temiz = alan.map(function (x) { return x.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim(); });
+    if (!temiz[0] || !temiz[1]) continue;
+    sonuc.push({ tus: temiz[0], ad: temiz[1], grup: temiz[2] });
+  }
+  return sonuc;
+}
+
 const masaustu = {
   surum: argDegeri("matris-surum") || "0.0.0",
   platform: process.platform,
@@ -79,6 +98,8 @@ const masaustu = {
   tamEkran: function () { ipcRenderer.send("matris:tam-ekran"); },
   yeniPencere: function () { ipcRenderer.send("matris:yeni-pencere"); },
   harici: function (url) { ipcRenderer.send("matris:harici", String(url || "")); },
+  // Yardım › Klavye kısayolları penceresi için Bina sayfasının kısayolları: [{tus, ad, grup}] (temizlenir; boş liste = liste yok)
+  kisayollar: function (liste) { ipcRenderer.send("matris:kisayollar", kisayolListesiTemizle(liste)); },
 
   // Ana süreçten gelenler: menü komutları ({komut, ...ek}) ve açılan dosyalar ({ad, yol, icerik, kurtarma?}).
   // Dönen işlev dinleyiciyi bırakır.

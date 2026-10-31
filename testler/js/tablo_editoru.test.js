@@ -295,3 +295,272 @@ test("yardımcılar: grup sırası, yol metni, katlama, eşitlik, sütun genişl
   assert.ok(w >= 64 && w <= 340, String(w));
   assert.equal(typeof M.ac, "function");
 });
+
+// ------------------------------------------------------------------ CSV dosyası içe aktarma (sözleşme C23)
+// Gerçek tablolara benzer küçük tablolar: anahtarlı (katlar: "no"), anahtarı düzenlenebilir sütunla kurulan (akslar: sistem + yön
+// + ad), seçim / evet-hayır hücreli ve toplam satırlı tablo.
+function csvTablolari() {
+  const kat = (no, ad, kot, h) => ({ degerler: { no: no, ad: ad, kot: kot, h: h }, yol: { ad: ["katlar", { no: no }, "ad"], kot: ["katlar", { no: no }, "kot"] } });
+  const aks = (yon, ad, konum) => ({
+    degerler: { sistem: "GLOBAL", yon: yon, ad: ad, konum: konum, gorunur: true },
+    yol: { ad: ["akslar", yon.toLowerCase(), { ad: ad }, "ad"], konum: ["akslar", yon.toLowerCase(), { ad: ad }, "konum"], gorunur: ["akslar", yon.toLowerCase(), { ad: ad }, "gorunur"] },
+    bag: { ad: { islem: "aks_ad", yon: yon.toLowerCase(), sistem: null } },
+  });
+  return [
+    { ad: "katlar", baslik: "Katlar", grup: "Model", sutunlar: [
+      { ad: "no", baslik: "Kat", tur: "sayi", ondalik: 0 }, { ad: "ad", baslik: "Ad", tur: "metin", duzenlenebilir: true },
+      { ad: "kot", baslik: "Kot", birim: "m", tur: "sayi", ondalik: 2, duzenlenebilir: true }, { ad: "h", baslik: "Kat yüksekliği", birim: "m", tur: "sayi", ondalik: 2 }],
+      satirlar: [kat(0, "Temel", 0, null), kat(1, "1. kat", 3, 3), kat(2, "Çatı", 6.25, 3.25)] },
+    { ad: "akslar", baslik: "Akslar", grup: "Model", sutunlar: [
+      { ad: "sistem", baslik: "Aks sistemi", tur: "metin" }, { ad: "yon", baslik: "Doğrultu", tur: "metin" },
+      { ad: "ad", baslik: "Aks adı", tur: "metin", duzenlenebilir: true }, { ad: "konum", baslik: "Konum", birim: "m", tur: "sayi", ondalik: 3, duzenlenebilir: true },
+      { ad: "gorunur", baslik: "Görünür", tur: "bool", duzenlenebilir: true }],
+      satirlar: [aks("X", "A", 0), aks("X", "B", 5.5), aks("Y", "1", 0), aks("Y", "2", 4)] },
+    { ad: "dosemeler", baslik: "Döşemeler; plaklar", grup: "Model", sutunlar: [
+      { ad: "no", baslik: "No", tur: "sayi", ondalik: 0 }, { ad: "kullanim", baslik: "Kullanım", tur: "secim", duzenlenebilir: true,
+        secenekler: [{ deger: "konut", etiket: "Konut" }, { deger: "ofis", etiket: "Ofis; büro" }] },
+      { ad: "h", baslik: "Kalınlık", birim: "m", tur: "sayi", ondalik: 3, duzenlenebilir: true }, { ad: "alan", baslik: "Alan", birim: "m²", tur: "sayi" },
+      { ad: "not", baslik: "Not", tur: "metin", duzenlenebilir: true, bos_olur: true }],
+      satirlar: [
+        { degerler: { no: 1, kullanim: "konut", h: 0.12, alan: 20.5, not: "çok\nsatırlı; \"tırnaklı\"" }, yol: { kullanim: ["dosemeler", { no: 1 }, "kullanim"], h: ["dosemeler", { no: 1 }, "h"], not: ["dosemeler", { no: 1 }, "not"] } },
+        { degerler: { no: 2, kullanim: "ofis", h: 0.1 + 0.2, alan: 1 / 3, not: null }, yol: { kullanim: ["dosemeler", { no: 2 }, "kullanim"], h: ["dosemeler", { no: 2 }, "h"], not: ["dosemeler", { no: 2 }, "not"] } },
+        { degerler: { no: 3, kullanim: "konut", h: 0.15, alan: 12, not: null } },          // yolsuz: salt okunur satır
+      ],
+      toplam: { alan: 20.5 + 1 / 3 + 12 } },
+  ];
+}
+
+test("csvAyristir: BOM, CRLF/LF/CR, tırnaklı ayırıcı ve satır sonu, kaçışlı tırnak, sondaki satır sonu, sep= satırı", () => {
+  assert.deepEqual(I.csvAyristir("﻿a;b\r\n1;2\r\n"), [["a", "b"], ["1", "2"]]);
+  assert.deepEqual(I.csvAyristir('"x;y";"çok\r\nsatır";"""t"""\n;\r5'), [["x;y", "çok\nsatır", '"t"'], ["", ""], ["5"]]);
+  assert.deepEqual(I.csvAyristir("a;b\n\n\nc;d"), [["a", "b"], [""], [""], ["c", "d"]]);
+  assert.deepEqual(I.csvAyristir(""), []);
+  assert.deepEqual(I.csvAyristir("sep=,\na;b,c\n"), [["a;b", "c"]]);
+  assert.deepEqual(I.csvAyristir("a,b;c", { ayirici: "," }), [["a", "b;c"]]);
+  assert.deepEqual(I.csvAyristir('"kapanmayan;tırnak\nsürer'), [["kapanmayan;tırnak\nsürer"]]);
+});
+
+test("csvAyiriciBul: ilk dolu satırda tırnak dışındaki ; , sekme; eşitlikte ;", () => {
+  assert.equal(I.csvAyiriciBul("a;b;c\n1,2,3,4,5"), ";");
+  assert.equal(I.csvAyiriciBul("a,b,c\n1;2"), ",");
+  assert.equal(I.csvAyiriciBul("﻿\n\n  \na\tb\tc"), "\t");
+  assert.equal(I.csvAyiriciBul('"a;b;c",d'), ",");               // tırnak içindeki ; sayılmaz
+  assert.equal(I.csvAyiriciBul("a;b,c"), ";");
+  assert.equal(I.csvAyiriciBul("tek"), ";");
+  assert.equal(I.csvAyiriciBul("sep=\t\na;b;c"), "\t");
+  // ayrıştırıcı ayırıcıyı kendisi bulur: virgüllü ve sekmeli dosyalar
+  assert.deepEqual(I.csvAyristir('Ad,Değer\n"1,5",x'), [["Ad", "Değer"], ["1,5", "x"]]);
+  assert.deepEqual(I.csvAyristir("Ad\tDeğer\n1,5\tx\n"), [["Ad", "Değer"], ["1,5", "x"]]);
+});
+
+test("csvMetniCoz: UTF-8 (BOM'lu/BOM'suz), geçersiz UTF-8 ise Türkçe Windows kod sayfası", () => {
+  assert.equal(I.csvMetniCoz(new TextEncoder().encode("﻿şğı;İ")), "şğı;İ");
+  assert.equal(I.csvMetniCoz(new TextEncoder().encode("Çatı")), "Çatı");
+  assert.equal(I.csvMetniCoz(new Uint8Array([0xC7, 0x61, 0x74, 0xFD, 0x3B, 0xFE, 0xF0])), "Çatı;şğ");     // 1254 baytları
+  assert.equal(I.csvMetniCoz("﻿metin"), "metin");
+  assert.equal(I.csvMetniCoz(new Uint8Array([0x61, 0x62]).buffer), "ab");
+});
+
+test("CSV içe aktarma gidiş-dönüş: csvUret / tumunuCsv → csvAyristir → plan değişikliksiz (ondalık virgüllü ve virgülsüz)", () => {
+  const tl = csvTablolari();
+  for (const ay of [";", ",", "\t"]) {
+    for (const ov of [true, false]) {
+      for (const t of tl) {
+        const p = I.csvIceAktarPlani(tl, t.ad, I.csvAyristir(I.csvUret(t, { ayirici: ay, ondalikVirgul: ov })), { ondalikVirgul: ov });
+        assert.deepEqual([p.degisiklikler, p.hatalar, p.atlanan], [[], [], 0], t.ad + " " + JSON.stringify(ay) + " " + ov);
+        assert.deepEqual(p.tablolar, [t.ad]);
+      }
+      const tum = I.csvIceAktarPlani(tl, "katlar", I.csvAyristir(I.tumunuCsv(tl, { ayirici: ay, ondalikVirgul: ov })), { ondalikVirgul: ov });
+      assert.deepEqual([tum.degisiklikler, tum.hatalar, tum.atlanan], [[], [], 0], "bölümlü " + JSON.stringify(ay) + " " + ov);
+      assert.deepEqual(tum.tablolar, ["katlar", "akslar", "dosemeler"]);
+    }
+  }
+  // ondalık işareti seçeneği dosyadakinden farklı olsa da değişiklik çıkmaz
+  const t = tl[0];
+  const p = I.csvIceAktarPlani(tl, "katlar", I.csvAyristir(I.csvUret(t, { ondalikVirgul: true })), { ondalikVirgul: false });
+  assert.deepEqual(p.degisiklikler, []);
+  // süzülmüş / sıralanmış dışa aktarım (anahtarlı tablo) da değişikliksiz
+  const s = I.csvIceAktarPlani(tl, "katlar", I.csvAyristir(I.csvUret(t, { idx: [2, 0] })), {});
+  assert.deepEqual([s.degisiklikler, s.hatalar], [[], []]);
+  assert.equal(I.csvOzetMetni(s), "CSV: değişiklik yok (dosyadaki değerler tablolarla aynı).");
+});
+
+test("CSV içe aktarma: tek değişen hücre doğru yol ve değerle tek değişiklik; seçim etiketi, evet/hayır, metin, aks adı bağı", () => {
+  const tl = csvTablolari();
+  let m = I.csvAyristir(I.csvUret(tl[0], {}));
+  m[3][2] = "6,5";                                              // Çatı kotu 6,25 → 6,5
+  let p = I.csvIceAktarPlani(tl, "katlar", m, { ondalikVirgul: true });
+  assert.deepEqual(p.degisiklikler, [{ tablo: "katlar", satir: 2, sutun: "kot", yol: ["katlar", { no: 2 }, "kot"], deger: 6.5, ilk: 6.25 }]);
+  assert.deepEqual(p.hatalar, []);
+  assert.equal(I.csvOzetMetni(p), "CSV: 1 değişiklik bekliyor (Uygula), 0 uyarı");
+  // uygulanınca bina değişir (yapıştırma ile aynı yol)
+  const bina = { katlar: [{ no: 0, kot: 0 }, { no: 1, kot: 3 }, { no: 2, kot: 6.25 }] };
+  assert.equal(I.degisiklikleriUygula(bina, p.degisiklikler).katlar[2].kot, 6.5);
+
+  m = I.csvAyristir(I.csvUret(tl[2], { ayirici: "," , ondalikVirgul: false }));
+  assert.equal(m[1][4], "çok\nsatırlı; \"tırnaklı\"");        // tırnaklı alan: ayırıcı ve satır sonu
+  m[1][1] = "ofis; BÜRO"; m[2][2] = "0.25"; m[2][4] = "yeni not";
+  p = I.csvIceAktarPlani(tl, "dosemeler", m, { ondalikVirgul: false });
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.sutun, d.deger]), [[0, "kullanim", "ofis"], [1, "h", 0.25], [1, "not", "yeni not"]]);
+
+  m = I.csvAyristir(I.csvUret(tl[1], {}));
+  m[2][2] = "B1"; m[4][4] = "hayır";
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.sutun, d.deger, d.bag ? d.bag.islem : null]), [[1, "ad", "B1", "aks_ad"], [3, "gorunur", false, null]]);
+  assert.deepEqual(p.hatalar, []);
+});
+
+test("CSV içe aktarma: bilinmeyen ve düzenlenemez sütunlar, salt okunur satır, hatalı değer, toplam satırı, yinelenen satır", () => {
+  const tl = csvTablolari();
+  let m = I.csvAyristir(I.csvUret(tl[2], {}));
+  assert.equal(m[m.length - 1][0], "Toplam");
+  m[0].push("Renk"); m[1].push("kırmızı");
+  m[1][3] = "99";                                               // Alan salt okunur
+  m[3][2] = "0,2";                                              // satır 3 yolsuz: salt okunur hücre
+  m[2][2] = "kalın";                                            // sayı değil
+  let p = I.csvIceAktarPlani(tl, "dosemeler", m, {});
+  assert.deepEqual(p.degisiklikler, []);
+  assert.ok(p.hatalar.includes("Sütun bulunamadı: Renk"), p.hatalar);
+  assert.ok(p.hatalar.includes("Düzenlenemez sütun: Alan [m²] (1 hücre farklı, atlandı)"), p.hatalar);
+  assert.ok(p.hatalar.some((h) => /^Satır 3, Kalınlık: sayı okunamadı: "kalın"$/.test(h)), p.hatalar);
+  assert.ok(p.hatalar.some((h) => /^1 salt okunur hücre farklı, atlandı/.test(h)), p.hatalar);
+  assert.equal(p.atlanan, 2);
+  assert.equal(I.csvOzetMetni(p), "CSV: değişiklik yok, 4 uyarı");
+
+  m = I.csvAyristir(I.csvUret(tl[0], {}));
+  m.push(["7", "Yeni", "9"], ["1", "1. kat", "3,5"]);           // tabloda olmayan kat, yinelenen kat
+  m[0][1] = "AD"; m[0][2] = " kot [M] ";                        // büyük/küçük harf ve boşluk duyarsız başlık
+  p = I.csvIceAktarPlani(tl, "katlar", m, {});
+  assert.deepEqual(p.degisiklikler, []);
+  assert.ok(p.hatalar.includes("Satır 5: tabloda karşılığı yok (Kat = 7)."), p.hatalar);
+  assert.ok(p.hatalar.includes("Satır 6: aynı tablo satırı dosyada yineleniyor; yalnız ilki kullanıldı."), p.hatalar);
+  m = [["Kat", "Kot [m]", "Kot [m]"], ["1", "4", "5"]];
+  p = I.csvIceAktarPlani(tl, "katlar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => d.deger), [4]);
+  assert.deepEqual(p.hatalar, ["Sütun yinelenmiş: Kot [m] (yalnız ilki kullanıldı)"]);
+});
+
+test("CSV içe aktarma: anahtarsız sırada satırlar yalnız dosya tablonun sırasını izliyorsa yazılır; aks adı değişen satır sırayla", () => {
+  const tl = csvTablolari();
+  const ak = tl[1];
+  // ters sıralı dışa aktarım: akslar sistem + yön + ad anahtarıyla doğru satıra yazılır
+  let m = I.csvAyristir(I.csvUret(ak, { idx: [3, 2, 1, 0] }));
+  m[1][3] = "4,5";
+  let p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.deger]), [[3, 4.5]]);
+  // ters sırada ad değiştirilen satır: sıra tutmadığı için yazılmaz (yanlış aksa yazmaktansa)
+  m = I.csvAyristir(I.csvUret(ak, { idx: [3, 2, 1, 0] }));
+  m[1][2] = "2B";
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler, []);
+  assert.deepEqual(p.hatalar, ["Satır 2: tabloda karşılığı yok (Aks sistemi = GLOBAL, Doğrultu = Y, Aks adı = 2B)."]);
+  // anahtar sütunu dosyada yoksa satırlar sırayla eşlenir; salt okunur hücre uymazsa hiçbiri yazılmaz
+  m = [["Doğrultu", "Konum [m]"], ["X", "1"], ["Y", "2"], ["X", "3"], ["Y", "4"]];
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler, []);
+  assert.equal(p.hatalar.length, 1);
+  assert.match(p.hatalar[0], /^Satır 3: salt okunur sütunlar \(Doğrultu\) tablodaki 2\. satırla uyuşmuyor; .* 3 satır atlandı/);       // (Y, 4) anahtarla bulunur
+  m = [["Doğrultu", "Konum [m]"], ["X", "1"], ["X", "5,5"], ["Y", "0"]];       // (X, 5,5) ve (Y, 0) anahtarla yerinde: sıra tutar
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.deger]), [[0, 1]]);
+  assert.deepEqual(p.hatalar, []);
+  m = [["Doğrultu", "Görünür"], ["X", "hayır"], ["X", "evet"], ["Y", "evet"]];   // benzersiz önek yok: yalnız sırayla
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.sutun, d.deger]), [[0, "gorunur", false]]);
+  assert.deepEqual(p.hatalar, ["Satır sayısı farklı (dosyada 3, tabloda 4); satırlar sırayla eşlendi."]);
+});
+
+test("CSV içe aktarma: bölümlü dosya tablolara adla eşlenir; bilinmeyen tablo, başlığı etkin tabloya uymayan tek tablo", () => {
+  const tl = csvTablolari();
+  let m = I.csvAyristir(I.tumunuCsv([tl[2], tl[0]], { ayirici: ";", ondalikVirgul: true }));
+  const satir = m.findIndex((r) => r[0] === "1" && r[1] === "1. kat");
+  assert.ok(satir > 0);
+  m[satir][1] = "Zemin üstü";
+  m.push(["Tablo: Yok tablo", "Model", "yok"], ["A", "B"], ["1", "2"]);
+  let p = I.csvIceAktarPlani(tl, "akslar", m, { ondalikVirgul: true });
+  assert.deepEqual(p.degisiklikler.map((d) => [d.tablo, d.satir, d.sutun, d.deger]), [["katlar", 1, "ad", "Zemin üstü"]]);
+  assert.deepEqual(p.hatalar, ["Satır " + (m.length - 2) + ": tablo bulunamadı: Yok tablo (yok)"]);
+  assert.deepEqual(p.tablolar, ["dosemeler", "katlar"]);
+  assert.equal(p.atlanan, 2);
+  // bölümlü dosyada uyarılar tablonun adıyla başlar; ad hücresi yoksa başlıkla bulunur
+  m = [["Tablo: Katlar", "Model"], ["Kat", "Kot [m]", "Renk"], ["0", "0"]];
+  p = I.csvIceAktarPlani(tl, null, m, {});
+  assert.deepEqual(p.hatalar, ["“Katlar”, sütun bulunamadı: Renk"]);
+  // tek tablolu dosya etkin tabloya uymuyorsa başlıkları en çok uyan tabloya
+  m = I.csvAyristir(I.csvUret(tl[0], {}));
+  m[2][1] = "Birinci";
+  p = I.csvIceAktarPlani(tl, "akslar", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.tablo, d.deger]), [["katlar", "Birinci"]]);
+  assert.deepEqual(p.hatalar, []);
+  assert.deepEqual(p.notlar, ["Dosya “Katlar” tablosuna aktarıldı (başlıklar ve satırlar etkin tablo “Akslar” yerine ona uyuyor)."]);
+  // aynı başlıklı tablolar (Genel / Temel parametreleri…): satırları anahtarla en çok bulunan, sonra dosya adındaki tablo
+  const par = (ad, baslik, adlar) => ({ ad: ad, baslik: baslik, grup: "Model", sutunlar: [{ ad: "parametre", baslik: "Parametre", tur: "metin" },
+    { ad: "deger", baslik: "Değer", tur: "sayi", duzenlenebilir: true }], satirlar: adlar.map((a, i) => ({ degerler: { parametre: a, deger: i }, yol: { deger: [ad, a] } })) });
+  const pt = [par("genel", "Genel", ["a", "b"]), par("temel_parametreleri", "Temel parametreleri", ["q", "k"]), par("metraj", "Metraj", ["a", "b"])];
+  m = I.csvAyristir(I.csvUret(pt[1], {})); m[2][1] = "7";
+  p = I.csvIceAktarPlani(pt, "genel", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.tablo, d.yol, d.deger]), [["temel_parametreleri", ["temel_parametreleri", "k"], 7]]);
+  m = I.csvAyristir(I.csvUret(pt[2], {})); m[1][1] = "5";
+  assert.deepEqual(I.csvIceAktarPlani(pt, "genel", m, {}).degisiklikler.map((d) => d.tablo), ["genel"]);           // eşitlikte etkin tablo
+  p = I.csvIceAktarPlani(pt, "genel", m, { dosyaAdi: "C:\\İndirilenler\\Bina_1_metraj.csv" });
+  assert.deepEqual(p.degisiklikler.map((d) => d.tablo), ["metraj"]);                                                // dosya adındaki tablo
+  p = I.csvIceAktarPlani(tl, "akslar", [["Renk", "Boy"], ["a", "b"]], {});
+  assert.deepEqual(p.hatalar, ["Sütun bulunamadı: Renk", "Sütun bulunamadı: Boy"]);
+  assert.deepEqual(I.csvIceAktarPlani(tl, null, [["Renk"]], {}).hatalar, ["Başlık satırı hiçbir tabloya uymuyor (tanınan sütun yok)."]);
+  assert.deepEqual(I.csvIceAktarPlani(tl, "katlar", [[""], ["", " "]], {}).hatalar, ["CSV dosyasında satır yok."]);
+  // aynı model alanı iki tabloda farklı değerle
+  const iki = csvTablolari();
+  iki.push(Object.assign({}, iki[0], { ad: "katlar2", baslik: "Katlar 2" }));
+  m = I.csvAyristir(I.tumunuCsv([iki[0], iki[3]], {}));
+  m[3][2] = "3,1";
+  m[m.findIndex((r, i) => i > 6 && r[0] === "1")][2] = "3,2";
+  p = I.csvIceAktarPlani(iki, null, m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => d.deger), [3.1, 3.2]);
+  assert.deepEqual(p.hatalar, ["Aynı model alanı (katlar › [no = 1] › kot) dosyada iki kez farklı değerle var; sonuncusu kullanıldı."]);
+});
+
+test("CSV içe aktarma: tablo programının görünen duyarlıkla yeniden yazdığı salt okunur sayılar fark sayılmaz", () => {
+  // Tablo programları ("hücre içeriğini göründüğü gibi kaydet") küçük sayıları "-2.45E-17", uzun ondalıkları kısaltarak yazar.
+  const tl = csvTablolari();
+  const t = { ad: "yer", baslik: "Yer değiştirmeler", grup: "Analiz", sutunlar: [
+    { ad: "no", baslik: "Düğüm", tur: "sayi", ondalik: 0 }, { ad: "ux", baslik: "u_X", birim: "mm", tur: "sayi" },
+    { ad: "rz", baslik: "θ_Z", birim: "rad", tur: "sayi" }, { ad: "h", baslik: "Kalınlık", birim: "m", tur: "sayi", duzenlenebilir: true }],
+    satirlar: [
+      { degerler: { no: 1, ux: -2.454225919e-17, rz: 0.333333333333, h: 0.123456789 }, yol: { h: ["yer", { no: 1 }, "h"] } },
+      { degerler: { no: 2, ux: 1234.56789012, rz: 3.25, h: 0.5 }, yol: { h: ["yer", { no: 2 }, "h"] } }],
+  };
+  tl.push(t);
+  let m = [["Düğüm", "u_X [mm]", "θ_Z [rad]", "Kalınlık [m]"], ["1", "-2.45E-17", "0,33333333", "0,123456789"], ["2", "1234,568", "3,25", "0,5"]];
+  let p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual([p.degisiklikler, p.hatalar, p.atlanan], [[], [], 0]);
+  // gerçek düzenleme (salt okunur sütunda) yine uyarılır; kaba yuvarlama ("3" ↔ 3,25) da fark sayılır
+  m = [["Düğüm", "u_X [mm]", "θ_Z [rad]"], ["1", "-2.46E-17", "0,33333333"], ["2", "1234,568", "3"]];
+  p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual(p.hatalar, ["Düzenlenemez sütun: u_X [mm] (1 hücre farklı, atlandı)", "Düzenlenemez sütun: θ_Z [rad] (1 hücre farklı, atlandı)"]);
+  assert.equal(p.atlanan, 2);
+  // düzenlenebilir hücrede her fark değişikliktir (yuvarlanmış yazım da)
+  m = [["Düğüm", "Kalınlık [m]"], ["1", "0,1234568"], ["2", "0,5"]];
+  p = I.csvIceAktarPlani(tl, "yer", m, {});
+  assert.deepEqual(p.degisiklikler.map((d) => [d.satir, d.deger]), [[0, 0.1234568]]);
+  // sırayla eşlemede salt okunur doğrulaması da görünen duyarlıkla yapılır
+  const k = { ad: "k", baslik: "Anahtarsız", grup: "Model", sutunlar: [{ ad: "a", baslik: "A", tur: "sayi" }, { ad: "b", baslik: "B", tur: "sayi", duzenlenebilir: true }],
+    satirlar: [{ degerler: { a: 1e-17, b: 1 }, yol: { b: ["k", 0, "b"] } }, { degerler: { a: 1e-17, b: 2 }, yol: { b: ["k", 1, "b"] } },
+      { degerler: { a: 2.454225919e-17, b: 3 }, yol: { b: ["k", 2, "b"] } }] };
+  p = I.csvIceAktarPlani([k], "k", [["A", "B"], ["1E-17", "1"], ["1E-17", "2"], ["2.45E-17", "4"]], {});
+  assert.deepEqual([p.degisiklikler.map((d) => [d.satir, d.deger]), p.hatalar], [[[2, 4]], []]);
+});
+
+test("CSV içe aktarma planı Duzenleme'ye yapıştırma gibi eklenir (tek geri al adımı)", () => {
+  const tl = csvTablolari();
+  const m = I.csvAyristir(I.csvUret(tl[0], {}));
+  m[1][1] = "Bodrum"; m[2][2] = "3,1";
+  const p = I.csvIceAktarPlani(tl, "katlar", m, {});
+  const d = new I.Duzenleme();
+  assert.equal(d.ekle(p.degisiklikler), 2);
+  assert.equal(d.sayi(), 2);
+  assert.deepEqual(Array.from(d.tablolar()), ["katlar"]);
+  assert.equal(d.deger(["katlar", { no: 1 }, "kot"]).deger, 3.1);
+  assert.equal(d.geriAl(), true);
+  assert.equal(d.sayi(), 0);
+  assert.equal(M.surum, "1.1.0");
+});

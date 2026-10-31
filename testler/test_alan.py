@@ -453,6 +453,27 @@ def test_radye_alani_winkler(bina2):
     assert len(r["x"]) * len(r["y"]) >= len(r["dugumler"]) and r["p_maks"] >= r["p_min"]
 
 
+def test_radye_alani_genel_model_radye():
+    """Genel modelde (surum 3) radye: ic['temel'] = temel.basinc_meta; ısı haritasının radye katmanı aynı işlevle (ızgara)."""
+    b = yapi.bina_sablon("betonarme-2kat-3x2")
+    b["surum"] = 3
+    b["temeller"]["tip"] = "radye"
+    b["temeller"]["radye"] = {"h": 0.6, "tasma": 0.5, "ag": 1.0}
+    r = yapi.bina_coz(b, goster="yok", anlat=False)
+    assert r.veri["model"] == "genel" and r.ic["temel"]["dugumler"]
+    a = alan.radye_alani(r.ic, "G")
+    uz = {d["no"]: d["uZ"] for d in r.veri["durumlar"]["G"]["dugumler"]}
+    k0 = r.veri["temel"]["model"]["k0"]
+    assert len(a["dugumler"]) == r.veri["temel"]["model"]["dugum_sayisi"]
+    for d in a["dugumler"]:
+        assert d["w"] == pytest.approx(-uz[d["no"]], rel=1e-4, abs=1e-9) and d["p"] == pytest.approx(k0 * d["w"], rel=1e-4)
+    pl = r.veri["temel"]["model"]["plak"]
+    assert (len(a["x"]), len(a["y"])) == (pl["nx"], pl["ny"])
+    gq = alan.radye_alani(r.ic, "G+Q")
+    assert max(d["p"] for d in gq["dugumler"]) == pytest.approx(r.veri["temel"]["p_maks"], rel=1e-5)
+    assert alan.radye_alani(r.ic, "zarf+") is not None
+
+
 # ---------------------------------------------------------------------------------------------
 # Köprü "bina_alan"
 # ---------------------------------------------------------------------------------------------

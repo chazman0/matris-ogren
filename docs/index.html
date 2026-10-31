@@ -103,12 +103,12 @@
         <h2 id="bina-baslik">Bina: yük akışı ve 3B analiz</h2>
         <details class="bn-tanitim"><summary>Bu sayfa ne yapar?</summary>
           <ul class="not adim-listesi">
-            <li><b>Aks–kat şablonları ve aks tabanlı çizim:</b> kolon, kiriş, döşeme, duvar, çapraz, makas, beşik çerçeve, aşık, kren yolu ve panel çizilir; her düğüm bir aks kesişimine ya da bir çubuğun bölme / kesişim noktasına yakalanır, aks taşınınca bağlı elemanlar da taşınır. Yüzen araç kutuları: Aks, Çizim, Üreteç ve yük, Düzenleme, Değiştirme (ayrıca Ölçme, Görünüm, Analiz, Sonuç). Üst şeritteki Düzlem seçici ya da PgUp / PgDn ile plan ve cephe düzlemleri arasında geçilir.</li>
+            <li><b>Aks–kat şablonları ve aks tabanlı çizim:</b> kolon, kiriş, döşeme, duvar, çapraz, makas, beşik çerçeve, aşık, kren yolu ve panel çizilir; her düğüm bir aks kesişimine ya da bir çubuğun bölme / kesişim noktasına yakalanır, aks taşınınca bağlı elemanlar da taşınır. Araç kutuları (Çizim, Düzenleme, Görünüm, Analiz, Sonuç, Aks, Ölçme, Değiştirme, Üreteç ve yük) sahnenin kenarlarına yerleşir; sığmayanlar <b>⋯</b> çekmecesindedir, bir kutu sahneye sürüklenip yüzdürülebilir. Üst şeritteki Düzlem seçici ya da PgUp / PgDn ile plan ve cephe düzlemleri arasında geçilir.</li>
             <li><b>Genel (surum 3) model:</b> düğüm–çubuk–panel modeli; hazır şablonlar <i>Çelik sanayi yapısı (4 hol)</i> (vuteli mertek, aşık, çatı ve cephe çaprazları, kren yolu) ve <i>3 katlı çelik merkezi çaprazlı çerçeve</i> (ters V ve X çaprazlar); çubuklara mafsal ve yalnız çekme verilebilir.</li>
             <li><b>Yükler:</b> G, Q, S (kar), W (rüzgâr), E (TBDY 2018 eşdeğer deprem) ve kren durumları; TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf; döşeme → kiriş → kolon → temel → zemin yük akışı, şekil değiştirmiş biçim ve iç kuvvet diyagramları.</li>
             <li><b>Tasarım:</b> TS 500 ve ÇYTHYE 2018 kontrolleri, eleman başına D/C; kesit önerisi: “Kesit öner ve uygula” (elemana sağ tık ile tek eleman; araç kutusuna Özelleştir ile eklenince seçili elemanlar ya da seçim yoksa bütün model), “Hepsini uygula” ile yeniden çözüm.</li>
-            <li><b>Temeller:</b> tekil; mütemadi ve radye (Winkler zemini, taban basıncı ve oturma haritası) yalnız aks–kat modelinde.</li>
-            <li><b>Çıktılar:</b> 📄 Statik rapor (yazdır / PDF, HTML), ▦ Tablolar ve metraj (düzenleme, yapıştırma, CSV), 🌡 Isı haritası, ⬇ IFC, 💾 <code>.matris</code> proje dosyası. Elemana sağ tık (dokunmatikte uzun basma) bilgi ve komutları açar; <kbd>?</kbd> bütün kısayolları gösterir, <kbd>F</kbd> tam ekran, <kbd>Esc</kbd> çıkış.</li>
+            <li><b>Temeller ve mesnetler:</b> tekil, mütemadi ve radye (Winkler zemini, taban basıncı ve oturma haritası) aks–kat ve genel modelde; genel modelde temel kirişleri ve radye GLOBAL aks ızgarasında kurulur. Açık mesnet tutulu ya da yaylı (k_x … k_rz) olabilir; rijit diyaframlı kattaki mesnet diyafram bağıyla uygulanır.</li>
+            <li><b>Çıktılar:</b> 📄 Statik rapor (yazdır / PDF, HTML), ▦ Tablolar ve metraj (düzenleme, yapıştırma, CSV dışa ve içe aktarma), 🌡 Isı haritası, ⬇ IFC (rüzgâr, deprem, kren eylemleri ve temel öz ağırlığı dahil), 💾 <code>.matris</code> proje dosyası. Elemana sağ tık (dokunmatikte uzun basma) bilgi ve komutları açar; <kbd>?</kbd> bütün kısayolları gösterir, <kbd>F</kbd> tam ekran, <kbd>Esc</kbd> çıkış.</li>
           </ul>
           <p class="not">Öğretim ve ön boyutlandırma içindir; mühendislik kararı için yetkili bir mühendisin denetimi gerekir.</p>
         </details>
@@ -164,26 +164,38 @@
           böl, birleştir, düğümleri birleştir, mafsal, yalnız çekme, kesit değiştir). Kutuya başka komut (ör. “Kesit öner ve uygula”)
           köşe menüsündeki Özelleştir ile eklenir. Üst şeritteki <b>Düzlem</b> seçici ya da
           PgUp / PgDn plan (Z aksı) ve cephe (X / Y aksı) düzlemleri arasında geçer.</li>
-        <li><b>Araç kutuları:</b> tutamağından sürüklenir; düğme bir kutudan ötekine sürüklenip bırakılır (boş alana bırakmak yeni kutu açar);
-          köşedeki menüde Özelleştir, hazır yerleşimler ve Varsayılana dön. Soluk düğmenin ipucu nedenini söyler. Telefonda kutular sahnenin
-          altında kaydırılabilir şerittir.</li>
+        <li><b>Araç kutuları:</b> sahnenin kenarlarına yerleşir (üst / alt bant, sol / sağ sütun; dizilişteki sıra önceliktir). Yer daralınca
+          bant kutularının başlığı gizlenir, sütunlar iki düğme sütununa geçer; yine sığmayan kutu sol alt köşedeki <b>⋯ n</b> çekmecesine gider
+          ve yer açılınca kendiliğinden döner. Kenardaki kutular modeli örtmez; tam ekranda kutular yeniden dizilir. Kutuyu tutamağından bir
+          kenara sürükleyip bırakmak onu o şeridin başına alır, sahneye bırakmak yüzdürür. Kutu menüsü: Kenar › Üst / Alt / Sol / Sağ, Sahnede
+          yüzdür, (çekmecede) Kenara sabitle, (yüzen kutuda) Kenara yerleştir. Daralttığınız kutu daraltılmış kalır. Düğme bir kutudan ötekine
+          sürüklenip bırakılır (boş alana bırakmak yeni kutu açar); köşedeki menüde Özelleştir, hazır yerleşimler ve Varsayılana dön. Soluk
+          düğmenin ipucu nedenini söyler. Telefonda kutular sahnenin altında kaydırılabilir şerittir.</li>
         <li><b>Sağ tık</b> (dokunmatikte uzun basma, klavyede Shift+F10): elemanın özeti ve komutları; <b>Bilgi</b> penceresi (geometri, kesit,
           yükler, iç kuvvetler, tasarım, metraj, yük yolu; çözümden sonra motor ayrıntısı), Özellikler, Isı haritasında incele, Yük akışı,
           Tasarım ayrıntısı, Kesit öner ve uygula, Gizle, Yalıt, Sil.</li>
         <li><b>Ölçme:</b> uzaklık, açı, alan, eleman boyu, kot farkı, koordinat; imleç düğüme, aks kesişimine ya da çubuğa yakalanır.
           Esc yarım ölçümü bırakır, “Ölçüleri temizle” hepsini siler.</li>
         <li><b>Çöz</b> (Ctrl+Enter): G, Q, S, W, E ve kren durumları, TS 500 / ÇYTHYE / TBDY birleşimleri ve zarf, yük akışı, D/C. Mütemadi ve
-          radye temel yalnız aks–kat modelinde çözülür; model genel modele çevrilirken (ör. çapraz ya da mesnet eklenince) temel onayla tekil yapılır.</li>
+          radye temel aks–kat ve genel modelde çözülür; model genel modele çevrilirken (ör. çapraz ya da mesnet eklenince) temel ayarı korunur.
+          Genel modelde temel kirişleri GLOBAL X/Y aks çizgileri boyunca, radye GLOBAL aks zarfı + taşma üzerinde kurulur; ek aks sistemindeki
+          kolon tabanları yalnız kirişsiz radyede ağa katılır (mütemadi ve kirişli radyede onlara <code>mesnetler</code> ile mesnet verilir).
+          Mesnet aracında <b>Yaylı (elastik)</b> ön ayarı yay rijitliklerini (k_x … k_rz) sorar; rijit diyaframlı bir kattaki noktaya yatay
+          mesnet verilirken araç diyafram bağını sorar.</li>
         <li><b>Çıktılar:</b> 📄 Statik rapor (önizleme, yazdır / PDF, HTML; proje künyesi), ▦ Tablolar ve metraj (sarı hücreler düzenlenir, tablo
-          programından yapıştırılır, Ctrl+Z geri alır; CSV), 🌡 Isı haritası (yer değiştirme, iç kuvvet, gerilme, kullanım oranı; döşeme paneli
-          ve radye alanları), ⬇ IFC4 yapı modeli, 💾 Kaydet / 📂 Aç (<code>.matris</code>: bina + görünüm + araç kutusu yerleşimi).</li>
+          programından yapıştırılır, Ctrl+Z geri alır; CSV dışa aktarma ve <b>İçe aktar (.csv)…</b>: ayırıcı <code>;</code>, <code>,</code> ya da
+          sekme kendiliğinden tanınır, <code>Tablo:</code> bölümlü dosya birden çok tabloyu doldurur, yalnız düzenlenebilir hücreler sarı bekleyen
+          hücre olarak gelir ve Uygula ile yazılır; masaüstünde Dosya › İçe aktar › Tablolar (.csv)…), 🌡 Isı haritası (yer değiştirme, iç kuvvet,
+          gerilme, kullanım oranı; döşeme paneli ve radye alanları), ⬇ IFC4 yapı modeli, 💾 Kaydet / 📂 Aç (<code>.matris</code>: bina + görünüm +
+          araç kutusu yerleşimi).</li>
       </ul>
     </div>
     <div class="kart" id="yardim-kisayol-kart">
       <h2>Klavye kısayolları</h2>
       <p class="not">Bina sayfasında geçerlidir; yazı alanı ya da bir pencere açıkken çalışmaz. Bina sayfasında <kbd>?</kbd> aynı listeyi açar.
         Masaüstü sürümünün menü kısayolları (Ctrl+N, Ctrl+O, Ctrl+S, F5 çöz, F6 tasarım kontrolleri, F9 rapor, Ctrl+T tablolar, Ctrl+E IFC,
-        Ctrl+G aks verisi, Ctrl+1…4 sayfalar, F11 tam ekran) menülerde ve <b>Yardım › Klavye kısayolları</b> penceresindedir.</p>
+        Ctrl+G aks verisi, Ctrl+1…4 sayfalar, F11 tam ekran) menülerde ve <b>Yardım › Klavye kısayolları</b> penceresindedir; Bina sayfası bir
+        kez açıldıktan sonra o pencere bu tablodaki Bina sayfası satırlarını da gösterir.</p>
       <div class="se-tablo-kutu">
         <table id="yardim-kisayollar" class="se-sonuc-tablo" aria-label="Bina sayfası klavye kısayolları">
           <tbody><tr><td class="not">Liste, araç kutusu modülü yüklenince dolar.</td></tr></tbody>
@@ -200,7 +212,7 @@
         adım çözümler, sonlu eleman çözücü ve aks tabanlı 3B bina modeli. Hesap motoru Python modülleridir: <code>matris_ogren</code> (matris
         işlemleri, sympy ile kesin hesap), <code>sonlu_eleman</code> (yay, çubuk, kafes, kiriş, çerçeve, uzay yapı), <code>yapi</code> (aks–kat
         bina modeli, TS 498 yükleri, yük akışı, TBDY 2018 deprem, birleşimler), <code>yapi_serbest</code> (genel düğüm–çubuk–panel modeli),
-        <code>tasarim</code> (TS 500 ve ÇYTHYE kontrolleri, kesit önerisi), <code>temel</code> (mütemadi ve radye temel, Winkler zemini),
+        <code>tasarim</code> (TS 500 ve ÇYTHYE kontrolleri, kesit önerisi), <code>temel</code> (mütemadi ve radye temel, Winkler zemini; iki bina modelinde de),
         <code>rapor</code> (statik rapor), <code>tablolar</code> (tablolar ve metraj) ve <code>alan</code> (ısı haritası alanları). Motor
         tarayıcıda Pyodide üzerinde (masaüstü sürümünde programla birlikte gelen kopyasıyla) çalışır; girdiğiniz veriler cihazdan dışarı çıkmaz.
         Hesaplar eğitim ve ön boyutlandırma içindir.</p>
