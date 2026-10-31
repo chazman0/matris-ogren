@@ -90,12 +90,9 @@ bool Derle(const char* giris, const char* hedef, ComPtr<ID3DBlob>& kod, std::str
     return true;
 }
 
-// Sahne renkleri (sRGB).
-constexpr float kArkaUst[4] = {0.70f, 0.77f, 0.85f, 1.0f};
-constexpr float kArkaAlt[4] = {0.95f, 0.96f, 0.975f, 1.0f};
-constexpr float kCelik[4] = {0.50f, 0.60f, 0.73f, 1.0f};
-constexpr float kKenar[4] = {0.08f, 0.11f, 0.16f, 0.80f};
-constexpr float kEksen[4] = {0.10f, 0.30f, 0.62f, 1.0f};
+// Sahne renkleri (sRGB): MSAA hedefinin temizleme değeri ve parçasız ağın kenarı.
+constexpr float kArkaAlt[4] = {0.902f, 0.910f, 0.922f, 1.0f};
+constexpr float kKenar[4] = {0.27f, 0.29f, 0.33f, 0.50f};
 
 }  // namespace
 
@@ -122,6 +119,21 @@ HataKatmani Grafik::HataKatmaniYokla() {
     k.var = SUCCEEDED(hr);
     k.hr = static_cast<long>(hr);
     return k;
+}
+
+std::vector<std::string> Grafik::Bagdastiricilar() {
+    std::vector<std::string> o;
+    ComPtr<IDXGIFactory1> f;
+    if (FAILED(CreateDXGIFactory1(CIK(f)))) return o;
+    for (UINT i = 0;; ++i) {
+        ComPtr<IDXGIAdapter1> a;
+        if (FAILED(f->EnumAdapters1(i, a.GetAddressOf()))) break;
+        DXGI_ADAPTER_DESC1 t{};
+        a->GetDesc1(&t);
+        if (t.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
+        o.push_back(Utf8(t.Description));
+    }
+    return o;
 }
 
 HataKatmani Grafik::HataKatmaniIletileri() const {
@@ -213,7 +225,21 @@ bool Grafik::Baslat(bool warpZorla, std::string& hata) {
             }
         }
     };
-    if (!warpZorla) listele(false);
+    if (!warpZorla && !tercihBagdastirici_.empty()) {
+        // Ayarlar › Görüntü: adı verilen bağdaştırıcı önce denenir.
+        for (UINT i = 0; !aygit_; ++i) {
+            ComPtr<IDXGIAdapter1> a;
+            if (FAILED(fabrika_->EnumAdapters1(i, a.ReleaseAndGetAddressOf()))) break;
+            DXGI_ADAPTER_DESC1 t{};
+            a->GetDesc1(&t);
+            if (Utf8(t.Description) == tercihBagdastirici_ && dene(a.Get())) {
+                bagdastirici_ = a;
+                warp_ = (t.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
+            }
+        }
+        if (!aygit_) Gunluk("Uyarı: tercih edilen bağdaştırıcı bulunamadı (%s); otomatik seçim", tercihBagdastirici_.c_str());
+    }
+    if (!warpZorla && !aygit_) listele(false);
     if (!aygit_) {
         ComPtr<IDXGIAdapter1> a;
         hr = fabrika_->EnumWarpAdapter(CIK(a));
@@ -253,6 +279,7 @@ bool Grafik::Baslat(bool warpZorla, std::string& hata) {
     const UINT adaylar[] = {8, 4, 2};
     for (UINT n : adaylar) {
         if (warp_ && n > 4) continue;
+        if (tercihMsaa_ > 0 && n > static_cast<UINT>(tercihMsaa_)) continue;  // Ayarlar › Görüntü (1 = kapalı)
         D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS r{}, d{};
         r.Format = RENK_BICIMI;
         r.SampleCount = n;
@@ -482,6 +509,7 @@ bool Grafik::TamponYukle(const void* veri, size_t boyut, ComPtr<ID3D12Resource>&
 }
 
 bool Grafik::SahneYukle(const Ag& ag, std::string& hata) {
+    parcalar_ = ag.parcalar;
     indisSayisi_ = static_cast<UINT>(ag.indisler.size());
     kenarSayisi_ = static_cast<UINT>(ag.kenarlar.size());
     eksenSayisi_ = static_cast<UINT>(ag.eksenler.size());
@@ -521,6 +549,28 @@ bool Grafik::HedefleriKur(UINT g, UINT y, std::string& hata) {
     rtv.ptr += static_cast<SIZE_T>(KARE_SAYISI) * rtvAdim_;
     aygit_->CreateRenderTargetView(msaaRenk_.Get(), nullptr, rtv);
     aygit_->CreateDepthStencilView(msaaDerinlik_.Get(), nullptr, dsvYigini_->GetCPUDescriptorHandleForHeapStart());
+    // Sahne dokusu: MSAA çözümü buraya yapılır, arayüz onu görüntü olarak çizer (görüş alanı dokunun sol üstündedir).
+    sahneDokusu_.Reset();
+    D3D12_RESOURCE_DESC st = DokuTanimi(g, y, RENK_BICIMI, 1, D3D12_RESOURCE_FLAG_NONE);
+    hr = aygit_->CreateCommittedResource(&vy, D3D12_HEAP_FLAG_NONE, &st, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr,
+                                         CIK(sahneDokusu_));
+    if (FAILED(hr)) {
+        hata = "sahne dokusu: " + HrMetni(hr);
+        return false;
+    }
+    if (sahneSrv_ == UINT_MAX) {
+        sahneSrv_ = srv_.bos.back();
+        srv_.bos.pop_back();
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
+    sv.Format = RENK_BICIMI;
+    sv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    sv.Texture2D.MipLevels = 1;
+    D3D12_CPU_DESCRIPTOR_HANDLE c = srv_.cpu0;
+    c.ptr += static_cast<SIZE_T>(sahneSrv_) * srv_.adim;
+    aygit_->CreateShaderResourceView(sahneDokusu_.Get(), &sv, c);
+    sahneSrvGpu_ = srv_.gpu0.ptr + static_cast<UINT64>(sahneSrv_) * srv_.adim;
     genislik_ = g;
     yukseklik_ = y;
     return true;
@@ -634,29 +684,40 @@ void Grafik::ImGuiBilgisi(ImGui_ImplDX12_InitInfo& b) {
     };
 }
 
-void Grafik::SahneKaydet(KareBaglami& k, const Kamera& kam, const SahneAyari& a, GorusAlani gorus,
-                         ID3D12Resource* hedef, D3D12_RESOURCE_STATES hedefDurumu) {
-    gorus.g = std::max(1.0f, std::min(gorus.g, static_cast<float>(genislik_) - gorus.x));
-    gorus.y2 = std::max(1.0f, std::min(gorus.y2, static_cast<float>(yukseklik_) - gorus.y));
+namespace {
+void RenkF(uint32_t c, float o[4]) {
+    for (int i = 0; i < 4; ++i) o[i] = static_cast<float>((c >> (8 * i)) & 0xFF) / 255.0f;
+}
+}  // namespace
 
-    // Kare sabitleri.
+void Grafik::SahneKaydet(KareBaglami& k, const GorunumKamerasi& kam, const CizimAyari& a, GorusAlani gorus) {
+    gorus.g = std::max(1.0f, std::min(gorus.g, static_cast<float>(genislik_)));
+    gorus.y2 = std::max(1.0f, std::min(gorus.y2, static_cast<float>(yukseklik_)));
+
+    // Kare sabitleri: çift hassasiyetli izdüşüm float'a (MIMARI §6.2; Faz 1'de çapa sıfır).
     KareSabitleri s{};
-    M4 vp = kam.GorunumIzdusum(gorus.g / gorus.y2), ters;
+    const GorusIzdusumu g = kam.Izdusum(gorus.g, gorus.y2);
+    M4 vp, ters;
+    for (int i = 0; i < 16; ++i) vp.m[i] = static_cast<float>(g.gorunumIzdusum[static_cast<size_t>(i)]);
     Ters(vp, ters);
     std::memcpy(s.vp, vp.m, sizeof(s.vp));
     std::memcpy(s.tersVp, ters.m, sizeof(s.tersVp));
-    V3 goz = kam.Goz();
-    s.goz[0] = goz.x; s.goz[1] = goz.y; s.goz[2] = goz.z; s.goz[3] = 1;
-    V3 sag, yukari;
-    kam.EkranEksenleri(sag, yukari);
-    V3 isik = Birim(sag * -0.45f + yukari * 0.80f + Birim(goz - kam.hedef) * 0.55f);  // gözün sol-üst arkasından
-    s.isik[0] = isik.x; s.isik[1] = isik.y; s.isik[2] = isik.z;
-    std::memcpy(s.ust, kArkaUst, sizeof(s.ust));
-    std::memcpy(s.alt, kArkaAlt, sizeof(s.alt));
-    s.izgara[0] = 1.0f;
-    s.izgara[1] = 5.0f;
-    s.izgara[2] = std::max(40.0f, kam.uzaklik * 3.0f);
-    s.izgara[3] = std::max(80.0f, kam.uzaklik * 7.0f);
+    const V3d goz = kam.Goz(), sag = kam.Sag(), yuk = kam.Yukari(), yon = kam.GozYonu();
+    s.goz[0] = static_cast<float>(goz.x);
+    s.goz[1] = static_cast<float>(goz.y);
+    s.goz[2] = static_cast<float>(goz.z);
+    s.goz[3] = 1;
+    const V3d isik = Birim(sag * -0.45 + yuk * 0.80 + yon * 0.55);  // gözün sol-üst arkasından
+    s.isik[0] = static_cast<float>(isik.x);
+    s.isik[1] = static_cast<float>(isik.y);
+    s.isik[2] = static_cast<float>(isik.z);
+    RenkF(a.ust, s.ust);
+    RenkF(a.alt, s.alt);
+    const double olcu = kam.d.ortografik ? kam.d.ortoYukseklik : kam.d.uzaklik;
+    s.izgara[0] = olcu > 400 ? 10.0f : 1.0f;
+    s.izgara[1] = olcu > 400 ? 50.0f : 5.0f;
+    s.izgara[2] = static_cast<float>(std::max(40.0, olcu * 3.0));
+    s.izgara[3] = static_cast<float>(std::max(80.0, olcu * 7.0));
     s.cizgi[0] = 1.0015f;
     std::memcpy(k.sabitPtr, &s, sizeof(s));
 
@@ -668,12 +729,12 @@ void Grafik::SahneKaydet(KareBaglami& k, const Kamera& kam, const SahneAyari& a,
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvYigini_->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += static_cast<SIZE_T>(KARE_SAYISI) * rtvAdim_;
     D3D12_CPU_DESCRIPTOR_HANDLE dsv = dsvYigini_->GetCPUDescriptorHandleForHeapStart();
-    liste_->ClearRenderTargetView(rtv, kArkaAlt, 0, nullptr);
+    liste_->ClearRenderTargetView(rtv, kArkaAlt, 0, nullptr);  // oluşturmadaki eniyilenmiş değer (katman uyarısı olmasın)
     liste_->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
     liste_->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-    D3D12_VIEWPORT v{gorus.x, gorus.y, gorus.g, gorus.y2, 0.0f, 1.0f};
-    D3D12_RECT kirp{static_cast<LONG>(gorus.x), static_cast<LONG>(gorus.y), static_cast<LONG>(gorus.x + gorus.g),
-                    static_cast<LONG>(gorus.y + gorus.y2)};
+    // Görüş alanı dokunun sol üstüne çizilir; arayüz onu (0,0)–(uvG, uvY) bölümüyle görüntüler.
+    D3D12_VIEWPORT v{0.0f, 0.0f, gorus.g, gorus.y2, 0.0f, 1.0f};
+    D3D12_RECT kirp{0, 0, static_cast<LONG>(std::ceil(gorus.g)), static_cast<LONG>(std::ceil(gorus.y2))};
     liste_->RSSetViewports(1, &v);
     liste_->RSSetScissorRects(1, &kirp);
     liste_->SetGraphicsRootSignature(kokImza_.Get());
@@ -684,30 +745,45 @@ void Grafik::SahneKaydet(KareBaglami& k, const Kamera& kam, const SahneAyari& a,
     liste_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     liste_->DrawInstanced(3, 1, 0, 0);
 
-    if (a.kesitGorunumu && indisSayisi_ > 0) {
+    if (a.kati && indisSayisi_ > 0) {
         D3D12_VERTEX_BUFFER_VIEW vb{koseTamponu_->GetGPUVirtualAddress(),
                                     static_cast<UINT>(koseTamponu_->GetDesc().Width), sizeof(Kose)};
         D3D12_INDEX_BUFFER_VIEW ib{indisTamponu_->GetGPUVirtualAddress(), indisSayisi_ * 4u, DXGI_FORMAT_R32_UINT};
         liste_->SetPipelineState(psoKati_.Get());
+        liste_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         liste_->IASetVertexBuffers(0, 1, &vb);
         liste_->IASetIndexBuffer(&ib);
-        renk(kCelik);
-        liste_->DrawIndexedInstanced(indisSayisi_, 1, 0, 0, 0);
+        if (parcalar_.empty()) {
+            float c[4];
+            RenkF(a.celik, c);
+            renk(c);
+            liste_->DrawIndexedInstanced(indisSayisi_, 1, 0, 0, 0);
+        } else {
+            for (const AgParcasi& p : parcalar_) {
+                float c[4];
+                RenkF(p.renk, c);
+                renk(c);
+                liste_->DrawIndexedInstanced(p.indisSayi, 1, p.indisBas, 0, 0);
+            }
+        }
         if (a.kenarlar && kenarSayisi_ > 0) {
             D3D12_VERTEX_BUFFER_VIEW kb{kenarTamponu_->GetGPUVirtualAddress(), kenarSayisi_ * 12u, 12u};
             liste_->SetPipelineState(psoCizgi_.Get());
             liste_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
             liste_->IASetVertexBuffers(0, 1, &kb);
-            renk(kKenar);
-            liste_->DrawInstanced(kenarSayisi_, 1, 0, 0);
+            if (parcalar_.empty()) {
+                renk(kKenar);
+                liste_->DrawInstanced(kenarSayisi_, 1, 0, 0);
+            } else {
+                for (const AgParcasi& p : parcalar_) {
+                    if (!p.kenarSayi) continue;
+                    float c[4];
+                    RenkF(p.kenarRenk, c);
+                    renk(c);
+                    liste_->DrawInstanced(p.kenarSayi, 1, p.kenarBas, 0);
+                }
+            }
         }
-    } else if (eksenSayisi_ > 0) {
-        D3D12_VERTEX_BUFFER_VIEW eb{eksenTamponu_->GetGPUVirtualAddress(), eksenSayisi_ * 12u, 12u};
-        liste_->SetPipelineState(psoCizgi_.Get());
-        liste_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-        liste_->IASetVertexBuffers(0, 1, &eb);
-        renk(kEksen);
-        liste_->DrawInstanced(eksenSayisi_, 1, 0, 0);
     }
     if (a.izgara) {
         liste_->SetPipelineState(psoIzgara_.Get());
@@ -716,37 +792,47 @@ void Grafik::SahneKaydet(KareBaglami& k, const Kamera& kam, const SahneAyari& a,
     }
 
     Bariyer(msaaRenk_.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, kaynakDurumu);
-    Bariyer(hedef, hedefDurumu, cozumDurumu);
+    Bariyer(sahneDokusu_.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, cozumDurumu);
     if (ornek_ > 1)
-        liste_->ResolveSubresource(hedef, 0, msaaRenk_.Get(), 0, RENK_BICIMI);
+        liste_->ResolveSubresource(sahneDokusu_.Get(), 0, msaaRenk_.Get(), 0, RENK_BICIMI);
     else
-        liste_->CopyResource(hedef, msaaRenk_.Get());
-    Bariyer(hedef, cozumDurumu, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        liste_->CopyResource(sahneDokusu_.Get(), msaaRenk_.Get());
+    Bariyer(sahneDokusu_.Get(), cozumDurumu, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
-bool Grafik::PencereKaresi(const Kamera& kam, const SahneAyari& a, GorusAlani gorus, ImDrawData* arayuz) {
+void Grafik::ArayuzKaydet(ID3D12Resource* hedef, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_RESOURCE_STATES once, uint32_t zemin,
+                          ImDrawData* arayuz, D3D12_RESOURCE_STATES sonra) {
+    Bariyer(hedef, once, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    float z[4];
+    RenkF(zemin, z);
+    z[3] = 1.0f;
+    liste_->ClearRenderTargetView(rtv, z, 0, nullptr);
+    liste_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    if (arayuz) {
+        ID3D12DescriptorHeap* y[] = {srvYigini_.Get()};
+        liste_->SetDescriptorHeaps(1, y);
+        ImGui_ImplDX12_RenderDrawData(arayuz, liste_.Get());
+    }
+    Bariyer(hedef, D3D12_RESOURCE_STATE_RENDER_TARGET, sonra);
+}
+
+bool Grafik::PencereKaresi(const GorunumKamerasi& kam, const CizimAyari& a, GorusAlani gorus, ImDrawData* arayuz, uint32_t zemin,
+                           bool dikeyEsitleme) {
     if (!takas_) return false;
     KareBaglami& k = kareler_[kareNo_ % KARE_SAYISI];
     WaitForSingleObjectEx(beklemeNesnesi_, 1000, TRUE);
     KareBekle(k);
     k.ayirici->Reset();
     liste_->Reset(k.ayirici.Get(), nullptr);
-    UINT i = takas_->GetCurrentBackBufferIndex();
-    ID3D12Resource* arka = arkaTampon_[i].Get();
-    SahneKaydet(k, kam, a, gorus, arka, D3D12_RESOURCE_STATE_PRESENT);
-    if (arayuz) {
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvYigini_->GetCPUDescriptorHandleForHeapStart();
-        rtv.ptr += static_cast<SIZE_T>(i) * rtvAdim_;
-        liste_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-        ID3D12DescriptorHeap* y[] = {srvYigini_.Get()};
-        liste_->SetDescriptorHeaps(1, y);
-        ImGui_ImplDX12_RenderDrawData(arayuz, liste_.Get());
-    }
-    Bariyer(arka, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    SahneKaydet(k, kam, a, gorus);
+    const UINT i = takas_->GetCurrentBackBufferIndex();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvYigini_->GetCPUDescriptorHandleForHeapStart();
+    rtv.ptr += static_cast<SIZE_T>(i) * rtvAdim_;
+    ArayuzKaydet(arkaTampon_[i].Get(), rtv, D3D12_RESOURCE_STATE_PRESENT, zemin, arayuz, D3D12_RESOURCE_STATE_PRESENT);
     liste_->Close();
     ID3D12CommandList* l[] = {liste_.Get()};
     kuyruk_->ExecuteCommandLists(1, l);
-    HRESULT hr = takas_->Present(1, 0);
+    HRESULT hr = takas_->Present(dikeyEsitleme ? 1 : 0, 0);
     kuyruk_->Signal(cit_.Get(), ++citDegeri_);
     k.cit = citDegeri_;
     ++kareNo_;
@@ -757,23 +843,26 @@ bool Grafik::PencereKaresi(const Kamera& kam, const SahneAyari& a, GorusAlani go
     return hr != DXGI_STATUS_OCCLUDED;
 }
 
-bool Grafik::EkranDisiKaresi(const Kamera& kam, const SahneAyari& a, GorusAlani gorus, ImDrawData* arayuz,
-                             std::vector<uint8_t>* rgba) {
+bool Grafik::EkranDisiKaresi(const GorunumKamerasi& kam, const CizimAyari& a, GorusAlani gorus, ImDrawData* arayuz,
+                             uint32_t zemin, std::vector<uint8_t>* rgba) {
     if (!ekranDisi_) return false;
     GpuBekle();
     KareBaglami& k = kareler_[0];
     k.ayirici->Reset();
     liste_->Reset(k.ayirici.Get(), nullptr);
-    SahneKaydet(k, kam, a, gorus, ekranDisi_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
+    SahneKaydet(k, kam, a, gorus);
     if (arayuz) {
         D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvYigini_->GetCPUDescriptorHandleForHeapStart();
         rtv.ptr += static_cast<SIZE_T>(KARE_SAYISI + 1) * rtvAdim_;
-        liste_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-        ID3D12DescriptorHeap* y[] = {srvYigini_.Get()};
-        liste_->SetDescriptorHeaps(1, y);
-        ImGui_ImplDX12_RenderDrawData(arayuz, liste_.Get());
+        ArayuzKaydet(ekranDisi_.Get(), rtv, D3D12_RESOURCE_STATE_COPY_SOURCE, zemin, arayuz, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    } else {
+        // Arayüzsüz: sahne dokusunun kendisi (görüş alanı tam ekran olmalı).
+        Bariyer(ekranDisi_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+        Bariyer(sahneDokusu_.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        liste_->CopyResource(ekranDisi_.Get(), sahneDokusu_.Get());
+        Bariyer(sahneDokusu_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        Bariyer(ekranDisi_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
     }
-    Bariyer(ekranDisi_.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
     if (rgba) {
         D3D12_TEXTURE_COPY_LOCATION hedef{}, kaynak{};
         hedef.pResource = okumaTamponu_.Get();

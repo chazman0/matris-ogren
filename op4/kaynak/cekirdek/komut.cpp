@@ -31,6 +31,7 @@ std::string TusAdi(const std::string& k) {
         const char c = t[0];
         if (c >= 'a' && c <= 'z') return std::string(1, static_cast<char>(c - 'a' + 'A'));
         if (c >= '0' && c <= '9') return t;
+        if (c == ',' || c == '.') return t;  // Ctrl+, (Ayarlar; Atölye · Modern §7)
         return "";
     }
     if (t.size() >= 2 && t[0] == 'f' && std::all_of(t.begin() + 1, t.end(), [](char c) { return c >= '0' && c <= '9'; })) {

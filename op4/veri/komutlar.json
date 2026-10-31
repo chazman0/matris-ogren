@@ -156,7 +156,7 @@
     "IMPORT"
    ],
    "kisayol": "",
-   "ikon": "ice",
+   "ikon": "ice_aktar",
    "serit": {
     "sekme": "Dosya",
     "grup": "Aktar",
@@ -183,7 +183,7 @@
     "EXPORTJSON"
    ],
    "kisayol": "",
-   "ikon": "disa",
+   "ikon": "disa_aktar",
    "serit": {
     "sekme": "Raporlar",
     "grup": "Dışa aktar",
@@ -210,7 +210,7 @@
     "EXPORTIFC"
    ],
    "kisayol": "Ctrl+E",
-   "ikon": "disa",
+   "ikon": "disa_aktar",
    "serit": {
     "sekme": "Raporlar",
     "grup": "Dışa aktar",
@@ -281,7 +281,7 @@
     "UNDO"
    ],
    "kisayol": "Ctrl+Z",
-   "ikon": "geri",
+   "ikon": "geri_al",
    "serit": {
     "sekme": "Düzenle",
     "grup": "Geçmiş",
@@ -307,7 +307,7 @@
     "REDO"
    ],
    "kisayol": "Ctrl+Y",
-   "ikon": "ileri",
+   "ikon": "yinele",
    "serit": {
     "sekme": "Düzenle",
     "grup": "Geçmiş",
@@ -328,7 +328,7 @@
   {
    "id": "model.hizli_aks",
    "ad": "HIZLIAKS",
-   "etiket": "Hızlı aks…",
+   "etiket": "Aks",
    "takma_adlar": [
     "HA",
     "QUICKAXES",
@@ -362,7 +362,7 @@
     "CHECK"
    ],
    "kisayol": "",
-   "ikon": "onay",
+   "ikon": "dogrula",
    "serit": {
     "sekme": "Analiz",
     "grup": "Denetim",
@@ -389,13 +389,8 @@
     "SELECTALL"
    ],
    "kisayol": "Ctrl+A",
-   "ikon": "tumu",
-   "serit": {
-    "sekme": "Model",
-    "grup": "Seç",
-    "boyut": "kucuk",
-    "sira": 140
-   },
+   "ikon": "sec_pencere",
+   "serit": null,
    "menu": "Seçim",
    "menu_sira": 10,
    "hizli_erisim": false,
@@ -417,7 +412,7 @@
     "CLEARSELECTION"
    ],
    "kisayol": "",
-   "ikon": "kapat_k",
+   "ikon": "kapat",
    "serit": null,
    "menu": "Seçim",
    "menu_sira": 20,
@@ -496,7 +491,7 @@
     "ZOOMSELECTED"
    ],
    "kisayol": "",
-   "ikon": "yakinlastir",
+   "ikon": "sigdir",
    "serit": {
     "sekme": "Görünüm",
     "grup": "Gezinme",
@@ -523,7 +518,7 @@
     "VIEW3D"
    ],
    "kisayol": "Alt+1",
-   "ikon": "ucb",
+   "ikon": "bina3",
    "serit": {
     "sekme": "Görünüm",
     "grup": "Görünümler",
@@ -576,7 +571,7 @@
     "FRONT"
    ],
    "kisayol": "Alt+3",
-   "ikon": "cephe_on",
+   "ikon": "yukselti",
    "serit": {
     "sekme": "Görünüm",
     "grup": "Görünümler",
@@ -602,7 +597,7 @@
     "SIDE"
    ],
    "kisayol": "Alt+4",
-   "ikon": "cephe_yan",
+   "ikon": "yukselti",
    "serit": {
     "sekme": "Görünüm",
     "grup": "Görünümler",
@@ -628,7 +623,7 @@
     "LEVELUP"
    ],
    "kisayol": "PageUp",
-   "ikon": "yukari",
+   "ikon": "sevron_ust",
    "menu": "Görünüm",
    "menu_sira": 70,
    "hizli_erisim": false,
@@ -654,7 +649,7 @@
     "LEVELDOWN"
    ],
    "kisayol": "PageDown",
-   "ikon": "asagi",
+   "ikon": "sevron_asagi",
    "menu": "Görünüm",
    "menu_sira": 80,
    "hizli_erisim": false,
@@ -676,7 +671,7 @@
     "SOLIDVIEW"
    ],
    "kisayol": "Ctrl+Shift+K",
-   "ikon": "ekstr",
+   "ikon": "kati",
    "serit": {
     "sekme": "Görünüm",
     "grup": "Gösterim",
@@ -729,7 +724,7 @@
     "START"
    ],
    "kisayol": "",
-   "ikon": "baslangic",
+   "ikon": "tam",
    "menu": "Görünüm/Paneller",
    "menu_sira": 110,
    "hizli_erisim": false,
@@ -755,7 +750,7 @@
     "RESETUI"
    ],
    "kisayol": "",
-   "ikon": "geri",
+   "ikon": "geri_al",
    "menu": "Görünüm",
    "menu_sira": 120,
    "hizli_erisim": false,
@@ -782,8 +777,8 @@
     "OPTIONS",
     "SETTINGS"
    ],
-   "kisayol": "",
-   "ikon": "disli",
+   "kisayol": "Ctrl+,",
+   "ikon": "ayar",
    "menu": "Görünüm",
    "menu_sira": 130,
    "hizli_erisim": false,
@@ -820,7 +815,7 @@
    },
    "menu": "Analiz",
    "menu_sira": 10,
-   "hizli_erisim": true,
+   "hizli_erisim": false,
    "ipucu": "Modeli hesap motoruyla çöz (eşzamansız; çözüm sürerken arayüz kullanılabilir)",
    "yardim": "",
    "kosul": "model_dolu",
@@ -837,7 +832,7 @@
     "CANCEL"
    ],
    "kisayol": "",
-   "ikon": "dur",
+   "ikon": "durdur",
    "serit": {
     "sekme": "Analiz",
     "grup": "Çözüm",
@@ -978,7 +973,7 @@
   {
    "id": "model.aks_sistemi",
    "ad": "AKSSİSTEMİ",
-   "etiket": "Aks sistemi",
+   "etiket": "Aks sistemi…",
    "takma_adlar": [
     "GRIDSYSTEM"
    ],
@@ -987,8 +982,8 @@
    "serit": {
     "sekme": "Model",
     "grup": "Aks & Kat",
-    "boyut": "buyuk",
-    "sira": 20
+    "boyut": "kucuk",
+    "sira": 30
    },
    "menu": "Model",
    "menu_sira": 30,
@@ -1005,7 +1000,7 @@
   {
    "id": "model.katlar",
    "ad": "KATLAR",
-   "etiket": "Katlar",
+   "etiket": "Kat",
    "takma_adlar": [
     "STORIES",
     "LEVELS"
@@ -1016,7 +1011,7 @@
     "sekme": "Model",
     "grup": "Aks & Kat",
     "boyut": "buyuk",
-    "sira": 30
+    "sira": 20
    },
    "menu": "Model",
    "menu_sira": 40,
@@ -1087,22 +1082,22 @@
   {
    "id": "model.ikincil_kiris",
    "ad": "İKİNCİLKİRİŞ",
-   "etiket": "İkincil kiriş",
+   "etiket": "Tali kiriş",
    "takma_adlar": [
     "SECONDARYBEAM"
    ],
    "kisayol": "",
-   "ikon": "ikincil",
+   "ikon": "kiris_tali",
    "serit": {
     "sekme": "Model",
     "grup": "Kiriş",
     "boyut": "kucuk",
-    "sira": 51
+    "sira": 52
    },
    "menu": "",
    "menu_sira": 0,
    "hizli_erisim": false,
-   "ipucu": "İkincil kiriş (Faz 4)",
+   "ipucu": "Tali (ikincil) kiriş (Faz 4)",
    "yardim": "",
    "kosul": "",
    "secim": "yok",
@@ -1124,7 +1119,7 @@
     "sekme": "Model",
     "grup": "Kiriş",
     "boyut": "kucuk",
-    "sira": 52
+    "sira": 53
    },
    "menu": "",
    "menu_sira": 0,
@@ -1147,12 +1142,7 @@
    ],
    "kisayol": "",
    "ikon": "konsol",
-   "serit": {
-    "sekme": "Model",
-    "grup": "Kiriş",
-    "boyut": "kucuk",
-    "sira": 53
-   },
+   "serit": null,
    "menu": "",
    "menu_sira": 0,
    "hizli_erisim": false,
@@ -1285,7 +1275,7 @@
    "ikon": "hizli_kolon",
    "serit": {
     "sekme": "Model",
-    "grup": "Hızlı kolon/kiriş",
+    "grup": "Hızlı yerleştir",
     "boyut": "buyuk",
     "sira": 100
    },
@@ -1312,7 +1302,7 @@
    "ikon": "hizli_kiris",
    "serit": {
     "sekme": "Model",
-    "grup": "Hızlı kolon/kiriş",
+    "grup": "Hızlı yerleştir",
     "boyut": "buyuk",
     "sira": 110
    },
@@ -1341,7 +1331,7 @@
     "sekme": "Model",
     "grup": "Seç",
     "boyut": "buyuk",
-    "sira": 115
+    "sira": 120
    },
    "menu": "Seçim",
    "menu_sira": 5,
@@ -1357,23 +1347,23 @@
   {
    "id": "secim.sec_suz",
    "ad": "SEÇSÜZ",
-   "etiket": "Seç & Süz…",
+   "etiket": "Seç & Süz",
    "takma_adlar": [
     "FILTERSELECT",
     "FILTER"
    ],
    "kisayol": "",
-   "ikon": "suzgec",
+   "ikon": "sec_suz",
    "serit": {
     "sekme": "Model",
     "grup": "Seç",
-    "boyut": "kucuk",
-    "sira": 120
+    "boyut": "buyuk",
+    "sira": 121
    },
    "menu": "",
    "menu_sira": 0,
    "hizli_erisim": false,
-   "ipucu": "Özelliğe göre seç ve süz (Faz 3)",
+   "ipucu": "Ölçüt listesiyle seç: kesit, kat, tür, malzeme, grup… (Faz 3)",
    "yardim": "",
    "kosul": "",
    "secim": "yok",
@@ -1471,7 +1461,7 @@
     "MIRROR"
    ],
    "kisayol": "",
-   "ikon": "ayna",
+   "ikon": "aynala",
    "serit": {
     "sekme": "Düzenle",
     "grup": "Değiştir",
@@ -1499,7 +1489,7 @@
     "REPLICATE"
    ],
    "kisayol": "",
-   "ikon": "cogalt",
+   "ikon": "kopyala_kat",
    "serit": {
     "sekme": "Düzenle",
     "grup": "Değiştir",
@@ -1690,7 +1680,7 @@
     "STEELDESIGN"
    ],
    "kisayol": "",
-   "ikon": "celik",
+   "ikon": "tasarim",
    "serit": {
     "sekme": "Tasarım",
     "grup": "Tasarım",
@@ -1934,7 +1924,7 @@
     "EXTRUDE"
    ],
    "kisayol": "Ctrl+4",
-   "ikon": "ekstr",
+   "ikon": "kati",
    "serit": null,
    "menu": "Görünüm",
    "menu_sira": 88,
@@ -2008,6 +1998,603 @@
    "secim": "yok",
    "tekrarlanir": false,
    "onay_kutusu": true,
+   "sahip": "C"
+  },
+  {
+   "id": "model.kat_verisi",
+   "ad": "KATVERİSİ",
+   "etiket": "Kat verisi…",
+   "takma_adlar": [
+    "STORYDATA"
+   ],
+   "kisayol": "",
+   "ikon": "kat_verisi",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Aks & Kat",
+    "boyut": "kucuk",
+    "sira": 31
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Kat verisi tablosu: yükseklik, kot, ana kat, benzer (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.calisma_duzlemi",
+   "ad": "ÇALIŞMADÜZLEMİ",
+   "etiket": "Çalışma düzlemi",
+   "takma_adlar": [
+    "WORKPLANE"
+   ],
+   "kisayol": "",
+   "ikon": "duzlem",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Aks & Kat",
+    "boyut": "kucuk",
+    "sira": 32
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Çalışma düzlemi (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.kolon_celik",
+   "ad": "ÇELİKKOLON",
+   "etiket": "Çelik",
+   "takma_adlar": [
+    "STEELCOLUMN"
+   ],
+   "kisayol": "",
+   "ikon": "kolon",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Kolon",
+    "boyut": "kucuk",
+    "sira": 41
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Kolon: Çelik (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.kolon_betonarme",
+   "ad": "BETONARMEKOLON",
+   "etiket": "Betonarme",
+   "takma_adlar": [
+    "CONCRETECOLUMN"
+   ],
+   "kisayol": "",
+   "ikon": "kolon",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Kolon",
+    "boyut": "kucuk",
+    "sira": 42
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Kolon: Betonarme (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.kolon_kompozit",
+   "ad": "KOMPOZİTKOLON",
+   "etiket": "Kompozit",
+   "takma_adlar": [
+    "COMPOSITECOLUMN"
+   ],
+   "kisayol": "",
+   "ikon": "kolon",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Kolon",
+    "boyut": "kucuk",
+    "sira": 43
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Kolon: Kompozit (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.capraz_x",
+   "ad": "XÇAPRAZ",
+   "etiket": "X çapraz",
+   "takma_adlar": [
+    "XBRACE"
+   ],
+   "kisayol": "",
+   "ikon": "capraz",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Çapraz",
+    "boyut": "kucuk",
+    "sira": 61
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Çapraz: X çapraz (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.capraz_v",
+   "ad": "VÇAPRAZ",
+   "etiket": "V / Λ çapraz",
+   "takma_adlar": [
+    "VBRACE",
+    "CHEVRON"
+   ],
+   "kisayol": "",
+   "ikon": "capraz_v",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Çapraz",
+    "boyut": "kucuk",
+    "sira": 62
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Çapraz: V / Λ çapraz (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.capraz_tek",
+   "ad": "TEKDİYAGONAL",
+   "etiket": "Tek diyagonal",
+   "takma_adlar": [
+    "SINGLEBRACE"
+   ],
+   "kisayol": "",
+   "ikon": "capraz_tek",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Çapraz",
+    "boyut": "kucuk",
+    "sira": 63
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Çapraz: Tek diyagonal (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.doseme_betonarme",
+   "ad": "BETONARMEDÖŞEME",
+   "etiket": "Betonarme",
+   "takma_adlar": [
+    "CONCRETESLAB"
+   ],
+   "kisayol": "",
+   "ikon": "doseme",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Döşeme",
+    "boyut": "kucuk",
+    "sira": 71
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Döşeme: Betonarme (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.doseme_kompozit",
+   "ad": "KOMPOZİTDÖŞEME",
+   "etiket": "Kompozit",
+   "takma_adlar": [
+    "COMPOSITESLAB"
+   ],
+   "kisayol": "",
+   "ikon": "doseme",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Döşeme",
+    "boyut": "kucuk",
+    "sira": 72
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Döşeme: Kompozit (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.doseme_bosluk",
+   "ad": "DÖŞEMEBOŞLUĞU",
+   "etiket": "Boşluk",
+   "takma_adlar": [
+    "SLABOPENING"
+   ],
+   "kisayol": "",
+   "ikon": "doseme_bosluk",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Döşeme",
+    "boyut": "kucuk",
+    "sira": 73
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Döşeme: Boşluk (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.duvar_perde",
+   "ad": "PERDE",
+   "etiket": "Perde",
+   "takma_adlar": [
+    "SHEARWALL"
+   ],
+   "kisayol": "",
+   "ikon": "duvar",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Duvar",
+    "boyut": "kucuk",
+    "sira": 81
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Duvar: Perde (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.duvar_dolgu",
+   "ad": "DOLGUDUVAR",
+   "etiket": "Dolgu",
+   "takma_adlar": [
+    "INFILLWALL"
+   ],
+   "kisayol": "",
+   "ikon": "duvar",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Duvar",
+    "boyut": "kucuk",
+    "sira": 82
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Duvar: Dolgu (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.duvar_aciklik",
+   "ad": "DUVARAÇIKLIĞI",
+   "etiket": "Açıklık",
+   "takma_adlar": [
+    "WALLOPENING"
+   ],
+   "kisayol": "",
+   "ikon": "doseme_bosluk",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Duvar",
+    "boyut": "kucuk",
+    "sira": 83
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Duvar: Açıklık (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.temel_tekil",
+   "ad": "TEKİLTEMEL",
+   "etiket": "Tekil",
+   "takma_adlar": [
+    "ISOLATEDFOOTING"
+   ],
+   "kisayol": "",
+   "ikon": "temel",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Temel",
+    "boyut": "kucuk",
+    "sira": 91
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Temel: Tekil (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.temel_surekli",
+   "ad": "SÜREKLİTEMEL",
+   "etiket": "Sürekli",
+   "takma_adlar": [
+    "STRIPFOOTING"
+   ],
+   "kisayol": "",
+   "ikon": "temel_surekli",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Temel",
+    "boyut": "kucuk",
+    "sira": 92
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Temel: Sürekli (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.temel_radye",
+   "ad": "RADYE",
+   "etiket": "Radye",
+   "takma_adlar": [
+    "MATFOUNDATION",
+    "RAFT"
+   ],
+   "kisayol": "",
+   "ikon": "temel_radye",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Temel",
+    "boyut": "kucuk",
+    "sira": 93
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Temel: Radye (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.kiris_ana",
+   "ad": "ANAKİRİŞ",
+   "etiket": "Ana kiriş",
+   "takma_adlar": [
+    "MAINBEAM",
+    "GIRDER"
+   ],
+   "kisayol": "",
+   "ikon": "kiris_ana",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Kiriş",
+    "boyut": "kucuk",
+    "sira": 51
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Ana kiriş (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.hizli_capraz",
+   "ad": "HIZLIÇAPRAZ",
+   "etiket": "Hızlı çapraz",
+   "takma_adlar": [
+    "QUICKBRACE"
+   ],
+   "kisayol": "",
+   "ikon": "hizli_capraz",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Hızlı yerleştir",
+    "boyut": "kucuk",
+    "sira": 111
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Göze tek tıkla çapraz (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.tali_kirisler",
+   "ad": "TALİKİRİŞLER",
+   "etiket": "Tali kirişler…",
+   "takma_adlar": [
+    "INFILLBEAMS"
+   ],
+   "kisayol": "",
+   "ikon": "kiris_tali",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Hızlı yerleştir",
+    "boyut": "kucuk",
+    "sira": 112
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Göze eşit aralıklı tali kirişler (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "model.kat_kopyala",
+   "ad": "KATKOPYALA",
+   "etiket": "Kat kopyala…",
+   "takma_adlar": [
+    "COPYSTORY",
+    "REPLICATESTORY"
+   ],
+   "kisayol": "",
+   "ikon": "kopyala_kat",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Hızlı yerleştir",
+    "boyut": "kucuk",
+    "sira": 113
+   },
+   "menu": "",
+   "menu_sira": 0,
+   "hizli_erisim": false,
+   "ipucu": "Katı başka katlara kopyala (Faz 4)",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
+   "sahip": "C",
+   "faz": 4
+  },
+  {
+   "id": "secim.kata_gore",
+   "ad": "KATAGÖRESEÇ",
+   "etiket": "Kata göre",
+   "takma_adlar": [
+    "SELECTBYSTORY"
+   ],
+   "kisayol": "",
+   "ikon": "katman",
+   "serit": {
+    "sekme": "Model",
+    "grup": "Seç",
+    "boyut": "kucuk",
+    "sira": 126
+   },
+   "menu": "Seçim",
+   "menu_sira": 45,
+   "hizli_erisim": false,
+   "ipucu": "Etkin kattaki bütün elemanları seç",
+   "yardim": "",
+   "kosul": "",
+   "secim": "yok",
+   "tekrarlanir": false,
+   "onay_kutusu": false,
    "sahip": "C"
   }
  ]

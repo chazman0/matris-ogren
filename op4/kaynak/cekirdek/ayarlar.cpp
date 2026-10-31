@@ -51,6 +51,13 @@ bool AyarlariOku(std::string_view metin, Ayarlar& a, std::string& hata) {
         Al(g, "msaa", a.grafik.msaa);
         Al(g, "dikey_esitleme", a.grafik.dikeyEsitleme);
         Al(g, "warp_zorla", a.grafik.warpZorla);
+        Al(g, "lod_tolerans_px", a.grafik.lodToleransPx);  // C eklentisi (31.10.2026)
+        Al(g, "arka_plan", a.grafik.arkaPlan);
+        Al(g, "cubuk_kalinlik", a.grafik.cubukKalinlik);
+        Al(g, "secili_kalinlik", a.grafik.seciliKalinlik);
+        Al(g, "vurguyu_izle", a.grafik.vurguyuIzle);
+        Al(g, "secim_rengi", a.grafik.secimRengi);
+        Al(g, "uzerinde_rengi", a.grafik.uzerindeRengi);
     }
     if (j.contains("arayuz")) {
         const json& g = j["arayuz"];
@@ -60,6 +67,17 @@ bool AyarlariOku(std::string_view metin, Ayarlar& a, std::string& hata) {
         Al(g, "donme_duyarliligi", a.arayuz.donmeDuyarliligi);
         Al(g, "klasik_menu", a.arayuz.klasikMenu);
         Al(g, "tema", a.arayuz.tema);
+        Al(g, "acilis", a.arayuz.acilis);  // C eklentisi (31.10.2026)
+        Al(g, "acilis_ekrani", a.arayuz.acilisEkrani);
+        Al(g, "vurgu", a.arayuz.vurgu);
+        Al(g, "yogunluk", a.arayuz.yogunluk);
+        Al(g, "etiket_boyu", a.arayuz.etiketBoyu);
+        Al(g, "dil", a.arayuz.dil);
+        Al(g, "ondalik", a.arayuz.ondalik);
+        Al(g, "binlik_ayirici", a.arayuz.binlikAyirici);
+        Al(g, "birim_sistemi", a.arayuz.birimSistemi);
+        Al(g, "varsayilan_kuvvet", a.arayuz.varsayilanKuvvet);
+        Al(g, "varsayilan_uzunluk", a.arayuz.varsayilanUzunluk);
     }
     if (j.contains("dosya")) {
         const json& g = j["dosya"];
@@ -94,6 +112,10 @@ bool AyarlariOku(std::string_view metin, Ayarlar& a, std::string& hata) {
     a.cekirdek.geriAlAdim = std::clamp(a.cekirdek.geriAlAdim, 1, 1000);
     a.cekirdek.geriAlMb = std::clamp(a.cekirdek.geriAlMb, 16, 8192);
     a.arayuz.donmeDuyarliligi = std::clamp(a.arayuz.donmeDuyarliligi, 0.1, 10.0);
+    a.grafik.lodToleransPx = std::clamp(a.grafik.lodToleransPx, 0.25, 4.0);  // C eklentisi
+    a.grafik.cubukKalinlik = std::clamp(a.grafik.cubukKalinlik, 0.5, 3.0);
+    a.grafik.seciliKalinlik = std::clamp(a.grafik.seciliKalinlik, 1.0, 4.0);
+    a.arayuz.etiketBoyu = std::clamp(a.arayuz.etiketBoyu, 9.0, 16.0);
     // Bilinmeyen üst düzey anahtarlar korunur.
     json b = json::object();
     for (auto i = j.begin(); i != j.end(); ++i)
@@ -112,10 +134,19 @@ std::string AyarlariYaz(const Ayarlar& a) {
     }
     j["bicim"] = a.bicim;
     j["grafik"] = {{"bagdastirici", a.grafik.bagdastirici}, {"msaa", a.grafik.msaa},
-                   {"dikey_esitleme", a.grafik.dikeyEsitleme}, {"warp_zorla", a.grafik.warpZorla}};
+                   {"dikey_esitleme", a.grafik.dikeyEsitleme}, {"warp_zorla", a.grafik.warpZorla},
+                   {"lod_tolerans_px", a.grafik.lodToleransPx}, {"arka_plan", a.grafik.arkaPlan},
+                   {"cubuk_kalinlik", a.grafik.cubukKalinlik}, {"secili_kalinlik", a.grafik.seciliKalinlik},
+                   {"vurguyu_izle", a.grafik.vurguyuIzle}, {"secim_rengi", a.grafik.secimRengi},
+                   {"uzerinde_rengi", a.grafik.uzerindeRengi}};
     j["arayuz"] = {{"baslangic_paneli", a.arayuz.baslangicPaneli}, {"fare_eslemesi", a.arayuz.fareEslemesi},
                    {"yorunge", a.arayuz.yorunge}, {"donme_duyarliligi", a.arayuz.donmeDuyarliligi},
-                   {"klasik_menu", a.arayuz.klasikMenu}, {"tema", a.arayuz.tema}};
+                   {"klasik_menu", a.arayuz.klasikMenu}, {"tema", a.arayuz.tema},
+                   {"acilis", a.arayuz.acilis}, {"acilis_ekrani", a.arayuz.acilisEkrani},
+                   {"vurgu", a.arayuz.vurgu}, {"yogunluk", a.arayuz.yogunluk},
+                   {"etiket_boyu", a.arayuz.etiketBoyu}, {"dil", a.arayuz.dil}, {"ondalik", a.arayuz.ondalik},
+                   {"binlik_ayirici", a.arayuz.binlikAyirici}, {"birim_sistemi", a.arayuz.birimSistemi},
+                   {"varsayilan_kuvvet", a.arayuz.varsayilanKuvvet}, {"varsayilan_uzunluk", a.arayuz.varsayilanUzunluk}};
     j["dosya"] = {{"otomatik_kayit", a.dosya.otomatikKayit}, {"otomatik_kayit_dk", a.dosya.otomatikKayitDk},
                   {"son_dosya_sayisi", a.dosya.sonDosyaSayisi}, {"yedek_bak", a.dosya.yedekBak},
                   {"son_dosyalar", a.dosya.sonDosyalar}, {"son_klasor", a.dosya.sonKlasor}};

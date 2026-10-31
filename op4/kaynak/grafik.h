@@ -9,10 +9,12 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+#include <climits>
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "cekirdek/kamera.h"
 #include "geometri.h"
 #include "kamera.h"
 
@@ -46,6 +48,15 @@ struct GorusAlani {
     float x = 0, y = 0, g = 0, y2 = 0;  // y2 = yükseklik
 };
 
+// Sahne çizim ayarları (F1 arayüzü; renkler IM_COL32 düzeninde sRGB).
+struct CizimAyari {
+    bool kati = false;       // ekstrüzyon (katı) görünüm; değilse sahne dokusu yalnız arka plan + ızgara (çubuklar ImGui'de)
+    bool kenarlar = true;
+    bool izgara = true;
+    uint32_t ust = 0xFFFDFCFC, alt = 0xFFEBE8E6;  // arka plan gradyanı
+    uint32_t celik = 0xFFBDB3AA;                  // parçasız ağın (Faz 0 örneği) rengi
+};
+
 class Grafik {
 public:
     static constexpr UINT KARE_SAYISI = 2;  // uçuştaki kare (frames in flight) ve arka tampon sayısı
@@ -56,6 +67,12 @@ public:
 
     static HataKatmani HataKatmaniYokla();             // katmanı açmadan varlığını denetler
     void HataKatmaniIste(bool e) { katmanIste_ = e; }  // Baslat'tan önce; OP4_HATA_AYIKLAMA derlemesinde hep açık
+    // Ayarlar › Görüntü (Baslat'tan önce): tercih edilen bağdaştırıcı açıklaması (boş = yüksek başarım) ve MSAA (0 = otomatik).
+    void Tercih(const std::string& bagdastirici, int msaa) {
+        tercihBagdastirici_ = bagdastirici;
+        tercihMsaa_ = msaa;
+    }
+    static std::vector<std::string> Bagdastiricilar();  // donanım bağdaştırıcılarının açıklamaları
     HataKatmani HataKatmaniIletileri() const;          // etkinse ileti kuyruğunun özeti
     bool Baslat(bool warpZorla, std::string& hata);
     bool SahneYukle(const Ag& ag, std::string& hata);
@@ -65,11 +82,18 @@ public:
 
     void ImGuiBilgisi(ImGui_ImplDX12_InitInfo& bilgi);  // ImGui_ImplDX12_Init için doldurur
 
-    // Pencere karesi: çizer, sunar (vsync). false: pencere örtülü / küçültülmüş (çizim atlandı).
-    bool PencereKaresi(const Kamera& k, const SahneAyari& a, GorusAlani gorus, ImDrawData* arayuz);
-    // Ekran dışı kare: çizer, GPU'yu bekler; rgba != nullptr ise RGBA8 piksel (üstten alta, sıkı) döndürür.
-    bool EkranDisiKaresi(const Kamera& k, const SahneAyari& a, GorusAlani gorus, ImDrawData* arayuz,
+    // Pencere karesi: sahneyi sahne dokusuna (görüş alanı boyutunda, dokunun sol üstü) çizer, arka tamponu zemin rengiyle
+    // temizler, arayüzü (sahne dokusunu ImGui görüntüsü olarak içeren) çizer, sunar. false: örtülü / küçültülmüş.
+    bool PencereKaresi(const GorunumKamerasi& k, const CizimAyari& a, GorusAlani gorus, ImDrawData* arayuz, uint32_t zemin,
+                       bool dikeyEsitleme = true);
+    // Ekran dışı kare: aynı yol; GPU'yu bekler; rgba != nullptr ise RGBA8 piksel (üstten alta, sıkı) döndürür. arayuz null
+    // ise sahne dokusu doğrudan kopyalanır (--arayuzsuz).
+    bool EkranDisiKaresi(const GorunumKamerasi& k, const CizimAyari& a, GorusAlani gorus, ImDrawData* arayuz, uint32_t zemin,
                          std::vector<uint8_t>* rgba);
+    // Sahne dokusu (ImGui görüntüsü): SRV tanımlayıcısının GPU adresi; uv ölçeği görüş alanı / doku boyutu.
+    uint64_t SahneDokusu() const { return sahneSrvGpu_; }
+    float UvG(float g) const { return genislik_ ? g / static_cast<float>(genislik_) : 1.0f; }
+    float UvY(float y) const { return yukseklik_ ? y / static_cast<float>(yukseklik_) : 1.0f; }
     void GpuBekle();
 
     const std::string& BagdastiriciAdi() const { return bagdastiriciAdi_; }
@@ -97,8 +121,9 @@ private:
 
     bool BoruHatlariKur(std::string& hata);
     bool HedefleriKur(UINT g, UINT y, std::string& hata);  // MSAA renk + derinlik
-    void SahneKaydet(KareBaglami& k, const Kamera& kam, const SahneAyari& a, GorusAlani gorus,
-                     ID3D12Resource* hedef, D3D12_RESOURCE_STATES hedefDurumu);
+    void SahneKaydet(KareBaglami& k, const GorunumKamerasi& kam, const CizimAyari& a, GorusAlani gorus);
+    void ArayuzKaydet(ID3D12Resource* hedef, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_RESOURCE_STATES once, uint32_t zemin,
+                      ImDrawData* arayuz, D3D12_RESOURCE_STATES sonra);
     void Bariyer(ID3D12Resource* r, D3D12_RESOURCE_STATES once, D3D12_RESOURCE_STATES sonra);
     bool TamponYukle(const void* veri, size_t boyut, ComPtr<ID3D12Resource>& hedef, std::string& hata);
     void KareBekle(KareBaglami& k);
@@ -137,6 +162,13 @@ private:
     // sahne tamponları
     ComPtr<ID3D12Resource> koseTamponu_, indisTamponu_, kenarTamponu_, eksenTamponu_;
     UINT indisSayisi_ = 0, kenarSayisi_ = 0, eksenSayisi_ = 0;
+    std::vector<AgParcasi> parcalar_;
+    // sahne dokusu (MSAA çözümü; ImGui görüntüsü)
+    ComPtr<ID3D12Resource> sahneDokusu_;
+    UINT sahneSrv_ = UINT_MAX;
+    uint64_t sahneSrvGpu_ = 0;
+    std::string tercihBagdastirici_;
+    int tercihMsaa_ = 0;
 
     // hata ayıklama katmanı
     bool katmanIste_ = false, katmanEtkin_ = false;

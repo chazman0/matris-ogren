@@ -14,7 +14,15 @@ struct Kose {  // köşe (vertex): konum + normal
     V3 n;
 };
 
+// Ağın renk parçası: [indisBas, indisBas + indisSayi) üçgenleri ve [kenarBas, kenarBas + kenarSayi) kenar köşeleri aynı
+// renkle çizilir (renkler IM_COL32 düzeninde, sRGB). Parça listesi boşsa ağ tek renkle çizilir (Faz 0 yolu).
+struct AgParcasi {
+    uint32_t indisBas = 0, indisSayi = 0, kenarBas = 0, kenarSayi = 0;
+    uint32_t renk = 0, kenarRenk = 0;
+};
+
 struct Ag {  // üçgen ağı + çizgi listeleri
+    std::vector<AgParcasi> parcalar;
     std::vector<Kose> koseler;
     std::vector<uint32_t> indisler;
     std::vector<V3> kenarlar;   // çizgi listesi (her çift bir doğru): kesit görünümünün keskin kenarları
