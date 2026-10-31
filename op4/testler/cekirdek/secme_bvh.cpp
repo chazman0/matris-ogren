@@ -84,7 +84,7 @@ TEST_CASE("BVH: imlecin altındaki çubuk, 4 px tolerans (DPI ölçekli), düğ�
     k.Sigdir(s->sinir, 1000, 600);
     GorusIzdusumu g = k.Izdusum(1000, 600);
     // Ön görünümde (x, z) kiriş: kat 1, x = 6..12 (i = 1), y = 0 — ortasının ekran konumu.
-    double x0, y0, x1, y1;
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     REQUIRE(g.Izdusur({6, 0, 4}, x0, y0));
     REQUIRE(g.Izdusur({12, 0, 4}, x1, y1));
     const double mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
@@ -129,7 +129,7 @@ TEST_CASE("BVH: pencere seçimi — soldan sağa tam içinde, sağdan sola değe
     StandartYonUygula(k, StandartYon::On);
     k.Sigdir(s->sinir, 1000, 600);
     const GorusIzdusumu g = k.Izdusum(1000, 600);
-    double ax, ay, bx, by;
+    double ax = 0, ay = 0, bx = 0, by = 0;
     REQUIRE(g.Izdusur({-1, 0, 4.5}, ax, ay));  // sol üst: x −1, z 4,5
     REQUIRE(g.Izdusur({7, 0, -0.5}, bx, by));   // sağ alt: x 7, z −0,5
     SecmeAyari a;
@@ -153,7 +153,7 @@ TEST_CASE("BVH: panel çokgeni, ışın vuruşu ve kameranın arkasına taşan �
     d.Kur(s);
     GorunumKamerasi k = Plan(*s, 800, 600);
     const GorusIzdusumu g = k.Izdusum(800, 600);
-    double px, py;
+    double px = 0, py = 0;
     REQUIRE(g.Izdusur({3, 3, 4}, px, py));  // ilk döşeme panelinin ortası
     SecmeAyari a;
     const auto v = d.EnYakin(g, px, py, a);
@@ -166,7 +166,7 @@ TEST_CASE("BVH: panel çokgeni, ışın vuruşu ve kameranın arkasına taşan �
     CHECK(iv->kimlik == PanelKimligi(1));
     // Paneller kapalıyken kolonun ucundaki düğüme (ya da kolona) ulaşır.
     a.paneller = false;
-    double cx, cy;
+    double cx = 0, cy = 0;
     REQUIRE(g.Izdusur({6, 6, 4}, cx, cy));
     const auto iv2 = d.IsinVurusu(PikselIsini(g, cx, cy), a);
     REQUIRE(iv2);
@@ -178,7 +178,7 @@ TEST_CASE("BVH: panel çokgeni, ışın vuruşu ve kameranın arkasına taşan �
     p.d.sapma = 0;
     p.d.egim = 10 * DERECE;
     const GorusIzdusumu gp = p.Izdusum(800, 600);
-    double qx, qy;
+    double qx = 0, qy = 0;
     REQUIRE(gp.Izdusur({3, 0, 4}, qx, qy));
     SecmeAyari b;
     b.dugumler = b.paneller = b.mesnetler = false;

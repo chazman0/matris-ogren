@@ -24,7 +24,7 @@ GorunumKamerasi Kamera3B() {
 }
 
 double Kayma(const GorunumKamerasi& k, V3d P, double mx, double my) {
-    double x, y;
+    double x = 0, y = 0;
     if (!k.Izdusum(G, Y).Izdusur(P, x, y)) return 1e9;
     return std::hypot(x - mx, y - my);
 }
@@ -41,7 +41,7 @@ bool AyniKamera(const KameraDurumu& a, const KameraDurumu& b, double tol) {
 TEST_CASE("kamera: izdüşüm ve analitik ışın tutarlı; eksenler dik") {
     GorunumKamerasi k = Kamera3B();
     const GorusIzdusumu g = k.Izdusum(G, Y);
-    double x, y;
+    double x = 0, y = 0;
     REQUIRE(g.Izdusur(k.d.hedef, x, y));
     CHECK(x == doctest::Approx(G / 2).epsilon(1e-9));
     CHECK(y == doctest::Approx(Y / 2).epsilon(1e-9));
@@ -116,7 +116,7 @@ TEST_CASE("K4 döndürme: merkez P ekranda sabit (≤ 0,5 px); eğim sınırı; 
     GorunumKamerasi k = Kamera3B();
     const double mx0 = 700, my0 = 300;
     const V3d P = CalismaDuzlemiNoktasi(k, mx0, my0, G, Y);
-    double px0, py0;
+    double px0 = 0, py0 = 0;
     REQUIRE(k.Izdusum(G, Y).Izdusur(P, px0, py0));
     KameraSuruklemesi s;
     s.Basla(k, SuruklemeTuru::Dondur, mx0, my0, P, G, Y);
@@ -164,7 +164,7 @@ TEST_CASE("standart görünümler ve sığdır") {
         double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
         for (int i = 0; i < 8; ++i) {
             const V3d p{(i & 1) ? 18.0 : 0.0, (i & 2) ? 24.0 : 0.0, (i & 4) ? 13.5 : 0.0};
-            double x, yy;
+            double x = 0, yy = 0;
             REQUIRE(g.Izdusur(p, x, yy));
             x0 = std::min(x0, x);
             x1 = std::max(x1, x);
@@ -285,7 +285,7 @@ TEST_CASE("gezinme: DPI ölçekli eşik, sürüklemede Shift değişimi kesintis
     gz.Bas(k, FareTusu::Sol, 400, 300, {});
     gz.Hareket(k, 420, 300, {});
     CHECK(gz.Tur() == SuruklemeTuru::Kaydir);
-    double x, y;
+    double x = 0, y = 0;
     gz.Hareket(k, 440, 300, {false, true, false});  // Shift basıldı: o anki konumdan döndürmeye geçer
     CHECK(gz.Tur() == SuruklemeTuru::Dondur);
     REQUIRE(gz.Cekirdek());

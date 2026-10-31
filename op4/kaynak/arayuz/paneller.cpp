@@ -649,7 +649,7 @@ void AnaPencere::BaslangicPaneliCiz(Ciz& c, float x0, float y0, float w, float h
     // Şablondan yeni (9 şablon)
     c.Yazi(x0 + 12, Taban(y, 20, 11), Tr("Şablondan yeni"), 11, tema::Agirlik::Kalin, R.metin2);
     y += 22;
-    const float rh = L_.dar ? 30 : 34;
+    const float rh = L_.dar ? 30.0f : 34.0f;
     for (const SablonSatiri& s : Sablonlar(h_.bilgi.veriDizini)) {
         if (y + rh > y0 + h - 150) break;
         ImGui::PushID(s.ad.c_str());
