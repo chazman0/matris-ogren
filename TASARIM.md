@@ -451,3 +451,160 @@ Uygulayan (Faz 0): `op4/kaynak/` (C++ iskeleti; motor şimdilik süreç içi `mo
 `op4/araclar/` (`python_hazirla.py`, `kimlik_uret.py`, `gunluk_png_yaz.py`, `gunluk_png_coz.py`, `ci_bekle.sh`),
 `.github/workflows/op4.yml`. Kilitleyen: `testler/test_op4_araclar.py` (günlük protokolü, iş akışı sözleşmesi, sürüm tek kaynağı,
 sihirbaz görselleri), `testler/test_program_adi_yok.py` (op4'ün C++, HLSL, CMake ve kurulum dosyaları dahil), Windows CI.
+
+---
+
+## §21 op4 proje dosyası (`.op4`) biçimi (Faz 1)
+
+Bağlayıcı belirtim `op4/MIMARI.md` §13'tür; bu bölüm onun dosya düzeyindeki ayrıntısıdır (F1 iş 1.6, D paketi yazar).
+Çelişkide kod ve sınamalar geçerlidir.
+
+### 21.1 Kapsayıcı
+
+- `.op4` bir **ZIP** arşividir (deflate düzey 6; zip64 gerekirse kendiliğinden). Girdi adları UTF-8'dir (genel amaçlı bit 11).
+- **Sıra bağlayıcıdır:** `mimetype` (sıkıştırmasız, ilk girdi; içerik tam olarak `application/x-op4`), `manifest.json`,
+  `model/bina.json`, ardından diğer girdiler yol sırasıyla. `onizleme.png` sıkıştırmasız saklanır.
+- Bütün girdilerin değiştirilme zamanı manifest'teki `kaydedildi` anıdır (yerel saatle DOS zamanı): aynı içerik + aynı
+  manifest → aynı baytlar (aynı makinede; D8 kuralı).
+- Okuma sınırları (sıkıştırma bombası ve bozuk dosya): en çok 4096 girdi, açılmış girdi başına 1 GiB, toplam 3 GiB; her
+  girdinin CRC32'si denetlenir. Şifreli ve deflate dışı yöntemli girdiler reddedilir.
+- Bozuk / kesik dosyada açma reddedilir, mevcut model değişmez ve öğretici Türkçe hata verilir ("Dosya bozuk ya da yarım
+  kalmış: ZIP dizini bulunamadı …; varsa .bak yedeğini ya da kurtarma kaydını açın").
+
+### 21.2 Girdiler
+
+| Yol | Yazan (katkı, `ProjeBelgesi`) | İçerik | Zorunlu |
+|---|---|---|---|
+| `mimetype` | D | `application/x-op4` | evet (yoksa uyarı) |
+| `manifest.json` | D | §21.3 | evet |
+| `model/bina.json` | D (B'nin `Metin()`'i) | bina JSON (surum 1 ya da 3), kanonik UTF-8; dosyadaki baytlar `Metin()` ile birebir | evet |
+| `gorunum/gorunum.json` | C | görünümler, kameralar, kipler, kesit kutusu, görünürlük, görünüm süzgeçleri | hayır |
+| `secim/kumeler.json` | C | seçim kümeleri ve kayıtlı süzgeçler (kimlik metni `cubuk:12`) | hayır |
+| `sonuc/ozet.json` | D | §21.5 | hayır (sonuç varsa) |
+| `sonuc/veri.json` | D | son `bina_coz` yanıtının `veri` nesnesi, köprünün yazdığı ham metin | hayır |
+| `ifc/kaynak.json` | (Faz 6) | IFC içe aktarma kaynağı ve eşleme tablosu | hayır |
+| `onizleme.png` | D | 256 × 256 RGBA küçük resim (CPU izometrik çizim, Stüdyo renkleri) | hayır |
+| diğer | — | **korunur**: açılan dosyanın tanınmayan girdileri yeniden kaydedilirken olduğu gibi yazılır | — |
+
+Katkı sırası: model 0, görünüm 10, seçim 20, sonuç 30, önizleme 40. Her katkı kendi girdisini yazar ya da (sonuç yokken
+`sonuc/*` gibi) siler.
+
+### 21.3 `manifest.json`
+
+```json
+{"tur": "op4-proje", "bicim_surumu": 1,
+ "uygulama": {"ad": "op4", "surum": "0.1.0", "firma": "Opus Fortis"},
+ "kaydedildi": "2026-10-31T12:34:56Z", "model_ozeti": "39 düğüm, 63 çubuk, 18 panel, 4 kat", "motor_surumu": "…",
+ "icerik": [{"yol": "model/bina.json", "bayt": 13491}, …]}
+```
+
+- `tur` `op4-proje` değilse dosya reddedilir; `bicim_surumu` 1'den küçükse ya da yoksa "bozuk".
+- **Yükseltme zinciri:** güncelden eski `bicim_surumu` değerleri sırayla n → n+1 dönüştürücülerinden geçer (bugün tek
+  biçim var: 1).
+- **Daha yeni biçim** (`bicim_surumu > 1`): dosya **salt okunur** açılır (başlık "op4 — ad (salt okunur)"), Kaydet
+  Farklı kaydet'e gider, uyarı verilir.
+- Tanınmayan manifest anahtarları korunur (daha yeni sürümün eklediği alanlar yeniden kaydedilince kaybolmaz).
+
+### 21.4 Açma ve kaydetme sırası
+
+**Açma** (`DosyaIslemleri::Ac`): `ProjeOku` (biçim saptama → ZIP çözümü / eski biçim dönüşümü) → çekirdek `Yukle` + `Denetle`
+→ `ModelYuklendi` (seçim ve sonuç temizlenir, Sığdır istenir) → `ProjeBelgesi::Sifirla` → `IcerikDagit` (katkılar kendi
+girdilerini okur; kamerayı geri yükleyen katkı bekleyen Sığdır'ı `SigdirYapildi` ile iptal edebilir) → `Acildi` (temiz
+durum, `acildi` olayı) → son dosyalar, atlama listesi, okuma kilidi. Önce dosya okunur, sonra kaydedilmemiş değişiklik
+sorulur (bozuk dosya için kullanıcı boşuna sorulmaz).
+
+**Kaydetme:** korunan girdiler (açılan dosyanın her şeyi) + `IcerikTopla` → manifest → ZIP → **bellekte doğrulama**
+(`ProjeZipCoz`) → okuma kilidi bırakılır → atomik yazma (§21.7) → okuma kilidi yeniden açılır → `Kaydedildi`, kurtarma
+kaydı silinir, son dosyalar. Eski biçimden açılan ya da salt okunur belge her zaman Farklı kaydet ile yazılır (uzantı
+`.op4` eklenir).
+
+### 21.5 `sonuc/ozet.json`
+
+```json
+{"bicim": 1, "cozum_kimligi": "bina-531fa88fc9470a4b", "tarih": "2026-10-31T12:00:00Z", "motor_surumu": "…",
+ "sahne_surumu": 7, "sure_ms": 2085,
+ "ozet": {"metin": "216 SD, 84 kombinasyon; G = 2714.76 kN, Q = 480.0 kN", "sd_sayisi": 216, "kombinasyon_sayisi": 84,
+          "en_buyuk_dc": 0.99786, "en_buyuk_dc_elemani": "cubuk:12", "asan_sayisi": 0},
+ "uyarilar": ["…"],
+ "dc_dizisi": [{"kimlik": "cubuk:1", "dc": 0.60775, "belirleyen": "eğilme + eksenel", "kombinasyon": "…", "satir": 0}, …],
+ "model_karmasi": "fnv1a64:…", "eski": false}
+```
+
+`dc_dizisi` çekirdeğin `SonucEsle` eşlemesidir (kimliğe göre sıralı; tasarımsız eleman `dc: null`). `model_karmasi` çözülen
+model metninin (çözüme giden `Metin()`) FNV-1a 64 karmasıdır; `eski` kaydedilirken sonucun eski olup olmadığıdır.
+
+**Açılışta eşleştirme (MIMARI §13.1.4):** karma açılan modelin `Metin()` karmasıyla aynı ve `eski` false ise sonuç hemen
+güncel görünür (D/C renkleri motor beklemeden). Değilse "Sonuçlar eski" görünür ve hesap motoru varsa `bina_kimlik` istenir;
+dönen `cozum_kimligi` kayıtlıyla aynıysa ve bu arada model değişmediyse sonuç güncellenir. `eski: true` kaydedilmiş sonuç
+eski kalır (denetim istenmez).
+
+### 21.6 Eski biçimler (içe aktarma)
+
+`BicimSapta` uzantıya değil içeriğe bakar: `PK\3\4` → `.op4` ZIP; `ISO-10303-21;` → IFC (Faz 6'ya dek "henüz
+desteklenmiyor"); `{` ile başlayan metin → uzantı `.op4` ise Faz 0 denemesinin JSON biçimi, `.matris` ise web sürümü
+projesi, diğerleri bina JSON'u.
+
+| Biçim | Dönüşüm |
+|---|---|
+| Faz 0 JSON `.op4` (`{"bicim": "op4-proje", "kamera", "gorunum", "model": {…}}`) | kamera ve görünüm `gorunum/gorunum.json`'a (`{"bicim":1,"kaynak":"op4-deneme","kamera":{"hedef":[x,y,z],"uzaklik","sapma","egim"},"kip":"cubuk"\|"kesit","kenarlar","izgara"}`); model boş açılır |
+| `.matris` (`{tur: "matris-proje", surum: 1, bina, gorunum, arac_yerlesimi}`) | `bina` değeri **ham alt metin** olarak (anahtar sırası ve sayı yazımı korunur) çekirdeğe; `surum > 1` reddedilir; web görünüm ayarları alınmaz (uyarı); `.matris` içinde düz bina JSON'u da kabul edilir |
+| bina `.json` (`{"tur": "bina", …}` ya da `{"bina": {…}}` sarmalayıcısı) | metin (ya da `bina` alt metni) olduğu gibi çekirdeğe |
+
+İçe aktarılan belge "Adsız N"dir; Kaydet, kaynakla aynı klasörde `<ad>.op4` önererek Farklı kaydet açar, kaynak dosyaya
+dokunulmaz. Ters yön: **Bina dışa aktar** `.json` (`Metin()`) ya da `.matris` (`{"tur":"matris-proje","surum":1,
+"uygulama":"op4 · Opus Fortis","kaydedildi","bina"}`) yazar.
+
+### 21.7 Atomik yazma
+
+1. Hedefle aynı klasörde `<yol>.~op4-<süreç>-<sayaç>.tmp` oluşturulur, yazılır, diske boşaltılır (`FlushFileBuffers` /
+   `fsync`) ve **tanıtıcısı kapatılır**.
+2. Hedef varsa Win32'de `ReplaceFileW` (öznitelik, ACL ve eşitleme istemcisinin dosya kimliği korunur; ayar açıksa
+   `<yol>.bak`), yoksa `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`; POSIX'te `rename` + klasör `fsync`.
+3. Paylaşım ihlali, kilit ihlali, eşlenmiş dosya, erişim reddi (eşitleme istemcileri) ve `ReplaceFileW`'nin "kaldırılamadı /
+   taşınamadı" hataları geçicidir: **5 deneme, 100 ms aralık**. `ERROR_UNABLE_TO_MOVE_REPLACEMENT_2`'de yedek adına taşınan
+   asıl dosya geri alınır.
+4. Başarısızlıkta geçici dosya silinir ve **hedef değişmeden kalır**; ileti dosyayı tutan programı (eşitleme istemcisi,
+   virüs tarayıcısı, başka op4 penceresi) anar. Salt okunur işaretli hedef yeniden denenmez.
+5. Açık proje `FILE_SHARE_READ` okuma kilidiyle tutulur (başka program okuyabilir, yazamaz); kaydetmeden önce bırakılır,
+   sonra yeniden açılır. Uzun yollar `\\?\` önekiyle açılır; bütün yollar UTF-8 → UTF-16 (Türkçe karakterli ve boşluklu
+   yollar).
+
+### 21.8 Otomatik kayıt ve kurtarma
+
+- Klasör `%LOCALAPPDATA%\Opus Fortis\op4\kurtarma\` (sınamada `OP4_KULLANICI_DIZINI`). Oturum başına `<guid>.op4` (tam
+  proje ZIP'i), `<guid>.json` (`{bicim, asil_yol, baslik, zaman, model_ozeti, surum, surec}`) ve `<guid>.kilit` (oturum
+  kilidi: Win32'de paylaşımsız ve kapanınca silinen dosya, POSIX'te `flock`; süreç çökse de işletim sistemi bırakır).
+- Belge kirliyken ve son otomatik kayıttan sonra değişiklik varsa, ilk değişiklikten `otomatik_kayit_dk` (varsayılan 5,
+  1–30) sonra yazılır; yazma hatası bir kez uyarılır, bir aralık sonra yeniden denenir.
+- Kaydedince, Yeni / Aç / Şablondan'da ve **temiz kapanışta** (belge temiz ya da kapanış onaylandı — "Kaydetme" dahil) oturumun
+  kaydı silinir. Onaysız kapanışta (ör. pencere kapatma isteği kapanış onayından geçmediyse) kayıt kalır.
+- Açılışta (ilk kare) kilidi tutulmayan kayıtlar "artık" sayılır ve Stüdyo **Kurtarma** kartı açılır: kayıt başına
+  **Kurtar** (birincil) ve **Sil**, altta **Sonra**. Kurtar: model ve katkılar yüklenir, belge yolu `asil_yol`, belge kirli;
+  önce bu oturumun kaydı yazılır, sonra eski kayıt silinir. Komut satırı: `KURTAR`, `KURTAR <n>`, `KURTAR sil <n>`,
+  `KURTAR sonra`.
+- Beklenmeyen hatada `cokme\op4-YYYYMMDD-HHMMSS-<pid>.dmp` (`MiniDumpWriteDump`; en yeni 10 döküm tutulur).
+
+### 21.9 Son dosyalar, ayarlar, kabuk
+
+- `ayarlar.json` `dosya` grubu: `otomatik_kayit`, `otomatik_kayit_dk`, `son_dosya_sayisi` (varsayılan 10), `yedek_bak`,
+  `son_dosyalar` (en yeni başta, tekrarsız, Türkçe katlamalı karşılaştırma), `son_klasor`. Ayarlar değiştikçe (en çok
+  saniyede bir) ve kapanışta atomik yazılır; bilinmeyen anahtarlar korunur.
+- Atlama listesi `SHAddToRecentDocs`; ilişkilendirme `OpusFortis.op4.Proje` (`op4.exe "%1"`, kurulum betiği).
+- **Tek örnek borusu:** `\\.\pipe\OpusFortis.op4.<SID>.<belge karması>` (karma: büyük / küçük harf duyarsız tam yolun
+  FNV-1a 64'ü). Belgeyi açık tutan süreç bu adla sunucu açar (`FILE_FLAG_FIRST_PIPE_INSTANCE`, yalnız yerel istemci); aynı
+  dosya yeniden açılmak istenince yeni süreç bağlanır, sunucuya `AllowSetForegroundWindow` verir, `{"tur":"one_gel"}`
+  yazar ve çıkar; sunucu penceresi öne gelir. Başka dosya her zaman yeni pencerede açılır (pencere başına bir proje).
+  `--yeni-ornek` denetimi atlar.
+
+### 21.10 IFC dışa aktarma (MIMARI §14.1)
+
+`Ctrl+E`: çekirdek `IfcDisari(secenek, veri)`; `secenek = {"analiz": true, "yukler": true, "dc": <güncel sonuç var>,
+"uygulama": {"ad": "op4", "surum", "firma": "Opus Fortis", "tam_ad": "op4 · Opus Fortis"}, "zaman": "YYYY-MM-DDTHH:MM:SS"}`
+(test kiplerinde sabit `2026-01-01T00:00:00`: aynı model → aynı bayt); `veri` güncel sonucun `sonuc/veri.json` metni.
+Dosya atomik yazılır.
+
+**Uygulayan:** `op4/kaynak/cekirdek/proje_dosyasi.cpp` (biçim), `proje_zip.cpp` (miniz 3.0.2; `op4/cmake/bagimlilik_miniz.cmake`),
+`proje_json.cpp`, `proje_onizleme.cpp`, `proje_islemleri.cpp` (akış ve `dosya.*` komutları), `sonuc.cpp`, `sonuc_ek.cpp`,
+`cozum_akisi.cpp` (sonuç katkısı), `op4/kaynak/platform/dosya_sistemi*.cpp` (atomik yazma, kilitler), `op4/kaynak/dosya/`
+(Windows: dosya pencereleri, TaskDialog, tek örnek borusu, çökme dökümü, Stüdyo kartları). **Kilitleyen:**
+`op4/testler/cekirdek/dosya_*.cpp`, `cozum_*.cpp` (ctest; ASan + UBSan), `op4/araclar/sablon_dok.py --denetle`.

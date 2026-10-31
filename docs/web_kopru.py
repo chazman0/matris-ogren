@@ -105,12 +105,26 @@ Isı haritası (bina_alan) ve bina_eleman_bilgi genel modelde de çalışır.
                     plak ızgarası w/mx/my ve 45° yük payı poligonları) + "radye" (temel modülü varsa Winkler basıncı), "cozum_kimligi",
                     "hata": null}. Önbellekteki çözümden (yeniden çözmez): kombinasyon = durumların katsayılı toplamı, zarf =
                     istasyon bazında en büyük / en küçük. alan.py yoksa öğretici hata.
+
+op4 (yerel program; MIMARI §8.6) eklemeleri — yalnız eklemeli, varsayılanlar web davranışını korur:
+  "bina_coz" girdi.anlat ya da ayarlar.anlat (varsayılan true): false ise motor anlatımsız çözer (`anlat=False`), yanıtta
+                    "bloklar": [] olur; "veri" anlatımlı çözümle aynıdır (op4 F5 çözümü bunu kullanır).
+  "bina_kimlik":    girdi {"bina"} → {"cozum_kimligi": yapi.cozum_kimligi(bina) (çözmeden; bina_coz veri.cozum_kimligi ile
+                    aynı), "onbellekte": bu çözüm köprünün önbelleğinde mi, "hata": null}. op4 .op4 açılışında saklı sonuçların
+                    modele ait olup olmadığını bununla denetler.
+  ayarlar.sd_siniri (isteğe bağlı, bütün bina işlemleri): istek süresince yapi.EN_FAZLA_SD ve yapi_serbest.EN_FAZLA_SD bu
+                    değere, temel.EN_KUCUK_AG 0,10·√(1500/sd_siniri) m'ye (en az 0,02 m; yalnız sd_siniri > 1500 iken)
+                    çekilir; istek bitince eski değerler geri yüklenir. Bu durumda "tarayıcı sınırı" iletileri "bellek ve süre
+                    sınırı" diye yazılır.
+  İptal: hesap sırasında KeyboardInterrupt (op4 motor sunucusu `_thread.interrupt_main` ile keser) →
+                    {"hata": "İşlem iptal edildi.", "hata_turu": "iptal"}. MemoryError → öğretici "ic" hatası.
 """
 from __future__ import annotations
 
 import ast
 import importlib
 import json
+import math
 import sys
 import time
 import traceback
@@ -533,11 +547,20 @@ def _sure_ms(t0: float) -> int:
     return int(round((time.perf_counter() - t0) * 1000.0))
 
 
-def _bina_coz_yaniti(girdi: dict) -> dict:
+def _anlat_mi(girdi: dict, ayar: dict | None) -> bool:
+    """op4 eki (MIMARI §8.6.1): girdi.anlat, yoksa ayarlar.anlat; ikisi de yoksa true (web davranışı)."""
+    for kaynak in (girdi, ayar or {}):
+        if isinstance(kaynak, dict) and kaynak.get("anlat") is not None:
+            return bool(kaynak.get("anlat"))
+    return True
+
+
+def _bina_coz_yaniti(girdi: dict, ayar: dict | None = None) -> dict:
     t0 = time.perf_counter()
     yapi = _yapi_zorunlu()
     bina = _bina_girdisi(girdi)
-    r = yapi.bina_coz(bina, goster="yok")
+    anlat = _anlat_mi(girdi, ayar)
+    r = yapi.bina_coz(bina, goster="yok") if anlat else yapi.bina_coz(bina, goster="yok", anlat=False)
     veri = _sonlu_sayilar(r.veri)   # ozet.uyarilar: yalnız bu modelde kullanılan doğrulanmamış kayıtlar (motor yazar)
     sure = _sure_ms(t0)
     if isinstance(veri.get("ozet"), dict):
@@ -552,7 +575,7 @@ def _bina_coz_yaniti(girdi: dict) -> dict:
         ic["veri"], ic["bina"] = veri, bina
         _onbellege_koy(ic)
     return {
-        "ad": "bina", "bloklar": _bloklar(r.anlatim),
+        "ad": "bina", "bloklar": _bloklar(r.anlatim) if anlat else [],
         "sonuc_etiket": r"\mathbf{u}_G", "sonuc_latex": "",
         "sonuc_metin": f"{veri['ozet']['sd_sayisi']} SD, {veri['ozet']['kombinasyon_sayisi']} kombinasyon; "
                        f"G = {veri['ozet']['toplam_G']} kN, Q = {veri['ozet']['toplam_Q']} kN",
@@ -854,7 +877,7 @@ def _bina_eleman_bilgi_yaniti(girdi: dict) -> dict:
             "cozum_kimligi": ic.get("kimlik"), "hata": None}
 
 
-def _bina_islem(islem: str, girdi: dict) -> dict:
+def _bina_islem(islem: str, girdi: dict, ayar: dict | None = None) -> dict:
     if islem == "bina_eleman_bilgi":
         return _bina_eleman_bilgi_yaniti(girdi)
     if islem == "bina_kesit_oner":
@@ -866,7 +889,7 @@ def _bina_islem(islem: str, girdi: dict) -> dict:
     if islem == "bina_alan":
         return _bina_alan_yaniti(girdi)
     if islem == "bina_coz":
-        return _bina_coz_yaniti(girdi)
+        return _bina_coz_yaniti(girdi, ayar)
     if islem == "bina_kombinasyon":
         return _bina_kombinasyon_yaniti(girdi)
     if islem == "bina_eleman_tasarim":
@@ -888,7 +911,96 @@ def _bina_islem(islem: str, girdi: dict) -> dict:
     return dict(_sonlu_sayilar(yol), hata=None)
 
 
+# ---------------------------------------------------------------------------
+# op4 (yerel program) eklemeleri — MIMARI §8.6; web arayüzü bunları kullanmaz, varsayılanlar web davranışını korur
+# ---------------------------------------------------------------------------
+OP4_ISLEMLER = {"bina_kimlik"}
+IPTAL_ILETISI = "İşlem iptal edildi."
+SD_SINIRI_EN_AZ, SD_SINIRI_EN_FAZLA = 100, 200_000
+# ayarlar.sd_siniri verildiğinde motorun "tarayıcı sınırı" iletileri yerel programın sınırını anlatır.
+_SINIR_ILETILERI = (
+    ("tarayıcıda çözüm için en fazla", "bellek ve süre sınırı nedeniyle en fazla"),
+    ("tarayıcıda en fazla", "bellek ve süre sınırı nedeniyle en fazla"),
+    ("tarayıcı sınırını", "bellek ve süre sınırını"),
+)
+
+
+def _bina_kimlik_yaniti(girdi: dict) -> dict:
+    """op4: modelin çözüm kimliği (çözmeden). .op4'te saklı sonuçlar bu kimlikle modele bağlanır (MIMARI §8.6.2)."""
+    yapi = _yapi_zorunlu()
+    kimlik = yapi.cozum_kimligi(_bina_girdisi(girdi))
+    return {"cozum_kimligi": kimlik, "onbellekte": kimlik in _BINA_ONBELLEK, "hata": None}
+
+
+def _sd_siniri(ayar: dict):
+    """ayarlar.sd_siniri → tamsayı (aralığa çekilmiş) ya da None (verilmemiş)."""
+    v = ayar.get("sd_siniri") if isinstance(ayar, dict) else None
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        sd = int(v)
+    except (TypeError, ValueError):
+        raise mo.MatrisHatasi(f"ayarlar.sd_siniri bir tamsayı olmalı (ör. 6000); verilen: {v!r}.") from None
+    return max(SD_SINIRI_EN_AZ, min(SD_SINIRI_EN_FAZLA, sd))
+
+
+def _sinirlari_kur(sd) -> list:
+    """İstek süresince serbestlik derecesi sınırlarını değiştirir; geri yükleme listesini döndürür (sd None → [])."""
+    eski: list = []
+    if sd is None:
+        return eski
+    for ad in ("yapi", "yapi_serbest"):
+        try:
+            m = importlib.import_module(ad)
+        except ImportError:
+            continue
+        if hasattr(m, "EN_FAZLA_SD"):
+            eski.append((m, "EN_FAZLA_SD", m.EN_FAZLA_SD))
+            m.EN_FAZLA_SD = sd
+    if sd > 1500:
+        try:
+            tm = importlib.import_module("temel")
+        except ImportError:
+            tm = None
+        if tm is not None and hasattr(tm, "EN_KUCUK_AG"):
+            eski.append((tm, "EN_KUCUK_AG", tm.EN_KUCUK_AG))
+            tm.EN_KUCUK_AG = round(max(0.02, min(tm.EN_KUCUK_AG, 0.10 * math.sqrt(1500 / sd))), 4)
+    return eski
+
+
+def _sinirlari_geri_yukle(eski: list) -> None:
+    for m, ad, deger in reversed(eski):   # tekrar çağrılabilir (iptal geri yüklemenin ortasına düşerse)
+        setattr(m, ad, deger)
+
+
+def _sinir_iletileri(metin: str) -> str:
+    for eski, yeni in _SINIR_ILETILERI:
+        metin = metin.replace(eski, yeni)
+    return metin
+
+
 def calistir(istek_json: str) -> str:
+    """İsteği çalıştırır (yukarıdaki biçimler). ayarlar.sd_siniri verilmişse sınırlar istek süresince değişir (op4)."""
+    sd, eski = None, []
+    try:
+        if isinstance(istek_json, str) and '"sd_siniri"' in istek_json:   # web istekleri ikinci kez ayrıştırılmaz
+            try:
+                ayar = json.loads(istek_json).get("ayarlar") or {}
+                sd = _sd_siniri(ayar) if isinstance(ayar, dict) else None
+            except (ValueError, AttributeError, mo.MatrisHatasi):
+                sd = None   # bozuk istek / değer: _calistir_ic olağan (öğretici) hatasını verir
+        eski = _sinirlari_kur(sd)
+        try:
+            yanit = _calistir_ic(istek_json)
+        finally:
+            _sinirlari_geri_yukle(eski)
+    except KeyboardInterrupt:   # op4 motor sunucusu çalışan isteği _thread.interrupt_main ile keser (MIMARI §8.4)
+        _sinirlari_geri_yukle(eski)
+        return json.dumps({"hata": IPTAL_ILETISI, "hata_turu": "iptal"}, ensure_ascii=False)
+    return _sinir_iletileri(yanit) if sd is not None else yanit
+
+
+def _calistir_ic(istek_json: str) -> str:
     try:
         istek = json.loads(istek_json)
         ayar = istek.get("ayarlar") or {}
@@ -907,8 +1019,12 @@ def calistir(istek_json: str) -> str:
             return json.dumps(_ders_calistir(istek.get("girdi") or {}), ensure_ascii=False)
         if islem in SE_ISLEMLER:
             return json.dumps(_se_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
+        if islem in BINA_ISLEMLER or islem in OP4_ISLEMLER:
+            _sd_siniri(ayar)   # op4: geçersiz ayarlar.sd_siniri öğretici hata verir
         if islem in BINA_ISLEMLER:
-            return json.dumps(_bina_islem(islem, istek.get("girdi") or {}), ensure_ascii=False)
+            return json.dumps(_bina_islem(islem, istek.get("girdi") or {}, ayar), ensure_ascii=False)
+        if islem in OP4_ISLEMLER:
+            return json.dumps(_bina_kimlik_yaniti(istek.get("girdi") or {}), ensure_ascii=False)
         if islem not in ISLEMLER:
             raise mo.MatrisHatasi(f"Bilinmeyen işlem: {islem!r}")
         if islem == "yardim":
@@ -930,6 +1046,13 @@ def calistir(istek_json: str) -> str:
         }, ensure_ascii=False)
     except mo.MatrisHatasi as e:
         return json.dumps({"hata": str(e), "hata_turu": "girdi"}, ensure_ascii=False)
+    except MemoryError:
+        return json.dumps({
+            "hata": "Hesap için bellek yetmedi: model bu bilgisayarın (ya da hesap motoruna ayrılan) belleğine sığmıyor. "
+                    "Serbestlik derecesini azaltın (aks / kat sayısı, bölme düğümleri, temel ağ aralığı) ya da bellek "
+                    "tavanını yükseltin.",
+            "hata_turu": "ic",
+        }, ensure_ascii=False)
     except Exception as e:  # noqa: BLE001 — tarayıcıya her hatayı okunur biçimde geri ver
         return json.dumps({
             "hata": f"{type(e).__name__}: {e}",

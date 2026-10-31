@@ -43,7 +43,7 @@ public:
     virtual long long Kimlik() const = 0;  // pid
 };
 
-// Platforma uygun uygulama (Windows ya da POSIX). Faz 1 taslağı: Baslat "henüz uygulanmadı" ile false döner.
+// Platforma uygun uygulama (surec_win.cpp ya da surec_posix.cpp).
 std::unique_ptr<Surec> SurecOlustur();
 
 }  // namespace op4

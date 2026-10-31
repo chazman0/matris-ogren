@@ -1,0 +1,144 @@
+{
+ "cozum_kimligi": "bina-9fbfe83594b64b3e",
+ "tasarim": {
+  "en_buyuk_dc": 0.89795,
+  "elemanlar": [
+   {
+    "no": 1,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A1→B1/k1",
+    "kesit": "K25x50",
+    "sistem": "betonarme",
+    "dc": 0.89795,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (açıklık, alt)",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     5
+    ]
+   },
+   {
+    "no": 2,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A2→B2/k1",
+    "kesit": "K25x50",
+    "sistem": "betonarme",
+    "dc": 0.89795,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (açıklık, alt)",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     6
+    ]
+   },
+   {
+    "no": 3,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A1→A2/k1",
+    "kesit": "K25x50",
+    "sistem": "betonarme",
+    "dc": 0.5416,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (açıklık, alt)",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     7
+    ]
+   },
+   {
+    "no": 4,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-B1→B2/k1",
+    "kesit": "K25x50",
+    "sistem": "betonarme",
+    "dc": 0.5416,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (açıklık, alt)",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     8
+    ]
+   },
+   {
+    "no": 1,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-A1/k1",
+    "kesit": "S30x30",
+    "sistem": "betonarme",
+    "dc": 0.63996,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "N–M",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     1
+    ]
+   },
+   {
+    "no": 2,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-A2/k1",
+    "kesit": "S30x30",
+    "sistem": "betonarme",
+    "dc": 0.63996,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "N–M",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     2
+    ]
+   },
+   {
+    "no": 3,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-B1/k1",
+    "kesit": "S30x30",
+    "sistem": "betonarme",
+    "dc": 0.63996,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "N–M",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     3
+    ]
+   },
+   {
+    "no": 4,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-B2/k1",
+    "kesit": "S30x30",
+    "sistem": "betonarme",
+    "dc": 0.63996,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "N–M",
+     "kombinasyon": "1.4G+1.6Q"
+    },
+    "fe_elemanlar": [
+     4
+    ]
+   }
+  ]
+ }
+}

@@ -57,7 +57,12 @@ struct IslemRaporu {
     std::vector<ElemanKimligi> eklenen, silinen, degisen;  // sıralı, tekrarsız
     uint64_t sahneSurumu = 0;             // işlemden sonraki sahne sürümü
     std::optional<GecisOnayi> gecisOnayi; // doluysa model DEĞİŞMEDİ; onay bekleniyor
-    bool ModelDegisti() const { return basarili && !gecisOnayi && (!eklenen.empty() || !silinen.empty() || !degisen.empty()); }
+    // Model metni değişti (eleman listeleri boş olsa da: başlık, kesit / malzeme tablosu, genel modele geçiş …).
+    // Eklemeli alan (§24.6, 2026-10-31).
+    bool icerikDegisti = false;
+    bool ModelDegisti() const {
+        return basarili && !gecisOnayi && (icerikDegisti || !eklenen.empty() || !silinen.empty() || !degisen.empty());
+    }
 };
 
 struct YuklemeSonucu {
@@ -147,8 +152,8 @@ public:
     virtual IfcSonucu IfcDisari(const JsonMetni& secenek, const JsonMetni& veri) = 0;
 };
 
-// Fabrika (B). Başarısızsa null ve hata. Faz 1 taslağı (QuickJS bağlanana dek): C++ ile yazılmış geçici çekirdek —
-// YeniBos / Yukle / Metin / Ozet çalışır (sahne boş), Uygula "henüz bağlanmadı" hatası döner.
+// Fabrika (B): QuickJS-ng çekirdeği (kaynak/cekirdek_js/quickjs_cekirdek.cpp). Ön yükleme, docs/ modülleri ve op4 cephesi
+// değerlendirilir; model boş "Adsız 1"dir (sahne sürümü 0). Başarısızsa null ve hata (hangi dosya, hangi satır).
 std::unique_ptr<ModelCekirdegi> ModelCekirdegiOlustur(const CekirdekAyari& ayar, std::string& hata);
 
 // Faz 1'de C'nin ve D'nin beklediği işlem adları (beyaz listenin alt kümesi; B en az bunları sağlar).

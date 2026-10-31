@@ -1,0 +1,561 @@
+{
+ "tur": "bina",
+ "surum": 1,
+ "baslik": "2 katlı betonarme konut (3×2 aks)",
+ "aciklama": "Akslar A–B–C (0, 5, 9 m) ve 1–2 (0, 4 m); iki kat (3 m); 40×40 kolonlar, 25×50 kirişler, 14 cm döşeme; dış kirişlerde 19 cm delikli tuğla duvar (çatıda 1 m parapet). Varsayılan örnek: çift doğrultulu (m = 1,25) ve 4×5 panellerle üçgen/trapez dağılım.",
+ "sistem": "betonarme",
+ "birim": {
+  "kuvvet": "kN",
+  "uzunluk": "m"
+ },
+ "akslar": {
+  "x": [
+   {
+    "ad": "A",
+    "konum": 0.0
+   },
+   {
+    "ad": "B",
+    "konum": 5.0
+   },
+   {
+    "ad": "C",
+    "konum": 9.0
+   }
+  ],
+  "y": [
+   {
+    "ad": "1",
+    "konum": 0.0
+   },
+   {
+    "ad": "2",
+    "konum": 4.0
+   }
+  ]
+ },
+ "katlar": [
+  {
+   "no": 0,
+   "ad": "Temel",
+   "kot": 0.0
+  },
+  {
+   "no": 1,
+   "ad": "1. kat",
+   "kot": 3.0
+  },
+  {
+   "no": 2,
+   "ad": "Çatı",
+   "kot": 6.0
+  }
+ ],
+ "malzemeler": {
+  "C30": {
+   "kutuphane": "C30/37"
+  },
+  "B420C": {
+   "kutuphane": "B420C"
+  }
+ },
+ "kesitler": {
+  "S40x40": {
+   "tip": "dikdortgen",
+   "b": 0.4,
+   "h": 0.4,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  },
+  "K25x50": {
+   "tip": "dikdortgen",
+   "b": 0.25,
+   "h": 0.5,
+   "malzeme": "C30",
+   "donati": "B420C",
+   "pas": 0.03
+  }
+ },
+ "kolonlar": [
+  {
+   "no": 1,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 2,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 3,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 4,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 5,
+   "aks": [
+    "C",
+    "1"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 6,
+   "aks": [
+    "C",
+    "2"
+   ],
+   "kat": 1,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 7,
+   "aks": [
+    "A",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 8,
+   "aks": [
+    "A",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 9,
+   "aks": [
+    "B",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  },
+  {
+   "no": 10,
+   "aks": [
+    "B",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 11,
+   "aks": [
+    "C",
+    "1"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "x"
+  },
+  {
+   "no": 12,
+   "aks": [
+    "C",
+    "2"
+   ],
+   "kat": 2,
+   "kesit": "S40x40",
+   "yon": "y"
+  }
+ ],
+ "kirisler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 2,
+   "kat": 1,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "C",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 3,
+   "kat": 1,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 4,
+   "kat": 1,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 5,
+   "kat": 1,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 6,
+   "kat": 1,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 7,
+   "kat": 1,
+   "bas": [
+    "C",
+    "1"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19"
+  },
+  {
+   "no": 8,
+   "kat": 2,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "B",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 9,
+   "kat": 2,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "C",
+    "1"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 10,
+   "kat": 2,
+   "bas": [
+    "A",
+    "2"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 11,
+   "kat": 2,
+   "bas": [
+    "B",
+    "2"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 12,
+   "kat": 2,
+   "bas": [
+    "A",
+    "1"
+   ],
+   "son": [
+    "A",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  },
+  {
+   "no": 13,
+   "kat": 2,
+   "bas": [
+    "B",
+    "1"
+   ],
+   "son": [
+    "B",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": null
+  },
+  {
+   "no": 14,
+   "kat": 2,
+   "bas": [
+    "C",
+    "1"
+   ],
+   "son": [
+    "C",
+    "2"
+   ],
+   "kesit": "K25x50",
+   "duvar": "tugla19",
+   "duvar_h": 1.0
+  }
+ ],
+ "dosemeler": [
+  {
+   "no": 1,
+   "kat": 1,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 2,
+   "kat": 1,
+   "kose": [
+    [
+     "B",
+     "1"
+    ],
+    [
+     "C",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "konut",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 3,
+   "kat": 2,
+   "kose": [
+    [
+     "A",
+     "1"
+    ],
+    [
+     "B",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  },
+  {
+   "no": 4,
+   "kat": 2,
+   "kose": [
+    [
+     "B",
+     "1"
+    ],
+    [
+     "C",
+     "2"
+    ]
+   ],
+   "h": 0.14,
+   "kullanim": "cati-gezilen",
+   "g_ek": 1.5,
+   "q": null,
+   "dagitim": "otomatik"
+  }
+ ],
+ "duvarlar": {
+  "tugla19": {
+   "kutuphane": "tugla-delikli-19"
+  }
+ },
+ "ek_yukler": [],
+ "temeller": {
+  "tip": "tekil",
+  "varsayilan": {
+   "B": 1.6,
+   "L": 1.6,
+   "h": 0.6
+  },
+  "zemin": {
+   "q_em": 200,
+   "k0": 20000
+  },
+  "mesnet": "ankastre",
+  "ozel": [
+   {
+    "aks": [
+     "B",
+     "1"
+    ],
+    "B": 2.0,
+    "L": 2.0
+   },
+   {
+    "aks": [
+     "B",
+     "2"
+    ],
+    "B": 2.0,
+    "L": 2.0
+   }
+  ]
+ },
+ "yuk_durumlari": {
+  "G": {
+   "acik": true
+  },
+  "Q": {
+   "acik": true
+  },
+  "S": {
+   "acik": false,
+   "bolge": 3,
+   "rakim": 0,
+   "mu": 0.8
+  },
+  "W": {
+   "acik": false,
+   "C": 1.2
+  },
+  "E": {
+   "acik": false
+  }
+ },
+ "deprem": {
+  "etkin": false,
+  "SS": 1.0,
+  "S1": 0.3,
+  "zemin_sinifi": "ZC",
+  "DD": "DD-2",
+  "BKS": 3,
+  "tasiyici": "betonarme-cerceve-yuksek",
+  "periyot": "otomatik",
+  "diyafram": "rijit",
+  "dismerkezlik": 0.05,
+  "dolgu": "bitisik"
+ },
+ "kombinasyon_kumesi": "ts500",
+ "analiz": {
+  "catlamis_rijitlik": true,
+  "diyagram_nokta": 11
+ },
+ "sablon": "betonarme-2kat-3x2"
+}

@@ -1,0 +1,2269 @@
+{
+ "cozum_kimligi": "bina-334e533151ffe8ea",
+ "tasarim": {
+  "en_buyuk_dc": 0.8181,
+  "elemanlar": [
+   {
+    "no": 1,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç1 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.24967,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 1,
+    "kaynak": null,
+    "fe_elemanlar": [
+     1
+    ]
+   },
+   {
+    "no": 2,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç2 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.34089,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 2,
+    "kaynak": null,
+    "fe_elemanlar": [
+     2
+    ]
+   },
+   {
+    "no": 3,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç3 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.097006,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 3,
+    "kaynak": null,
+    "fe_elemanlar": [
+     3
+    ]
+   },
+   {
+    "no": 4,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç4 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.2874,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-EX-+0.3EY-+0.3EZ"
+    },
+    "cubuk": 4,
+    "kaynak": null,
+    "fe_elemanlar": [
+     4
+    ]
+   },
+   {
+    "no": 5,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç5 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.36898,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 5,
+    "kaynak": null,
+    "fe_elemanlar": [
+     5
+    ]
+   },
+   {
+    "no": 6,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç6 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.28722,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-EX++0.3EY++0.3EZ"
+    },
+    "cubuk": 6,
+    "kaynak": null,
+    "fe_elemanlar": [
+     6
+    ]
+   },
+   {
+    "no": 7,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç7 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.2874,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+EX-+0.3EY++0.3EZ"
+    },
+    "cubuk": 7,
+    "kaynak": null,
+    "fe_elemanlar": [
+     7
+    ]
+   },
+   {
+    "no": 8,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç8 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.36898,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 8,
+    "kaynak": null,
+    "fe_elemanlar": [
+     8
+    ]
+   },
+   {
+    "no": 9,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç9 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.28722,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+EX++0.3EY-+0.3EZ"
+    },
+    "cubuk": 9,
+    "kaynak": null,
+    "fe_elemanlar": [
+     9
+    ]
+   },
+   {
+    "no": 10,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç10 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.2497,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 10,
+    "kaynak": null,
+    "fe_elemanlar": [
+     10
+    ]
+   },
+   {
+    "no": 11,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç11 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.34093,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 11,
+    "kaynak": null,
+    "fe_elemanlar": [
+     11
+    ]
+   },
+   {
+    "no": 12,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "Ç12 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.097006,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 12,
+    "kaynak": null,
+    "fe_elemanlar": [
+     12
+    ]
+   },
+   {
+    "no": 13,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç13 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 13,
+    "kaynak": null,
+    "fe_elemanlar": [
+     13
+    ]
+   },
+   {
+    "no": 14,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç14 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.06649,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 14,
+    "kaynak": null,
+    "fe_elemanlar": [
+     14
+    ]
+   },
+   {
+    "no": 15,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç15 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.06649,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 15,
+    "kaynak": null,
+    "fe_elemanlar": [
+     15
+    ]
+   },
+   {
+    "no": 16,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç16 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 16,
+    "kaynak": null,
+    "fe_elemanlar": [
+     16
+    ]
+   },
+   {
+    "no": 17,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç17 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 17,
+    "kaynak": null,
+    "fe_elemanlar": [
+     17
+    ]
+   },
+   {
+    "no": 18,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç18 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 18,
+    "kaynak": null,
+    "fe_elemanlar": [
+     18
+    ]
+   },
+   {
+    "no": 19,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç19 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 19,
+    "kaynak": null,
+    "fe_elemanlar": [
+     19
+    ]
+   },
+   {
+    "no": 20,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç20 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 20,
+    "kaynak": null,
+    "fe_elemanlar": [
+     20
+    ]
+   },
+   {
+    "no": 21,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç21 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.06649,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 21,
+    "kaynak": null,
+    "fe_elemanlar": [
+     21
+    ]
+   },
+   {
+    "no": 22,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç22 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.06649,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 22,
+    "kaynak": null,
+    "fe_elemanlar": [
+     22
+    ]
+   },
+   {
+    "no": 23,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç23 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 23,
+    "kaynak": null,
+    "fe_elemanlar": [
+     23
+    ]
+   },
+   {
+    "no": 24,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç24 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 24,
+    "kaynak": null,
+    "fe_elemanlar": [
+     24
+    ]
+   },
+   {
+    "no": 25,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç25 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 25,
+    "kaynak": null,
+    "fe_elemanlar": [
+     25
+    ]
+   },
+   {
+    "no": 26,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç26 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 26,
+    "kaynak": null,
+    "fe_elemanlar": [
+     26
+    ]
+   },
+   {
+    "no": 27,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç27 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 27,
+    "kaynak": null,
+    "fe_elemanlar": [
+     27
+    ]
+   },
+   {
+    "no": 28,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç28 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 28,
+    "kaynak": null,
+    "fe_elemanlar": [
+     28
+    ]
+   },
+   {
+    "no": 29,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç29 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 29,
+    "kaynak": null,
+    "fe_elemanlar": [
+     29
+    ]
+   },
+   {
+    "no": 30,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç30 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 30,
+    "kaynak": null,
+    "fe_elemanlar": [
+     30
+    ]
+   },
+   {
+    "no": 31,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "Ç31 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 31,
+    "kaynak": null,
+    "fe_elemanlar": [
+     31
+    ]
+   },
+   {
+    "no": 32,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç32 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.60116,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX-+0.3EY-+0.3EZ"
+    },
+    "cubuk": 32,
+    "kaynak": null,
+    "fe_elemanlar": [
+     32
+    ]
+   },
+   {
+    "no": 33,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç33 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.60116,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX--0.3EY-+0.3EZ"
+    },
+    "cubuk": 33,
+    "kaynak": null,
+    "fe_elemanlar": [
+     33
+    ]
+   },
+   {
+    "no": 34,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç34 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.60051,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX+-0.3EY-+0.3EZ"
+    },
+    "cubuk": 34,
+    "kaynak": null,
+    "fe_elemanlar": [
+     34
+    ]
+   },
+   {
+    "no": 35,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç35 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.60051,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX++0.3EY-+0.3EZ"
+    },
+    "cubuk": 35,
+    "kaynak": null,
+    "fe_elemanlar": [
+     35
+    ]
+   },
+   {
+    "no": 36,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç36 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.38836,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 36,
+    "kaynak": null,
+    "fe_elemanlar": [
+     36
+    ]
+   },
+   {
+    "no": 37,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç37 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.38367,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 37,
+    "kaynak": null,
+    "fe_elemanlar": [
+     37
+    ]
+   },
+   {
+    "no": 38,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç38 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.38889,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 38,
+    "kaynak": null,
+    "fe_elemanlar": [
+     38
+    ]
+   },
+   {
+    "no": 39,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç39 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.38414,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 39,
+    "kaynak": null,
+    "fe_elemanlar": [
+     39
+    ]
+   },
+   {
+    "no": 40,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç40 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.73457,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 40,
+    "kaynak": null,
+    "fe_elemanlar": [
+     40
+    ]
+   },
+   {
+    "no": 41,
+    "tur": "capraz",
+    "kat": 1,
+    "adres": "Ç41 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.73552,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 41,
+    "kaynak": null,
+    "fe_elemanlar": [
+     41
+    ]
+   },
+   {
+    "no": 42,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç42 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.14051,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 42,
+    "kaynak": null,
+    "fe_elemanlar": [
+     42
+    ]
+   },
+   {
+    "no": 43,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç43 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.20529,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 43,
+    "kaynak": null,
+    "fe_elemanlar": [
+     43
+    ]
+   },
+   {
+    "no": 44,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç44 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.065011,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 44,
+    "kaynak": null,
+    "fe_elemanlar": [
+     44
+    ]
+   },
+   {
+    "no": 45,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç45 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.15567,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S-EX--0.3EY++0.3EZ"
+    },
+    "cubuk": 45,
+    "kaynak": null,
+    "fe_elemanlar": [
+     45
+    ]
+   },
+   {
+    "no": 46,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç46 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.24968,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+EX--0.3EY-+0.3EZ"
+    },
+    "cubuk": 46,
+    "kaynak": null,
+    "fe_elemanlar": [
+     46
+    ]
+   },
+   {
+    "no": 47,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç47 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.15563,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S-EX++0.3EY++0.3EZ"
+    },
+    "cubuk": 47,
+    "kaynak": null,
+    "fe_elemanlar": [
+     47
+    ]
+   },
+   {
+    "no": 48,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç48 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.15567,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S+EX-+0.3EY++0.3EZ"
+    },
+    "cubuk": 48,
+    "kaynak": null,
+    "fe_elemanlar": [
+     48
+    ]
+   },
+   {
+    "no": 49,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç49 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.24968,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S-EX--0.3EY++0.3EZ"
+    },
+    "cubuk": 49,
+    "kaynak": null,
+    "fe_elemanlar": [
+     49
+    ]
+   },
+   {
+    "no": 50,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç50 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.15563,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S+EX+-0.3EY++0.3EZ"
+    },
+    "cubuk": 50,
+    "kaynak": null,
+    "fe_elemanlar": [
+     50
+    ]
+   },
+   {
+    "no": 51,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç51 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.14051,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 51,
+    "kaynak": null,
+    "fe_elemanlar": [
+     51
+    ]
+   },
+   {
+    "no": 52,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç52 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.20529,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1a",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 52,
+    "kaynak": null,
+    "fe_elemanlar": [
+     52
+    ]
+   },
+   {
+    "no": 53,
+    "tur": "kolon",
+    "kat": 2,
+    "adres": "Ç53 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.065011,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 53,
+    "kaynak": null,
+    "fe_elemanlar": [
+     53
+    ]
+   },
+   {
+    "no": 54,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç54 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 54,
+    "kaynak": null,
+    "fe_elemanlar": [
+     54
+    ]
+   },
+   {
+    "no": 55,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç55 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.05788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 55,
+    "kaynak": null,
+    "fe_elemanlar": [
+     55
+    ]
+   },
+   {
+    "no": 56,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç56 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.05788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 56,
+    "kaynak": null,
+    "fe_elemanlar": [
+     56
+    ]
+   },
+   {
+    "no": 57,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç57 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 57,
+    "kaynak": null,
+    "fe_elemanlar": [
+     57
+    ]
+   },
+   {
+    "no": 58,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç58 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 58,
+    "kaynak": null,
+    "fe_elemanlar": [
+     58
+    ]
+   },
+   {
+    "no": 59,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç59 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 59,
+    "kaynak": null,
+    "fe_elemanlar": [
+     59
+    ]
+   },
+   {
+    "no": 60,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç60 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 60,
+    "kaynak": null,
+    "fe_elemanlar": [
+     60
+    ]
+   },
+   {
+    "no": 61,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç61 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 61,
+    "kaynak": null,
+    "fe_elemanlar": [
+     61
+    ]
+   },
+   {
+    "no": 62,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç62 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.05788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 62,
+    "kaynak": null,
+    "fe_elemanlar": [
+     62
+    ]
+   },
+   {
+    "no": 63,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç63 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.05788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 63,
+    "kaynak": null,
+    "fe_elemanlar": [
+     63
+    ]
+   },
+   {
+    "no": 64,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç64 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 64,
+    "kaynak": null,
+    "fe_elemanlar": [
+     64
+    ]
+   },
+   {
+    "no": 65,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç65 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 65,
+    "kaynak": null,
+    "fe_elemanlar": [
+     65
+    ]
+   },
+   {
+    "no": 66,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç66 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 66,
+    "kaynak": null,
+    "fe_elemanlar": [
+     66
+    ]
+   },
+   {
+    "no": 67,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç67 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 67,
+    "kaynak": null,
+    "fe_elemanlar": [
+     67
+    ]
+   },
+   {
+    "no": 68,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç68 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 68,
+    "kaynak": null,
+    "fe_elemanlar": [
+     68
+    ]
+   },
+   {
+    "no": 69,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç69 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 69,
+    "kaynak": null,
+    "fe_elemanlar": [
+     69
+    ]
+   },
+   {
+    "no": 70,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç70 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.79097,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 70,
+    "kaynak": null,
+    "fe_elemanlar": [
+     70
+    ]
+   },
+   {
+    "no": 71,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç71 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 71,
+    "kaynak": null,
+    "fe_elemanlar": [
+     71
+    ]
+   },
+   {
+    "no": 72,
+    "tur": "kiris",
+    "kat": 2,
+    "adres": "Ç72 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.40215,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 72,
+    "kaynak": null,
+    "fe_elemanlar": [
+     72
+    ]
+   },
+   {
+    "no": 73,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç73 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.50741,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX--0.3EY++0.3EZ"
+    },
+    "cubuk": 73,
+    "kaynak": null,
+    "fe_elemanlar": [
+     73
+    ]
+   },
+   {
+    "no": 74,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç74 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.50741,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX-+0.3EY++0.3EZ"
+    },
+    "cubuk": 74,
+    "kaynak": null,
+    "fe_elemanlar": [
+     74
+    ]
+   },
+   {
+    "no": 75,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç75 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.50691,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX++0.3EY++0.3EZ"
+    },
+    "cubuk": 75,
+    "kaynak": null,
+    "fe_elemanlar": [
+     75
+    ]
+   },
+   {
+    "no": 76,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç76 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.50691,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX+-0.3EY++0.3EZ"
+    },
+    "cubuk": 76,
+    "kaynak": null,
+    "fe_elemanlar": [
+     76
+    ]
+   },
+   {
+    "no": 77,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç77 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.59843,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 77,
+    "kaynak": null,
+    "fe_elemanlar": [
+     77
+    ]
+   },
+   {
+    "no": 78,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç78 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.59788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 78,
+    "kaynak": null,
+    "fe_elemanlar": [
+     78
+    ]
+   },
+   {
+    "no": 79,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç79 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.59842,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 79,
+    "kaynak": null,
+    "fe_elemanlar": [
+     79
+    ]
+   },
+   {
+    "no": 80,
+    "tur": "capraz",
+    "kat": 2,
+    "adres": "Ç80 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.59788,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 80,
+    "kaynak": null,
+    "fe_elemanlar": [
+     80
+    ]
+   },
+   {
+    "no": 81,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç81 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.052813,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 81,
+    "kaynak": null,
+    "fe_elemanlar": [
+     81
+    ]
+   },
+   {
+    "no": 82,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç82 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.082921,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 82,
+    "kaynak": null,
+    "fe_elemanlar": [
+     82
+    ]
+   },
+   {
+    "no": 83,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç83 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.033017,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 83,
+    "kaynak": null,
+    "fe_elemanlar": [
+     83
+    ]
+   },
+   {
+    "no": 84,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç84 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.05194,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 84,
+    "kaynak": null,
+    "fe_elemanlar": [
+     84
+    ]
+   },
+   {
+    "no": 85,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç85 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.12541,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 85,
+    "kaynak": null,
+    "fe_elemanlar": [
+     85
+    ]
+   },
+   {
+    "no": 86,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç86 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.05194,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 86,
+    "kaynak": null,
+    "fe_elemanlar": [
+     86
+    ]
+   },
+   {
+    "no": 87,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç87 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.05194,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 87,
+    "kaynak": null,
+    "fe_elemanlar": [
+     87
+    ]
+   },
+   {
+    "no": 88,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç88 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.12541,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 88,
+    "kaynak": null,
+    "fe_elemanlar": [
+     88
+    ]
+   },
+   {
+    "no": 89,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç89 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.05194,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 89,
+    "kaynak": null,
+    "fe_elemanlar": [
+     89
+    ]
+   },
+   {
+    "no": 90,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç90 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.052813,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 90,
+    "kaynak": null,
+    "fe_elemanlar": [
+     90
+    ]
+   },
+   {
+    "no": 91,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç91 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.08292,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 91,
+    "kaynak": null,
+    "fe_elemanlar": [
+     91
+    ]
+   },
+   {
+    "no": 92,
+    "tur": "kolon",
+    "kat": 3,
+    "adres": "Ç92 (kolon)",
+    "kesit": "KOLON",
+    "sistem": "celik",
+    "dc": 0.033017,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 92,
+    "kaynak": null,
+    "fe_elemanlar": [
+     92
+    ]
+   },
+   {
+    "no": 93,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç93 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 93,
+    "kaynak": null,
+    "fe_elemanlar": [
+     93
+    ]
+   },
+   {
+    "no": 94,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç94 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.057345,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 94,
+    "kaynak": null,
+    "fe_elemanlar": [
+     94
+    ]
+   },
+   {
+    "no": 95,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç95 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.057345,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 95,
+    "kaynak": null,
+    "fe_elemanlar": [
+     95
+    ]
+   },
+   {
+    "no": 96,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç96 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 96,
+    "kaynak": null,
+    "fe_elemanlar": [
+     96
+    ]
+   },
+   {
+    "no": 97,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç97 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 97,
+    "kaynak": null,
+    "fe_elemanlar": [
+     97
+    ]
+   },
+   {
+    "no": 98,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç98 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 98,
+    "kaynak": null,
+    "fe_elemanlar": [
+     98
+    ]
+   },
+   {
+    "no": 99,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç99 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 99,
+    "kaynak": null,
+    "fe_elemanlar": [
+     99
+    ]
+   },
+   {
+    "no": 100,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç100 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 100,
+    "kaynak": null,
+    "fe_elemanlar": [
+     100
+    ]
+   },
+   {
+    "no": 101,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç101 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.057345,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 101,
+    "kaynak": null,
+    "fe_elemanlar": [
+     101
+    ]
+   },
+   {
+    "no": 102,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç102 (kiris)",
+    "kesit": "KIRIS-CAPRAZLI",
+    "sistem": "celik",
+    "dc": 0.057345,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "kesme",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 102,
+    "kaynak": null,
+    "fe_elemanlar": [
+     102
+    ]
+   },
+   {
+    "no": 103,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç103 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 103,
+    "kaynak": null,
+    "fe_elemanlar": [
+     103
+    ]
+   },
+   {
+    "no": 104,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç104 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 104,
+    "kaynak": null,
+    "fe_elemanlar": [
+     104
+    ]
+   },
+   {
+    "no": 105,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç105 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 105,
+    "kaynak": null,
+    "fe_elemanlar": [
+     105
+    ]
+   },
+   {
+    "no": 106,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç106 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 106,
+    "kaynak": null,
+    "fe_elemanlar": [
+     106
+    ]
+   },
+   {
+    "no": 107,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç107 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 107,
+    "kaynak": null,
+    "fe_elemanlar": [
+     107
+    ]
+   },
+   {
+    "no": 108,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç108 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 108,
+    "kaynak": null,
+    "fe_elemanlar": [
+     108
+    ]
+   },
+   {
+    "no": 109,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç109 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.8181,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 109,
+    "kaynak": null,
+    "fe_elemanlar": [
+     109
+    ]
+   },
+   {
+    "no": 110,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç110 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 110,
+    "kaynak": null,
+    "fe_elemanlar": [
+     110
+    ]
+   },
+   {
+    "no": 111,
+    "tur": "kiris",
+    "kat": 3,
+    "adres": "Ç111 (kiris)",
+    "kesit": "KIRIS",
+    "sistem": "celik",
+    "dc": 0.41572,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eğilme (güçlü eksen)",
+     "kombinasyon": "1.2G+1.6Q+0.5S"
+    },
+    "cubuk": 111,
+    "kaynak": null,
+    "fe_elemanlar": [
+     111
+    ]
+   },
+   {
+    "no": 112,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç112 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.35062,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX--0.3EY++0.3EZ"
+    },
+    "cubuk": 112,
+    "kaynak": null,
+    "fe_elemanlar": [
+     112
+    ]
+   },
+   {
+    "no": 113,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç113 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.35062,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX-+0.3EY++0.3EZ"
+    },
+    "cubuk": 113,
+    "kaynak": null,
+    "fe_elemanlar": [
+     113
+    ]
+   },
+   {
+    "no": 114,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç114 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.35036,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-EX++0.3EY++0.3EZ"
+    },
+    "cubuk": 114,
+    "kaynak": null,
+    "fe_elemanlar": [
+     114
+    ]
+   },
+   {
+    "no": 115,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç115 (capraz)",
+    "kesit": "CAPRAZ-V",
+    "sistem": "celik",
+    "dc": 0.35036,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+EX+-0.3EY++0.3EZ"
+    },
+    "cubuk": 115,
+    "kaynak": null,
+    "fe_elemanlar": [
+     115
+    ]
+   },
+   {
+    "no": 116,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç116 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.36445,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX--EY-+0.3EZ"
+    },
+    "cubuk": 116,
+    "kaynak": null,
+    "fe_elemanlar": [
+     116
+    ]
+   },
+   {
+    "no": 117,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç117 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.36405,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX-+EY-+0.3EZ"
+    },
+    "cubuk": 117,
+    "kaynak": null,
+    "fe_elemanlar": [
+     117
+    ]
+   },
+   {
+    "no": 118,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç118 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.36445,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S-0.3EX--EY++0.3EZ"
+    },
+    "cubuk": 118,
+    "kaynak": null,
+    "fe_elemanlar": [
+     118
+    ]
+   },
+   {
+    "no": 119,
+    "tur": "capraz",
+    "kat": 3,
+    "adres": "Ç119 (capraz)",
+    "kesit": "CAPRAZ-X",
+    "sistem": "celik",
+    "dc": 0.36404,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "eksenel (basınç)",
+     "kombinasyon": "1.2G+Q+0.2S+0.3EX-+EY++0.3EZ"
+    },
+    "cubuk": 119,
+    "kaynak": null,
+    "fe_elemanlar": [
+     119
+    ]
+   }
+  ]
+ }
+}

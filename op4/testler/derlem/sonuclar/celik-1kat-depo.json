@@ -1,0 +1,229 @@
+{
+ "cozum_kimligi": "bina-9c60241183ba8dda",
+ "tasarim": {
+  "en_buyuk_dc": 0.72767,
+  "elemanlar": [
+   {
+    "no": 1,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A1→B1/k1",
+    "kesit": "IPE300",
+    "sistem": "celik",
+    "dc": 0.67807,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (negatif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     7
+    ]
+   },
+   {
+    "no": 2,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-B1→C1/k1",
+    "kesit": "IPE300",
+    "sistem": "celik",
+    "dc": 0.67807,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (negatif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     8
+    ]
+   },
+   {
+    "no": 3,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A2→B2/k1",
+    "kesit": "IPE300",
+    "sistem": "celik",
+    "dc": 0.72767,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (negatif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     9
+    ]
+   },
+   {
+    "no": 4,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-B2→C2/k1",
+    "kesit": "IPE300",
+    "sistem": "celik",
+    "dc": 0.72767,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (negatif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     10
+    ]
+   },
+   {
+    "no": 5,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-A1→A2/k1",
+    "kesit": "IPE400",
+    "sistem": "celik",
+    "dc": 0.33637,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (pozitif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     11
+    ]
+   },
+   {
+    "no": 6,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-B1→B2/k1",
+    "kesit": "IPE400",
+    "sistem": "celik",
+    "dc": 0.58224,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (pozitif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     12
+    ]
+   },
+   {
+    "no": 7,
+    "tur": "kiris",
+    "kat": 1,
+    "adres": "K-C1→C2/k1",
+    "kesit": "IPE400",
+    "sistem": "celik",
+    "dc": 0.33637,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b (pozitif M)",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     13
+    ]
+   },
+   {
+    "no": 1,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-A1/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.36623,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     1
+    ]
+   },
+   {
+    "no": 2,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-A2/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.32968,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     2
+    ]
+   },
+   {
+    "no": 3,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-B1/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.3074,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     3
+    ]
+   },
+   {
+    "no": 4,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-B2/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.39939,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     4
+    ]
+   },
+   {
+    "no": 5,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-C1/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.36623,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     5
+    ]
+   },
+   {
+    "no": 6,
+    "tur": "kolon",
+    "kat": 1,
+    "adres": "S-C2/k1",
+    "kesit": "HEB240",
+    "sistem": "celik",
+    "dc": 0.32968,
+    "durum": "yeterli",
+    "belirleyen": {
+     "kontrol": "etkileşim 11.1b",
+     "kombinasyon": "1.2G+1.6Q"
+    },
+    "fe_elemanlar": [
+     6
+    ]
+   }
+  ]
+ }
+}
