@@ -9,13 +9,16 @@
 //   B → model/bina.json (çekirdek Metin()), C → gorunum/gorunum.json (kameralar, kipler) ve secim/kumeler.json,
 //   D → sonuc/ozet.json, sonuc/veri.json, onizleme.png, manifest.
 // D kaydederken bütün katkıların `yaz`ını, açarken (çekirdek modeli yükledikten sonra) bütün `oku`larını çağırır.
-// Böylece C kamerayı, D sonucu kendi dosyasında tutar; birbirlerinin koduna dokunmaz.
+// Böylece C kamerayı, D sonucu kendi dosyasında tutar; birbirlerinin koduna dokunmaz. Katkı işlevleri çoğunlukla modül
+// nesnesini gösterir: modül kapanırken (yıkıcısında) kendi katkılarını KatkiKaldir(ad) ile bırakır; belge kabukta
+// modüllerden uzun yaşar.
 //
 // KİRLİ İŞARETİ: model değişikliği (ModelIslemiSonrasi), görünüm durumundan kaydedilmeye değer bir değişiklik (C:
 // kamera sürüklemesi kirletmez; görünüm kipi değişikliği kirletmez — MIMARI §13.2 yalnız model ve kalıcı ayarlar) belgeyi
 // kirletir. KirliIsaretle / Temizle yalnız UI iş parçacığından.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -68,7 +71,8 @@ class ProjeBelgesi {
 public:
     // ---- durum ---------------------------------------------------------------------------------------------------
     const std::string& Yol() const { return yol_; }            // UTF-8 tam yol; boş = hiç kaydedilmedi
-    // Başlıkta görünen ad: dosya adı (uzantılı) ya da "Adsız N".
+    // Başlıkta görünen ad: dosya adı (uzantılı); yol boşsa Acildi'ye verilen görünen ad (içe aktarılan belge: kaynak
+    // dosyanın gövdesi) ya da "Adsız N".
     std::string Ad() const;
     // Pencere başlığı: "op4 — <Ad>" ve kirliyse " •" (MIMARI §5.2).
     std::string PencereBasligi() const;
@@ -81,9 +85,14 @@ public:
     void Kaydedildi(const std::string& yol);
     // Açtıktan ya da Yeni'den sonra (D): yol (boş = adsız), adsız numarası, salt okunurluk; temiz durum.
     void Acildi(const std::string& yol, int adsizNo, bool saltOkunur);
+    // Aynısı + görünen ad: yol boşken Ad() "Adsız N" yerine bunu döndürür (D: içe aktarılan .matris / .json belgesi
+    // kaynak dosyanın gövdesiyle, ör. "bina"). Boş = "Adsız N". 3 bağımsız değişkenli Acildi ve Kaydedildi görünen adı siler.
+    void Acildi(const std::string& yol, int adsizNo, bool saltOkunur, const std::string& gorunenAd);
 
     // ---- katkılar ------------------------------------------------------------------------------------------------
     void KatkiEkle(ProjeKatkisi k);
+    // Bu adla eklenmiş bütün katkıları çıkarır (modül kapanırken); çıkarılan sayısını döndürür (yoksa 0).
+    size_t KatkiKaldir(const std::string& ad);
     const std::vector<ProjeKatkisi>& Katkilar() const { return katkilar_; }  // sira'ya göre sıralı
     // Bütün katkıların yaz'ını sırayla çağırır (D, ProjeYaz'dan önce).
     void IcerikTopla(ProjeIcerigi& icerik) const;
@@ -98,7 +107,7 @@ public:
     Olay<std::string> kaydedildi;     // Kaydedildi sonrası (yol)
 
 private:
-    std::string yol_;
+    std::string yol_, gorunenAd_;
     int adsizNo_ = 1;
     bool kirli_ = false, saltOkunur_ = false;
     uint64_t sayac_ = 0;

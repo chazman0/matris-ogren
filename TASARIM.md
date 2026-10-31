@@ -524,13 +524,16 @@ kaydı silinir, son dosyalar. Eski biçimden açılan ya da salt okunur belge he
 {"bicim": 1, "cozum_kimligi": "bina-531fa88fc9470a4b", "tarih": "2026-10-31T12:00:00Z", "motor_surumu": "…",
  "sahne_surumu": 7, "sure_ms": 2085,
  "ozet": {"metin": "216 SD, 84 kombinasyon; G = 2714.76 kN, Q = 480.0 kN", "sd_sayisi": 216, "kombinasyon_sayisi": 84,
-          "en_buyuk_dc": 0.99786, "en_buyuk_dc_elemani": "cubuk:12", "asan_sayisi": 0},
+          "en_buyuk_dc": 0.99786, "en_buyuk_dc_elemani": "cubuk:12", "asan_sayisi": 0,
+          "toplam_G": 2714.76, "toplam_Q": 480.0},
  "uyarilar": ["…"],
  "dc_dizisi": [{"kimlik": "cubuk:1", "dc": 0.60775, "belirleyen": "eğilme + eksenel", "kombinasyon": "…", "satir": 0}, …],
  "model_karmasi": "fnv1a64:…", "eski": false}
 ```
 
-`dc_dizisi` çekirdeğin `SonucEsle` eşlemesidir (kimliğe göre sıralı; tasarımsız eleman `dc: null`). `model_karmasi` çözülen
+`dc_dizisi` çekirdeğin `SonucEsle` eşlemesidir (kimliğe göre sıralı; tasarımsız eleman `dc: null`). `toplam_G` / `toplam_Q`
+(kN) motor yanıtının `veri.ozet.toplam_G` / `toplam_Q`'sudur (`SonucOzeti::toplamG` / `toplamQ`; özet metninden
+ayrıştırılmaz); yoksa `null` (Sonuç özeti "—" gösterir). `model_karmasi` çözülen
 model metninin (çözüme giden `Metin()`) FNV-1a 64 karmasıdır; `eski` kaydedilirken sonucun eski olup olmadığıdır.
 
 **Açılışta eşleştirme (MIMARI §13.1.4):** karma açılan modelin `Metin()` karmasıyla aynı ve `eski` false ise sonuç hemen
@@ -550,8 +553,9 @@ projesi, diğerleri bina JSON'u.
 | `.matris` (`{tur: "matris-proje", surum: 1, bina, gorunum, arac_yerlesimi}`) | `bina` değeri **ham alt metin** olarak (anahtar sırası ve sayı yazımı korunur) çekirdeğe; `surum > 1` reddedilir; web görünüm ayarları alınmaz (uyarı); `.matris` içinde düz bina JSON'u da kabul edilir |
 | bina `.json` (`{"tur": "bina", …}` ya da `{"bina": {…}}` sarmalayıcısı) | metin (ya da `bina` alt metni) olduğu gibi çekirdeğe |
 
-İçe aktarılan belge "Adsız N"dir; Kaydet, kaynakla aynı klasörde `<ad>.op4` önererek Farklı kaydet açar, kaynak dosyaya
-dokunulmaz. Ters yön: **Bina dışa aktar** `.json` (`Metin()`) ya da `.matris` (`{"tur":"matris-proje","surum":1,
+İçe aktarılan belgenin yolu yoktur; başlıkta "Adsız N" yerine kaynak dosyanın gövdesiyle görünür ("bina.matris" → "op4 —
+bina"; `ProjeBelgesi::Acildi(…, gorunenAd)`). Kaydet, kaynakla aynı klasörde `<ad>.op4` önererek Farklı kaydet açar, kaynak
+dosyaya dokunulmaz. Ters yön: **Bina dışa aktar** `.json` (`Metin()`) ya da `.matris` (`{"tur":"matris-proje","surum":1,
 "uygulama":"op4 · Opus Fortis","kaydedildi","bina"}`) yazar.
 
 ### 21.7 Atomik yazma
@@ -594,14 +598,17 @@ dokunulmaz. Ters yön: **Bina dışa aktar** `.json` (`Metin()`) ya da `.matris`
   FNV-1a 64'ü). Belgeyi açık tutan süreç bu adla sunucu açar (`FILE_FLAG_FIRST_PIPE_INSTANCE`, yalnız yerel istemci); aynı
   dosya yeniden açılmak istenince yeni süreç bağlanır, sunucuya `AllowSetForegroundWindow` verir, `{"tur":"one_gel"}`
   yazar ve çıkar; sunucu penceresi öne gelir. Başka dosya her zaman yeni pencerede açılır (pencere başına bir proje).
-  `--yeni-ornek` denetimi atlar.
+  Çıkış kabuktan istenir (`ModulOrtami::cikisIste(0)`, MIMARI S23): kalan modüller kurulmaz, uygulama pencere açmadan
+  çıkar. `--yeni-ornek` (`ModulOrtami::yeniOrnek`; komut satırı bir kez ayrıştırılır) ve test kipleri denetimi atlar.
 
 ### 21.10 IFC dışa aktarma (MIMARI §14.1)
 
 `Ctrl+E`: çekirdek `IfcDisari(secenek, veri)`; `secenek = {"analiz": true, "yukler": true, "dc": <güncel sonuç var>,
 "uygulama": {"ad": "op4", "surum", "firma": "Opus Fortis", "tam_ad": "op4 · Opus Fortis"}, "zaman": "YYYY-MM-DDTHH:MM:SS"}`
 (test kiplerinde sabit `2026-01-01T00:00:00`: aynı model → aynı bayt); `veri` güncel sonucun `sonuc/veri.json` metni.
-Dosya atomik yazılır.
+`uygulama` `docs/ifc_disari.js` `secenek.uygulama`'ya gider: `IFCAPPLICATION(#geliştirici,'0.1.0','op4 · Opus Fortis','op4')`,
+geliştirici `IFCORGANIZATION($,'Opus Fortis',…)`, `FILE_NAME(…,'op4 0.1.0','op4 · Opus Fortis','')` (web varsayılanı
+"Matris Öğren" değişmez). Dosya atomik yazılır.
 
 **Uygulayan:** `op4/kaynak/cekirdek/proje_dosyasi.cpp` (biçim), `proje_zip.cpp` (miniz 3.0.2; `op4/cmake/bagimlilik_miniz.cmake`),
 `proje_json.cpp`, `proje_onizleme.cpp`, `proje_islemleri.cpp` (akış ve `dosya.*` komutları), `sonuc.cpp`, `sonuc_ek.cpp`,

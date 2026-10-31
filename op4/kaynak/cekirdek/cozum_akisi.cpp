@@ -57,6 +57,7 @@ CozumAkisi::CozumAkisi(Hizmetler& h, CozumAkisiAyari ayar) : h_(h), ayar_(std::m
 CozumAkisi::~CozumAkisi() {
     // Süren isteklerin işleyicileri bu nesneyi gösteriyor: yanıtlar artık eşlenmesin.
     canli_.reset();
+    if (h_.belge) h_.belge->KatkiKaldir("sonuc");  // belge bu nesneden uzun yaşar (S15)
     if (h_.sonuc) h_.sonuc->degisti.Birak(aboneSonuc_);
     h_.modelYuklendi.Birak(aboneYuklendi_);
     h_.modelDegisti.Birak(aboneDegisti_);
@@ -422,13 +423,12 @@ std::vector<OzetSatiri> CozumAkisi::OzetSatirlari() const {
     std::vector<OzetSatiri> s;
     if (!h_.sonuc || !h_.sonuc->Var()) return s;
     const SonucOzeti& o = h_.sonuc->Ozet();
-    const CozumToplamlari t = OzetToplamlari(o);
     s.push_back({"Durum", h_.sonuc->Eski() ? "Sonuçlar eski (model çözümden sonra değişti)" : "Güncel",
                  h_.sonuc->Eski() ? 0xD9A13BFFu : 0x4C9A63FFu});
     s.push_back({"Serbestlik derecesi", SayiMetni(static_cast<double>(o.sdSayisi), 0), 0});
     s.push_back({"Kombinasyon", SayiMetni(static_cast<double>(o.kombinasyonSayisi), 0), 0});
-    s.push_back({"ΣG", SayiMetni(t.G, 2) + " kN", 0});
-    s.push_back({"ΣQ", SayiMetni(t.Q, 2) + " kN", 0});
+    s.push_back({"ΣG", SayiMetni(o.toplamG, 2) + " kN", 0});
+    s.push_back({"ΣQ", SayiMetni(o.toplamQ, 2) + " kN", 0});
     std::string dc = o.enBuyukDc >= 0 ? OndalikVirgul(o.enBuyukDc, 3) : std::string("tasarım yok");
     if (o.enBuyukDc >= 0 && o.enBuyukDcElemani.Gecerli()) dc += " (" + KimlikMetni(o.enBuyukDcElemani) + ")";
     s.push_back({"En büyük D/C", dc, o.enBuyukDc >= 0 ? DcRengi(o.enBuyukDc) : 0});

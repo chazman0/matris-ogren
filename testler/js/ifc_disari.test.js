@@ -412,6 +412,38 @@ test("uygulama alanları yalnız 'Matris Öğren': FILE_NAME ve IfcApplication; 
   assert.deepEqual(sahipsiz, []);
 });
 
+test("secenek.uygulama {ad, surum, firma, tam_ad}: FILE_NAME, IfcApplication, geliştirici kurum; verilmezse aynı bayt", function () {
+  const varsayilan = MatrisIFC.uret(O.temel(), null, ZAMAN);
+  // ad yoksa (boş sözlük, yalnız sürüm, boş ad) varsayılan kimlik: web çıktısı bayt bayt aynı
+  [{}, { surum: "9.9" }, { ad: "" }, null, "op4"].forEach(function (u) {
+    assert.equal(MatrisIFC.uret(O.temel(), null, Object.assign({ uygulama: u }, ZAMAN)), varsayilan, JSON.stringify(u));
+  });
+  const u = { ad: "op4", surum: "0.1.0", firma: "Opus Fortis", tam_ad: "op4 · Opus Fortis" };
+  const m = MatrisIFC.uret(O.temel(), null, Object.assign({ uygulama: u }, ZAMAN));
+  stepDenetle(m);
+  const tam = MatrisIFC.stepMetin(u.tam_ad);
+  assert.equal(tam, "op4 \\X2\\00B7\\X0\\ Opus Fortis");
+  const satir = m.split("\n").filter(function (s) { return s.indexOf("FILE_NAME(") === 0; })[0];
+  assert.ok(satir.endsWith(",'op4 0.1.0','" + tam + "','');"), satir);
+  const uyg = m.split("\n").filter(function (s) { return /=IFCAPPLICATION\(/.test(s); });
+  assert.equal(uyg.length, 1);
+  assert.ok(uyg[0].endsWith(",'0.1.0','" + tam + "','op4');"), uyg[0]);
+  const org = /IFCAPPLICATION\(#(\d+),/.exec(uyg[0])[1];
+  assert.ok(m.indexOf("#" + org + "=IFCORGANIZATION($,'Opus Fortis',$,$,$);") >= 0);
+  assert.ok(m.indexOf(MatrisIFC.stepMetin("Matris Öğren")) < 0, "varsayılan uygulama adı kalmadı");
+  // Varlık sayıları ve GlobalId'ler aynı: yalnız kimlik metinleri değişir.
+  assert.equal(m.split("\n").length, varsayilan.split("\n").length);
+  assert.deepEqual(m.match(/'[0-9A-Za-z_$]{22}'/g), varsayilan.match(/'[0-9A-Za-z_$]{22}'/g));
+  // firma ve tam_ad verilmezse ad; surum verilmezse boş sürüm.
+  const k = MatrisIFC.uret(O.temel(), null, Object.assign({ uygulama: { ad: "op4" } }, ZAMAN));
+  assert.match(k, /^FILE_NAME\(.*,'op4','op4',''\);$/m);
+  assert.match(k, /IFCAPPLICATION\(#\d+,'','op4','op4'\);/);
+  assert.match(k, /IFCORGANIZATION\(\$,'op4',\$,\$,\$\);/);
+  // Sahiplik geçmişi her köke bağlı kalır.
+  const sahipsiz = m.split("\n").filter(function (s) { return /^#\d+=IFC[A-Z]+\('[0-9A-Za-z_$]{22}',\$,/.test(s); });
+  assert.deepEqual(sahipsiz, []);
+});
+
 test("girdi: JSON metni de kabul edilir; bina yoksa veri.bina kullanılır; bozuk girdi hata verir", function () {
   const a = MatrisIFC.uret(JSON.stringify(O.temel()), null, ZAMAN);
   const b = MatrisIFC.uret(null, { bina: O.temel() }, ZAMAN);

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include <nlohmann/json.hpp>
 
@@ -34,7 +35,10 @@ void UyarilariEkle(const json& j, std::vector<std::string>& o) {
     }
 }
 
-ojson DcDegeri(double dc) { return std::isfinite(dc) ? ojson(dc) : ojson(nullptr); }
+// Sonlu sayı ya da null (JSON NaN taşımaz): D/C, yük toplamları.
+ojson SonluYaDaBos(double v) { return std::isfinite(v) ? ojson(v) : ojson(nullptr); }
+
+constexpr double YOK = std::numeric_limits<double>::quiet_NaN();
 
 }  // namespace
 
@@ -106,6 +110,8 @@ bool CozumYanitiniCoz(std::string_view yanit, SonucOzeti& ozet, std::string& ver
     ozet.sureMs = Sayi(j, "sure_ms", Sayi(o, "cozum_sure_ms", 0));
     ozet.sdSayisi = Adet(o, "sd_sayisi");
     ozet.kombinasyonSayisi = Adet(o, "kombinasyon_sayisi");
+    ozet.toplamG = Sayi(o, "toplam_G", YOK);
+    ozet.toplamQ = Sayi(o, "toplam_Q", YOK);
     UyarilariEkle(o.contains("uyarilar") ? o["uyarilar"] : json(), ozet.uyarilar);
     const json t = v.contains("tasarim") && v["tasarim"].is_object() ? v["tasarim"] : json::object();
     ozet.enBuyukDc = Sayi(o, "en_buyuk_dc", Sayi(t, "en_buyuk_dc", -1));
@@ -129,14 +135,16 @@ std::string SonucOzetiJson(const SonucOzeti& s) {
     j["ozet"] = {{"metin", s.ozetMetni},
                  {"sd_sayisi", s.sdSayisi},
                  {"kombinasyon_sayisi", s.kombinasyonSayisi},
-                 {"en_buyuk_dc", DcDegeri(s.enBuyukDc)},
+                 {"en_buyuk_dc", SonluYaDaBos(s.enBuyukDc)},
                  {"en_buyuk_dc_elemani", s.enBuyukDcElemani.Gecerli() ? KimlikMetni(s.enBuyukDcElemani) : std::string()},
-                 {"asan_sayisi", s.asanSayisi}};
+                 {"asan_sayisi", s.asanSayisi},
+                 {"toplam_G", SonluYaDaBos(s.toplamG)},
+                 {"toplam_Q", SonluYaDaBos(s.toplamQ)}};
     j["uyarilar"] = s.uyarilar;
     ojson d = ojson::array();
     for (const ElemanSonucu& e : s.elemanlar)
         d.push_back({{"kimlik", KimlikMetni(e.kimlik)},
-                     {"dc", DcDegeri(e.dc)},
+                     {"dc", SonluYaDaBos(e.dc)},
                      {"belirleyen", e.belirleyen},
                      {"kombinasyon", e.kombinasyon},
                      {"satir", e.tasarimSatiri}});
@@ -168,6 +176,8 @@ bool SonucOzetiOku(std::string_view metin, SonucOzeti& s, std::string& hata) {
         s.enBuyukDc = Sayi(o, "en_buyuk_dc", -1);
         if (const auto k = KimlikCoz(Metin(o, "en_buyuk_dc_elemani"))) s.enBuyukDcElemani = *k;
         s.asanSayisi = Adet(o, "asan_sayisi");
+        s.toplamG = Sayi(o, "toplam_G", YOK);
+        s.toplamQ = Sayi(o, "toplam_Q", YOK);
     }
     UyarilariEkle(j.contains("uyarilar") ? j["uyarilar"] : json(), s.uyarilar);
     if (j.contains("dc_dizisi") && j["dc_dizisi"].is_array()) {

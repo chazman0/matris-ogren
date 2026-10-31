@@ -1,8 +1,9 @@
 // op4 — dosya modülü (D; sözleşme S15–S18, S21, S23; F1 iş 1.6). Windows.
 //
 // Kurulum sırası (DosyaModuluKur; pencere henüz yok):
-//   1. Tek örnek: açılış dosyası başka bir op4 penceresinde açıksa o pencere öne getirilir, bu süreç çıkar
-//      (--yeni-ornek ve test kipleri atlar).
+//   1. Tek örnek: açılış dosyası başka bir op4 penceresinde açıksa o pencere öne getirilir ve kabuktan çıkış istenir
+//      (ModulOrtami::cikisIste: kalan modüller kurulmaz, uygulama pencere açmadan çıkar). ModulOrtami::yeniOrnek
+//      (--yeni-ornek) ve test kipleri atlar.
 //   2. Kullanıcı klasörleri (%LOCALAPPDATA%\Opus Fortis\op4\kurtarma, cokme); çökme dökümü (test kipinde değil).
 //   3. Hizmetler::iletisim ← yerel IFileDialog / TaskDialog (test kipinde kabuğun betikli yedeği kalır).
 //   4. DosyaIslemleri (platformdan bağımsız akış; cekirdek/proje_islemleri.h): dosya.* komutları, model ve önizleme
@@ -24,7 +25,6 @@
 #include "dosya/studyo_tema.h"
 #include "imgui.h"
 #include "platform/dosya_sistemi.h"
-#include "secenekler.h"
 
 namespace op4 {
 namespace {
@@ -229,13 +229,11 @@ struct DosyaModulu {
 }  // namespace
 
 void DosyaModuluKur(Hizmetler& h, ModulOrtami& o) {
-    Secenekler s;
-    std::string hata;
-    Ayristir(s, hata);  // --yeni-ornek (sözleşme S24)
     const std::string acilis = o.acilisDosyasi.empty() ? std::string() : dosya_win::TamYol(o.acilisDosyasi);
-    if (!o.testKipi && !s.yeniOrnek && !acilis.empty() && dosya_win::BaskaPenceredeAcikMi(acilis)) {
+    if (!o.testKipi && !o.yeniOrnek && !acilis.empty() && dosya_win::BaskaPenceredeAcikMi(acilis)) {
         if (o.gunluk) o.gunluk("Tek örnek: '" + acilis + "' başka bir op4 penceresinde açık; o pencere öne getirildi.");
-        ExitProcess(0);
+        if (o.cikisIste) o.cikisIste(0);  // S23: kabuk kalan modülleri kurmaz, uygulama pencere açmadan çıkar
+        return;
     }
 
     auto m = std::make_shared<DosyaModulu>(h, o);

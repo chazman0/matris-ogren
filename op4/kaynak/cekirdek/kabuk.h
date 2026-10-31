@@ -4,7 +4,8 @@
 // görünüm durumu, proje belgesi, sonuç durumu, ayarlar) ve Hizmetler'i kurar. Paket modülleri kendi hizmet
 // uygulamalarını oluşturup Hizmetler'e bağlar, komutlarına işleyici bağlar, panel / durum öğesi / belge katkısı ekler.
 // Kur modülleri (KabukAyari::moduller, op4.exe'de StandartModuller()) BU SIRAYLA çağırır: A (motor) → B (çekirdek) → C (arayüz) → D (dosya) → D (çözüm); sonra
-// çekirdek boş model "Adsız 1" ile başlatılır (MIMARI §13.4).
+// çekirdek boş model "Adsız 1" ile başlatılır (MIMARI §13.4). Bir modül kurulurken çıkış isterse (ModulOrtami::cikisIste)
+// kalan modüller kurulmaz, boş model açılmaz; uygulama CikisIstendi()'ye bakıp pencere açmadan çıkar.
 //
 // Her modülün Kur işlevi kendi paketinin dosyasındadır; bu başlık yalnız bildirir:
 //   MotorModuluKur    A  kaynak/motor_modulu.cpp            (Windows; Linux sınamasında taslak motor istemcisi)
@@ -40,6 +41,16 @@ struct ModulOrtami {
     std::string acilisDosyasi;                  // komut satırındaki proje yolu (D ilk karede açar)
     std::string senaryo;                        // --senaryo yolu (C yürütür)
     std::function<void(std::string_view)> gunluk;
+    bool yeniOrnek = false;                     // --yeni-ornek (S24): D tek örnek borusunu atlar. Uygulama, bir kez
+                                                // ayrıştırılmış Secenekler'den doldurur; modüller komut satırını yeniden
+                                                // ayrıştırmaz.
+    // Çıkış isteği (kod = süreç çıkış kodu). UygulamaKabugu::Kur bağlar (ev sahibi bir işlev verdiyse onu da çağırır);
+    // modüller çağırır. Kurulum sırasında istenirse kabuk sonraki modülleri kurmaz ve boş modeli açmaz; uygulama Kur'dan
+    // hemen sonra UygulamaKabugu::CikisIstendi()'ye bakar ve pencere açmadan CikisKodu() ile çıkar (D: belge başka bir
+    // op4 penceresinde açık — tek örnek devri). Kurulumdan sonra istenirse (ev sahibi işlev vermediyse)
+    // ArayuzKancalari::pencereyiKapat çağrılır (kapanış onayı sorulmaz; sorulacaksa dosya.cikis komutu kullanılır).
+    // İlk isteğin kodu geçerlidir.
+    std::function<void(int kod)> cikisIste;
 
     // Modül nesnelerinin sahipliği: kabuk kapanırken TERS sırada bırakılır.
     template <class T>
@@ -92,6 +103,9 @@ public:
 
     Hizmetler& H() { return h_; }
     ModulOrtami& Ortam() { return ortam_; }
+    // Bir modül ModulOrtami::cikisIste ile çıkış istedi mi; istendiyse kodu. Uygulama Kur'dan hemen sonra bakar.
+    bool CikisIstendi() const { return cikisIstendi_; }
+    int CikisKodu() const { return cikisKodu_; }
 
     // Ortak nesneler (Hizmetler bunları gösterir).
     KomutYoneticisi komutlar;
@@ -108,6 +122,8 @@ private:
     std::unique_ptr<GunlukBildirimleri> yedekBildirim_;
     std::unique_ptr<BetikliIletisimKutulari> yedekIletisim_;
     bool kuruldu_ = false;
+    bool cikisIstendi_ = false;
+    int cikisKodu_ = 0;
 };
 
 }  // namespace op4

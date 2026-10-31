@@ -324,12 +324,16 @@ int Uygulama::Calistir(HINSTANCE ornek, const Secenekler& s) {
         ka.ortam.anaPencere = [this]() -> void* { return hwnd_; };
         ka.ortam.testKipi = testSaniye_ > 0;
         ka.ortam.motorsuz = s.motorsuz;
+        ka.ortam.yeniOrnek = s.yeniOrnek;  // --yeni-ornek: tek örnek borusu atlanır (S23, D)
         ka.ortam.acilisDosyasi = Utf8(s.proje);
         ka.ortam.senaryo = Utf8(s.senaryo);
         ka.ortam.gunluk = [](std::string_view m) { Gunluk("%.*s", static_cast<int>(m.size()), m.data()); };
         ka.moduller = StandartModuller();
         std::string kh;
         if (!kabuk_.Kur(std::move(ka), kh)) Gunluk("Uyarı: %s", kh.c_str());
+        // Kurulum sırasında çıkış istendi (ör. belge başka bir op4 penceresinde açık, D ona devretti): pencere, açılış
+        // ekranı ve motor süreci henüz yok; modülleri kabuk yıkıcısı bırakır (S23).
+        if (kabuk_.CikisIstendi()) return kabuk_.CikisKodu();
         ana_ = EtkinAnaPencere();
     }
     if (!ana_) {

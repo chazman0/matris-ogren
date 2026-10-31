@@ -232,6 +232,11 @@ test("ifcDisari: zaman sabitken aynı model → aynı bayt; uygulama kimliği op
   const v = JSON.parse(fs.readFileSync(path.join(OP4, "testler", "derlem", "sonuclar", "celik-1kat-depo.json"), "utf8"));
   const d = c.ifcDisari(Object.assign({ dc: true }, sec), v);
   assert.equal(d.basarili, true, d.hata);
+  // tam_ad (D: "op4 · Opus Fortis") ApplicationFullName ve FILE_NAME kaynak sistemine gider (docs/ifc_disari.js secenek.uygulama)
+  const t = c.ifcDisari({ uygulama: Object.assign({ tam_ad: "op4 · Opus Fortis" }, sec.uygulama), zaman: sec.zaman }, null);
+  const tam = IFC.stepMetin("op4 · Opus Fortis").replace(/\\/g, "\\\\");
+  assert.match(t.metin, new RegExp("IFCAPPLICATION\\(#\\d+,'0\\.1\\.0','" + tam + "','op4'\\);"));
+  assert.match(t.metin, new RegExp(",'op4 0\\.1\\.0','" + tam + "',''\\);"));
   // zaman verilmezse çekirdek saati (sınamada deterministik)
   const z = c.ifcDisari({}, null);
   assert.match(z.metin, /'2026-01-02T03:04:05'/);

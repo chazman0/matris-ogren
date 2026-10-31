@@ -269,8 +269,8 @@ struct DOrtamAyari {
     std::function<void(std::string_view)> olcum;  // CozumAkisiAyari::olcum
 };
 
-// Sözleşme nesneleri + sahte çekirdek / motor + D'nin dosya ve çözüm akışları. (ProjeBelgesi katkı kaldırmayı
-// desteklemediği için DosyaIslemleri / CozumAkisi ortam başına bir kez kurulur.)
+// Sözleşme nesneleri + sahte çekirdek / motor + D'nin dosya ve çözüm akışları. DosyaIslemleri / CozumAkisi ortam başına
+// bir kez kurulur; yıkıcıları belge katkılarını (KatkiKaldir) bırakır, kare işlerini bırakmaz.
 struct DOrtam {
     GeciciDizin dizin;
     KomutYoneticisi komutlar;

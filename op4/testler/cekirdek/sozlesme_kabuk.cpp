@@ -97,6 +97,80 @@ TEST_CASE("S23 kabuk: katalog, modüller, boş model 'Adsız 1', geri al komutu 
     k.Kapat();
 }
 
+namespace {
+// Çıkış isteği sınaması: kurulumda çıkış isteyen modül (D'nin tek örnek devri gibi) ve yeniOrnek'i okuyan modül.
+int CikisKurulanlar = 0;
+bool CikisYeniOrnek = false;
+void CikisIsteyenModul(Hizmetler&, ModulOrtami& o) {
+    ++CikisKurulanlar;
+    CikisYeniOrnek = o.yeniOrnek;
+    if (!o.yeniOrnek) o.cikisIste(3);
+}
+void SayanModul(Hizmetler&, ModulOrtami&) { ++CikisKurulanlar; }
+}  // namespace
+
+TEST_CASE("S23 kabuk: çıkış isteği (cikisIste) ve yeniOrnek; kurulumda kalan modüller kurulmaz, boş model açılmaz") {
+    auto ayar = [] {
+        KabukAyari a;
+        a.bilgi.surum = OP4_SURUM;
+        a.bilgi.veriDizini = std::string(OP4_KAYNAK_DIZINI) + "/veri";
+        a.bilgi.testKipi = true;
+        a.moduller = {{"cekirdek", "B", &CekirdekModuluKur}, {"dosya", "D", &CikisIsteyenModul},
+                      {"cozum", "D", &SayanModul}};
+        return a;
+    };
+    std::string hata;
+    {
+        UygulamaKabugu k;
+        CikisKurulanlar = 0;
+        REQUIRE_MESSAGE(k.Kur(ayar(), hata), hata);
+        CHECK(k.CikisIstendi());
+        CHECK(k.CikisKodu() == 3);
+        CHECK(CikisKurulanlar == 1);  // "cozum" kurulmadı
+        CHECK_FALSE(CikisYeniOrnek);
+        REQUIRE(k.H().cekirdek);
+        CHECK(k.H().cekirdek->Ozet().bos);
+        CHECK(k.H().belge->Ad() == "Adsız 1");
+        k.Ortam().cikisIste(9);  // ilk isteğin kodu geçerli
+        CHECK(k.CikisKodu() == 3);
+        k.Kapat();
+    }
+    {
+        // --yeni-ornek: modül ortamdan okur, çıkış istemez; bütün modüller kurulur. Kurulumdan sonraki istek pencereyi
+        // kapatma kancasına gider (C bağlar).
+        UygulamaKabugu k;
+        CikisKurulanlar = 0;
+        KabukAyari a = ayar();
+        a.ortam.yeniOrnek = true;
+        REQUIRE(k.Kur(std::move(a), hata));
+        CHECK(CikisYeniOrnek);
+        CHECK_FALSE(k.CikisIstendi());
+        CHECK(CikisKurulanlar == 2);
+        int kapat = 0;
+        k.arayuz.pencereyiKapat = [&kapat] { ++kapat; };
+        REQUIRE(k.Ortam().cikisIste);
+        k.Ortam().cikisIste(0);
+        CHECK(k.CikisIstendi());
+        CHECK(k.CikisKodu() == 0);
+        CHECK(kapat == 1);
+        k.Kapat();
+    }
+    {
+        // Ev sahibi kendi işlevini verirse kabuk kaydeder ve onu çağırır (pencere kancası çağrılmaz).
+        UygulamaKabugu k;
+        std::vector<int> evSahibi;
+        KabukAyari a = ayar();
+        a.ortam.cikisIste = [&evSahibi](int kod) { evSahibi.push_back(kod); };
+        int kapat = 0;
+        k.arayuz.pencereyiKapat = [&kapat] { ++kapat; };
+        REQUIRE(k.Kur(std::move(a), hata));
+        CHECK(k.CikisIstendi());
+        CHECK(evSahibi == std::vector<int>{3});
+        CHECK(kapat == 0);
+        k.Kapat();
+    }
+}
+
 TEST_CASE("S22 ModelIslemiUygula: C1 onayı, kirli işareti, seçim ayıklama, sonuç eski") {
     Hizmetler h;
     OnayliCekirdek c;
@@ -156,6 +230,35 @@ TEST_CASE("S15 proje belgesi: katkılar sırayla toplanır ve dağıtılır") {
     b.Kaydedildi("/proje/yapi.op4");
     CHECK_FALSE(kirli);
     CHECK(b.Ad() == "yapi.op4");
+
+    // KatkiKaldir: modül kapanırken kendi katkılarını bırakır; kalanlar sırasını korur.
+    b.KatkiEkle({"gorunum", 10, {}, {}, {}});
+    CHECK(b.KatkiKaldir("sonuc") == 1);
+    CHECK(b.KatkiKaldir("sonuc") == 0);
+    CHECK(b.KatkiKaldir("yok") == 0);
+    REQUIRE(b.Katkilar().size() == 2);
+    CHECK(b.Katkilar()[0].ad == "model");
+    CHECK(b.Katkilar()[1].ad == "gorunum");
+    sira.clear();
+    ProjeIcerigi j;
+    b.IcerikTopla(j);
+    CHECK(sira == std::vector<std::string>{"model"});
+    CHECK_FALSE(j.Var(proje_yolu::SONUC_OZETI));
+
+    // Görünen ad: yolsuz belge (içe aktarılan) "Adsız N" yerine onu gösterir; 3 değişkenli Acildi ve Kaydedildi siler.
+    b.Acildi("", 4, false, "bina");
+    CHECK(b.Ad() == "bina");
+    CHECK(b.PencereBasligi() == "op4 — bina");
+    b.Acildi("/proje/a.op4", 5, false, "yok sayılır");
+    CHECK(b.Ad() == "a.op4");
+    b.Acildi("", 6, false, "bina");
+    b.Kaydedildi("/proje/bina.op4");
+    CHECK(b.Ad() == "bina.op4");
+    b.Acildi("", 7, false, "bina");
+    b.Acildi("", 8, false);
+    CHECK(b.Ad() == "Adsız 8");
+    b.Acildi("", 9, false, "");
+    CHECK(b.Ad() == "Adsız 9");
 }
 
 TEST_CASE("S16/S17 biçim saptama, son dosyalar, atomik yazma") {

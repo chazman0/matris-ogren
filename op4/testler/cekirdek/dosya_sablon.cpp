@@ -170,7 +170,19 @@ TEST_CASE("D1/D3 uygulama kabuğu + B çekirdek modülü + D akışları: şablo
         REQUIRE(h.komutlar->Calistir("dosya.ice_aktar", h, KomutKaynagi::KomutSatiri, web));
         CHECK(h.cekirdek->Metin() == metin);
         CHECK(h.belge->Yol().empty());
+        CHECK(h.belge->Ad() == ad);  // içe aktarılan belge kaynak dosyanın gövdesiyle görünür (S15)
     }
+    // D10 IFC: B'nin QuickJS çekirdeği (docs/ifc_disari.js secenek.uygulama) uygulama kimliğini dosyaya yazar.
+    const std::string ifc = klasor + "/yapı.ifc";
+    REQUIRE(h.komutlar->Calistir("dosya.ifc_disa", h, KomutKaynagi::KomutSatiri, ifc));
+    const std::string m = DosyaIcerigi(ifc);
+    const std::string tam = "op4 \\X2\\00B7\\X0\\ Opus Fortis";  // "op4 · Opus Fortis" (STEP kaçışı)
+    CHECK(m.find(",'op4 0.1.0','" + tam + "','');\n") != std::string::npos);  // FILE_NAME
+    CHECK(m.find(",'0.1.0','" + tam + "','op4');\n") != std::string::npos);   // IFCAPPLICATION
+    CHECK(m.find("=IFCAPPLICATION(") != std::string::npos);
+    CHECK(m.find("=IFCORGANIZATION($,'Opus Fortis',$,$,$);") != std::string::npos);
+    CHECK(m.find("Matris \\X2\\00D6011F\\X0\\ren") == std::string::npos);  // web varsayılanı ("Matris Öğren") yok
+    CHECK(m.find("'2026-10-31T12:00:00'") != std::string::npos);
     k.Kapat();
     DTestDosya = nullptr;
 }

@@ -255,7 +255,9 @@ TEST_CASE("D3 eski biçimlerden açma: Faz 0 .op4 (kamera, boş model), .matris,
     REQUIRE(o.Komut("dosya.ac", deneme));
     CHECK(o.cekirdek.Ozet().bos);
     CHECK(json::parse(o.gorunumKatkisi.okunan)["kamera"]["uzaklik"] == 9);
-    CHECK(o.belge.Yol().empty());  // eski biçim: Adsız; Ctrl+S yeni biçimi sorarak yazar
+    CHECK(o.belge.Yol().empty());  // eski biçim: yolsuz; Ctrl+S yeni biçimi sorarak yazar
+    CHECK(o.belge.Ad() == "faz0");  // başlıkta "Adsız N" değil kaynak dosyanın gövdesi
+    CHECK(o.belge.PencereBasligi() == "op4 — faz0");
     CHECK(o.SatirdaVar("İçe aktarıldı: faz0.op4"));
     o.iletisim.yanitlar = {o.dizin.Yol("faz0-yeni.op4")};
     REQUIRE(o.Komut("dosya.kaydet"));
@@ -267,11 +269,14 @@ TEST_CASE("D3 eski biçimlerden açma: Faz 0 .op4 (kamera, boş model), .matris,
     DosyaYaz(o.dizin.Yol("web.matris"), "{\"tur\":\"matris-proje\",\"surum\":1,\"bina\":" + sablon + ",\"gorunum\":null}");
     REQUIRE(o.Komut("dosya.ice_aktar", o.dizin.Yol("web.matris")));
     CHECK(o.cekirdek.Metin() == sablon);
+    CHECK(o.belge.Ad() == "web");
     // İçe aktarılan dosya Kaydet'te Farklı kaydet penceresini açar (iptal: hiçbir şey yazılmaz).
     o.iletisim.yanitlar = {""};
     CHECK(o.Komut("dosya.kaydet"));
     CHECK(o.iletisim.sorulanlar.back() == "Farklı kaydet");
     CHECK_FALSE(DosyaVar(o.dizin.Yol("web.op4")));
+    REQUIRE(o.Komut("dosya.yeni"));
+    CHECK(o.belge.Ad().rfind("Adsız ", 0) == 0);  // görünen ad yalnız içe aktarılan belgede
 
     // IFC henüz içe alınmaz; mevcut model değişmez.
     const std::string onceki = o.cekirdek.Metin();
@@ -279,6 +284,30 @@ TEST_CASE("D3 eski biçimlerden açma: Faz 0 .op4 (kamera, boş model), .matris,
     o.Komut("dosya.ac", o.dizin.Yol("yapi.ifc"));
     CHECK(o.SatirdaVar("Faz 6"));
     CHECK(o.cekirdek.Metin() == onceki);
+}
+
+TEST_CASE("S15 KatkiKaldir: D'nin dosya ve çözüm akışları kapanınca belge katkılarını bırakır") {
+    DOrtam o;
+    auto adlar = [&o] {
+        std::vector<std::string> v;
+        for (const ProjeKatkisi& k : o.belge.Katkilar()) v.push_back(k.ad);
+        return v;
+    };
+    CHECK(adlar() == std::vector<std::string>{"model", "gorunum", "sonuc", "onizleme"});
+    REQUIRE(o.Komut("dosya.yeni_sablon", "celik-1kat-depo"));
+    o.cozum.reset();
+    CHECK(adlar() == std::vector<std::string>{"model", "gorunum", "onizleme"});
+    o.dosya.reset();
+    CHECK(adlar() == std::vector<std::string>{"gorunum"});
+    // Kapanmış modüllerin katkıları artık çağrılmaz (ASan: serbest bırakılmış nesneye erişim yok).
+    ProjeIcerigi i;
+    o.belge.IcerikTopla(i);
+    CHECK(i.girdiler.size() == 1);
+    CHECK(i.Var(proje_yolu::GORUNUM));
+    std::vector<std::string> uyarilar;
+    o.belge.IcerikDagit(i, uyarilar);
+    o.belge.Sifirla();
+    CHECK(uyarilar.empty());
 }
 
 TEST_CASE("D1/D2 bozuk dosya açılmaz, model değişmez; daha yeni biçim salt okunur açılır") {

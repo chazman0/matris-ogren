@@ -6,6 +6,9 @@
 * ``ayarlar.sd_siniri``: istek süresince yapi / yapi_serbest SD sınırı ve temel en küçük ağ aralığı; sonra geri yüklenir;
   sınır iletileri "bellek ve süre sınırı" der; geçersiz değer öğretici "girdi" hatası.
 * MemoryError → öğretici "ic" hatası.
+* D'nin (op4 dosya-cozum) istek biçimleri: F5 ``bina_coz`` girdi ``{"bina": <Metin()>, "anlat": false}`` + ayarlar
+  ``{"sd_siniri": N}``; ``.op4`` açılışında ``bina_kimlik`` ``{"bina": <Metin()>}`` kayıtlı ``veri.cozum_kimligi`` ile aynı;
+  yanıtta D'nin okuduğu alanlar (``veri.ozet.toplam_G`` / ``toplam_Q`` dahil; sözleşme S19).
 """
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ import yapi
 import yapi_serbest
 
 PROJE = Path(__file__).resolve().parent.parent
+OP4_SABLONLAR = PROJE / "op4" / "veri" / "sablonlar"
 
 
 @pytest.fixture(scope="module")
@@ -161,3 +165,39 @@ def test_sd_siniri_iletisi_ve_gecersiz_deger(kopru, iki_kat):
     d = iste(kopru, "determinant", {"A": "2 1; 1 3"}, {"sd_siniri": 6000})
     assert d["hata"] is None and d["sonuc_metin"] == "5"
     assert kopru._sinir_iletileri("x; tarayıcıda çözüm için en fazla 1500. y") == "x; bellek ve süre sınırı nedeniyle en fazla 1500. y"
+
+
+def _istemci_istegi(islem, girdi_json, ayarlar_json):
+    """op4 C++ istemcisinin (op4/kaynak/cekirdek/motor_istemci.cpp Gonder) yazdığı istek: girdi / ayarlar ham JSON metni."""
+    return '{"islem":"%s","girdi":%s,"ayarlar":%s}' % (islem, girdi_json, ayarlar_json)
+
+
+@pytest.mark.parametrize("ad", ["betonarme-tek-aciklik", "celik-1kat-depo", "celik-cbf-3kat"])
+def test_d_f5_istegi_ve_bina_kimlik(kopru, ad):
+    """D'nin F5 isteği (cozum_akisi.cpp Coz) ve yanıttan okuduğu alanlar (sonuc.cpp CozumYanitiniCoz); .op4 açılışında
+    (cozum_akisi.cpp KimlikDenetle) bina_kimlik kayıtlı veri.cozum_kimligi ile eşleşir — aynı model başka yazımla da."""
+    metin = (OP4_SABLONLAR / f"{ad}.json").read_text(encoding="utf-8").strip()
+    y = json.loads(kopru.calistir(_istemci_istegi("bina_coz", '{"bina":' + metin + ',"anlat":false}', '{"sd_siniri":6000}')))
+    assert y["hata"] is None, y.get("hata")
+    assert y["bloklar"] == []
+    v, oz = y["veri"], y["veri"]["ozet"]
+    assert v["cozum_kimligi"].startswith("bina-")
+    assert isinstance(y["sure_ms"], int) and y["sure_ms"] == oz["cozum_sure_ms"]
+    for alan in ("sd_sayisi", "kombinasyon_sayisi"):
+        assert isinstance(oz[alan], int) and oz[alan] > 0, alan
+    # S19: SonucOzeti::toplamG / toplamQ veri.ozet'ten okunur (özet metni ayrıştırılmaz); metin aynı değerleri yazar.
+    for alan in ("toplam_G", "toplam_Q"):
+        assert isinstance(oz[alan], (int, float)) and not isinstance(oz[alan], bool) and math.isfinite(oz[alan]), alan
+    assert oz["toplam_G"] > 0
+    assert f"G = {oz['toplam_G']} kN" in y["sonuc_metin"] and f"Q = {oz['toplam_Q']} kN" in y["sonuc_metin"]
+    assert isinstance(oz["en_buyuk_dc"], (int, float)) and oz["en_buyuk_dc"] == v["tasarim"]["en_buyuk_dc"]
+    assert v["tasarim"]["elemanlar"] and all(isinstance(e["dc"], (int, float)) for e in v["tasarim"]["elemanlar"])
+    # .op4 açılışı: ayarlar "{}" (istemci bina_ işlemlerine sd_siniri ekler; ikisi de aynı kimlik).
+    for ayar in ("{}", '{"sd_siniri":6000}'):
+        k = json.loads(kopru.calistir(_istemci_istegi("bina_kimlik", '{"bina":' + metin + "}", ayar)))
+        assert k["hata"] is None and k["cozum_kimligi"] == v["cozum_kimligi"] and k["onbellekte"] is True, k
+    # Aynı model, başka yazım (girinti, anahtar sırası): çekirdeğin kanonik metni değişse de kayıtlı sonuç eşleşir (D9).
+    yeniden = json.dumps(json.loads(metin), ensure_ascii=False, indent=2, sort_keys=True)
+    k = json.loads(kopru.calistir(_istemci_istegi("bina_kimlik", '{"bina":' + yeniden + "}", "{}")))
+    assert k["cozum_kimligi"] == v["cozum_kimligi"]
+    assert k["cozum_kimligi"] == yapi.cozum_kimligi(json.loads(metin))
