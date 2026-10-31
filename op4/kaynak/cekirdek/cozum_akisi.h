@@ -17,8 +17,10 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "cekirdek/motor_hizmeti.h"
@@ -34,6 +36,9 @@ enum class CozumEvresi : uint8_t { Bos = 0, Cozuluyor = 1, IptalEdiliyor = 2 };
 struct CozumAkisiAyari {
     std::string sabitZaman;          // doluysa sonuç tarihi bu (sınama)
     double ilerlemeAraligiMs = 1000; // geçen süre bildirimi sıklığı
+    // Ölçüm satırı (MIMARI §20.3; kabul D8): her başarılı çözümde
+    // "OP4OLCUM senaryo=cozum motor_ms=… toplam_ms=… sd=… kombinasyon=… en_buyuk_dc=… eleman=…". Boşsa yazılmaz.
+    std::function<void(std::string_view)> olcum;
 };
 
 // Sonuç özeti panelinin (ve komut satırı SONUÇÖZETİ çıktısının) satırları; renk 0 = varsayılan metin rengi.

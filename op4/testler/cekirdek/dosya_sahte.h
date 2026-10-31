@@ -266,6 +266,7 @@ struct DOrtamAyari {
     std::string kurtarmaDizini;     // boş: ortamın geçici klasöründe yerel/kurtarma
     DosyaPlatformu platform;
     bool gorunumKatkisi = true;
+    std::function<void(std::string_view)> olcum;  // CozumAkisiAyari::olcum
 };
 
 // Sözleşme nesneleri + sahte çekirdek / motor + D'nin dosya ve çözüm akışları. (ProjeBelgesi katkı kaldırmayı
@@ -317,6 +318,7 @@ struct DOrtam {
         if (ayar.gorunumKatkisi) gorunumKatkisi.Ekle(belge);
         CozumAkisiAyari ca;
         ca.sabitZaman = "2026-10-31T12:00:00Z";
+        ca.olcum = ayar.olcum;
         cozum = std::make_unique<CozumAkisi>(h, ca);
         cozum->Kur();
         ModelYuklendi(h, cekirdek.YeniBos("Adsız 1"));

@@ -93,7 +93,7 @@ struct CozumModulu {
         }
         if (!o.uyarilar.empty()) {
             Ayrac();
-            if (ImGui::TreeNode("uyarilar", "Uyarılar (%zu)", o.uyarilar.size())) {
+            if (ImGui::TreeNode("uyarilar", "Uyarılar (%d)", static_cast<int>(o.uyarilar.size()))) {
                 ImGui::PushStyleColor(ImGuiCol_Text, METIN2);
                 ImGui::PushTextWrapPos(0.0f);
                 for (const std::string& u : o.uyarilar) ImGui::BulletText("%s", u.c_str());
@@ -140,6 +140,7 @@ void CozumModuluKur(Hizmetler& h, ModulOrtami& o) {
     CozumModulu* mp = o.Tut(m);
     CozumAkisiAyari a;
     if (o.testKipi) a.sabitZaman = "2026-01-01T00:00:00Z";
+    a.olcum = o.gunluk;
     mp->akis = std::make_unique<CozumAkisi>(h, a);
     mp->akis->Kur();
 

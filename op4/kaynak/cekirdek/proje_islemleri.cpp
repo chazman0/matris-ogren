@@ -96,6 +96,16 @@ std::string MetinAl(const json& j, const char* ad) {
     return j.is_object() && j.contains(ad) && j[ad].is_string() ? j[ad].get<std::string>() : std::string();
 }
 
+// Korunan girdiler: açılan / yazılan arşivin her şeyi; D'nin katkılarının HER kaydetmede yeniden yazdığı (ya da sildiği)
+// girdiler bellekte ikinci kez tutulmaz (sonuc/veri.json 50 MB'a varabilir). Diğer paketlerin katkı girdileri (görünüm,
+// seçim) korunur: katkı henüz yoksa da dosyadan kaybolmasınlar.
+ProjeIcerigi Korunacaklar(ProjeIcerigi i) {
+    for (const char* y : {proje_yolu::MIMETYPE, proje_yolu::MODEL, proje_yolu::SONUC_OZETI, proje_yolu::SONUC_VERISI,
+                          proje_yolu::ONIZLEME})
+        i.girdiler.erase(y);
+    return i;
+}
+
 }  // namespace
 
 std::string ModelOzetMetni(const ModelOzeti& o) {
@@ -367,8 +377,7 @@ bool DosyaIslemleri::OkunaniYukle(OkumaSonucu& o, const std::string& yol, bool k
     for (const std::string& u : d.uyarilar)
         if (++yazilan <= 20 && h_.bildirim) h_.bildirim->KomutYaz("Denetim: " + u);
     h_.belge->Sifirla();
-    korunanlar_ = o.icerik;
-    korunanlar_.girdiler.erase(proje_yolu::MIMETYPE);
+    korunanlar_ = Korunacaklar(o.icerik);
     std::vector<std::string> uyarilar = o.uyarilar;
     h_.belge->IcerikDagit(o.icerik, uyarilar);
     const std::string belgeYolu = kurtarma ? asilYol : (eskiBicim ? std::string() : yol);
@@ -490,7 +499,7 @@ bool DosyaIslemleri::YolaKaydet(const std::string& yol) {
     std::string zip, hata;
     const ProjeManifest m = ManifestKur();
     if (!ProjeZipKur(icerik, m, zip, hata)) return HataBildir("Kaydedilemedi", hata);
-    const OkumaSonucu d = ProjeZipCoz(zip);  // bozuk arşiv hiçbir zaman eski dosyanın yerine konmaz
+    OkumaSonucu d = ProjeZipCoz(zip);  // bozuk arşiv hiçbir zaman eski dosyanın yerine konmaz
     if (!d.basarili) return HataBildir("Kaydedilemedi", "iç hata: arşiv doğrulanamadı (" + d.hata + "); dosyaya dokunulmadı");
     const std::string kilitli = okumaKilidi_.Yol();
     okumaKilidi_.Birak();  // açık tanıtıcı varken ReplaceFileW başarısız olur (D23)
@@ -500,7 +509,7 @@ bool DosyaIslemleri::YolaKaydet(const std::string& yol) {
         return HataBildir("'" + DosyaAdi(yol) + "' kaydedilemedi", hata);
     }
     okumaKilidi_.Ac(yol);
-    korunanlar_ = icerik;
+    korunanlar_ = Korunacaklar(std::move(d.icerik));  // yazılan arşivin kendisi (yeni manifest dahil)
     eskiKaynak_.clear();
     h_.belge->Kaydedildi(yol);
     sonOtomatikSayac_ = h_.belge->DegisiklikSayaci();

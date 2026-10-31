@@ -181,10 +181,20 @@ std::string PngKodla(const uint8_t* rgba, int genislik, int yukseklik) {
 }
 
 bool IsoZamanCoz(std::string_view iso, std::time_t& t) {
-    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+    // "YYYY-MM-DDTHH:MM:SS" (sonrası — "Z", kesir — yok sayılır). sscanf yerine elle: MSVC'de kullanımdan kalkma uyarısı yok.
     if (iso.size() < 19) return false;
-    const std::string k(iso.substr(0, 19));
-    if (std::sscanf(k.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &y, &mo, &d, &h, &mi, &s) != 6) return false;
+    auto sayi = [&](size_t bas, size_t uzunluk, int& v) {
+        v = 0;
+        for (size_t i = bas; i < bas + uzunluk; ++i) {
+            if (iso[i] < '0' || iso[i] > '9') return false;
+            v = v * 10 + (iso[i] - '0');
+        }
+        return true;
+    };
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+    if (!sayi(0, 4, y) || iso[4] != '-' || !sayi(5, 2, mo) || iso[7] != '-' || !sayi(8, 2, d) || (iso[10] != 'T' && iso[10] != ' ') ||
+        !sayi(11, 2, h) || iso[13] != ':' || !sayi(14, 2, mi) || iso[16] != ':' || !sayi(17, 2, s))
+        return false;
     if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 60) return false;
     const int64_t gun = GunlerdenTakvime(y, static_cast<unsigned>(mo), static_cast<unsigned>(d));
     t = static_cast<std::time_t>(gun * 86400 + h * 3600 + mi * 60 + s);

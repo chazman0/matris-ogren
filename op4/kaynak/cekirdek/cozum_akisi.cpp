@@ -255,6 +255,16 @@ void CozumAkisi::YanitGeldi(const MotorYaniti& y) {
             yeniSonuc_ = true;
             const std::string metin = o.ozetMetni;
             const double enBuyuk = o.enBuyukDc;
+            if (ayar_.olcum) {
+                char b[256];
+                std::snprintf(b, sizeof(b),
+                              "OP4OLCUM senaryo=cozum motor_ms=%.0f toplam_ms=%.0f sd=%llu kombinasyon=%llu en_buyuk_dc=%.6f "
+                              "eleman=%llu",
+                              o.sureMs, gecen, static_cast<unsigned long long>(o.sdSayisi),
+                              static_cast<unsigned long long>(o.kombinasyonSayisi), o.enBuyukDc,
+                              static_cast<unsigned long long>(o.elemanlar.size()));
+                ayar_.olcum(b);
+            }
             if (h_.sonuc) {
                 h_.sonuc->Ata(std::move(o), std::make_shared<const std::string>(std::move(veri)));
                 if (modelDegistiCozumde_ || (h_.cekirdek && h_.cekirdek->SahneSurumu() != istekSahneSurumu_))

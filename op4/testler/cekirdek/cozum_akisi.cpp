@@ -129,6 +129,20 @@ TEST_CASE("D7 F5: bina_coz isteği eşzamansız, anlat:false, sd_siniri; geçen 
     CHECK(o.SatirdaVar("Serbestlik derecesi: "));
 }
 
+TEST_CASE("D8 ölçüm satırı: OP4OLCUM senaryo=cozum") {
+    std::vector<std::string> olcumler;
+    DOrtamAyari a;
+    a.olcum = [&](std::string_view s) { olcumler.emplace_back(s); };
+    DOrtam o(a);
+    ModelYukle(o);
+    REQUIRE(o.cozum->Coz());
+    o.motor.Yanitla(o.motor.Son("bina_coz")->no, Fikstur("celik-cbf-3kat.yanit.json"), 1234);
+    o.motor.Pompala();
+    REQUIRE(olcumler.size() == 1);
+    CHECK(olcumler[0].rfind("OP4OLCUM senaryo=cozum motor_ms=", 0) == 0);
+    CHECK(olcumler[0].find(" sd=" + std::to_string(o.sonuc.Ozet().sdSayisi)) != std::string::npos);
+}
+
 TEST_CASE("D7 iptal: hata_turu 'iptal', sonuç değişmez; geç gelen eski yanıt atılır") {
     DOrtam o;
     ModelYukle(o);
