@@ -216,6 +216,7 @@ private:
     std::string yogunlukAyari_ = "otomatik";
     bool agacSolda_ = true;
     bool stilYenile_ = true;
+    bool escPopupAcikti_ = false;  // kare başında açık açılır pencere vardı (Esc önce onu kapatır)
     std::shared_ptr<Ayarlar> ayarOnceki_;  // Ayarlar penceresi açılınca alınan anlık görüntü (İptal / değişiklik sayısı)
     char ayarArama_[64] = {};  // vurgu paleti değişti: ImGui stili yeniden kurulacak  // model ağacı solda yapışık (kapatılınca pencere şeridine döner)  // Ayarlar › Görüntü › Yoğunluk
     Yerlesim L_;

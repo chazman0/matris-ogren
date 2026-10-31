@@ -9,13 +9,6 @@
 
 namespace op4 {
 
-// dil_tablosu.cpp
-struct CeviriGirdisi {
-    const char* tr;
-    const char* en;
-};
-const CeviriGirdisi* CeviriTablosu(size_t& n);
-
 namespace {
 ArayuzDili g_dil = ArayuzDili::Turkce;
 char g_ondalik = ',';

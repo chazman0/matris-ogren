@@ -1,6 +1,6 @@
 // op4 — açılış ekranı "Kemer Çizgisi" (MIMARI §25; kimlik/acilis/aciklama.md, koyu ikizi kimlik/acilis-koyu/).
 //
-// Kenarlıksız katmanlı pencere, kendi iş parçacığında Direct2D (DC hedefi) + DirectWrite ile çizilir; d2d1.dll ve
+// Kenarlıksız katmanlı pencere, kendi iş parçacığında Direct2D (WIC bit eşlemi hedefi) + DirectWrite ile çizilir; d2d1.dll ve
 // dwrite.dll çalışma anında yüklenir (bağlama değişikliği yok). Kalem yolları kaynak/arayuz/acilis_kontur.h'den
 // (kimlik/acilis/kontur.json), yazı tipleri gömülü veriden (arayuz/yazi.h; DirectWrite bellek içi yükleyici, yoksa
 // Segoe UI), logo katmanları kimlik/acilis/katmanlar/*.png ve kimlik/opus-fortis-yazi-*-zemin.png'den gelir.

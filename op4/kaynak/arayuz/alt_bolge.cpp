@@ -262,13 +262,13 @@ void AnaPencere::KomutSatiriCiz(Ciz& c) {
     }
     // öneri kartı (komut satırının üstünde): Son / Şerit / Menü / Tümü
     if (oneriAcik && h_.komutlar) {
-        const float kw = 460, satirH = 22, kh = 30 + satirH * static_cast<float>(std::max<size_t>(1, oneriler.size()));
-        const float kx = gx - 8, ky = y0 - kh - 6;
+        const float kartW = 460, satirH = 22, kartH = 30 + satirH * static_cast<float>(std::max<size_t>(1, oneriler.size()));
+        const float kx = gx - 8, kartY = y0 - kartH - 6;
         ImDrawList* on = ImGui::GetForegroundDrawList();
         Ciz k = c;
         k.dl = on;
-        k.Golge(kx, ky, kw, kh, 4, 6, 0.16f, 2);
-        k.Yuv(kx, ky, kw, kh, 4, R.yuzey, R.cizgi);
+        k.Golge(kx, kartY, kartW, kartH, 4, 6, 0.16f, 2);
+        k.Yuv(kx, kartY, kartW, kartH, 4, R.yuzey, R.cizgi);
         struct Kume {
             OneriKumesi k;
             const char* ad;
@@ -279,34 +279,34 @@ void AnaPencere::KomutSatiriCiz(Ciz& c) {
             const char* ad = Tr(km.ad);
             const float tw = k.Gen(ad, 11, tema::Agirlik::Orta);
             const bool etkin = oneriKumesi_ == km.k;
-            k.Yazi(tx, Taban(ky, 24, 11), ad, 11, etkin ? tema::Agirlik::Kalin : tema::Agirlik::Orta, etkin ? R.metin : R.metin2);
-            if (etkin) k.Yatay(tx - 2, tx + tw + 2, ky + 22, R.vurgu, 2);
+            k.Yazi(tx, Taban(kartY, 24, 11), ad, 11, etkin ? tema::Agirlik::Kalin : tema::Agirlik::Orta, etkin ? R.metin : R.metin2);
+            if (etkin) k.Yatay(tx - 2, tx + tw + 2, kartY + 22, R.vurgu, 2);
             const ImVec2 mp = ImGui::GetIO().MousePos;
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && mp.x >= c.S(tx - 4) && mp.x < c.S(tx + tw + 4) && mp.y >= c.S(ky) &&
-                mp.y < c.S(ky + 24)) {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && mp.x >= c.S(tx - 4) && mp.x < c.S(tx + tw + 4) && mp.y >= c.S(kartY) &&
+                mp.y < c.S(kartY + 24)) {
                 oneriKumesi_ = km.k;
                 komutOdak_ = true;
             }
             tx += tw + 16;
         }
-        k.YaziSag(kx + kw - 10, Taban(ky, 24, 10), Tr("↑↓ seç · Tab tamamla · Enter çalıştır"), 10, tema::Agirlik::Normal, R.metin3);
-        k.Yatay(kx, kx + kw, ky + 26, R.cizgi2);
-        float yy = ky + 28;
+        k.YaziSag(kx + kartW - 10, Taban(kartY, 24, 10), Tr("↑↓ seç · Tab tamamla · Enter çalıştır"), 10, tema::Agirlik::Normal, R.metin3);
+        k.Yatay(kx, kx + kartW, kartY + 26, R.cizgi2);
+        float yy = kartY + 28;
         if (oneriler.empty()) k.Yazi(kx + 12, Taban(yy, satirH, 11), Tr("Eşleşen komut yok"), 11, tema::Agirlik::Normal, R.metin3);
         for (size_t i = 0; i < oneriler.size(); ++i) {
             const KomutTanimi* t = oneriler[i];
             const KomutDurumu d = h_.komutlar->Durum(t->id, h_);
-            if (static_cast<int>(i) == oneriSecili_) k.Dikd(kx + 1, yy, kw - 2, satirH, R.vurguTon);
+            if (static_cast<int>(i) == oneriSecili_) k.Dikd(kx + 1, yy, kartW - 2, satirH, R.vurguTon);
             k.Simge(t->ikon, kx + 18, yy + satirH / 2, 14, d.kullanilabilir ? R.ikonKucuk : R.ikonKapali, 1.4f);
             const float g = k.Yazi(kx + 34, Taban(yy, satirH, 12), Tr(t->etiket.c_str()), 12, tema::Agirlik::Orta,
                                    d.kullanilabilir ? R.metin : R.metin3);
             std::string adlar = t->ad;
             for (const std::string& a : t->takmaAdlar) adlar += " · " + a;
-            k.Yazi(kx + 34 + g + 10, Taban(yy, satirH, 10), adlar, 10, tema::Agirlik::Normal, R.metin3, kw - g - 150);
-            if (!t->kisayol.empty()) k.YaziSag(kx + kw - 10, Taban(yy, satirH, 10), t->kisayol, 10, tema::Agirlik::Orta, R.metin2);
+            k.Yazi(kx + 34 + g + 10, Taban(yy, satirH, 10), adlar, 10, tema::Agirlik::Normal, R.metin3, kartW - g - 150);
+            if (!t->kisayol.empty()) k.YaziSag(kx + kartW - 10, Taban(yy, satirH, 10), t->kisayol, 10, tema::Agirlik::Orta, R.metin2);
             yy += satirH;
         }
-        Engel(kx, ky, kw, kh);
+        Engel(kx, kartY, kartW, kartH);
     }
 }
 
@@ -385,7 +385,7 @@ void AnaPencere::DurumCubuguCiz(Ciz& c) {
         }
         xr -= 14;
     }
-    // kat kapsamı: üç durumlu vurgu segmenti (Shift+Alt+1/2/3)
+    // kat kapsamı: üç durumlu vurgu segmenti (Alt+1/2/3; MIMARI §25.1)
     float sx = xr;
     {
         const std::vector<std::string> secenek = {Tr("Bu kat"), Tr("Benzer katlar"), Tr("Tüm katlar")};
@@ -396,7 +396,7 @@ void AnaPencere::DurumCubuguCiz(Ciz& c) {
         sx = xr - toplam;
         static const char* const komutlar[3] = {"kapsam.bu_kat", "kapsam.benzer", "kapsam.tum"};
         const int t = Segmentli(c, "##kapsam", sx, cy, ch, secenek, static_cast<int>(kapsam), true, 11, 0, nullptr, etkin);
-        OgeIpucu(c, Tr("Kat kapsamı: çizim, seçim, atama ve silme (temel / zemin hariç)"), "Shift+Alt+1 / 2 / 3");
+        OgeIpucu(c, Tr("Kat kapsamı: çizim, seçim, atama ve silme (temel / zemin hariç)"), "Alt+1 / 2 / 3");
         if (t >= 0) KomutCalistir(komutlar[t], KomutKaynagi::Menu);
         float lx = sx - 8;
         if (!L_.dar) {

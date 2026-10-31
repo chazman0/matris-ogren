@@ -128,7 +128,10 @@ TEST_CASE("C1 kısayollar: tek harf kısayolu yok; F, K, G yerine Shift+F, Ctrl+
     CHECK(d.k.KisayolBul("Shift+F")->id == "gorunum.sigdir");
     CHECK(d.k.KisayolBul("Ctrl+Shift+K")->id == "gorunum.kesit_gorunumu");
     CHECK(d.k.KisayolBul("F7")->id == "gorunum.izgara");
-    CHECK(d.k.KisayolBul("Alt+1")->id == "gorunum.3b");
+    CHECK(d.k.KisayolBul("Ctrl+Alt+1")->id == "gorunum.3b");
+    CHECK(d.k.KisayolBul("Alt+1")->id == "kapsam.bu_kat");  // MIMARI §25.1 (31.10.2026)
+    CHECK(d.k.KisayolBul("Ctrl+Shift+A")->id == "secim.temizle");
+    CHECK(d.k.KisayolBul("Ctrl+,")->id == "ayarlar.ac");
     CHECK(d.k.KisayolBul("PageUp")->id == "gorunum.ust_kat");
     // Şerit sekmeleri Stüdyo sırasında (MIMARI §25): Dosya · Model · Düzenle · Yükler · Analiz · Tasarım · Görünüm · Raporlar.
     const std::vector<std::string> beklenen{"Dosya", "Model", "Düzenle", "Yükler", "Analiz", "Tasarım", "Görünüm", "Raporlar"};

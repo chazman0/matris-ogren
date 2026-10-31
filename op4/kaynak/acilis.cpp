@@ -3,12 +3,15 @@
 // Kahve, Krem) yalnız burada ve logodadır; arayüz belirteçleri (arayuz/tema.h) açılış ekranında kullanılmaz (MIMARI §5.9).
 #include "acilis.h"
 
+#include <objbase.h>
 #include <d2d1.h>
 #include <dwrite_3.h>
+#include <wincodec.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -97,7 +100,8 @@ const Palet kKoyu{ANTRASIT, 0x222425, ANTRASIT, GRI, 0.30f, 0.20f, 0.40f, 0.26f,
                   0xDBCAAF, 0.55f, 0xFFFFFF, 0.07f, L"opus-fortis-yazi-koyu-zemin.png"};
 
 D2D1_COLOR_F Rk(uint32_t rgb, float a = 1.0f) {
-    return D2D1::ColorF(((rgb >> 16) & 255) / 255.0f, ((rgb >> 8) & 255) / 255.0f, (rgb & 255) / 255.0f, a);
+    return D2D1::ColorF(static_cast<float>((rgb >> 16) & 255) / 255.0f, static_cast<float>((rgb >> 8) & 255) / 255.0f,
+                        static_cast<float>(rgb & 255) / 255.0f, a);
 }
 
 // ---- çalışma anında yüklenen D2D / DWrite ----------------------------------------------------------------------------------
@@ -222,7 +226,7 @@ public:
         {  // merkez aydınlanması (1 − u)²
             std::vector<D2D1_GRADIENT_STOP> d;
             for (int i = 0; i <= 8; ++i) {
-                const float u = i / 8.0f, a = (1 - u) * (1 - u);
+                const float u = static_cast<float>(i) / 8.0f, a = (1 - u) * (1 - u);
                 d.push_back({u, Rk(p_.zeminMerkez, a)});
             }
             merkez_ = radyal(d, D2D1::Point2F(268, 235), 380, 330);
@@ -230,7 +234,7 @@ public:
         if (p_.vinyet != p_.zemin) {  // vinyet clamp((d − 0,5)/0,9)^1,5, d = 0 … 1,42
             std::vector<D2D1_GRADIENT_STOP> d;
             for (int i = 0; i <= 10; ++i) {
-                const float u = i / 10.0f, dd = u * 1.42f, a = std::pow(std::clamp((dd - 0.5f) / 0.9f, 0.0f, 1.0f), 1.5f);
+                const float u = static_cast<float>(i) / 10.0f, dd = u * 1.42f, a = std::pow(std::clamp((dd - 0.5f) / 0.9f, 0.0f, 1.0f), 1.5f);
                 d.push_back({u, Rk(p_.vinyet, a)});
             }
             vinyet_ = radyal(d, D2D1::Point2F(480, 270), 795 * 1.42f, 511 * 1.42f);
@@ -238,13 +242,16 @@ public:
         {  // kilit taşı ışığı: a(u) = ½ + ½·cos πu, 13 durak
             std::vector<D2D1_GRADIENT_STOP> d;
             for (int i = 0; i <= 12; ++i) {
-                const float u = i / 12.0f;
+                const float u = static_cast<float>(i) / 12.0f;
                 d.push_back({u, Rk(ALTIN, 0.5f + 0.5f * static_cast<float>(std::cos(kPi * u)))});
             }
             isik_ = radyal(d, D2D1::Point2F(268, 136.9f), 112, 112);
         }
         hale_ = radyal({{0, Rk(ALTIN, p_.haleA0)}, {0.5f, Rk(ALTIN, p_.haleA1)}, {1, Rk(ALTIN, 0)}}, D2D1::Point2F(), p_.haleR, p_.haleR);
         parilti_ = radyal({{0, Rk(p_.ucRenk, 1)}, {1, Rk(p_.ucRenk, 0)}}, D2D1::Point2F(), 7, 2.2f);
+        if (!firca_ || !bOp4_ || !bDurum_)
+            Gunluk("Açılış: kaynaklar eksik (fırça %d, yazı biçimi %d/%d, gömülü yazı %s)", firca_ != nullptr, bOp4_ != nullptr,
+                   bDurum_ != nullptr, f_.koleksiyon ? "var" : "yok");
         return firca_ && bOp4_ && bDurum_;
     }
 
@@ -370,8 +377,9 @@ public:
         if (uA > 0.01f && dolgu > 1) {
             const float u0 = std::max(SAG_X, SAG_X + dolgu - 48);
             for (int i = 0; i < 12; ++i) {  // son 48 px'te Altın → açık uç, t² ile
-                const float a0 = u0 + (SAG_X + dolgu - u0) * i / 12.0f, a1 = u0 + (SAG_X + dolgu - u0) * (i + 1) / 12.0f;
-                const float tt = (i + 0.5f) / 12.0f;
+                const float a0 = u0 + (SAG_X + dolgu - u0) * static_cast<float>(i) / 12.0f;
+                const float a1 = u0 + (SAG_X + dolgu - u0) * static_cast<float>(i + 1) / 12.0f;
+                const float tt = (static_cast<float>(i) + 0.5f) / 12.0f;
                 firca_->SetColor(Rk(P.ucRenk, uA * tt * tt));
                 rt->FillRectangle(D2D1::RectF(a0, iy - 0.5f, a1, iy + 0.5f), firca_);
             }
@@ -454,7 +462,7 @@ private:
         const float R = r + 26;
         std::vector<D2D1_GRADIENT_STOP> d;
         for (int i = 0; i <= 24; ++i) {
-            const float u = i / 24.0f;
+            const float u = static_cast<float>(i) / 24.0f;
             const float c = 0.5f + 0.5f * static_cast<float>(std::cos(kPi * std::min(1.0f, std::fabs(u * R - r) / 26.0f)));
             d.push_back({u, Rk(ALTIN, c * c)});
         }
@@ -504,14 +512,17 @@ private:
     ID2D1RadialGradientBrush *merkez_ = nullptr, *vinyet_ = nullptr, *isik_ = nullptr, *hale_ = nullptr, *parilti_ = nullptr;
 };
 
-// DIB + D2D DC hedefi (pencere: UpdateLayeredWindow; test: PNG).
+// Çizim hedefi: WIC bit eşlemi (32 bpp PBGRA) üzerinde Direct2D; kare sonunda DIB'e kopyalanır (pencere:
+// UpdateLayeredWindow, test: PNG). WIC hedefi her ortamda (uzak masaüstü, yazılım işleyici) çalışır.
 struct Tuval {
     HDC dc = nullptr;
     HBITMAP bmp = nullptr;
     HGDIOBJ eski = nullptr;
     void* bitler = nullptr;
     int g = 0, y = 0;
-    ID2D1DCRenderTarget* rt = nullptr;
+    IWICImagingFactory* wicFab = nullptr;
+    IWICBitmap* wic = nullptr;
+    ID2D1RenderTarget* rt = nullptr;
 
     bool Kur(ID2D1Factory* f, int gen, int yuk, float olcek) {
         g = gen;
@@ -527,14 +538,38 @@ struct Tuval {
         bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bitler, nullptr, 0);
         if (!dc || !bmp) return false;
         eski = SelectObject(dc, bmp);
-        const D2D1_RENDER_TARGET_PROPERTIES rp = D2D1::RenderTargetProperties(
-            D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96 * olcek, 96 * olcek);
-        if (FAILED(f->CreateDCRenderTarget(&rp, &rt))) return false;
-        const RECT r{0, 0, g, y};
-        return SUCCEEDED(rt->BindDC(dc, &r));
+        HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, __uuidof(IWICImagingFactory),
+                                      reinterpret_cast<void**>(&wicFab));
+        if (SUCCEEDED(hr))
+            hr = wicFab->CreateBitmap(static_cast<UINT>(g), static_cast<UINT>(y), GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &wic);
+        if (SUCCEEDED(hr)) {
+            const D2D1_RENDER_TARGET_PROPERTIES rp = D2D1::RenderTargetProperties(
+                D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96 * olcek,
+                96 * olcek);
+            hr = f->CreateWicBitmapRenderTarget(wic, &rp, &rt);
+        }
+        if (FAILED(hr)) Gunluk("Açılış: WIC hedefi kurulamadı hr=0x%08lX", static_cast<unsigned long>(hr));
+        return SUCCEEDED(hr);
+    }
+    // Son kareyi DIB'e kopyalar (üstten alta, 4 bayt/piksel).
+    bool Kopyala() {
+        WICRect r{0, 0, g, y};
+        IWICBitmapLock* k = nullptr;
+        if (FAILED(wic->Lock(&r, WICBitmapLockRead, &k))) return false;
+        UINT adim = 0, boy = 0;
+        BYTE* v = nullptr;
+        bool tamam = SUCCEEDED(k->GetStride(&adim)) && SUCCEEDED(k->GetDataPointer(&boy, &v)) && v;
+        if (tamam)
+            for (int i = 0; i < y; ++i)
+                std::memcpy(static_cast<uint8_t*>(bitler) + static_cast<size_t>(i) * static_cast<size_t>(g) * 4,
+                            v + static_cast<size_t>(i) * adim, static_cast<size_t>(g) * 4);
+        Birak(k);
+        return tamam;
     }
     ~Tuval() {
         Birak(rt);
+        Birak(wic);
+        Birak(wicFab);
         if (dc && eski) SelectObject(dc, eski);
         if (bmp) DeleteObject(bmp);
         if (dc) DeleteDC(dc);
@@ -625,6 +660,7 @@ struct AcilisEkrani::Ic {
             tv.rt->BeginDraw();
             cizim.Ciz(t, ucA);
             tv.rt->EndDraw();
+            tv.Kopyala();
             HDC ekran = GetDC(nullptr);
             POINT konum{x, yy}, kaynak{0, 0};
             SIZE boy{g, y};
@@ -700,10 +736,9 @@ bool AcilisResmi(const std::wstring& uygulamaDizini, const std::string& surum, c
                 tv.rt->BeginDraw();
                 const double hareket = zamanMs > ADIM_BAS[0] && zamanMs < T_HAZIR ? 1.0 : 0.0;
                 cizim.Ciz(zamanMs, hareket);
-                if (FAILED(tv.rt->EndDraw())) {
-                    hata = "EndDraw başarısız";
+                if (FAILED(tv.rt->EndDraw()) || !tv.Kopyala()) {
+                    hata = "EndDraw / kopyalama başarısız";
                 } else {
-                    GdiFlush();
                     tamam = PngYaz(png, g, y, static_cast<const uint8_t*>(tv.bitler), true, hata);
                 }
             }

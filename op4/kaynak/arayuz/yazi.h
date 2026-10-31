@@ -1,9 +1,10 @@
 // op4 arayüzü — gömülü yazı tipleri (MIMARI §25: sistem yazı tipi kullanılmaz).
 //
-// Arayüz yazı ailesi TEK yerden gelir: araclar/kimlik_uret.py ARAYUZ_YAZI_AILESI + ARAYUZ_YAZI_DOSYALARI (aile belirteci
-// ve ağırlık → dosya listesi; şimdilik Inter yer tutucu). C++ yalnız rol adlarını bilir: "Arayuz400" … "Arayuz700"
+// Arayüz yazı ailesi TEK yerden gelir: araclar/kimlik_uret.py `ARAYUZ_YAZI = YAZI_ADAYLARI["inter"]` satırı (aile
+// belirteci; adaylar tablosunda aile adı + dosya listesi / eksenler; şimdilik Inter yer tutucu, önerilen Noto Sans
+// SemiCondensed). Seçilen ailede olmayan semboller (≈ ≤ ≥ ← → …) "Simgeler" alt kümesinden MergeMode ile birleşir. C++ yalnız rol adlarını bilir: "Arayuz400" … "Arayuz700"
 // (tema::Agirlik), açılış ekranı için "AcilisInce", "Cormorant500", "Cormorant600". Aile değişimi = o blok + --yazi.
-// İşleme: glif konumları piksele oturtulur (PixelSnapH). imgui_freetype derlemede etkinse (IMGUI_ENABLE_FREETYPE)
+// İşleme: glif ilerlemesi / konumu piksele oturur (PixelSnapH/V), aşırı örnekleme yok, boyut ve konum tam piksel (Ciz). imgui_freetype derlemede etkinse (IMGUI_ENABLE_FREETYPE)
 // hafif ipucu (LightHinting) kullanılır; değilse stb_truetype (CMake / bağımlılık A'nındır; rapor: sözleşme isteği).
 //
 // Veri kaynak/arayuz/yazi_verisi.cpp'dedir (araclar/kimlik_uret.py --yazi üretir: statik örnekler, Latin + Türkçe alt kümesi,

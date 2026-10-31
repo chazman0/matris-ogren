@@ -197,10 +197,10 @@ void AnaPencere::GorunumCiz(Ciz& c, const SahneDokusu& d) {
     c.Simge("kati", cx + 38, py + ph / 2, 14, kati ? R.vurgu : R.ikonKucuk, 1.4f);
     // açılır pencereler
     if (ImGui::BeginPopup("##p_gorunum")) {
-        if (ImGui::MenuItem(Tr("3B görünüm"), "Alt+1")) KomutCalistir("gorunum.3b", KomutKaynagi::Menu);
-        if (ImGui::MenuItem(Tr("Plan"), "Alt+2")) KomutCalistir("gorunum.plan", KomutKaynagi::Menu);
-        if (ImGui::MenuItem(Tr("Ön cephe"), "Alt+3")) KomutCalistir("gorunum.on", KomutKaynagi::Menu);
-        if (ImGui::MenuItem(Tr("Yan cephe"), "Alt+4")) KomutCalistir("gorunum.yan", KomutKaynagi::Menu);
+        if (ImGui::MenuItem(Tr("3B görünüm"), "Ctrl+Alt+1")) KomutCalistir("gorunum.3b", KomutKaynagi::Menu);
+        if (ImGui::MenuItem(Tr("Plan"), "Ctrl+Alt+2")) KomutCalistir("gorunum.plan", KomutKaynagi::Menu);
+        if (ImGui::MenuItem(Tr("Ön cephe"), "Ctrl+Alt+3")) KomutCalistir("gorunum.on", KomutKaynagi::Menu);
+        if (ImGui::MenuItem(Tr("Yan cephe"), "Ctrl+Alt+4")) KomutCalistir("gorunum.yan", KomutKaynagi::Menu);
         ImGui::EndPopup();
     }
     if (ImGui::BeginPopup("##p_izdusum")) {

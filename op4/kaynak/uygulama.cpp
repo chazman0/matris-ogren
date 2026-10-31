@@ -201,7 +201,7 @@ void Uygulama::LogoYukle() {
     unsigned char* p = static_cast<unsigned char*>(logo_.GetPixels());
     for (int i = 0; i < r.g * r.y; ++i) {  // PBGRA (önceden çarpılmış) → RGBA (düz alfa)
         const uint8_t b = r.bgra[i * 4], gg = r.bgra[i * 4 + 1], rr = r.bgra[i * 4 + 2], a = r.bgra[i * 4 + 3];
-        auto duz = [a](uint8_t c) { return a ? static_cast<unsigned char>(std::min(255, c * 255 / a)) : 0; };
+        auto duz = [a](uint8_t c) { return static_cast<unsigned char>(a ? std::min(255, c * 255 / a) : 0); };
         p[i * 4] = duz(rr);
         p[i * 4 + 1] = duz(gg);
         p[i * 4 + 2] = duz(b);

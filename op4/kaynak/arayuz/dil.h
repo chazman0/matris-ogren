@@ -6,6 +6,8 @@
 // binlik ayırıcı) Ayarlar › Dil'den gelir. Platformdan bağımsızdır.
 #pragma once
 
+#include <cstddef>
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -24,7 +26,9 @@ const char* Tr(const char* turkce);
 inline std::string Tr(const std::string& turkce) { return Tr(turkce.c_str()); }
 // printf biçimli çeviri: biçim dizesi çevrilir, sonra doldurulur.
 std::string Trf(const char* turkceBicim, ...)
-#if defined(__GNUC__)
+#if defined(__MINGW32__)
+    __attribute__((format(gnu_printf, 1, 2)))  // MinGW: %zu (C99) denetimi
+#elif defined(__GNUC__)
     __attribute__((format(printf, 1, 2)))
 #endif
     ;
@@ -38,5 +42,12 @@ std::string Kot(double z);
 
 // Sınama: tablodaki bütün Türkçe anahtarların İngilizce karşılığı boş değil; dönen sayı girdi sayısı.
 size_t CeviriSayisi();
+
+// Çeviri tablosu (dil_tablosu.cpp): Türkçe kaynak metin → İngilizce.
+struct CeviriGirdisi {
+    const char* tr;
+    const char* en;
+};
+const CeviriGirdisi* CeviriTablosu(size_t& n);
 
 }  // namespace op4

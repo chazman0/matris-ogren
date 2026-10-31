@@ -248,10 +248,16 @@ void AnaPencere::KisayollariIsle() {
         if (yaziyor && !degistirici && !fTusu) continue;
         if (ImGui::IsKeyChordPressed(a)) KomutCalistir(t.id, KomutKaynagi::Kisayol);
     }
-    // Esc: komut satırı odaklı değilse seçimi temizler.
+    // Esc sırası (MIMARI §25.1): açık açılır pencere → etkin komut / sürükleme → seçim. Komut satırına yazılırken Esc
+    // girdiyi temizler (InputText). Seçimi temizlemenin ikinci kısayolu Ctrl+Shift+A (secim.temizle).
     if (!yaziyor && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-        gezinme_.Iptal();
-        if (h_.secim && !h_.secim->Bos()) h_.secim->Temizle();
+        if (escPopupAcikti_) {
+            // açılır pencereyi ImGui kapattı; başka bir şey yapma
+        } else if (gezinme_.Surukluyor() || gezinme_.PencereSeciyor()) {
+            gezinme_.Iptal();
+        } else if (h_.secim && !h_.secim->Bos()) {
+            h_.secim->Temizle();
+        }
     }
     // Görünüm alanındayken yazılan harfler komut satırına gider (MIMARI §5.4).
     if (!yaziyor && !io.KeyCtrl && !io.KeyAlt && !io.InputQueueCharacters.empty() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {

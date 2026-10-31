@@ -127,25 +127,36 @@ bool YazilariYukle(ImFontAtlas* atlas, Yazilar& y) {
     atlas->Clear();
     y = Yazilar{};
     static const char* const kInter[5] = {"Arayuz400", "Arayuz450", "Arayuz500", "Arayuz600", "Arayuz700"};
-    auto ekle = [&](const char* ad) -> ImFont* {
+    // İşleme (tanı notu, MIMARI §25.1): piksele oturan glif ilerlemesi ve konumu, aşırı örnekleme yok, RasterizerMultiply 1.
+    // imgui_freetype etkinse hafif oto-ipucu (LightHinting | ForceAutoHint); değilse stb_truetype.
+    auto ekle = [&](const char* ad, bool birlestir) -> ImFont* {
         const std::vector<uint8_t>* v = YaziVerisi(ad);
         if (!v) return nullptr;
         ImFontConfig c;
         c.FontDataOwnedByAtlas = false;  // veri önbellekte, süreç boyunca yaşar
+        c.MergeMode = birlestir;
         c.OversampleH = 1;
         c.OversampleV = 1;
-        c.PixelSnapH = true;  // glif konumları tam piksele (eşit olmayan harf aralığı izlenimini azaltır)
+        c.PixelSnapH = true;
+        // PixelSnapV: 1.92'de dikey oturtma varsayılandır (alan kaldırıldı).
+        c.RasterizerMultiply = 1.0f;
 #ifdef IMGUI_ENABLE_FREETYPE
-        c.FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting;
+        c.FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting | ImGuiFreeTypeLoaderFlags_ForceAutoHint;
 #endif
         std::snprintf(c.Name, sizeof(c.Name), "%s", ad);
         return atlas->AddFontFromMemoryTTF(const_cast<uint8_t*>(v->data()), static_cast<int>(v->size()), 12.0f, &c);
     };
+    // Her arayüz ağırlığına sembol yedeği (≈ ≤ ≥ ← → …) birleştirilir (MergeMode; ailede olan glifler önceliklidir).
+    auto ekleArayuz = [&](const char* ad) -> ImFont* {
+        ImFont* f = ekle(ad, false);
+        if (f) ekle("Simgeler", true);
+        return f;
+    };
     // İlk eklenen varsayılandır: gövde metni (arayüz ailesi 450).
-    y.inter[1] = ekle(kInter[1]);
+    y.inter[1] = ekleArayuz(kInter[1]);
     for (int i = 0; i < 5; ++i)
-        if (i != 1) y.inter[i] = ekle(kInter[i]);
-    y.cormorant = ekle("Cormorant600");
+        if (i != 1) y.inter[i] = ekleArayuz(kInter[i]);
+    y.cormorant = ekle("Cormorant600", false);
     bool tamam = true;
     for (ImFont*& f : y.inter)
         if (!f) {

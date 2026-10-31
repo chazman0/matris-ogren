@@ -272,13 +272,13 @@ bool KomutYoneticisi::SatirCalistir(std::string_view satir, Hizmetler& h, std::s
             auto yakin = Tamamla(ad, 5);
             if (yakin.empty()) {
                 // Yazım hatası: katlanmış ada (ya da takma ada) düzenleme uzaklığı en küçük komutlar.
-                const std::string k = TurkceKatla(ad);
-                const size_t sinir = std::max<size_t>(1, k.size() / 3);
+                const std::string katli = TurkceKatla(ad);
+                const size_t sinir = std::max<size_t>(1, katli.size() / 3);
                 std::vector<std::pair<size_t, const KomutTanimi*>> aday;
-                for (const KomutTanimi& t : tanimlar_) {
-                    size_t u = Uzaklik(k, TurkceKatla(t.ad));
-                    for (const std::string& a : t.takmaAdlar) u = std::min(u, Uzaklik(k, TurkceKatla(a)));
-                    if (u <= sinir) aday.emplace_back(u, &t);
+                for (const KomutTanimi& k : tanimlar_) {
+                    size_t u = Uzaklik(katli, TurkceKatla(k.ad));
+                    for (const std::string& a : k.takmaAdlar) u = std::min(u, Uzaklik(katli, TurkceKatla(a)));
+                    if (u <= sinir) aday.emplace_back(u, &k);
                 }
                 std::stable_sort(aday.begin(), aday.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
                 for (size_t i = 0; i < aday.size() && i < 3; ++i) yakin.push_back(aday[i].second);

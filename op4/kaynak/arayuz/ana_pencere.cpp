@@ -469,7 +469,7 @@ void AnaPencere::BaslikCiz(Ciz& c) {
         const char* ikonlar[2] = {"ayar", "yardim"};
         const char* idler[2] = {"ayarlar.ac", "yardim.kisayollar"};
         for (int i = 0; i < 2; ++i) {
-            const float ix = bx - 16 - (2 - i) * 30;
+            const float ix = bx - 16 - static_cast<float>(2 - i) * 30;
             ImGui::PushID(200 + i);
             const bool tik = Tiklama(c, "##sag", ix, 4, 26, h - 8);
             const bool ust = ImGui::IsItemHovered();
@@ -487,11 +487,11 @@ void AnaPencere::BaslikCiz(Ciz& c) {
     const char* ikon[3] = {"kucult", buyuk ? "geri_yukle" : "buyut", "kapat"};
     for (int i = 0; i < 3; ++i) {
         ImGui::PushID(100 + i);
-        const bool tik = Tiklama(c, "##pencere", bx + i * 46, 0, 46, h);
+        const bool tik = Tiklama(c, "##pencere", bx + static_cast<float>(i) * 46, 0, 46, h);
         const bool ust = ImGui::IsItemHovered();
         ImGui::PopID();
-        if (ust) c.Dikd(bx + i * 46, 0, 46, h, i == 2 ? R.kapatUzerinde : R.basili);
-        c.Simge(ikon[i], bx + i * 46 + 23, h / 2, 13, ust && i == 2 ? R.beyaz : R.ikonKucuk, 1.2f);
+        if (ust) c.Dikd(bx + static_cast<float>(i) * 46, 0, 46, h, i == 2 ? R.kapatUzerinde : R.basili);
+        c.Simge(ikon[i], bx + static_cast<float>(i) * 46 + 23, h / 2, 13, ust && i == 2 ? R.beyaz : R.ikonKucuk, 1.2f);
         if (!tik) continue;
         if (i == 0 && pencere.kucult) pencere.kucult();
         if (i == 1 && pencere.buyutGeriAl) pencere.buyutGeriAl();
@@ -526,6 +526,7 @@ void AnaPencere::TostlarCiz(Ciz& c) {
 // ---- kare --------------------------------------------------------------------------------------------------------------
 void AnaPencere::KareCiz(float olcek, const SahneDokusu& doku, double simdiMs) {
     simdi = simdiMs;
+    escPopupAcikti_ = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     if (olcek != olcek_) cizimGerekli_ = true;
     if (stilYenile_ || olcek != olcek_) {
         ArayuzStiliUygula(olcek);

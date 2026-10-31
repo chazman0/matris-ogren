@@ -16,7 +16,7 @@
    Kimlik dosyaları değiştirilmez; yalnız ölçeklenip zemine yerleştirilir. Renkler op4/kimlik/README.md paletinden.
 
 3) Gömülü yazı tipleri (--yazi; MIMARI §25 "sistem yazı tipi kullanılmaz"): op4/kimlik/fontlar/ yazı tiplerinden
-   arayüzün (ARAYUZ_YAZI_AILESI / ARAYUZ_YAZI_DOSYALARI: TEK yer, aile değişimi tek satır; şimdilik Inter yer tutucu)
+   arayüzün (ARAYUZ_YAZI = YAZI_ADAYLARI[...]: TEK satır; şimdilik Inter yer tutucu) + sembol yedeği ("Simgeler")
    ve açılış ekranının (Inter 300 opsz 32, Cormorant Garamond) kullandığı statik örnekler fontTools
    instancer ile kesilir, Latin + Türkçe (U+0020–017F) ve gereken simge / noktalama alt kümesine indirilir, stb biçiminde
    sıkıştırılıp base85 ile op4/kaynak/arayuz/yazi_verisi.cpp içine gömülür (ImGui ve DirectWrite aynı veriyi kullanır).
@@ -160,22 +160,43 @@ FONTLAR = KIMLIK / "fontlar"
 # Arayüz yazısı değişimi yalnız bu bloktur: aile adı + ağırlık → (kimlik/fontlar dosyası, değişken eksen değerleri; statik
 # dosyada {}). Sonra "python3 op4/araclar/kimlik_uret.py --yazi". C++ tarafı rol adlarını ("Arayuz400" …) kullanır, aile
 # adını bilmez (yazi.h). Inter yer tutucudur (kullanıcı yeni yazı tipini seçiyor, 31.10.2026).
-ARAYUZ_YAZI_AILESI = "Inter"
-ARAYUZ_YAZI_DOSYALARI = {
-    400: ("inter-Inter[opsz,wght].ttf", {"wght": 400, "opsz": 14}),
-    450: ("inter-Inter[opsz,wght].ttf", {"wght": 450, "opsz": 14}),
-    500: ("inter-Inter[opsz,wght].ttf", {"wght": 500, "opsz": 14}),
-    600: ("inter-Inter[opsz,wght].ttf", {"wght": 600, "opsz": 14}),
-    700: ("inter-Inter[opsz,wght].ttf", {"wght": 700, "opsz": 14}),
+# Aday aileler: (görünen ad, kimlik/fontlar dosyası, ağırlık dışındaki değişken eksenler). Statik aile için dosya yerine
+# {ağırlık: dosya} sözlüğü verilir. Önerilen: Noto Sans SemiCondensed (wdth 87,5; tanı notu, kullanıcı onayı bekleniyor;
+# dosyanın kimlik/fontlar/'a eklenmesi gerekir).
+YAZI_ADAYLARI = {
+    "inter": ("Inter", "inter-Inter[opsz,wght].ttf", {"opsz": 14}),
+    "noto_dar": ("Noto Sans SemiCondensed", "notosans-NotoSans[wdth,wght].ttf", {"wdth": 87.5}),
+    "fira": ("Fira Sans", {400: "firasans-FiraSans-Regular.ttf", 500: "firasans-FiraSans-Medium.ttf",
+                           600: "firasans-FiraSans-SemiBold.ttf", 700: "firasans-FiraSans-SemiBold.ttf"}, {}),
 }
+ARAYUZ_YAZI = YAZI_ADAYLARI["inter"]   # ← arayüz yazı tipi değişimi: TEK satır (Inter yer tutucu)
+ARAYUZ_YAZI_AGIRLIKLARI = (400, 450, 500, 600, 700)
+ARAYUZ_YAZI_AILESI = ARAYUZ_YAZI[0]
+
+
+def _arayuz_dosyasi(agirlik):
+    ad, dosya, eksen = ARAYUZ_YAZI
+    if isinstance(dosya, dict):  # statik aile: en yakın ağırlığın dosyası
+        yakin = min(dosya, key=lambda w: abs(w - agirlik))
+        return dosya[yakin], {}
+    return dosya, {**eksen, "wght": agirlik}
+
+
+ARAYUZ_YAZI_DOSYALARI = {w: _arayuz_dosyasi(w) for w in ARAYUZ_YAZI_AGIRLIKLARI}
+# Sembol yedeği (MergeMode ile her arayüz yazısına birleştirilir): seçilen ailede olmayan ≈ ≤ ≥ ← → ↔ ↺ ▾ ⇄ … Inter'den.
+SIMGE_KOD_NOKTALARI = [0x2248, 0x2260, 0x2264, 0x2265, 0x2190, 0x2191, 0x2192, 0x2193, 0x2194, 0x21C4, 0x21BA, 0x21BB,
+                       0x25BE, 0x25B4, 0x25B8, 0x25C2, 0x2022, 0x22EF, 0x2026, 0x00D7, 0x00B1, 0x2212, 0x221E, 0x2206,
+                       0x0394, 0x03A3, 0x03BB, 0x039B, 0x2713, 0x2717, 0x2318, 0x21E7, 0x2303, 0x23CE]
 # Açılış ekranı (marka; MIMARI §25 "değişmez"): arayüz yazısından bağımsızdır.
 ACILIS_YAZILARI = [
     ("kAcilisInce", "inter-Inter[opsz,wght].ttf", {"wght": 300, "opsz": 32}, "Açılış 'op4' (Inter Light 300, opsz 32)"),
     ("kCormorant500", "cormorantgaramond-CormorantGaramond[wght].ttf", {"wght": 500}, "Cormorant Garamond Medium: açılış alt başlığı"),
     ("kCormorant600", "cormorantgaramond-CormorantGaramond[wght].ttf", {"wght": 600}, "Cormorant Garamond SemiBold: proje adı"),
 ]
-YAZI_ORNEKLERI = [(f"kArayuz{agirlik}", dosya, eksen, f"Arayüz {ARAYUZ_YAZI_AILESI} {agirlik}")
-                  for agirlik, (dosya, eksen) in ARAYUZ_YAZI_DOSYALARI.items()] + ACILIS_YAZILARI
+YAZI_ORNEKLERI = ([(f"kArayuz{agirlik}", dosya, eksen, f"Arayüz {ARAYUZ_YAZI_AILESI} {agirlik}")
+                   for agirlik, (dosya, eksen) in ARAYUZ_YAZI_DOSYALARI.items()]
+                  + [("kSimgeler", "inter-Inter[opsz,wght].ttf", {"wght": 450, "opsz": 14}, "Sembol yedeği (Inter alt kümesi)")]
+                  + ACILIS_YAZILARI)
 YAZI_KOD_NOKTALARI = (list(range(0x20, 0x7F)) + list(range(0xA0, 0x180)) +
                       [0x2009, 0x200A, 0x202F, 0x2039, 0x203A, 0x039B, 0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x2030,
                        0x2032, 0x2033, 0x2070, 0x2074, 0x2075, 0x2076, 0x2077, 0x2078, 0x2079, 0x2080, 0x2081, 0x2082,
@@ -297,7 +318,7 @@ def yazi_uret() -> pathlib.Path:
         sec.name_IDs = [1, 2, 4, 6, 16, 17]
         sec.drop_tables += ["GSUB", "GPOS", "GDEF", "STAT", "DSIG", "MVAR", "HVAR"]
         alt = subset.Subsetter(sec)
-        alt.populate(unicodes=YAZI_KOD_NOKTALARI)
+        alt.populate(unicodes=SIMGE_KOD_NOKTALARI if ad == "kSimgeler" else YAZI_KOD_NOKTALARI)
         alt.subset(ornek)
         b = io.BytesIO()
         ornek.save(b)
@@ -308,7 +329,8 @@ def yazi_uret() -> pathlib.Path:
         satirlar.append(f"const char* const {ad}[] = {{")
         for i in range(0, len(b85), 16000):
             parca = b85[i:i + 16000]
-            satirlar.append("    \"" + "\"\n    \"".join(parca[k:k + 116] for k in range(0, len(parca), 116)) + "\",")
+            # "?" kaçışlanır (\?): "??x" üçlü karakter dizisi uyarısı (-Wtrigraphs) çıkmasın.
+            satirlar.append("    \"" + "\"\n    \"".join(parca[k:k + 116].replace("?", "\\?") for k in range(0, len(parca), 116)) + "\",")
         satirlar.append("    nullptr};")
         satirlar.append("")
         kayitlar.append((ad, len(ham)))
@@ -326,6 +348,11 @@ def yazi_uret() -> pathlib.Path:
 
 def kontur_uret() -> pathlib.Path:
     import json
+
+    def fl(x):
+        t = f"{float(x):g}"
+        return (t if ("." in t or "e" in t) else t + ".0") + "f"
+
     k = json.loads((KIMLIK / "acilis" / "kontur.json").read_text(encoding="utf-8"))
     s = ["// op4 — açılış ekranı \"Kemer Çizgisi\" kalem yolları. ÜRETİLMİŞ DOSYA: python3 op4/araclar/kimlik_uret.py --kontur",
          "// Kaynak: op4/kimlik/acilis/kontur.json (simge PNG koordinatları, 1200 × 1397). Açılış çizimi (acilis.cpp) bunları",
@@ -337,7 +364,7 @@ def kontur_uret() -> pathlib.Path:
         s.append(f"inline constexpr Nokta {ad}[] = {{")
         satir = "    "
         for x, y in pts:
-            parca = f"{{{x:g}f, {y:g}f}}, "
+            parca = f"{{{fl(x)}, {fl(y)}}}, "
             if len(satir) + len(parca) > 118:
                 s.append(satir.rstrip())
                 satir = "    "
@@ -348,7 +375,7 @@ def kontur_uret() -> pathlib.Path:
         s.append(f"inline constexpr float {ad}[] = {{")
         satir = "    "
         for x in v:
-            parca = f"{x:g}f, "
+            parca = f"{fl(x)}, "
             if len(satir) + len(parca) > 118:
                 s.append(satir.rstrip())
                 satir = "    "
@@ -375,10 +402,11 @@ def kontur_uret() -> pathlib.Path:
     s.append("};")
     o = k["olcu"]
     s += ["", "// Ölçüler (simge PNG pikseli)",
-          f"inline constexpr float PNG_GEN = {o['png'][0]}f, PNG_YUK = {o['png'][1]}f;",
-          f"inline constexpr float KUTU_X0 = {o['bbox'][0]}f, KUTU_Y0 = {o['bbox'][1]}f, KUTU_X1 = {o['bbox'][2]}f, KUTU_Y1 = {o['bbox'][3]}f;",
-          f"inline constexpr float CX = {o['cx']:g}f, UZENGI_Y = {o['uzengi_y']:g}f, TABAN_Y = {o['taban_y']:g}f;",
-          f"inline constexpr float DIS_R = {o['dis_r']:g}f, IC_R = {o['ic_r']:g}f;", "", "}  // namespace op4::kontur", ""]
+          f"inline constexpr float PNG_GEN = {fl(o['png'][0])}, PNG_YUK = {fl(o['png'][1])};",
+          f"inline constexpr float KUTU_X0 = {fl(o['bbox'][0])}, KUTU_Y0 = {fl(o['bbox'][1])}, KUTU_X1 = {fl(o['bbox'][2])}, "
+          f"KUTU_Y1 = {fl(o['bbox'][3])};",
+          f"inline constexpr float CX = {fl(o['cx'])}, UZENGI_Y = {fl(o['uzengi_y'])}, TABAN_Y = {fl(o['taban_y'])};",
+          f"inline constexpr float DIS_R = {fl(o['dis_r'])}, IC_R = {fl(o['ic_r'])};", "", "}  // namespace op4::kontur", ""]
     hedef = KAYNAK_ARAYUZ / "acilis_kontur.h"
     hedef.write_text("\n".join(s), encoding="utf-8")
     return hedef

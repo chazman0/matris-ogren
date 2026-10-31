@@ -411,7 +411,7 @@
     "DESELECT",
     "CLEARSELECTION"
    ],
-   "kisayol": "",
+   "kisayol": "Ctrl+Shift+A",
    "ikon": "kapat",
    "serit": null,
    "menu": "Seçim",
@@ -517,7 +517,7 @@
     "ISO",
     "VIEW3D"
    ],
-   "kisayol": "Alt+1",
+   "kisayol": "Ctrl+Alt+1",
    "ikon": "bina3",
    "serit": {
     "sekme": "Görünüm",
@@ -544,7 +544,7 @@
     "TOP",
     "PLANVIEW"
    ],
-   "kisayol": "Alt+2",
+   "kisayol": "Ctrl+Alt+2",
    "ikon": "plan",
    "serit": {
     "sekme": "Görünüm",
@@ -570,7 +570,7 @@
    "takma_adlar": [
     "FRONT"
    ],
-   "kisayol": "Alt+3",
+   "kisayol": "Ctrl+Alt+3",
    "ikon": "yukselti",
    "serit": {
     "sekme": "Görünüm",
@@ -596,7 +596,7 @@
    "takma_adlar": [
     "SIDE"
    ],
-   "kisayol": "Alt+4",
+   "kisayol": "Ctrl+Alt+4",
    "ikon": "yukselti",
    "serit": {
     "sekme": "Görünüm",
@@ -1944,7 +1944,7 @@
    "takma_adlar": [
     "THISSTORY"
    ],
-   "kisayol": "Shift+Alt+1",
+   "kisayol": "Alt+1",
    "ikon": "kat",
    "serit": null,
    "menu": "Görünüm/Kat kapsamı",
@@ -1965,7 +1965,7 @@
    "takma_adlar": [
     "SIMILARSTORIES"
    ],
-   "kisayol": "Shift+Alt+2",
+   "kisayol": "Alt+2",
    "ikon": "kat",
    "serit": null,
    "menu": "Görünüm/Kat kapsamı",
@@ -1986,7 +1986,7 @@
    "takma_adlar": [
     "ALLSTORIES"
    ],
-   "kisayol": "Shift+Alt+3",
+   "kisayol": "Alt+3",
    "ikon": "kat",
    "serit": null,
    "menu": "Görünüm/Kat kapsamı",

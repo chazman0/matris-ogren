@@ -11,7 +11,8 @@ namespace op4 {
 
 float Ciz::Gen(std::string_view s, float boy, tema::Agirlik a) const {
     if (s.empty()) return 0;
-    return F(a)->CalcTextSizeA(S(boy), FLT_MAX, 0.0f, s.data(), s.data() + s.size()).x / olcek;
+    // Boyut DPI ile çarpıldıktan sonra tam piksele yuvarlanır (ipucu bozulmasın; %125'te 11 → 14, 12 → 15, 13 → 16 px).
+    return F(a)->CalcTextSizeA(std::round(S(boy)), FLT_MAX, 0.0f, s.data(), s.data() + s.size()).x / olcek;
 }
 
 std::string Ciz::Kes(std::string_view s, float maxw, float boy, tema::Agirlik a) const {
@@ -30,7 +31,7 @@ std::string Ciz::Kes(std::string_view s, float maxw, float boy, tema::Agirlik a)
 namespace {
 void Yaz(const Ciz& c, ImFont* f, float x, float taban, std::string_view s, float boy, uint32_t renk) {
     if (s.empty() || !c.dl) return;
-    const float px = c.S(boy);
+    const float px = std::max(1.0f, std::round(c.S(boy)));  // tam piksel boyut
     ImFontBaked* b = f->GetFontBaked(px);
     const float ust = c.S(taban) - (b ? b->Ascent : px * 0.8f);
     c.dl->AddText(f, px, ImVec2(std::round(c.S(x)), std::round(ust)), renk, s.data(), s.data() + s.size());

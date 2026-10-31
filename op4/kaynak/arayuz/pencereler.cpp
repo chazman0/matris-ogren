@@ -374,10 +374,10 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
                     static const char* const s[3] = {"Başlangıç paneli", "Son projeyi aç", "Boş çalışma alanı"};
                     for (int i = 0; i < 3; ++i) {
                         ImGui::PushID(300 + i);
-                        if (Tiklama(d.c, "##acilis", dx, dy + i * 26.0f, 220, 24)) ac = i, degisti = true;
+                        if (Tiklama(d.c, "##acilis", dx, dy + static_cast<float>(i) * 26.0f, 220, 24)) ac = i, degisti = true;
                         ImGui::PopID();
-                        d.c.Radyo(dx + 8, dy + i * 26.0f + 12, ac == i, 7);
-                        d.c.Yazi(dx + 22, Taban(dy + i * 26.0f, 24, 12), Tr(s[i]), 12, tema::Agirlik::Normal, R.metin);
+                        d.c.Radyo(dx + 8, dy + static_cast<float>(i) * 26.0f + 12, ac == i, 7);
+                        d.c.Yazi(dx + 22, Taban(dy + static_cast<float>(i) * 26.0f, 24, 12), Tr(s[i]), 12, tema::Agirlik::Normal, R.metin);
                     }
                     a.arayuz.acilis = ac == 1 ? "son_proje" : (ac == 2 ? "bos" : "baslangic");
                 }
@@ -508,7 +508,7 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
                 const float px0 = d.kx + 16, py0 = d.y - 84 + 6, pw = d.kolW - 32;
                 d.c.Yuv(px0, py0, pw, 72, tema::belirtec::R.orta, R.zemin2);
                 const float cy1 = py0 + 30, cy2 = py0 + 58, x0 = px0 + 20, x1 = px0 + pw * 0.45f, x2 = px0 + pw * 0.55f, x3 = px0 + pw - 20;
-                for (float hk : {9.0f, 6.0f, 3.5f}) d.c.Cizgi(x0, cy1, x1, cy1, tema::Alfa(R.secim, 0.18f), a.grafik.seciliKalinlik + hk);
+                for (float hk : {9.0f, 6.0f, 3.5f}) d.c.Cizgi(x0, cy1, x1, cy1, tema::Alfa(R.secim, 0.18f), static_cast<float>(a.grafik.seciliKalinlik) + hk);
                 d.c.Cizgi(x0, cy1, x1, cy1, R.secim, static_cast<float>(a.grafik.seciliKalinlik));
                 d.c.Cizgi(x0, cy2, x1, cy2, R.uzerinde, static_cast<float>(a.grafik.cubukKalinlik) + 0.6f);
                 d.c.Cizgi(x2, cy1, x3, cy1, R.cubukKiris, static_cast<float>(a.grafik.cubukKalinlik));

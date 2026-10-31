@@ -2,9 +2,12 @@
 //   * Bildirimler (komut satırı çıktısı, tost, ilerleme) — Hizmetler::bildirim,
 //   * C'nin komutları (komutlar.json sahip "C": gorunum.*, secim.*, model.hizli_aks, ayarlar.ac, yardim.*, kapsam.*),
 //   * C'nin panelleri / ayar sayfaları için S21 kayıtları (görünürlük durumu; çizimi AnaPencere yapar),
-//   * gorunum/gorunum.json belge katkısı (kamera, görünüm kipi, ızgara; MIMARI §7.3, kabul C10),
+//   * gorunum/gorunum.json belge katkısı (kamera, görünüm kipi, ızgara, kenarlar; MIMARI §7.3, kabul C10; Faz 0 eski şeması
+//     TASARIM §21.6 da okunur; kayıtlı kamera geri yüklenince bekleyen Sığdır SigdirYapildi ile iptal edilir),
 //   * sahneDegisti / modelYuklendi aboneliği (BVH, gezgin, sığdır).
 // ImGui bağlamından bağımsızdır: pencere ve DX12 uygulama tarafından (uygulama.cpp) sonra bağlanır.
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include <nlohmann/json.hpp>
@@ -51,6 +54,7 @@ void ArayuzModuluKur(Hizmetler& h, ModulOrtami& o) {
             j["kamera"] = nlohmann::json::parse(KameraJson(a->Kamera().d));
             j["kip"] = h.gorunum && h.gorunum->kip != GorunumKipi::Cubuk ? "kesit" : "cubuk";
             j["izgara"] = !h.gorunum || h.gorunum->izgara;
+            j["kenarlar"] = !h.gorunum || h.gorunum->kenarlar;
             j["etkin_kat"] = a->etkinKat;
             ic.Koy("gorunum/gorunum.json", j.dump(1));
         };
@@ -62,13 +66,33 @@ void ArayuzModuluKur(Hizmetler& h, ModulOrtami& o) {
                 uyarilar.push_back("gorunum/gorunum.json okunamadı; varsayılan görünüm");
                 return;
             }
-            if (j.contains("kamera")) {
+            if (j.contains("kamera") && j["kamera"].is_object()) {
+                const nlohmann::json& kj = j["kamera"];
                 KameraDurumu d = a->Kamera().d;
-                if (KameraJsonOku(j["kamera"].dump(), d)) a->Kamera().d = d;
+                if (kj.contains("sapma") || kj.contains("egim")) {
+                    // Eski şema (TASARIM §21.6, Faz 0 denemesi "kaynak": "op4-deneme"): açılar radyan, aynı göz yönü
+                    // kuralı (cos e·cos s, cos e·sin s, sin e); perspektif.
+                    auto sayi = [&](const char* ad, double& v) {
+                        if (kj.contains(ad) && kj[ad].is_number() && std::isfinite(kj[ad].get<double>())) v = kj[ad].get<double>();
+                    };
+                    if (kj.contains("hedef") && kj["hedef"].is_array() && kj["hedef"].size() == 3 && kj["hedef"][0].is_number() &&
+                        kj["hedef"][1].is_number() && kj["hedef"][2].is_number())
+                        d.hedef = {kj["hedef"][0].get<double>(), kj["hedef"][1].get<double>(), kj["hedef"][2].get<double>()};
+                    sayi("uzaklik", d.uzaklik);
+                    sayi("sapma", d.sapma);
+                    sayi("egim", d.egim);
+                    d.uzaklik = std::max(0.1, d.uzaklik);
+                    d.egim = std::clamp(d.egim, -KameraSuruklemesi::EGIM_SINIRI, KameraSuruklemesi::EGIM_SINIRI);
+                    d.ortografik = false;
+                    a->Kamera().d = d;
+                } else if (KameraJsonOku(kj.dump(), d)) {
+                    a->Kamera().d = d;
+                }
             }
             if (h.gorunum) {
                 if (j.contains("kip") && j["kip"].is_string()) h.gorunum->kip = j["kip"] == "kesit" ? GorunumKipi::Kesit : GorunumKipi::Cubuk;
                 if (j.contains("izgara") && j["izgara"].is_boolean()) h.gorunum->izgara = j["izgara"].get<bool>();
+                if (j.contains("kenarlar") && j["kenarlar"].is_boolean()) h.gorunum->kenarlar = j["kenarlar"].get<bool>();
                 h.gorunum->SigdirYapildi();  // kayıtlı kamera korunur
             }
             if (j.contains("etkin_kat") && j["etkin_kat"].is_number_integer()) a->etkinKat = j["etkin_kat"].get<int>();

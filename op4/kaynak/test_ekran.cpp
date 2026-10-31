@@ -10,8 +10,7 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -168,7 +167,8 @@ public:
         for (int y = std::max(0, y0); y < std::min(y_, y1); y += 2) {
             const float t = static_cast<float>(y - y0) / std::max(1.0f, g.y2);
             int arka[3];
-            for (int k = 0; k < 3; ++k) arka[k] = static_cast<int>(kanal(R.sahneUst, k) + (kanal(R.sahneAlt, k) - kanal(R.sahneUst, k)) * t);
+            for (int k = 0; k < 3; ++k)
+                arka[k] = static_cast<int>(static_cast<float>(kanal(R.sahneUst, k)) + static_cast<float>(kanal(R.sahneAlt, k) - kanal(R.sahneUst, k)) * t);
             for (int x = std::max(0, x0); x < std::min(g_, x1); x += 2) {
                 const uint8_t* p = &rgba[(static_cast<size_t>(y) * g_ + x) * 4];
                 ++toplam;
@@ -331,11 +331,14 @@ int SenaryoYurut(EkranOrtami& o, const nlohmann::json& betik, const std::wstring
 }
 
 bool JsonOku(const std::wstring& yol, nlohmann::json& j) {
-    std::ifstream f(yol, std::ios::binary);
+    FILE* f = _wfopen(yol.c_str(), L"rb");
     if (!f) return false;
-    std::stringstream ss;
-    ss << f.rdbuf();
-    j = nlohmann::json::parse(ss.str(), nullptr, false);
+    std::string metin;
+    char tampon[65536];
+    size_t n;
+    while ((n = std::fread(tampon, 1, sizeof(tampon), f)) > 0) metin.append(tampon, n);
+    std::fclose(f);
+    j = nlohmann::json::parse(metin, nullptr, false);
     return !j.is_discarded();
 }
 

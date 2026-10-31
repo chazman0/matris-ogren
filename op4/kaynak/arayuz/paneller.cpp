@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+#include <nlohmann/json.hpp>
+
 #include "arayuz/ana_pencere.h"
 #include "arayuz/dil.h"
 #include "cekirdek/ayarlar.h"
@@ -11,6 +13,7 @@
 #include "cekirdek/proje_belgesi.h"
 #include "cekirdek/secim.h"
 #include "cekirdek/turkce.h"
+#include "platform/dosya_sistemi.h"
 
 namespace op4 {
 namespace {
@@ -41,20 +44,53 @@ const char* DugumSimgesi(const std::string& anahtar) {
 struct SablonBilgisi {
     const char* ad;
     const char* baslik;
-    const char* ozet;
+    int kat;
+    const char* aks;
     const char* sistem;
 };
 constexpr SablonBilgisi kSablonlar[] = {
-    {"betonarme-tek-aciklik", "Tek açıklıklı betonarme çerçeve", "1 kat · 2×2 aks", "betonarme"},
-    {"betonarme-2kat-3x2", "2 katlı betonarme konut", "2 kat · 3×2 aks", "betonarme"},
-    {"betonarme-3kat-3x3", "3 katlı betonarme büro", "3 kat · 3×3 aks", "betonarme"},
-    {"betonarme-4kat-4x3", "4 katlı betonarme konut", "4 kat · 4×3 aks", "betonarme"},
-    {"betonarme-3kat-surekli-temel", "3 katlı konut, mütemadi temel", "3 kat · 3×3 aks", "betonarme"},
-    {"betonarme-4kat-radye", "4 katlı konut, radye temel", "4 kat · 4×3 aks", "betonarme"},
-    {"celik-1kat-depo", "Tek katlı çelik depo / atölye", "1 kat · 3×2 aks", "celik"},
-    {"celik-cbf-3kat", "3 katlı çelik çaprazlı çerçeve", "3 kat · 4×3 aks", "celik"},
-    {"celik-sanayi-4hol", "Çelik sanayi yapısı, 4 hol", "1 kat · 9×7 aks", "celik"},
+    {"betonarme-tek-aciklik", "Tek açıklıklı betonarme çerçeve", 1, "2×2", "betonarme"},
+    {"betonarme-2kat-3x2", "2 katlı betonarme konut", 2, "3×2", "betonarme"},
+    {"betonarme-3kat-3x3", "3 katlı betonarme büro", 3, "3×3", "betonarme"},
+    {"betonarme-4kat-4x3", "4 katlı betonarme konut", 4, "4×3", "betonarme"},
+    {"betonarme-3kat-surekli-temel", "3 katlı konut, mütemadi temel", 3, "3×3", "betonarme"},
+    {"betonarme-4kat-radye", "4 katlı konut, radye temel", 4, "4×3", "betonarme"},
+    {"celik-1kat-depo", "Tek katlı çelik depo / atölye", 1, "3×2", "celik"},
+    {"celik-cbf-3kat", "3 katlı çelik çaprazlı çerçeve", 3, "4×3", "celik"},
+    {"celik-sanayi-4hol", "Çelik sanayi yapısı, 4 hol", 1, "9×7", "celik"},
 };
+
+// veri/sablonlar/dizin.json (D; TASARIM §21) → başlık, kısa özet ("1 kat · 2×2 aks"), sistem. Okunamazsa yerleşik yedek.
+struct SablonSatiri {
+    std::string ad, baslik, aks, sistem;
+    int kat = 0;
+};
+const std::vector<SablonSatiri>& Sablonlar(const std::string& veriDizini) {
+    static std::vector<SablonSatiri> liste;
+    static bool okundu = false;
+    if (okundu) return liste;
+    okundu = true;
+    std::string metin, hata;
+    if (DosyaOku(veriDizini + "/sablonlar/dizin.json", metin, hata, size_t{1} << 22)) {  // UTF-8 yol (platform katmanı)
+        const nlohmann::json j = nlohmann::json::parse(metin, nullptr, false);
+        if (!j.is_discarded() && j.contains("sablonlar") && j["sablonlar"].is_array())
+            for (const nlohmann::json& k : j["sablonlar"]) {
+                if (!k.is_object() || !k.contains("ad") || !k["ad"].is_string()) continue;
+                SablonSatiri s;
+                s.ad = k["ad"].get<std::string>();
+                s.baslik = k.value("baslik", s.ad);
+                const size_t parantez = s.baslik.find(" (");  // "… (3×2 aks)" ayrıntısı özet satırına
+                if (parantez != std::string::npos) s.baslik.resize(parantez);
+                s.kat = k.value("kat", 0);
+                s.aks = k.value("aks", std::string());
+                s.sistem = k.value("sistem", std::string());
+                liste.push_back(std::move(s));
+            }
+    }
+    if (liste.empty())
+        for (const SablonBilgisi& b : kSablonlar) liste.push_back({b.ad, b.baslik, b.aks, b.sistem, b.kat});
+    return liste;
+}
 
 // Öznitelik kodlarının görünen adı (alt_tur, kullanim_yeri).
 std::string KodAdi(const std::string& k) {
@@ -323,10 +359,11 @@ void AnaPencere::AgacPaneliCiz(Ciz& c, float x0, float y0, float w, float h) {
         std::string rozet;
         if (seciliSayi > 0 && derin > 1) rozet = L_.dar ? std::to_string(seciliSayi) : std::to_string(seciliSayi) + " " + Tr("seçili");
         const float rozetW = rozet.empty() ? 0 : c.Gen(rozet, 9, tema::Agirlik::Kalin) + 12;
-        const float etkinW = etkin ? c.Gen(Tr("etkin"), 9, tema::Agirlik::Kalin) + 12 + 22 : 0;
+        const float etkinW = etkin ? c.Gen(Tr("etkin"), 9, tema::Agirlik::Kalin) + 12 + 26 : 0;
         const float maxw = w - (ix + 28 - x0) - 16 - (sagW + 10) - (rozet.empty() ? 0 : rozetW + 6) - etkinW;
         std::string baslik = d.baslik;
         if (d.anahtar == "proje") baslik = d.baslik == "Proje" ? std::string(Tr("Proje")) : d.baslik;
+        else if (baslik.rfind("Kat ", 0) == 0) baslik = Trf("Kat %s", baslik.c_str() + 4);  // çekirdek ağacı "Kat 2"
         else baslik = Tr(baslik.c_str());
         c.Yazi(ix + 28, Taban(y, rh, 12), baslik, 12, ag, R.metin, maxw);
         if (!rozet.empty()) c.Rozet(x0 + w - 16 - sagW - 8 - rozetW, y + (rh - 16) / 2, rozet, 9, R.secim, R.beyaz, 16);
@@ -336,7 +373,7 @@ void AnaPencere::AgacPaneliCiz(Ciz& c, float x0, float y0, float w, float h) {
             const float ex = x0 + w - 16 - sagW - 10 - ew;
             c.Yuv(ex, y + (rh - 16) / 2, ew, 16, 4, R.vurguTon, R.vurguTon2);
             c.YaziOrta(ex + ew / 2, Taban(y, rh, 9), Tr("etkin"), 9, tema::Agirlik::Kalin, R.vurguMetin);
-            c.Simge("goz", ex - 12, y + rh / 2, 13, R.ikonKucuk, 1.3f);
+            c.Simge("goz", ex - 13, y + rh / 2, 13, R.ikonKucuk, 1.3f);
         }
         if (tik) {
             const ImGuiIO& io = ImGui::GetIO();
@@ -613,46 +650,60 @@ void AnaPencere::BaslangicPaneliCiz(Ciz& c, float x0, float y0, float w, float h
     c.Yazi(x0 + 12, Taban(y, 20, 11), Tr("Şablondan yeni"), 11, tema::Agirlik::Kalin, R.metin2);
     y += 22;
     const float rh = L_.dar ? 30 : 34;
-    for (const SablonBilgisi& s : kSablonlar) {
-        if (y + rh > y0 + h - 96) break;
-        ImGui::PushID(s.ad);
+    for (const SablonSatiri& s : Sablonlar(h_.bilgi.veriDizini)) {
+        if (y + rh > y0 + h - 150) break;
+        ImGui::PushID(s.ad.c_str());
         const bool tik = Tiklama(c, "##sablon", x0 + 1, y, w - 2, rh);
         const bool ust = ImGui::IsItemHovered();
         ImGui::PopID();
         if (ust) c.Yuv(x0 + 6, y, w - 12, rh, tema::belirtec::R.orta, R.hover);
-        const bool celik = std::strcmp(s.sistem, "celik") == 0;
+        const bool celik = s.sistem == "celik";
         c.Yuv(x0 + 12, y + (rh - 24) / 2, 24, 24, tema::belirtec::R.orta, R.zemin);
         c.Simge(celik ? "kolon" : "beton", x0 + 24, y + rh / 2, 14, R.ikonKucuk, 1.3f);
-        c.Yazi(x0 + 44, y + rh / 2 - 1, Tr(s.baslik), 12, tema::Agirlik::Orta, R.metin, w - 60);
-        c.Yazi(x0 + 44, y + rh / 2 + 12, Tr(s.ozet), 10, tema::Agirlik::Normal, R.metin3);
+        c.Yazi(x0 + 44, y + rh / 2 - 1, Tr(s.baslik.c_str()), 12, tema::Agirlik::Orta, R.metin, w - 60);
+        c.Yazi(x0 + 44, y + rh / 2 + 12, Trf("%d kat · %s aks", s.kat, s.aks.c_str()), 10, tema::Agirlik::Normal, R.metin3);
         OgeIpucu(c, s.ad);
         if (tik) {
-            const std::string ad = s.ad;
-            YeniProjeAkisi([this, ad] { KomutCalistir("dosya.yeni_sablon", KomutKaynagi::Menu, ad); });
+            const std::string sablonAdi = s.ad;
+            YeniProjeAkisi([this, sablonAdi] { KomutCalistir("dosya.yeni_sablon", KomutKaynagi::Menu, sablonAdi); });
         }
         y += rh;
     }
-    // Aç, son dosyalar, açılışta göster
-    const float fy = y0 + h - 92;
-    c.Yatay(x0, x0 + w, fy, R.cizgi2);
-    if (Tiklama(c, "##ac", x0 + 12, fy + 10, 96, 24)) KomutCalistir("dosya.ac", KomutKaynagi::Menu);
-    c.Dugme(x0 + 12, fy + 10, 96, 24, Tr("Aç…"), false, 12, false, ImGui::IsItemHovered());
-    if (h_.arayuz && !h_.arayuz->MenuKatkilari("Dosya/Son dosyalar").empty()) {
-        if (Tiklama(c, "##son", x0 + 116, fy + 10, 120, 24)) ImGui::OpenPopup("##son_dosyalar");
-        c.Dugme(x0 + 116, fy + 10, 120, 24, Tr("Son dosyalar"), false, 12, false, ImGui::IsItemHovered());
-        if (ImGui::BeginPopup("##son_dosyalar")) {
-            for (const MenuKatkisi* m : h_.arayuz->MenuKatkilari("Dosya/Son dosyalar"))
-                if (m->ciz) m->ciz();
-            ImGui::EndPopup();
+    // Aç, son dosyalar (dosya.ac <yol>), açılışta göster
+    const std::vector<std::string> son = h_.ayarlar ? h_.ayarlar->dosya.sonDosyalar : std::vector<std::string>{};
+    const size_t sonN = std::min<size_t>(son.size(), 3);
+    const float fy = y0 + h - 92 - 22.0f * static_cast<float>(sonN) - (sonN ? 22 : 0);
+    float sy = fy;
+    c.Yatay(x0, x0 + w, sy, R.cizgi2);
+    if (sonN) {
+        c.Yazi(x0 + 12, Taban(sy + 4, 20, 11), Tr("Son dosyalar"), 11, tema::Agirlik::Kalin, R.metin2);
+        sy += 24;
+        for (size_t i = 0; i < sonN; ++i) {
+            const std::string& yol = son[i];
+            const size_t b = yol.find_last_of("/\\");
+            const std::string dosyaAdi = b == std::string::npos ? yol : yol.substr(b + 1);
+            ImGui::PushID(static_cast<int>(700 + i));
+            const bool tik = Tiklama(c, "##son_dosya", x0 + 6, sy, w - 12, 22);
+            const bool ust = ImGui::IsItemHovered();
+            ImGui::PopID();
+            if (ust) c.Yuv(x0 + 6, sy, w - 12, 22, tema::belirtec::R.orta, R.hover);
+            c.Simge("ac", x0 + 20, sy + 11, 13, R.ikonKucuk, 1.3f);
+            c.Yazi(x0 + 32, Taban(sy, 22, 12), dosyaAdi, 12, tema::Agirlik::Normal, R.metin, w - 48);
+            OgeIpucu(c, yol);
+            if (tik) KomutCalistir("dosya.ac", KomutKaynagi::Menu, yol);
+            sy += 22;
         }
-    } else {
-        c.Yazi(x0 + 120, Taban(fy + 10, 24, 11), Tr("Son dosya yok"), 11, tema::Agirlik::Normal, R.metin3);
     }
+    const float by = y0 + h - 92;
+    c.Yatay(x0, x0 + w, by, R.cizgi2);
+    if (Tiklama(c, "##ac", x0 + 12, by + 12, 96, 28)) KomutCalistir("dosya.ac", KomutKaynagi::Menu);
+    c.Dugme(x0 + 12, by + 12, 96, 28, Tr("Aç…"), false, 12, false, ImGui::IsItemHovered());
+    if (!sonN) c.Yazi(x0 + 120, Taban(by + 12, 28, 11), Tr("Son dosya yok"), 11, tema::Agirlik::Normal, R.metin3);
     const bool goster = !h_.ayarlar || h_.ayarlar->arayuz.baslangicPaneli;
-    if (Tiklama(c, "##goster", x0 + 12, fy + 46, w - 24, 20) && h_.ayarlar)
+    if (Tiklama(c, "##goster", x0 + 12, by + 50, w - 24, 22) && h_.ayarlar)
         h_.ayarlar->arayuz.baslangicPaneli = !h_.ayarlar->arayuz.baslangicPaneli;
-    c.OnayKutusu(x0 + 12, fy + 50, goster);
-    c.Yazi(x0 + 30, Taban(fy + 46, 20, 11), Tr("Açılışta Başlangıç panelini göster"), 11, tema::Agirlik::Normal, R.metin2);
+    c.OnayKutusu(x0 + 12, by + 54, goster, 14);
+    c.Yazi(x0 + 32, Taban(by + 50, 22, 11), Tr("Açılışta Başlangıç panelini göster"), 11, tema::Agirlik::Normal, R.metin2);
 }
 
 void AnaPencere::BosPanelCiz(Ciz& c, float x0, float y0, float w, float h, const char* baslik, const char* aciklama) {
