@@ -2,8 +2,9 @@
 // kareleri → PNG), --senaryo (betikli komutlar, olaylar, bekle, çek; deterministik saat) ve ortak ImGui / hata ayıklama
 // katmanı yardımcıları.
 //
-//   op4.exe --test-ekran e.png --boyut 1920x1080 [--senaryo bos|ornek|ornek-kati|ayarlar|ayarlar-program|ayarlar-dil]
-//           (--senaryo burada değişken adıdır; .json uzantılıysa betik olarak yürütülür ve son kare e.png'ye yazılır)
+//   op4.exe --test-ekran e.png --boyut 1920x1080 [--senaryo bos|ornek|ornek-kati|ornek-buyuk|ayarlar|ayarlar-program|ayarlar-dil]
+//           (--senaryo burada değişken adıdır; .json uzantılıysa betik olarak yürütülür ve son kare e.png'ye yazılır).
+//           Arayüzün en küçük istemci alanından (tema Olculer::enAz*, 1024×640) küçük --boyut olduğu gibi çizilir (uyarı).
 //   op4.exe --test-acilis a.png [--olcek 2]   → a.png (son kare) + a-0 / a-50 / a-oturma / a-100 ve a-koyu-*.png
 //   op4.exe --senaryo s.json [--boyut GxY]    → betik (bkz. SenaryoYurut)
 #include <windows.h>
@@ -77,7 +78,11 @@ public:
         ka.bilgi.surum = OP4_SURUM;
         ka.bilgi.uygulamaDizini = Utf8(UygulamaDizini());
         ka.bilgi.veriDizini = Utf8(VeriDizini());
-        ka.bilgi.ayarDizini = Utf8(YerelVeriDizini()) + "\\test-ayarlar";  // kullanıcının ayarları test görüntüsünü değiştirmesin
+        // Kullanıcının ayarları test görüntüsünü değiştirmesin; her sınama varsayılan ayarlarla başlar (önceki çalıştırmanın,
+        // ör. ornek-buyuk'un, D'nin kalıcılığıyla yazdığı test-ayarlar\ayarlar.json silinir).
+        const std::wstring ayarDizini = YerelVeriDizini() + L"\\test-ayarlar";
+        DeleteFileW((ayarDizini + L"\\ayarlar.json").c_str());
+        ka.bilgi.ayarDizini = Utf8(ayarDizini);
         ka.bilgi.yerelDizin = kd.yerel;
         ka.bilgi.testKipi = true;
         ka.ortam.testKipi = true;
@@ -112,7 +117,8 @@ public:
     }
 
     // Değişken: bos (boş çalışma alanı + Başlangıç paneli), ornek (örnek bina, 6 kiriş seçili, çubuk görünümü),
-    // ornek-kati (aynısı ekstrüzyon), ayarlar[-program|-dil] (örnek bina üstünde Ayarlar penceresi).
+    // ornek-kati (aynısı ekstrüzyon), ornek-buyuk (aynısı, Ayarlar › Görüntü › Yazı boyutu = Büyük),
+    // ayarlar[-program|-dil] (örnek bina üstünde Ayarlar penceresi).
     void Degisken(const std::string& d) {
         if (d.empty() || d == "bos") {
             ana_->yanPencere = YanPencere::Baslangic;
@@ -125,6 +131,10 @@ public:
         ana_->Bildirim().KomutYaz("KİRİŞ IPE400 · S355 · Kat 2 · Mafsal–Mafsal · kapsam: Benzer katlar");
         ana_->Bildirim().KomutYaz("SEÇ 6 nesne seçildi: Kiriş ×6 · Kat 2");
         if (d == "ornek-kati") kabuk_.gorunum.kip = GorunumKipi::Kesit;
+        if (d == "ornek-buyuk") {  // ayarlar yolundan, Ayarlar penceresindeki gibi canlı uygulanır
+            kabuk_.ayarlar.arayuz.yaziBoyutu = "buyuk";
+            ana_->AyarlariUygula();
+        }
         if (d.rfind("ayarlar", 0) == 0) {
             ana_->ayarlarAcik = true;
             ana_->ayarSayfasi = d == "ayarlar-program" ? 0 : (d == "ayarlar-dil" ? 2 : 1);
@@ -352,6 +362,12 @@ int EkranTesti(const Secenekler& s) {
     const std::string degisken = betik ? std::string() : Utf8(s.senaryo);
     Gunluk("--test-ekran: %dx%d, WARP, değişken %s%s", s.g, s.y, betik ? "betik" : (degisken.empty() ? "bos" : degisken.c_str()),
            s.hataKatmani ? ", hata ayıklama katmanı istendi" : "");
+    {
+        const tema::Olculer& eo = tema::Etkin().o;
+        if (static_cast<float>(s.g) < eo.enAzGenislik || static_cast<float>(s.y) < eo.enAzYukseklik)
+            Gunluk("Uyarı: --boyut %dx%d arayüzün en küçük istemci alanının (%.0f×%.0f px) altında; yerleşim taşabilir, kare "
+                   "olduğu gibi çizilir", s.g, s.y, static_cast<double>(eo.enAzGenislik), static_cast<double>(eo.enAzYukseklik));
+    }
     const double t0 = GecenMs();
     EkranOrtami o;
     std::string hata;

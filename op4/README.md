@@ -9,7 +9,7 @@ ekran testi ve kurulum paketi uçtan uca çalışır; modelleme komutları sonra
 |---|---|---|
 | Dil / derleyici | C++20, MSVC x64 (Visual Studio 2022+), statik CRT | VC++ yeniden dağıtılabilir paketi gerekmez |
 | Grafik | Direct3D 12, donanım GPU'su (yüksek başarım tercihli), yoksa WARP | MSAA (donanımda 8×, WARP'ta 4×) + çözme; D32 **ters-Z** sonsuz perspektif |
-| Arayüz | Dear ImGui (docking dalı, v1.92.9b, işleme özeti doğrulanır) | yerleştirme alanı, ana menü, Özellikler, Komut, durum çubuğu; PerMonitorV2 DPI |
+| Arayüz | Dear ImGui (docking dalı, v1.92.9b, işleme özeti doğrulanır) + imgui_freetype (FreeType 2.13.3) | Atölye · Modern yerleşimi; Noto Sans SemiCondensed (gömülü, hafif oto-ipucu); PerMonitorV2 DPI × Ayarlar › Yazı boyutu |
 | Hesap motoru | resmî Windows gömülebilir CPython 3.14 + numpy 2.5.3 + sympy 1.14.0 (sürüm + SHA256 sabit) | ayrı süreç `op4motor.exe` (`Py_Main` → `op4_sunucu`); iki boru üstünde tel protokolü; ana + tembel yardımcı motor; iptal, yeniden başlatma |
 | Kurulum | Inno Setup 6 → `op4-setup-<sürüm>.exe` | Başlat menüsü, kaldırıcı, `.op4` ilişkilendirme, kullanıcıya özel kurulum seçeneği, Opus Fortis sihirbaz görselleri |
 
@@ -28,7 +28,8 @@ op4/
   CMakePresets.json       ön ayarlar: win-surum, win-hata, linux-cekirdek, linux-cekirdek-asan (ASan + UBSan)
   cmake/                  Derleyici.cmake (uyarılar, OP4_UYARI_HATA varsayılan AÇIK, OP4_ASAN), Golgelendiriciler.cmake
                           (FXC SM 5.1), Bagimliliklar.cmake + bagimlilik_<ad>.cmake
-                          (imgui, nlohmann/json 3.12.0, doctest 2.5.3; işleme özeti / SHA256 doğrulamalı; OP4_<AD>_DIZINI)
+                          (imgui, freetype 2.13.3 (yalnız Windows), nlohmann/json 3.12.0, doctest 2.5.3, miniz, quickjs;
+                          işleme özeti / SHA256 doğrulamalı; OP4_<AD>_DIZINI)
   golgelendiriciler/      op4.hlsl — tek kaynak: derlemede fxc ile vs_5_1 / ps_5_1 bayt koduna, op4.exe'ye gömülür
   kaynak/                 C++ kaynakları
     cekirdek/             platformdan bağımsız sözleşmeler ve uygulamaları (kimlik, sahne, öznitelik, seçim, seçme, görünüm,
@@ -38,7 +39,7 @@ op4/
     cekirdek_js/          model çekirdeği (B): QuickJS-ng ortamı (js_ortami.*), gömülü JS (JsGom), ModelCekirdegi köprüsü
     platform/             alt süreç (surec_win / surec_posix), dosya sistemi (atomik yazma, kullanıcı klasörleri)
     arayuz/ grafik/       C modülleri (arayuz_modulu.cpp, golgelendirici_bayt.*)
-    dosya/ cozum/         D modülleri (dosya_modulu.cpp, cozum_modulu.cpp)
+    dosya/ cozum/         D modülleri (dosya_modulu.cpp, cozum_modulu.cpp; kart_cizimi.h renkleri arayuz/tema.h'tan okur)
     ana.cpp               giriş noktası (komut satırı → kip)          secenekler.*   bayraklar ve test yardımcıları
     uygulama.cpp          açılış → ana pencere → döngü (kabuk + modüller)
     test_motor.cpp        --test-motor, --oz-sinama                    test_ekran.cpp --test-ekran, --test-acilis, --senaryo
@@ -47,11 +48,9 @@ op4/
     grafik.*              D3D12 aygıtı, takas zinciri, MSAA/derinlik hedefleri, boru hatları, ekran dışı okuma
     golgelendirici.h      golgelendiriciler/op4.hlsl metni (gömülü bayt kodu yoksa çalışma anı D3DCompile yedeği)
     geometri.*            kesit (I/H profili, köşe yuvarlatmalı) → uzatılmış katı ağ + kenar çizgileri + çubuk ekseni
-    kamera.h              yörünge kamerası; titreşimsiz (mutlak) kaydırma, imlece doğru yakınlaşma
     arayuz.*              ImGui arayüzü (Faz 0)
     acilis.*              açılış (yükleme) ekranı, Opus Fortis logo yuvası
     motor.*               süreç içi gömülü CPython köprüsü (Faz 0; yalnız OP4_MOTOR=gomulu tanı kipi)
-    proje.*               Faz 0 .op4 (JSON; kamera) kaydet / aç, dosya pencereleri
     resim.*               PNG oku / yaz (WIC)
     gunluk.*              günlük
     op4.manifest, op4.rc.in   DPI farkındalığı, UTF-8 kod sayfası, simge, sürüm bilgisi
@@ -60,18 +59,21 @@ op4/
   veri/                   komutlar.json (37 F1 komutu, sahipleriyle), oznitelikler.json, sahne_kodlari.json; kurulumda <uygulama>\veri
   testler/                cekirdek/ (doctest), js/ (node), python/ (pytest), ortak/ (motor_protokol.json, profil_adlari.json)
   kimlik/                 Opus Fortis kurumsal kimliği (logolar, palet), op4.ico, yer tutucular (bkz. kimlik/README.md)
-  kurulum/op4.iss         Inno Setup betiği (UTF-8 BOM'lu, CRLF); motor_gereksinimleri.txt (numpy, sympy, mpmath; SHA256)
+  kurulum/op4.iss         Inno Setup betiği (UTF-8 BOM'lu, CRLF); motor_gereksinimleri.txt (numpy, sympy, mpmath; SHA256);
+                          lisanslar/UCUNCU_TARAF.txt (üçüncü taraf listesi, FreeType atfı; metinler derlemede kurulur)
   araclar/
     python_hazirla.py     gömülü Python + numpy/sympy + motor dosyaları → paket/python, paket/motor
-    kimlik_uret.py        kurumsal simgeden op4.ico; --sihirbaz ile kurulum sihirbazı BMP'leri (7 DPI ölçeği)
+    kimlik_uret.py        kurumsal simgeden op4.ico; --sihirbaz ile kurulum sihirbazı BMP'leri (7 DPI ölçeği); --yazi gömülü
+                          yazı tipleri (ARAYUZ_YAZI = YAZI_ADAYLARI["noto_dar"]), --tema belirteç başlığı, --kontur açılış
     yer_tutucu_kimlik.py  yer tutucu logo / simge üretici (gerçek kimlik yoksa yedek)
-    gunluk_png_yaz.py     CI: PNG → günlüğe base64 blok (::group::, sha256)
+    gunluk_png_yaz.py     CI: PNG → günlüğe base64 blok (::group::, sha256; --en-genislik ile küçültülmüş kopya)
     gunluk_png_coz.py     günlükten (ya da günlük aracının JSON kaydından) PNG'leri çözer, sha256 denetler
     ci_bekle.sh           GitHub Actions çalışmasını bitene dek izler, adım tablosunu basar
     mingw.cmake           Linux'ta MinGW-w64 ile sözdizimi / bağlama denetimi
 ```
 
-Kurulu program düzeni: `op4.exe`, `op4motor.exe`, `kimlik\`, `veri\` (komut kataloğu, öznitelik şeması, sahne kodları),
+Kurulu program düzeni: `op4.exe` (arayüz yazı tipleri gömülü), `op4motor.exe`, `kimlik\`, `veri\` (komut kataloğu,
+öznitelik şeması, sahne kodları), `lisanslar\` (üçüncü taraf listesi ve lisans metinleri: FreeType FTL, MIT, OFL),
 `python\` (python314.dll, python314.zip, `python314._pth`, numpy, sympy), `motor\` (web_kopru.py ve motor modülleri,
 op4_sunucu.py, op4_protokol.py, önceden derlenmiş `.pyc`). Motor sunucu günlükleri:
 `%LOCALAPPDATA%\Opus Fortis\op4\gunluk\motor-ana.log` ve `motor-yardimci.log` (önceki oturumunki `*.onceki.log`).
@@ -117,8 +119,8 @@ aynıdır, `testler/test_op4_araclar.py` denetler). CI'da `op4-vX.Y.Z` etiketi i
 | `op4.exe --test-motor` | hesap motoru süreçleri (`op4motor.exe` → `op4_sunucu`): ana motorun açılışı, tembel yardımcı (`bina_sablonlar`, `determinant`), `bina_sablon`, `bina_kimlik`, anlatımsız `bina_coz`, hesap ortasında iptal, yeniden başlatma, kapanış; sunucu günlüklerini basar |
 | `op4.exe --oz-sinama` | kurulu programın kendi kendini sınaması: motor, model çekirdeği ("Adsız 1", şablon), `.op4` kaydet / aç, ekran (uygulanmamış adımlar "atlandı") |
 | `op4motor.exe --denetle` | kurulumun motor dosyalarını denetler (eksikse okunur ileti, çıkış 2) |
-| `op4.exe --test-ekran a.png [--boyut 960x540] [--arayuzsuz]` | pencere açmadan WARP ile tek kare çizer (arayüz dahil), PNG kaydeder; model piksel oranıyla sağlama |
-| `op4.exe --test-acilis a.png [--olcek 1.5]` | açılış ekranını PNG'ye çizer |
+| `op4.exe --test-ekran a.png [--boyut 1920x1080] [--senaryo bos\|ornek\|ornek-kati\|ornek-buyuk\|ayarlar\|ayarlar-program\|ayarlar-dil] [--arayuzsuz]` | pencere açmadan WARP ile tek kare çizer (arayüz dahil), PNG kaydeder; model piksel oranıyla sağlama. En küçük yerleşim 1024×640; daha küçük boyut olduğu gibi çizilir (uyarı). Her çalıştırma varsayılan test ayarlarıyla başlar |
+| `op4.exe --test-acilis a.png [--olcek 2]` | açılış ekranını PNG'ye çizer: a.png (son kare) + a-0 / a-50 / a-oturma / a-100 ve koyu ikizi a-koyu-* |
 | `op4.exe --test-pencere 8` | gerçek pencere + takas zinciri + motor; betikli kaydırma (imleç altındaki noktanın kayması), Shift+döndürme, tekerlek |
 | ortak | `--gunluk dosya.log`, `--warp` (donanım yerine WARP), `--motorsuz`, `--surum` |
 | `--hata-katmani` | D3D12 hata ayıklama katmanını (varsa) açar; `--test-ekran` ve `--test-pencere`'de katmanın hata iletisi testi düşürür |
@@ -132,16 +134,19 @@ Test kipleri ölçümleri günlüğe `OP4OLCUM anahtar=değer …` satırları o
 pencereleri kapatılır ve bir bekçi iş parçacığı süre sınırı uygular (CI asılı kalmaz).
 
 Gezinme: **sol sürükle = kaydır**, **Shift + sol sürükle = döndür**, orta sürükle = kaydır, tekerlek = imlece doğru
-yakınlaş, F = tümünü göster, K = kesit / çubuk görünümü, G = ızgara.
+yakınlaş (kısayollar MIMARI §25.1 ve `veri/komutlar.json`).
 
 ## CI
 
 `.github/workflows/op4.yml` (MIMARI §20). Tetikleyiciler: `main` ve `claude/**` dallarına itme ile çekme istekleri (yollar:
 `op4/**`, `docs/*.js`, `docs/*.py`, kök `*.py`, iş akışı), `op4-v*` etiketleri (yol süzgeci uygulanmaz) ve elle başlatma.
 
-**`windows` işi (`windows-2025`, sabit imaj):** sürüm → yapılandır → derle → paket (+ `--surum` denetimi) → `--test-motor`
-(soğuk + ılık) → `--test-ekran` / `--test-acilis` → D3D12 hata ayıklama katmanı yoklaması (`System32\d3d12SDKLayers.dll`,
-Graphics Tools özelliği; katman varsa `--hata-katmani` ile 0 hata iletisi aranır) → `--test-pencere` (**engelleyici**) →
+**`windows` işi (`windows-2025`, sabit imaj):** sürüm → yapılandır → derle → paket (+ `--surum`, `lisanslar\` ve gömülü yazı ailesi denetimi) → `--test-motor`
+(soğuk + ılık) → `--test-ekran` (1280×720) → Atölye ekranları (1920×1080: boş, örnek, katı, Ayarlar › Program / Görüntü /
+Dil; 1366×768: örnek, Büyük yazı; `EKRAN TESTİ BAŞARILI` ve `OP4OLCUM senaryo=ekran … model_yuzde=` denetlenir) →
+açılış kareleri (`--test-acilis --olcek 2`, açık + koyu; `OP4OLCUM senaryo=acilis kare=9`) → D3D12 hata ayıklama katmanı yoklaması (`System32\d3d12SDKLayers.dll`,
+Graphics Tools özelliği; katman varsa `--hata-katmani` ile 0 hata iletisi aranır) → `--test-pencere` (**engelleyici**;
+`kaydirma_kayma_px` ve `yakinlasma_kayma_px` < 0,5) →
 Inno Setup (kurulu `license.txt`'nin ilk 60 satırı ve "commercial" geçen satırlar günlüğe basılır; sihirbaz görselleri
 üretilir) → sihirbaz karşılama sayfasının ekran görüntüsü (tanı; hiçbir şey kurulmaz) → `C:\op4 dene ŞĞİı` yoluna sessiz
 kurulum, kurulu programla `--test-motor` ve `--surum`, sessiz kaldırma ve klasör denetimi → özet → yapıtlar
@@ -152,9 +157,12 @@ etiketin GitHub sürümüne (Release) ekler (`contents: write` yalnız bu işte)
 
 ### Günlükten doğrulama (yapıtlar indirilemediğinde)
 
-Ekran görüntüleri (`onizleme`, `sahne`, `acilis`, `sihirbaz`, `sihirbaz_ekran`) günlüğe 256 renge indirgenmiş PNG olarak
-yazılır (`gunluk_png_yaz.py`; her biri `::group::OP4-PNG <ad>` içinde, `OP4-PNG ad=… bayt=… gunluk_bayt=… sha256=… gen=…
-yuk=…` satırı ve `-----OP4-PNG-BASLA-----` / `-----OP4-PNG-BITIR-----` arasında base64). Okuma:
+Ekran görüntüleri (`onizleme`, `sahne`, `ekran-bos-1920`, `ekran-ornek-1920`, `ekran-ornek-kati-1920`,
+`ekran-ayarlar[-program|-dil]-1920`, `ekran-ornek-1366`, `ekran-buyuk-1366`, `acilis`, `acilis[-koyu]-0|50|oturma|100`,
+`sihirbaz`, `sihirbaz_ekran`) günlüğe 256 renkli PNG olarak yazılır; op4'ün ekran görüntüleri günlük kopyasında 960 piksel
+genişliğe küçültülür (`--en-genislik 960`) (`gunluk_png_yaz.py`; her biri `::group::OP4-PNG <ad>` içinde, `OP4-PNG ad=… bayt=… gunluk_bayt=… sha256=… gen=… yuk=…
+[gunluk_gen=… gunluk_yuk=…]` satırı ve `-----OP4-PNG-BASLA-----` / `-----OP4-PNG-BITIR-----` arasında base64); tam
+çözünürlüklü PNG'ler `op4-test-ciktilari` yapıtındadır. Okuma:
 
 ```
 op4/araclar/ci_bekle.sh --isleme "$(git rev-parse HEAD)"          # arka planda; bitince adım tablosu

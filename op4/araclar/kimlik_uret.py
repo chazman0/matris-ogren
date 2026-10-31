@@ -16,8 +16,8 @@
    Kimlik dosyaları değiştirilmez; yalnız ölçeklenip zemine yerleştirilir. Renkler op4/kimlik/README.md paletinden.
 
 3) Gömülü yazı tipleri (--yazi; MIMARI §25 "sistem yazı tipi kullanılmaz"): op4/kimlik/fontlar/ yazı tiplerinden
-   arayüzün (ARAYUZ_YAZI = YAZI_ADAYLARI[...]: TEK satır; şimdilik Inter yer tutucu) + sembol yedeği ("Simgeler")
-   ve açılış ekranının (Inter 300 opsz 32, Cormorant Garamond) kullandığı statik örnekler fontTools
+   arayüzün (ARAYUZ_YAZI = YAZI_ADAYLARI[...]: TEK satır; Noto Sans SemiCondensed, kullanıcı kararı 31.10.2026) + sembol
+   yedeği ("Simgeler", Inter) ve açılış ekranının (Inter 300 opsz 32, Cormorant Garamond) kullandığı statik örnekler fontTools
    instancer ile kesilir, Latin + Türkçe (U+0020–017F) ve gereken simge / noktalama alt kümesine indirilir, stb biçiminde
    sıkıştırılıp base85 ile op4/kaynak/arayuz/yazi_verisi.cpp içine gömülür (ImGui ve DirectWrite aynı veriyi kullanır).
    Çıktı depoya işlenir; fontTools gerekir.
@@ -158,18 +158,24 @@ FONTLAR = KIMLIK / "fontlar"
 # (C++ adı, dosya, eksenler, açıklama). Inter opsz 14 arayüz boyutları (11–15 px) içindir; 32 açılıştaki 92 DIP "op4" için.
 # ---- ARAYÜZ YAZI TİPİ: TEK YER (aile belirteci + dosya listesi) ---------------------------------------------------------
 # Arayüz yazısı değişimi yalnız bu bloktur: aile adı + ağırlık → (kimlik/fontlar dosyası, değişken eksen değerleri; statik
-# dosyada {}). Sonra "python3 op4/araclar/kimlik_uret.py --yazi". C++ tarafı rol adlarını ("Arayuz400" …) kullanır, aile
-# adını bilmez (yazi.h). Inter yer tutucudur (kullanıcı yeni yazı tipini seçiyor, 31.10.2026).
+# dosyada {}). Sonra "python3 op4/araclar/kimlik_uret.py --tema --yazi". C++ tarafı rol adlarını ("Arayuz400" …) kullanır,
+# aile adını bilmez (yazi.h). Tasarım belirteci tasarim/atolye-modern/belirtec.py YAZI_AILESI aynı aileyi adlandırmalıdır
+# (--yazi ve --tema denetler).
 # Aday aileler: (görünen ad, kimlik/fontlar dosyası, ağırlık dışındaki değişken eksenler). Statik aile için dosya yerine
-# {ağırlık: dosya} sözlüğü verilir. Önerilen: Noto Sans SemiCondensed (wdth 87,5; tanı notu, kullanıcı onayı bekleniyor;
-# dosyanın kimlik/fontlar/'a eklenmesi gerekir).
+# {ağırlık: dosya} sözlüğü verilir; ara ağırlık (450) en yakın dosyaya düşer (eşitlikte hafif olana: 400).
+# Noto Sans SemiCondensed: NotoSans[wdth,wght].ttf v2.015'ten (notofonts/latin-greek-cyrillic) fontTools instancer ile
+# wdth 87,5 + wght 400 / 500 / 600 / 700 statik örnekleri kesildi (imgui_freetype değişken eksen kuramaz; ad tablosu STAT'tan).
+# Fira Sans (v4.203) hazırlanmış adaydır; dosyaları depoda değildir (seçilirse firasans-*.ttf + firasans-OFL.txt eklenir).
 YAZI_ADAYLARI = {
     "inter": ("Inter", "inter-Inter[opsz,wght].ttf", {"opsz": 14}),
-    "noto_dar": ("Noto Sans SemiCondensed", "notosans-NotoSans[wdth,wght].ttf", {"wdth": 87.5}),
+    "noto_dar": ("Noto Sans SemiCondensed", {400: "notosans-NotoSansSemiCondensed-Regular.ttf",
+                                             500: "notosans-NotoSansSemiCondensed-Medium.ttf",
+                                             600: "notosans-NotoSansSemiCondensed-SemiBold.ttf",
+                                             700: "notosans-NotoSansSemiCondensed-Bold.ttf"}, {}),
     "fira": ("Fira Sans", {400: "firasans-FiraSans-Regular.ttf", 500: "firasans-FiraSans-Medium.ttf",
                            600: "firasans-FiraSans-SemiBold.ttf", 700: "firasans-FiraSans-SemiBold.ttf"}, {}),
 }
-ARAYUZ_YAZI = YAZI_ADAYLARI["inter"]   # ← arayüz yazı tipi değişimi: TEK satır (Inter yer tutucu)
+ARAYUZ_YAZI = YAZI_ADAYLARI["noto_dar"]   # ← arayüz yazı tipi değişimi: TEK satır (+ belirtec.py YAZI_AILESI)
 ARAYUZ_YAZI_AGIRLIKLARI = (400, 450, 500, 600, 700)
 ARAYUZ_YAZI_AILESI = ARAYUZ_YAZI[0]
 
@@ -296,20 +302,40 @@ def _base85(veri: bytes) -> str:
     return "".join(o)
 
 
+AGIRLIK_ADLARI = {400: "Regular", 450: "Regular", 500: "Medium", 600: "SemiBold", 700: "Bold"}
+
+
+def _arayuz_adlari(font, agirlik: int) -> None:
+    """Gömülen arayüz örneğinin ad tablosu TEK aile adı taşır: açılış ekranı (DirectWrite, WWS aile modeli) aileyi
+    ArayuzYaziAilesi() adıyla bulur. Statik örneklerin kendi adları ("Noto Sans" + "Medium SemiCondensed") genişliği
+    alt aileye koyduğu için eşleşmez. 1 / 16 / 21 = aile, 17 / 22 = ağırlık adı, 2 = Regular | Bold, 4 tam ad, 6 PostScript."""
+    stil = AGIRLIK_ADLARI.get(agirlik, "Regular")
+    aile = ARAYUZ_YAZI_AILESI
+    n = font["name"]
+    for i in (1, 2, 4, 6, 16, 17, 21, 22):
+        n.removeNames(nameID=i)
+    degerler = {1: aile, 2: "Bold" if stil == "Bold" else "Regular", 4: f"{aile} {stil}", 6: f"{aile}-{stil}".replace(" ", ""),
+                16: aile, 17: stil, 21: aile, 22: stil}
+    for i, v in degerler.items():
+        n.setName(v, i, 3, 1, 0x409)
+
+
 def yazi_uret() -> pathlib.Path:
     import io
     from fontTools import subset
     from fontTools.ttLib import TTFont
     from fontTools.varLib import instancer
 
+    _aile_denetle()
     satirlar = ["// op4 — gömülü yazı tipleri. ÜRETİLMİŞ DOSYA: python3 op4/araclar/kimlik_uret.py --yazi",
-                "// Kaynak: op4/kimlik/fontlar/ (Inter, Cormorant Garamond; SIL Open Font License 1.1 — lisans metinleri",
-                "// kimlik/fontlar/*-OFL.txt). Statik örnekler, Latin + Türkçe alt kümesi, stb sıkıştırma + base85.",
+                f"// Kaynak: op4/kimlik/fontlar/ ({ARAYUZ_YAZI_AILESI}, Inter, Cormorant Garamond; SIL Open Font License 1.1 —",
+                "// lisans metinleri kimlik/fontlar/*-OFL.txt, kurulu programda lisanslar\\). Statik örnekler, Latin + Türkçe alt",
+                "// kümesi, stb sıkıştırma + base85.",
                 f"// Arayüz yazı ailesi: {ARAYUZ_YAZI_AILESI} (kimlik_uret.py ARAYUZ_YAZI_AILESI / ARAYUZ_YAZI_DOSYALARI).",
                 '#include "arayuz/yazi.h"', "", "namespace op4 {", "namespace {", ""]
     kayitlar = []
     for ad, dosya, eksen, aciklama in YAZI_ORNEKLERI:
-        f = TTFont(FONTLAR / dosya)
+        f = TTFont(FONTLAR / dosya, recalcTimestamp=False)  # head.modified korunur: çıktı belirlenimci
         ornek = instancer.instantiateVariableFont(f, eksen) if "fvar" in f and eksen else f
         sec = subset.Options()
         sec.layout_features = []
@@ -320,6 +346,8 @@ def yazi_uret() -> pathlib.Path:
         alt = subset.Subsetter(sec)
         alt.populate(unicodes=SIMGE_KOD_NOKTALARI if ad == "kSimgeler" else YAZI_KOD_NOKTALARI)
         alt.subset(ornek)
+        if ad.startswith("kArayuz"):
+            _arayuz_adlari(ornek, int(ad[len("kArayuz"):]))
         b = io.BytesIO()
         ornek.save(b)
         ham = b.getvalue()
@@ -423,8 +451,16 @@ def _belirtec_yukle():
     return m
 
 
+def _aile_denetle() -> None:
+    """Tasarım belirteci (belirtec.py YAZI_AILESI) ile gömülen arayüz ailesi (ARAYUZ_YAZI) aynı olmalı."""
+    b = _belirtec_yukle()
+    if getattr(b, "YAZI_AILESI", ARAYUZ_YAZI_AILESI) != ARAYUZ_YAZI_AILESI:
+        raise SystemExit(f"belirtec.py YAZI_AILESI '{b.YAZI_AILESI}' ≠ kimlik_uret.py ARAYUZ_YAZI '{ARAYUZ_YAZI_AILESI}'")
+
+
 def tema_metni() -> str:
     """belirtec.py → tema_belirtec.h metni (deterministik; sınama güncelliği bununla denetler)."""
+    _aile_denetle()
     b = _belirtec_yukle()
 
     def hx(h):
@@ -516,12 +552,21 @@ def tema_metni() -> str:
     s.append("    int agirlik;  // 400 · 500 · 600")
     s.append("};")
     y = list(b.Y)
-    s.append("// Yazı ölçeği (Inter; boyut px @1×, ağırlık)")
+    s.append(f"// Yazı ölçeği ({b.YAZI_AILESI}; boyut px @1×, ağırlık)")
+    s.append(f'inline constexpr const char* YAZI_AILESI = "{b.YAZI_AILESI}";')
     s.append("struct YaziOlcegi {")
     for i in range(0, len(y), 6):
         s.append("    YaziRolu " + ", ".join(y[i:i + 6]) + ";")
     s.append("};")
     sar("inline constexpr YaziOlcegi Y = {", [f"{{{fl(b.Y[k][0])}, {b.Y[k][1]}}}" for k in y], "};")
+    s.append("// Yazı boyutu çarpanları (Ayarlar › Görüntü › Yazı boyutu; arayüz ölçeği = DPI × çarpan)")
+    s.append("struct YaziBoyutu {")
+    s.append("    const char* kimlik;  // ayar değeri (\"kucuk\" | \"orta\" | \"buyuk\")")
+    s.append("    float carpan;")
+    s.append("};")
+    s.append(f"inline constexpr int YAZI_BOYUTU_SAYISI = {len(b.YAZI_BOYUTU)};")
+    sar("inline constexpr YaziBoyutu YAZI_BOYUTLARI[YAZI_BOYUTU_SAYISI] = {",
+        [f'{{"{k}", {fl(v)}}}' for k, v in b.YAZI_BOYUTU.items()], "};")
     s.append("")
     o = sayi_yapisi("Olcu", b.OLCU["rahat"], "Modül ölçüleri; \"rahat\" ≥ 1600×900, \"siki\" daha küçük ekranda")
     for yogunluk in ("rahat", "siki"):

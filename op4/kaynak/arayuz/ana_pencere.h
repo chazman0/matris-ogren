@@ -104,11 +104,15 @@ public:
     void YazilariAyarla(const Yazilar& y) { yazilar_ = y; }
     void KomutlariBagla();                        // C'nin komutları (komutlar.json sahip "C")
     ArayuzBildirimleri& Bildirim() { return *bildirim_; }
-    // Ayarlardaki arayüz / görüntü / dil değerlerini uygular (dil, sayı biçimi, çizgi kalınlıkları, renkler).
+    // Ayarlardaki arayüz / görüntü / dil değerlerini uygular (dil, sayı biçimi, çizgi kalınlıkları, renkler, yazı boyutu).
     void AyarlariUygula();
+    // Ayarlar › Görüntü › Yazı boyutu çarpanı (tema::YaziCarpani); arayüz ölçeği = DPI × bu çarpan.
+    float YaziCarpani() const { return yaziCarpani_; }
 
     // ---- kare -------------------------------------------------------------------------------------------------------
-    void KareCiz(float olcek, const SahneDokusu& doku, double simdiMs);
+    // dpiOlcek: pencerenin DPI ölçeği (96 DPI = 1). Arayüz bunu yazı boyutu çarpanıyla çarparak çizer (Olcek()).
+    void KareCiz(float dpiOlcek, const SahneDokusu& doku, double simdiMs);
+    float Olcek() const { return olcek_; }
     GorusDikdortgeni Gorus() const { return gorus_; }
     GorusIzdusumu Izdusum() const { return kamera_.Izdusum(gorus_.g, gorus_.y2, olcek_); }
     const GorunumKamerasi& Kamera() const { return kamera_; }
@@ -212,7 +216,8 @@ private:
     Hizmetler& h_;
     std::unique_ptr<ArayuzBildirimleri> bildirim_;
     Yazilar yazilar_;
-    float olcek_ = 1.0f;
+    float olcek_ = 1.0f;       // arayüz ölçeği = DPI × yaziCarpani_ (son karenin)
+    float yaziCarpani_ = 1.0f;  // Ayarlar › Görüntü › Yazı boyutu
     std::string yogunlukAyari_ = "otomatik";
     bool agacSolda_ = true;
     bool stilYenile_ = true;

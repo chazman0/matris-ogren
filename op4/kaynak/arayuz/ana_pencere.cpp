@@ -113,6 +113,9 @@ AnaPencere::AnaPencere(Hizmetler& h) : h_(h), bildirim_(std::make_unique<ArayuzB
 }
 
 AnaPencere::~AnaPencere() {
+    // gorunum/gorunum.json katkısı (arayuz_modulu.cpp) bu nesneyi gösterir; belge kabukta daha uzun yaşar (S15, D'nin
+    // DosyaIslemleri / CozumAkisi yıkıcıları gibi). Arayüz modülü kapanırken katkı bırakılır.
+    if (h_.belge) h_.belge->KatkiKaldir("gorunum");
     if (g_etkin == this) g_etkin = nullptr;
 }
 
@@ -127,6 +130,8 @@ void AnaPencere::AyarlariUygula() {
     const tema::Renkler v = t.r;
     stilYenile_ = true;  // ImGui stili bir sonraki karede (ölçek bilinirken) yeniden kurulur
     yogunlukAyari_ = a.arayuz.yogunluk;
+    // Yazı boyutu: bir sonraki kareden başlayarak arayüz ölçeği DPI × çarpan (canlı önizleme; İptal eski değere döner).
+    yaziCarpani_ = tema::YaziCarpani(a.arayuz.yaziBoyutu);
     t.s.cubukKalinlik = static_cast<float>(a.grafik.cubukKalinlik);
     t.s.seciliKalinlik = static_cast<float>(a.grafik.seciliKalinlik);
     t.s.etiketBoy = static_cast<float>(a.arayuz.etiketBoyu);
@@ -524,8 +529,12 @@ void AnaPencere::TostlarCiz(Ciz& c) {
 }
 
 // ---- kare --------------------------------------------------------------------------------------------------------------
-void AnaPencere::KareCiz(float olcek, const SahneDokusu& doku, double simdiMs) {
+void AnaPencere::KareCiz(float dpiOlcek, const SahneDokusu& doku, double simdiMs) {
     simdi = simdiMs;
+    // Arayüz ölçeği = DPI × yazı boyutu (Ayarlar › Görüntü › Yazı boyutu): yazı ölçeğinin tamamı ve yazıya bağlı modül
+    // ölçüleri (satır, şerit, ağaç, özellik satırları) birlikte büyür; metin kırpılmaz. Otomatik yoğunluk ölçeklenmiş
+    // mantıksal alanı izler (YerlesimKur). Yazı boyutları her çizimde tam piksele yuvarlanır (Ciz::Yazi).
+    const float olcek = dpiOlcek * yaziCarpani_;
     escPopupAcikti_ = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     if (olcek != olcek_) cizimGerekli_ = true;
     if (stilYenile_ || olcek != olcek_) {

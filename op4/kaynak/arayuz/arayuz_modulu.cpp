@@ -43,7 +43,8 @@ void ArayuzModuluKur(Hizmetler& h, ModulOrtami& o) {
     h.modelYuklendi.Abone([&h](const ModelOzeti&) {
         if (h.gorunum) h.gorunum->SigdirIste();
     });
-    // gorunum/gorunum.json: kamera ve görünüm kipi .op4 içinde saklanır.
+    // gorunum/gorunum.json: kamera ve görünüm kipi .op4 içinde saklanır. Katkı AnaPencere'yi gösterir; arayüz modülü
+    // kapanırken AnaPencere yıkıcısı KatkiKaldir("gorunum") ile bırakır (belge kabukta daha uzun yaşar; S15).
     if (h.belge) {
         ProjeKatkisi k;
         k.ad = "gorunum";

@@ -1,11 +1,12 @@
 // op4 arayüzü — gömülü yazı tipleri (MIMARI §25: sistem yazı tipi kullanılmaz).
 //
-// Arayüz yazı ailesi TEK yerden gelir: araclar/kimlik_uret.py `ARAYUZ_YAZI = YAZI_ADAYLARI["inter"]` satırı (aile
-// belirteci; adaylar tablosunda aile adı + dosya listesi / eksenler; şimdilik Inter yer tutucu, önerilen Noto Sans
-// SemiCondensed). Seçilen ailede olmayan semboller (≈ ≤ ≥ ← → …) "Simgeler" alt kümesinden MergeMode ile birleşir. C++ yalnız rol adlarını bilir: "Arayuz400" … "Arayuz700"
+// Arayüz yazı ailesi TEK yerden gelir: araclar/kimlik_uret.py `ARAYUZ_YAZI = YAZI_ADAYLARI["noto_dar"]` satırı (aile
+// belirteci; adaylar tablosunda aile adı + dosya listesi / eksenler; Noto Sans SemiCondensed statik 400–700, kullanıcı
+// kararı 31.10.2026; tasarım belirteci belirtec.py YAZI_AILESI). Seçilen ailede olmayan semboller (≈ ≤ ≥ ← → …) "Simgeler" alt kümesinden MergeMode ile birleşir. C++ yalnız rol adlarını bilir: "Arayuz400" … "Arayuz700"
 // (tema::Agirlik), açılış ekranı için "AcilisInce", "Cormorant500", "Cormorant600". Aile değişimi = o blok + --yazi.
 // İşleme: glif ilerlemesi / konumu piksele oturur (PixelSnapH/V), aşırı örnekleme yok, boyut ve konum tam piksel (Ciz). imgui_freetype derlemede etkinse (IMGUI_ENABLE_FREETYPE)
-// hafif ipucu (LightHinting) kullanılır; değilse stb_truetype (CMake / bağımlılık A'nındır; rapor: sözleşme isteği).
+// hafif ipucu (LightHinting | ForceAutoHint) kullanılır; değilse stb_truetype. op4.exe derlemesinde etkindir
+// (cmake/bagimlilik_imgui.cmake PUBLIC IMGUI_ENABLE_FREETYPE, FreeType 2.13.3).
 //
 // Veri kaynak/arayuz/yazi_verisi.cpp'dedir (araclar/kimlik_uret.py --yazi üretir: statik örnekler, Latin + Türkçe alt kümesi,
 // stb sıkıştırma + base85). ImGui atlası (arayüz) ve DirectWrite (açılış ekranı) aynı açılmış TTF baytlarını kullanır.

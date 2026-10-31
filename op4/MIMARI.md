@@ -1437,7 +1437,7 @@ CMake'teki `if(NOT WIN32) FATAL_ERROR` koşulu yalnız Windows hedeflerine daral
 |---|---|---|---|
 | Dear ImGui (docking) | v1.92.9b-docking, `b48d1af…` (1.93.0 iki haftadan yeni olduğu için atlandı) | MIT | var |
 | ImPlot | 1.92 uyumlu işleme | MIT | 5 |
-| FreeType ve imgui_freetype | 2.13.x | FTL (belgede atıf) | 2 |
+| FreeType ve imgui_freetype | 2.13.3, `42608f7…` (`cmake/bagimlilik_freetype.cmake`; yalnız Windows) | FTL (atıf ve metin kurulu programda `lisanslar\`) | 1 |
 | quickjs-ng | iki haftadan eski son sürüm | MIT | 1 |
 | nlohmann/json | 3.12.x | MIT | 1 |
 | miniz | 3.0.x | MIT | 1 |
@@ -1454,7 +1454,7 @@ CMake'teki `if(NOT WIN32) FATAL_ERROR` koşulu yalnız Windows hedeflerine daral
 | ifcopenshell (isteğe bağlı) | 0.9.0 | LGPL-3.0-or-later; OCCT LGPL-2.1 ve istisna | 6 |
 | shapely (GEOS), lark, isodate, python-dateutil, pyparsing, typing-extensions | sabit, karmalı | BSD-3 (GEOS LGPL-2.1), MIT, BSD-3, Apache-2.0/BSD, MIT, PSF | 6 |
 | KaTeX, marked | 0.19, 18 | MIT | 5, 8 |
-| Noto Sans, JetBrains Mono | sabit | OFL-1.1 | 2 |
+| Noto Sans SemiCondensed (arayüz), Inter (simgeler, açılış), Cormorant Garamond (açılış); JetBrains Mono | 2.015 statik örnek, 4.001, 4.001; sabit | OFL-1.1 (metinler `kimlik/fontlar/*-OFL.txt` → `lisanslar\`) | 1; 2 |
 | Inno Setup (derleme aracı) | imajdaki 6.x | Doğrulanacak (D14) | 0 |
 | NSIS (yedek) | 3.x | zlib | yedek |
 
@@ -1640,7 +1640,7 @@ sözleşme işlemesinde gelen uygulamanın durumunu gösterir: **tam** = kullan�
 | S19 | `kaynak/cekirdek/sonuc.h` | `SonucOzeti` (`toplamG` / `toplamQ` dahil), `SonucDurumu` (eski işareti, olay), `DcRengi` (web ölçeği: < 0,7 / 0,9 / 1,0 / > 1), `BoyamaKur`, yanıt çözümü, `sonuc/ozet.json` | D | C çizer | tam |
 | S20 | `kaynak/cekirdek/komut.h`, `veri/komutlar.json` | Komut kataloğu (id, ad, takma adlar, kısayol, şerit / menü yeri, ipucu, **sahip**) ve kayıt defteri: Bagla, Bul (Türkçe katlamalı), Tamamla, Durum (kullanılamama nedeni), Calistir, SatirCalistir, KisayolBul | C | hepsi bağlar | tam |
 | S21 | `kaynak/cekirdek/arayuz_kancalari.h` | Panel, durum öğesi, menü katkısı, ayar sayfası kayıtları; `Bildirimler` (C uygular), `IletisimKutulari` (D uygular); pencere açmayan sınama sürümleri | C defter | hepsi kaydeder | tam (ImGui çizimi C'de) |
-| S22 | `kaynak/cekirdek/hizmetler.h` | `Hizmetler`: paketlerin TEK buluşma noktası (işaretçiler, olaylar `modelDegisti` / `modelYuklendi` / `sahneDegisti`, `kapatmaOnayi`, kare işleri); `ModelIslemiUygula` (C1 onay döngüsü + kirli + seçim ayıklama + sonuç eski), `GeriAlUygula`, `YineleUygula`, `ModelYuklendi` | S | hepsi | tam |
+| S22 | `kaynak/cekirdek/hizmetler.h` | `Hizmetler`: paketlerin TEK buluşma noktası (işaretçiler, olaylar `modelDegisti` / `modelYuklendi` / `sahneDegisti` / `ayarlarDegisti`, `kapatmaOnayi`, kare işleri); `ModelIslemiUygula` (C1 onay döngüsü + kirli + seçim ayıklama + sonuç eski), `GeriAlUygula`, `YineleUygula`, `ModelYuklendi` | S | hepsi | tam |
 | S23 | `kaynak/cekirdek/kabuk.h`, `kaynak/moduller_listesi.cpp` | `UygulamaKabugu` (ortak nesnelerin sahibi; ayarlar ve katalog yükleme; boş "Adsız 1"; `CikisIstendi` / `CikisKodu`), `ModulOrtami` (sahiplik, ana pencere, test kipi, açılış dosyası, `yeniOrnek`, çıkış isteği `cikisIste`), modül sırası A → B → C → D(dosya) → D(çözüm) | S | uygulama | tam; modüller A, B, D tam, C taslak (`uygulama.cpp` çıkış kancası C'de, §24.6) |
 | S24 | `kaynak/secenekler.h`, `kaynak/test_kipleri.h` | F1 komut satırı bayraklarının tamamı (`--senaryo`, `--oz-sinama`, `--yeni-ornek`, `--acilis-yok`, `--grafik-denetim`, `--golgelendirici-dizini` …); test kiplerinin dağılımı | A | hepsi | tam (senaryo ve öz sınama taslak) |
 | S25 | `kaynak/grafik/golgelendirici_bayt.h` | Derlemede üretilmiş gölgelendirici bayt kodu; grafik.cpp önce bunu sorar, yoksa çalışma anında derler | A | C | tam (FXC SM 5.1, 7 giriş noktası) |
@@ -1749,14 +1749,12 @@ op4/kaynak/gunluk.*                             A
 op4/kaynak/golgelendirici.h                     A
 op4/kaynak/op4.manifest                         A
 op4/kaynak/op4.rc.in                            A
-op4/kaynak/proje.*                              D
 op4/kaynak/uygulama.*                           C
 op4/kaynak/test_ekran.cpp                       C
 op4/kaynak/arayuz.*                             C
 op4/kaynak/acilis.*                             C
 op4/kaynak/grafik.*                             C
 op4/kaynak/geometri.*                           C
-op4/kaynak/kamera.h                             C
 op4/kaynak/matematik.h                          C
 op4/kaynak/resim.*                              C
 op4/motor/op4_protokol.py                       S
@@ -1855,6 +1853,10 @@ Her paket kendi işlemesinden sonra Linux (`cekirdek-linux`) ve Windows (`window
 | 2026-10-31 | — (D uygulama notu) | Tek örnek borusu belge başınadır: `\\.\pipe\OpusFortis.op4.<SID>.<belge karması>` (karma: büyük / küçük harf duyarsız tam yolun FNV-1a 64'ü; TASARIM §21.9). Aynı belgenin ikinci açılışı onu açık tutan pencereyi öne getirir; başka dosya her zaman yeni pencerede açılır (D18). §13.5 ve D5 güncellendi | D |
 | 2026-10-31 | S12 (uygulama notu; ileti biçimi değişmedi) | `bina_kimlik`, `bina_coz` `anlat:false` (girdi ya da ayarlar) ve `ayarlar.sd_siniri` A'nın 1.2 işinde `docs/web_kopru.py`'deydi; D'nin istek biçimleri (C++ istemcisinin ham istek metni, şablon `Metin()`'i, `bina_kimlik` ayarlar `{}`; yanıtta `veri.ozet.toplam_G` / `toplam_Q`) pytest ile kilitlendi: `testler/test_web_kopru_op4.py::test_d_f5_istegi_ve_bina_kimlik`, `op4/testler/python/test_sunucu.py::test_gercek_motor_d_istek_bicimleri` | A (D isteği) |
 | 2026-10-31 | S11, S27 (uygulama notu; imza değişmedi) | `docs/ifc_disari.js` `secenek.uygulama {ad, surum, firma, tam_ad}` (eklemeli; D35): IfcApplication (Version = surum, ApplicationFullName = tam_ad ya da ad, ApplicationIdentifier = ad), geliştirici IfcOrganization (firma ya da ad), FILE_NAME ("ad surum", tam_ad ya da ad); `ad` verilmezse "Matris Öğren" çıktısı bayt bayt aynı. `op4/js/op4_cekirdek.js` `ifcDisari` seçeneği geçirir (metni yeniden yazan `uygulamaKimligi` kalktı; derlem değişmedi). D'nin `tam_ad`'ı ("op4 · Opus Fortis") artık IFC'ye gider | B (D isteği) |
+| 2026-10-31 | S22 (eklemeli) | `Hizmetler::ayarlarDegisti` (`Olay<>`): Ayarlar penceresinde Uygula / Tamam (ve İptal'in geri dönüşü) bitince C yayınlar (canlı önizlemede yayınlanmaz); D'nin `DosyaIslemleri` abonedir ve `ayarlar.json`'u hemen yazar (saniyelik kare işi denetimi yedek olarak kalır), yıkıcısında aboneliği bırakır. Sınama `dosya_islemleri.cpp` "S22 Ayarlar › Uygula" | S (entegratör) |
+| 2026-10-31 | S18 (eklemeli; C grubu) | `ArayuzAyarlari::yaziBoyutu` ("kucuk" \| "orta" \| "buyuk", varsayılan "orta"; JSON `arayuz.yazi_boyutu`, bilinmeyen değer "orta"): Ayarlar › Görüntü › Arayüz › **Yazı boyutu**; çarpanlar belirteç `belirtec.py` `YAZI_BOYUTU` → `tema_belirtec.h` `YAZI_BOYUTLARI` (11/12 · 1 · 7/6), `tema::YaziCarpani`; arayüz ölçeği = DPI × çarpan (yazı ölçeği ve yazıya bağlı modül ölçüleri birlikte; Otomatik yoğunluk ölçeklenmiş alanı izler). `ArayuzAyarlari::tema` eskimiş olarak işaretlendi (arayüz açık; alan ve anahtar gidiş-dönüş için korunur, okunmaz). Sınama `arayuz_yazi_boyutu.cpp` | S (C isteği, kullanıcı) |
+| 2026-10-31 | S15 (uygulama notu; imza değişmedi) | C'nin `gorunum` katkısı (`arayuz_modulu.cpp`) `AnaPencere` yıkıcısında `ProjeBelgesi::KatkiKaldir("gorunum")` ile bırakılır (D'nin `DosyaIslemleri` / `CozumAkisi` yıkıcıları gibi) | C |
+| 2026-10-31 | — (derleme, kurulum) | FreeType 2.13.3 (`cmake/bagimlilik_freetype.cmake`, işleme özeti doğrulamalı, yalnız Windows; TrueType + CFF + oto-ipucu modülleri) ve `imgui` hedefinde `misc/freetype/imgui_freetype.cpp` + PUBLIC `IMGUI_ENABLE_FREETYPE`: C'nin `yazi.cpp` LightHinting \| ForceAutoHint, PixelSnapH, aşırı örnekleme 1 ayarları etkin. Üçüncü taraf lisansları kurulu programda `lisanslar\` (liste `kurulum/lisanslar/UCUNCU_TARAF.txt`, FTL atfı; metinler bağımlılık kaynak ağaçlarından ve `kimlik/fontlar/*-OFL.txt`). Arayüz yazı tipi Noto Sans SemiCondensed (`kimlik_uret.py` `ARAYUZ_YAZI = YAZI_ADAYLARI["noto_dar"]`, `belirtec.py` `YAZI_AILESI`; statik örnekler `kimlik/fontlar/notosans-*`; gömülü veri yeniden üretildi, üreteç artık belirlenimci). D'nin `dosya/studyo_tema.h` kopya belirteçleri kalktı (`dosya/kart_cizimi.h` C'nin `arayuz/tema.h`'ını okur); iskelet `kaynak/proje.*` ve onun için tutulan `kaynak/kamera.h` (`Kamera`), `grafik.h` `SahneAyari` silindi (sahiplik satırları kalktı). Pencerenin en küçük istemci alanı 1024 × 640 mantıksal px × arayüz ölçeği (`WM_GETMINMAXINFO`; tasarim.md §9). CI: eski 640×360 ekran sınaması 1280×720; Atölye ekranları (1920×1080 boş / örnek / katı / üç Ayarlar sayfası, 1366×768 örnek ve Büyük yazı) ve açılış kareleri (`--olcek 2`, açık + koyu) başarı satırlarıyla, günlüğe 960 px kopyalarla (`gunluk_png_yaz.py --en-genislik`) | A, C, D (entegratör) |
 
 ### 24.7 Paket kabul denetimleri
 
@@ -1946,7 +1948,7 @@ görsel ve yerleşim kararlarının **önüne geçer**; §5'te çelişen her şe
   eksen üçlüsü (küp yok), yüzen "Seçim" çipi ve seçimin yanında bağlamsal mini araç çubuğu; Kahve/Altın geçişli renk
   yalnız birincil eylemde (Çöz F5); seçim = altın kontur + açık dolgu, üzerinde = ince kahve kontur.
 - **Yazı tipi:** Inter (değişken, OFL; `op4/kimlik/fontlar/`), ImGui'ye 1× ve 2× DPI için önceden işlenmiş atlaslar;
-  sistem yazı tipi kullanılmaz.
+  sistem yazı tipi kullanılmaz. (§25.1: arayüz yazı tipi Noto Sans SemiCondensed oldu; Inter simge yedeği ve açılışta kalır.)
 - **Gezinme (kullanıcı isteği 8, bağlayıcı):** sol sürükle = kaydır, **Shift+sol sürükle = döndür**, tekerlek = imlece
   yakınlaş, orta sürükle = kaydır, sol tık = seç, Ctrl+sol sürükle = pencere seçimi.
 - **Açılış ekranı:** `op4/kimlik/acilis/` ("Kemer Çizgisi", açık zemin; kilit taşı ışığı, düz ilerleme çizgisi) Direct2D +

@@ -16,7 +16,6 @@
 
 #include "cekirdek/kamera.h"
 #include "geometri.h"
-#include "kamera.h"
 
 struct ImDrawData;
 struct ImGui_ImplDX12_InitInfo;
@@ -24,12 +23,6 @@ struct ImGui_ImplDX12_InitInfo;
 namespace op4 {
 
 using Microsoft::WRL::ComPtr;
-
-struct SahneAyari {
-    bool kesitGorunumu = true;  // false: çubuk (eksen çizgisi) görünümü
-    bool kenarlar = true;
-    bool izgara = true;
-};
 
 // D3D12 hata ayıklama katmanı (d3d12SDKLayers.dll: Windows'un isteğe bağlı "Graphics Tools" özelliği ya da Agility SDK).
 // Yoklama: katman bu makinede var mı (`var`, `hr`). Etkin: `--hata-katmani` ile açıldı; ileti kuyruğundaki iletiler

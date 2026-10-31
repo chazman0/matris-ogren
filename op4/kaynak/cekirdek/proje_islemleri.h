@@ -45,7 +45,7 @@ struct DosyaPlatformu {
     std::function<void(const std::string& yol)> sonBelgeEkle;        // Win32: SHAddToRecentDocs (atlama listesi)
     std::function<void(const std::string& baslik)> pencereBasligi;   // Win32: SetWindowTextW("op4 — ad •")
     std::function<void(const std::string& yol)> belgeYoluDegisti;    // Win32: tek örnek borusunun belge adı
-    std::function<void()> kurtarmaGoster;                            // Win32: Stüdyo "Kurtarma" kartını aç
+    std::function<void()> kurtarmaGoster;                            // Win32: "Kurtarma" kartını aç
     std::function<void()> sablonSeciciGoster;                        // Win32: "Şablondan yeni" kartını aç
 };
 
@@ -129,6 +129,7 @@ private:
     bool otomatikHataBildirildi_ = false;
     std::string sonAyarMetni_;
     uint64_t aboneler_[4] = {0, 0, 0, 0};
+    uint64_t ayarAboneligi_ = 0;       // Hizmetler::ayarlarDegisti
 };
 
 }  // namespace op4

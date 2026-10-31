@@ -1,7 +1,7 @@
 // op4 çekirdek — görünüm kamerası (çift hassasiyet) ve mutlak çapalı gezinme matematiği (MIMARI §7.2, §7.3, §25).
 //
 // Sahibi: C (arayuz-goruntu). Platformdan bağımsızdır, Linux'ta doctest ile sınanır (testler/cekirdek/kamera_*.cpp).
-// Faz 0'ın float yörünge kamerası (kaynak/kamera.h) proje.* (D) için yerinde durur; çizici ve gezinme bunu kullanır.
+// Faz 0'ın float yörünge kamerası (kaynak/kamera.h) ve onu kullanan proje.* kaldırıldı (F1); çizici ve gezinme bunu kullanır.
 //
 // Kurallar (bağlayıcı, §7.2):
 //  * Sürükleme basışta kamerayı (C₀), imleç pikselini (m₀) ve imlecin altındaki dünya noktasını (P) saklar; her olayda

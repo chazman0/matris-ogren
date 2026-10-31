@@ -160,6 +160,12 @@ struct Fabrikalar {
             arayuzAilesi = Genis(ArayuzYaziAilesi());
             inceAile = L"Inter";
             altAile = L"Cormorant Garamond";
+            // Gömülü arayüz ailesi koleksiyonda adıyla bulunmalı (kimlik_uret.py ad tablosunu tek aile adına çevirir);
+            // bulunmazsa DirectWrite sistem yazı tipine düşer — tanı için günlüğe yazılır.
+            UINT32 sira = 0;
+            BOOL var = FALSE;
+            if (FAILED(kol->FindFamilyName(arayuzAilesi.c_str(), &sira, &var)) || !var)
+                Gunluk("Açılış: gömülü arayüz yazı ailesi koleksiyonda bulunamadı: %s", ArayuzYaziAilesi());
         }
         Birak(kume);
         Birak(kurucu);

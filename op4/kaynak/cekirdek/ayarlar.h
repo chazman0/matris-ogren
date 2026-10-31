@@ -34,12 +34,16 @@ struct ArayuzAyarlari {            // C
     std::string yorunge = "turntable"; // "turntable" | "trackball"
     double donmeDuyarliligi = 1.0;
     bool klasikMenu = false;       // şerit yerine klasik menü çubuğu
-    std::string tema = "koyu";     // "koyu" | "acik"
+    // KULLANILMIYOR (eski, Faz 0): arayüz açık temadır ("Atölye · Modern", MIMARI §25.1); açılış ekranının zemini
+    // acilisEkrani'dır. Alan ve "tema" anahtarı dosya gidiş-dönüşü için okunur / yazılır; değeri hiçbir yerde okunmaz.
+    std::string tema = "koyu";     // "koyu" | "acik" (eskimiş)
     // eklenti (C, 31.10.2026; Ayarlar › Program / Görüntü / Dil ayarları)
     std::string acilis = "baslangic";       // açılışta: "baslangic" (Başlangıç paneli) | "son_proje" | "bos"
     std::string acilisEkrani = "acik";      // açılış ekranı: "acik" (Kemer Çizgisi) | "koyu" (ikizi)
     std::string vurgu = "kobalt";           // vurgu rengi: "kobalt" | "petrol" | "grafit" (tasarim/atolye-modern)
     std::string yogunluk = "otomatik";      // "otomatik" (1600×900 altında sıkı) | "rahat" | "siki"
+    std::string yaziBoyutu = "orta";        // Ayarlar › Görüntü › Yazı boyutu: "kucuk" | "orta" | "buyuk" (arayüz ölçeği
+                                            // çarpanı tema_belirtec.h YAZI_BOYUTLARI; bilinmeyen değer → "orta")
     double etiketBoyu = 11.0;               // görünüm etiketleri (px), 9–16
     std::string dil = "tr";                 // arayüz dili: "tr" | "en"
     std::string ondalik = "virgul";         // sayı biçimi: "virgul" | "nokta"

@@ -240,12 +240,17 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
     k.dl = ImGui::GetWindowDrawList();
     const ImVec2 wp = ImGui::GetWindowPos();
     const float X = wp.x / olcek_, Y = wp.y / olcek_;
+    // Uygula / Tamam / İptal'de ayarlar kalıcı durumdadır: Hizmetler::ayarlarDegisti → D ayarlar.json'u yazar (S22).
     auto iptal = [&] {
         if (ayarOnceki_) a = *ayarOnceki_;
         AyarlariUygula();
         ayarlarAcik = false;
+        h_.ayarlarDegisti.Yay();
     };
-    auto uygula = [&] { ayarOnceki_ = std::make_shared<Ayarlar>(a); };
+    auto uygula = [&] {
+        ayarOnceki_ = std::make_shared<Ayarlar>(a);
+        h_.ayarlarDegisti.Yay();
+    };
     // ---- başlık 56
     const float bh = 56;
     k.Dikd(X, Y + bh - 1, W, 1, R.cizgi);
@@ -283,7 +288,7 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
     static const char* const sayfalar[3] = {"Program ayarları", "Görüntü ayarları", "Dil ayarları"};
     static const char* const aciklamalar[3] = {
         "Başlangıç, kayıt ve kurtarma, geri alma, varsayılan birimler, fare ve hesap motoru",
-        "Grafik bağdaştırıcısı, kenar yumuşatma, model görünümü, seçim renkleri, vurgu rengi, yoğunluk ve açılış ekranı",
+        "Grafik bağdaştırıcısı, kenar yumuşatma, model görünümü, seçim renkleri, vurgu rengi, yoğunluk, yazı boyutu ve açılış ekranı",
         "Arayüz dili, sayı biçimi ve birim sistemi"};
     static const char* const ikonlar[3] = {"ayar", "pencere", "dil"};
     static std::vector<std::pair<std::string, float>> bolumKonumlari;
@@ -556,6 +561,14 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
                     degisti |= SegmentDenetimi<std::string>(d.c, "##yogunluk", dx, dy, sw, a.arayuz.yogunluk,
                                                             {{"rahat", "Rahat"}, {"siki", "Sıkı"}, {"otomatik", "Otomatik"}});
             }
+            {
+                // Yazı boyutu: arayüz ölçeği DPI × çarpan (tema::YaziCarpani; canlı önizleme, İptal geri döner).
+                const float sw = SegmentGenisligi(d.c, {"Küçük", "Orta", "Büyük"});
+                if (Satir(d, "Yazı boyutu", "Arayüz yazıları ve satır yükseklikleri birlikte ölçeklenir",
+                          a.arayuz.yaziBoyutu != v.arayuz.yaziBoyutu, Tr("Orta"), sw, dx, dy))
+                    degisti |= SegmentDenetimi<std::string>(d.c, "##yazi_boyutu", dx, dy, sw, a.arayuz.yaziBoyutu,
+                                                            {{"kucuk", "Küçük"}, {"orta", "Orta"}, {"buyuk", "Büyük"}});
+            }
             if (Satir(d, "Açılış ekranı", "Logo ve canlandırma aynı; yalnız zemin", a.arayuz.acilisEkrani != v.arayuz.acilisEkrani,
                       Tr("Açık"), 2 * 132 + 12, dx, dy, 112)) {
                 for (int i = 0; i < 2; ++i) {
@@ -666,6 +679,7 @@ void AnaPencere::AyarlarPenceresi(Ciz& c) {
                 a.grafik = v.grafik;
                 a.arayuz.vurgu = v.arayuz.vurgu;
                 a.arayuz.yogunluk = v.arayuz.yogunluk;
+                a.arayuz.yaziBoyutu = v.arayuz.yaziBoyutu;
                 a.arayuz.etiketBoyu = v.arayuz.etiketBoyu;
                 a.arayuz.acilisEkrani = v.arayuz.acilisEkrani;
             } else {
