@@ -24,7 +24,7 @@ cmake_minimum_required(VERSION 3.24)
 
 # Sürüm X.Y.Z. Etiketsiz derlemede taban sürüm; CI'da "op4-vX.Y.Z" etiketinden -DOP4_SURUM=X.Y.Z ile verilir
 # (op4.exe sürüm bilgisi, açılış ekranı ve op4-setup-<sürüm>.exe aynı değeri taşır). CI taban sürümü bu satırdan okur.
-set(OP4_TABAN_SURUM "0.0.1")
+set(OP4_TABAN_SURUM "0.1.0")
 set(OP4_SURUM "" CACHE STRING "op4 sürümü (X.Y.Z); boşsa taban sürüm")
 if(OP4_SURUM STREQUAL "")
   set(_op4_surum "${OP4_TABAN_SURUM}")

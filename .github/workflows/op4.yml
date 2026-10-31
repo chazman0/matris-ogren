@@ -298,6 +298,7 @@ jobs:
       - name: Sına — Atölye ekranları (--test-ekran 1920×1080 ve 1366×768; boş, örnek, katı, Ayarlar, Büyük yazı)
         run: |
           kod=0
+          basarisiz=()
           # denetle <ad> <GxY> <değişken> <çıkış kodu>: test_ekran.cpp'nin başarı satırları. "OP4OLCUM senaryo=ekran
           # degisken=<d> gen=<G> yuk=<Y> … arayuz_kose=<n> model_yuzde=<%>"; örnekli değişkenlerde görünümde model (> %1).
           denetle() {
@@ -307,7 +308,13 @@ jobs:
             echo "::endgroup::"
             satir=$(grep -m1 '^OP4OLCUM senaryo=ekran ' <(tr -d '\r' < "$ad.log") || true)
             echo "$ad: ${satir:-OP4OLCUM senaryo=ekran satırı yok}"
-            [ "$k" = 0 ] || { echo "::error::$ad: op4.exe --test-ekran çıkış kodu $k"; kod=2; }
+            if [ "$k" != 0 ]; then
+              # Nedeni ek açıklamaya da yaz (uzun günlükte PNG dökümü kuyruğu doldurur; ek açıklamalar API'den okunur).
+              neden=$(grep -E 'BAŞARISIZ|HATA|Hata|çizilemedi|Uyarı' <(tr -d '\r' < "$ad.log") | tail -n 4 | tr '\n' ' ' || true)
+              echo "::error::$ad: op4.exe --test-ekran çıkış kodu $k — ${neden:-günlükte neden satırı yok}"
+              basarisiz+=("$ad")
+              kod=2
+            fi
             grep -q "EKRAN TESTİ BAŞARILI" "$ad.log" || { echo "::error::$ad: 'EKRAN TESTİ BAŞARILI' satırı yok"; kod=2; }
             [[ "$satir" == *" degisken=$degisken gen=${boyut%x*} yuk=${boyut#*x} "* ]] || { echo "::error::$ad: OP4OLCUM değişken / boyut tutmuyor"; kod=2; }
             kose=$(sed -n 's/.* arayuz_kose=\([0-9]*\).*/\1/p' <<< "$satir")
@@ -340,6 +347,12 @@ jobs:
             ekran-ayarlar-1920=ekran-ayarlar-1920.png ekran-ayarlar-program-1920=ekran-ayarlar-program-1920.png \
             ekran-ayarlar-dil-1920=ekran-ayarlar-dil-1920.png ekran-ornek-1366=ekran-ornek-1366.png \
             ekran-buyuk-1366=ekran-buyuk-1366.png || kod=$?
+          # Başarısız değişkenlerin günlüklerinin sonu en sonda tekrar (iş günlüğünün kuyruğunda görünsün).
+          for ad in "${basarisiz[@]}"; do
+            echo "::group::$ad.log (son 60 satır)"
+            tail -n 60 "$ad.log" || true
+            echo "::endgroup::"
+          done
           exit "$kod"
 
       - name: Sına — açılış ekranı kareleri (--test-acilis --olcek 2; açık ve koyu)

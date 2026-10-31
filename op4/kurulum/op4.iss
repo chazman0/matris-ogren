@@ -1,5 +1,5 @@
 ﻿; op4 kurulum betiği (Inno Setup 6). UTF-8 (BOM'lu) kaydedilmelidir; Türkçe metinler için gereklidir.
-; Derleme (CI):  ISCC.exe /DSurum=0.0.1 /DPaket=<paket> /DCikti=<çıktı> [/DSihirbaz=<klasör>] op4\kurulum\op4.iss
+; Derleme (CI):  ISCC.exe /DSurum=0.1.0 /DPaket=<paket> /DCikti=<çıktı> [/DSihirbaz=<klasör>] op4\kurulum\op4.iss
 ; Paket klasörü: op4.exe, op4motor.exe (hesap motoru süreci), kimlik\, veri\, python\ (gömülü CPython + numpy/sympy),
 ; motor\ (hesap motoru .py + .pyc, op4_sunucu.py, op4_protokol.py).
 ; Sürüm X.Y.Z: CI'da "op4-vX.Y.Z" etiketinden, etiketsiz derlemede op4/CMakeLists.txt OP4_TABAN_SURUM'dan gelir.
@@ -8,7 +8,7 @@
 ; ölçeği); verilmezse kurulum aracının varsayılan görselleri kullanılır.
 
 #ifndef Surum
-  #define Surum "0.0.1"
+  #define Surum "0.1.0"
 #endif
 #ifndef Paket
   #define Paket "..\..\paket"
