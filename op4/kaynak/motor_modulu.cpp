@@ -1,15 +1,20 @@
-// op4 — hesap motoru modülü (A; sözleşme S13, S23). Windows.
+// op4 — hesap motoru modülü (A; sözleşme S13, S21, S23; F1 iş 1.2, kabul A10). Windows.
 //
-// F1 geçiş düzeni: MotorHizmeti arayüzünün arkasında Faz 0'ın SÜREÇ İÇİ gömülü motoru (motor.h, Motor) çalışır
-// (GomuluMotorHizmeti). A, F1 iş 1.2'de süreç tabanlı MotorIstemcisi'ni (cekirdek/motor_istemci.cpp + platform/surec_win.cpp
-// + op4motor.exe + op4/motor/op4_sunucu.py) bitirince MotorModuluKur onu döndürür; diğer paketler etkilenmez.
-// Gömülü sürümün sınırları: çalışan istek iptal edilemez (Iptal false döner), tek motor (ana ve yardımcı aynı).
+// MotorModuluKur, süreç tabanlı istemciyi (cekirdek/motor_istemci.h: op4motor.exe süreçleri, tel protokolü, iptal,
+// yeniden başlatma, ana / yardımcı yönlendirmesi) Hizmetler::motor'a bağlar; "Hesap motoru" durum öğesini, Ayarlar ›
+// Hesap motoru sayfasını ve motor.yeniden_baslat komutunu ekler. Her karede (ve boşta) Pompala çağrılır.
+//
+// Tanı kipi (MIMARI §8.1; Faz 1 boyunca): OP4_MOTOR=gomulu ortam değişkeniyle Faz 0'ın SÜREÇ İÇİ gömülü motoru
+// (motor.h, Motor) aynı arayüzün arkasında çalışır (GomuluMotorHizmeti). Sınırları: çalışan istek iptal edilemez, tek motor.
 #include <windows.h>
 
+#include <algorithm>
 #include <condition_variable>
+#include <cstdlib>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -17,8 +22,10 @@
 
 #include "cekirdek/kabuk.h"
 #include "cekirdek/motor_hizmeti.h"
+#include "cekirdek/motor_istemci.h"
 #include "cekirdek/motor_protokol.h"
 #include "gunluk.h"
+#include "imgui.h"
 #include "motor.h"
 
 namespace op4 {
@@ -221,13 +228,87 @@ private:
     std::thread isci_;
 };
 
+// "Hesap motoru" durum öğesi (durum çubuğu, sağda).
+void DurumOgesiCiz(const MotorHizmeti* m, bool motorsuz) {
+    const MotorDurumOzeti a = m->Durum(MotorRolu::Ana);
+    const MotorDurumOzeti y = m->Durum(MotorRolu::Yardimci);
+    const ImVec4 krem(0.93f, 0.90f, 0.85f, 1.0f), altin(0.69f, 0.54f, 0.31f, 1.0f), kirmizi(0.90f, 0.35f, 0.30f, 1.0f);
+    const size_t bekleyen = a.bekleyen + y.bekleyen;
+    if (motorsuz || !a.baslatildi) {
+        ImGui::TextColored(krem, "Hesap motoru: kapalı");
+    } else if (!a.hazir) {
+        ImGui::TextColored(altin, "Hesap motoru: başlatılıyor…");
+    } else if (!a.basarili) {
+        ImGui::TextColored(kirmizi, "Hesap motoru: hata");
+    } else if (a.calisiyor || y.calisiyor) {
+        ImGui::TextColored(altin, "Hesap motoru: çalışıyor (%zu)", bekleyen);
+    } else {
+        ImGui::TextColored(krem, "Hesap motoru: hazır");
+    }
+    if (ImGui::IsItemHovered()) {
+        std::string ipucu = a.aciklama;
+        if (!a.hata.empty()) ipucu += "\n" + a.hata;
+        if (y.baslatildi) ipucu += "\nYardımcı: " + y.aciklama + (y.hata.empty() ? "" : " — " + y.hata);
+        if (a.yenidenBaslatma + y.yenidenBaslatma > 0)
+            ipucu += "\nBu oturumda " + std::to_string(a.yenidenBaslatma + y.yenidenBaslatma) + " kez yeniden başlatıldı";
+        ImGui::SetTooltip("%s", ipucu.c_str());
+    }
+}
+
+void AyarSayfasiCiz(Ayarlar& a) {
+    ImGui::TextWrapped("Hesap motoru ayrı süreçte çalışır (op4motor). Değişiklikler sonraki isteklerde geçerlidir; bellek tavanı "
+                       "motor yeniden başlatılınca (Analiz › Hesap motorunu yeniden başlat).");
+    ImGui::InputInt("Serbestlik derecesi sınırı", &a.motor.sdSiniri, 500, 2000);
+    a.motor.sdSiniri = std::clamp(a.motor.sdSiniri, 100, 200000);
+    ImGui::Checkbox("F5 çözümünde adım adım anlatım", &a.motor.anlat);
+    ImGui::SliderInt("Bellek tavanı (% sistem belleği)", &a.motor.bellekYuzde, 10, 95);
+}
+
 }  // namespace
 
 void MotorModuluKur(Hizmetler& h, ModulOrtami& o) {
-    MotorHizmeti* m = o.Tut(std::make_shared<GomuluMotorHizmeti>());
+    MotorHizmeti* m = nullptr;
+    MotorIstemcisi* istemci = nullptr;
+    const char* secim = std::getenv("OP4_MOTOR");
+    if (secim && std::string(secim) == "gomulu") {
+        m = o.Tut(std::make_shared<GomuluMotorHizmeti>());
+        if (o.gunluk) o.gunluk("Hesap motoru: süreç içi gömülü motor (OP4_MOTOR=gomulu; Faz 0 tanı kipi)");
+    } else {
+        auto p = std::make_shared<MotorIstemcisi>();
+        p->gunluk = o.gunluk;
+        if (h.ayarlar) {
+            p->sdSiniri = h.ayarlar->motor.sdSiniri;
+            MEMORYSTATUSEX bellek{sizeof(bellek)};
+            if (GlobalMemoryStatusEx(&bellek))
+                p->bellekSiniriBayt = bellek.ullTotalPhys / 100 * static_cast<uint64_t>(std::clamp(h.ayarlar->motor.bellekYuzde, 10, 95));
+        }
+        istemci = p.get();
+        m = o.Tut(std::shared_ptr<MotorHizmeti>(p));
+    }
     h.motor = m;
-    h.KareIsiEkle("motor", [m](double) { m->Pompala(); });
-    // F1 iş 1.2 (A): motor.yeniden_baslat komutu, "Hesap motoru" durum öğesi, süreç tabanlı istemci.
+    Hizmetler* hp = &h;
+    h.KareIsiEkle("motor", [m, istemci, hp](double) {
+        if (istemci && hp->ayarlar) istemci->sdSiniri = hp->ayarlar->motor.sdSiniri;  // ayar değişikliği sonraki isteklerde
+        m->Pompala();
+    });
+
+    const bool motorsuz = o.motorsuz;
+    KomutIsleyici yeniden;
+    yeniden.calistir = [istemci](KomutBaglami& b) {
+        if (!istemci) return;
+        istemci->YenidenBaslat();
+        if (b.h.bildirim) b.h.bildirim->KomutYaz("Hesap motoru yeniden başlatılıyor (çözüm önbelleği boşaldı)…");
+    };
+    yeniden.kullanilamazNedeni = [istemci, motorsuz](const Hizmetler&) {
+        if (motorsuz) return std::string("Hesap motoru kapalı (--motorsuz)");
+        if (!istemci) return std::string("Süreç içi gömülü motor yeniden başlatılamaz (OP4_MOTOR=gomulu)");
+        return std::string();
+    };
+    if (h.komutlar) h.komutlar->Bagla("motor.yeniden_baslat", yeniden);
+    if (h.arayuz) {
+        h.arayuz->DurumOgesiEkle({"motor", 50, true, "A", [m, motorsuz] { DurumOgesiCiz(m, motorsuz); }});
+        h.arayuz->AyarSayfasiEkle({"motor", "Hesap motoru", 40, "A", &AyarSayfasiCiz});
+    }
 }
 
 }  // namespace op4

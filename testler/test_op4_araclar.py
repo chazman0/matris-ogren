@@ -173,3 +173,75 @@ def test_sihirbaz_gorselleri(tmp_path):
     for ad in yazilan:
         if ad.endswith(".bmp"):
             assert "{#Sihirbaz}\\" + ad in iss, ad
+
+
+# ---------------------------------------------------------------------------------------------- F1 iş 1.1 / 1.2 (A)
+def test_cmake_on_ayarlari():
+    """MIMARI §19, kabul A2: CMakePresets.json'da dört ön ayar; ASan ön ayarı UBSan'ı da açar; uyarılar hata."""
+    d = json.loads((KOK / "op4" / "CMakePresets.json").read_text(encoding="utf-8"))
+    yap = {p["name"]: p for p in d["configurePresets"]}
+    for ad in ("win-surum", "win-hata", "linux-cekirdek", "linux-cekirdek-asan"):
+        assert ad in yap and not yap[ad].get("hidden"), ad
+        assert ad in {p["name"] for p in d["buildPresets"]} and ad in {p["name"] for p in d["testPresets"]}, ad
+    assert yap["linux-cekirdek-asan"]["cacheVariables"]["OP4_ASAN"] == "ON"
+    assert yap["win-surum"]["architecture"]["value"] == "x64" and "generator" not in yap["win-surum"]
+    assert yap["temel"]["cacheVariables"]["OP4_UYARI_HATA"] == "ON"
+    derleyici = (KOK / "op4" / "cmake" / "Derleyici.cmake").read_text(encoding="utf-8")
+    assert 'option(OP4_UYARI_HATA "Uyarılar hata sayılır (/WX, -Werror)" ON)' in derleyici
+    assert "-fsanitize=address,undefined" in derleyici and "/WX" in derleyici
+
+
+def test_golgelendiriciler_tek_kaynak():
+    """MIMARI D12, kabul A4: HLSL tek dosyada; grafik.cpp'nin istediği giriş noktaları orada (FXC kendiliğinden bulur)."""
+    hlsl = (KOK / "op4" / "golgelendiriciler" / "op4.hlsl").read_text(encoding="utf-8")
+    girisler = set(re.findall(r"[ \t\r\n]((?:vs|ps)_[A-Za-z0-9_]+)[ \t]*\(", hlsl))
+    grafik = (KOK / "op4" / "kaynak" / "grafik.cpp").read_text(encoding="utf-8")
+    istenen = set(re.findall(r'Derle\("((?:vs|ps)_[a-z_0-9]+)"', grafik))
+    assert istenen and istenen <= girisler, istenen - girisler
+    baslik = (KOK / "op4" / "kaynak" / "golgelendirici.h").read_text(encoding="utf-8")
+    assert "golgelendirici_kaynak.inc" in baslik and "cbuffer" not in baslik
+    cmake = (KOK / "op4" / "cmake" / "Golgelendiriciler.cmake").read_text(encoding="utf-8")
+    assert "/T ${_tur}_5_1" in cmake and "op4_golgelendiriciler" in (KOK / "op4" / "CMakeLists.txt").read_text(encoding="utf-8")
+
+
+def test_motor_paketleme_ve_karmalar():
+    """MIMARI §8.5, §2.2.8; kabul A11: op4_sunucu + op4_protokol pakete girer; tekerlekler sabit sürüm + SHA256."""
+    hazirla = _modul("python_hazirla")
+    for ad in hazirla.OP4_MOTOR:
+        assert (KOK / "op4" / "motor" / ad).is_file(), ad
+    assert {"op4_sunucu.py", "op4_protokol.py"} <= set(hazirla.OP4_MOTOR)
+    satirlar = hazirla.KARMALI_GEREKSINIMLER.read_text(encoding="utf-8")
+    paketler = dict(re.findall(r"^([a-z0-9_-]+)==([0-9.]+)", satirlar, re.M))
+    assert paketler == {"numpy": "2.5.3", "sympy": "1.14.0", "mpmath": "1.3.0"}
+    karmalar = re.findall(r"--hash=sha256:([0-9a-f]+)", satirlar)
+    assert len(karmalar) >= 4 and all(len(k) == 64 for k in karmalar)
+    for s in hazirla.GEREKSINIMLER:
+        ad, surum = s.split("==")
+        assert paketler[ad] == surum, s
+    iss = (KOK / "op4" / "kurulum" / "op4.iss").read_text(encoding="utf-8-sig")
+    assert '[InstallDelete]' in iss and 'Name: "{app}\\python"' in iss and 'Name: "{app}\\motor"' in iss
+
+
+def test_op4_is_akisi_motor_ve_linux_matrisi():
+    """Kabul A1–A3, A6, A10, A11: Linux işi 3.13 + 3.14 matrisi ve ASan ön ayarı; Windows işi Python 3.14, op4motor.exe,
+    gömülü gölgelendirici denetimi, kurulu programla --test-motor ve --oz-sinama."""
+    d = _is_akisi()
+    lin = d["jobs"]["cekirdek-linux"]
+    assert lin["strategy"]["matrix"]["python"] == ["3.13", "3.14"]
+    assert lin["env"]["OP4_MOTOR_SINAMA_ZORUNLU"] == "1"
+    lin_run = "\n".join(a.get("run", "") for a in lin["steps"])
+    for parca in ("--preset linux-cekirdek-asan", "ctest --preset linux-cekirdek-asan", "node --test op4/testler/js",
+                  "pytest op4/testler/python", "numpy==2.5.3", "OP4OLCUM"):
+        assert parca in lin_run, parca
+    win = d["jobs"]["windows"]
+    py = [a for a in win["steps"] if a.get("uses", "").startswith("actions/setup-python")]
+    assert py and py[0]["with"]["python-version"] == "3.14"
+    win_run = "\n".join(a.get("run", "") for a in win["steps"])
+    for parca in ("--preset win-surum", "op4motor.exe --denetle", "motor/op4_sunucu.py", "--test-motor",
+                  "gömülü bayt kodu (FXC, SM 5.1", "--oz-sinama", "OP4_MOTOR_SINAMA_ZORUNLU",
+                  "OP4_GOLGELENDIRICI=calisma_ani", "OP4OLCUM senaryo=golgelendirici"):
+        assert parca in win_run or parca in str(win), parca
+    # Kabul A4 ölçüm kipi: CI'nın kapattığı gömülü yol golgelendirici_bayt.cpp'de; günlük satırı CI'nın aradığıyla aynı.
+    bayt = (KOK / "op4" / "kaynak" / "grafik" / "golgelendirici_bayt.cpp").read_text(encoding="utf-8")
+    assert 'L"OP4_GOLGELENDIRICI"' in bayt and 'L"calisma_ani"' in bayt and "gömülü bayt kodu kapalı" in bayt
+    assert "gömülü bayt kodu (FXC, SM 5.1" in bayt
