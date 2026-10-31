@@ -4,8 +4,9 @@
 //   geometriyi değiştirmeyen uygula (baslikDegistir: çözümleme yeniden kullanılır) ve geri al / yinele (anlığın türetilmiş
 //   verisi ve farkı saklı).
 //   Geometriyi değiştiren uygula (aksSihirbazi: bütün elemanlar yeniden çözümlenir) sentetik modellerde bütçeyi AŞAR; yalnız
-//   ölçülür ve gerilemeye karşı geniş bir üst sınırla korunur. Ölçülen dağılım (Linux clang, 20 bin çubuk): docs/
-//   aksSihirbazUygula'nın kendisi ≈ 550 ms (JSON kopyası), çözümleme ≈ 380 ms, fark ≈ 180 ms, kullanım yeri ≈ 270 ms.
+//   ölçülür ve gerilemeye karşı geniş bir üst sınırla korunur. Ölçülen dağılım (Linux clang, ürünün QuickJS'i, 5 bin çubuk):
+//   docs/ MatrisBinaCizim.aksSihirbazUygula'nın KENDİSİ ≈ 170–240 ms (bütçenin üstünde; docs/ F1'de değişmez), Op4Ops
+//   çözümleme ≈ 90 ms, sahne ≈ 20–30, sahne farkı ≈ 65–120, kat ≈ 30–50, kullanım yeri ≈ 140, öznitelik ≈ 40–100 ms.
 // Bütçe yalnız iyileştirilmiş QuickJS'te (GCC/Clang her zaman -O2; MSVC Release) ve temizleyicisiz derlemede zorunludur:
 // MSVC Debug ve ASan/UBSan derlemelerinde yalnız ölçüm yazılır.
 #include <doctest/doctest.h>
