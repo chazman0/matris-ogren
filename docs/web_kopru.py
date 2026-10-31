@@ -41,6 +41,11 @@ Bina işlemleri (yapi.py + yapi_veri.py):
   "bina_yuk_yolu":  girdi {"bina", "veri", "hedef": {"tur": "doseme"|"kiris"|"kolon", "no", "durum"}} → {"adimlar": [...], "hata": null}
   "bina_deprem":    girdi {"bina"} → {"deprem": (veri.deprem şeması, çözümsüz önizleme: spektrum, V_tE, F_i, V_i; "tahmin": true),
                     "hata": null}
+  "bina_spektrum":  girdi {deprem kartı alanları (SS, S1, SS_DD3, S1_DD3, zemin_sinifi, BKS, I, tasiyici | tasiyici_x/_y, R, D, Ct,
+                    ozel_spektrum) doğrudan ya da "deprem" altında, "HN"?, "sistem"?, "T_maks"? (6 s), "adim"? (0,02 s)} ya da
+                    {"bina"} → yapi.bina_spektrum: {FS, F1, SDS, SD1, TA, TB, TL, DTS, BYS, TpA, Ra, SaR, lambda, uyarilar,
+                    spektrum [[T, S_ae, S_aR]], egriler {T, DD2, SaR, SaR_Y, DD3, standart, ozel}, ozel_spektrum {asgari denetim},
+                    karma, kaynaklar, "hata": null} (Yönetmelik sihirbazı canlı spektrum önizlemesi; model ve çözüm gerekmez)
   "bina_kombinasyon": girdi {"cozum_kimligi", "ad", "katsayilar"?, "bina"?} → {"ad", "cozum_kimligi", "sonuc": KISA (tam diziler),
                     "hata": null}. Son çözümler (en çok BINA_ONBELLEK_EN_FAZLA) bellekte tutulur; kimlik önbellekte yoksa ve
                     "bina" verilmişse bina anlatımsız yeniden çözülür, yoksa öğretici hata.
@@ -510,7 +515,8 @@ def _se_islem(islem: str, girdi: dict) -> dict:
 # "bina_kombinasyon", "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner", "bina_eleman_bilgi")
 # ---------------------------------------------------------------------------
 BINA_ISLEMLER = {"bina_coz", "bina_sablonlar", "bina_sablon", "bina_kutuphane", "bina_yuk_yolu", "bina_deprem", "bina_kombinasyon",
-                 "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner", "bina_eleman_bilgi"}
+                 "bina_eleman_tasarim", "bina_rapor", "bina_tablolar", "bina_alan", "bina_kesit_oner", "bina_eleman_bilgi",
+                 "bina_spektrum"}
 BINA_EN_FAZLA = 300_000   # bina JSON metni için üst sınır (karakter)
 BINA_ONBELLEK_EN_FAZLA = 3   # tembel kombinasyonlar ve eleman tahkik ayrıntısı için bellekte tutulan son çözüm sayısı
 _BINA_ONBELLEK: "OrderedDict[str, dict]" = OrderedDict()
@@ -897,6 +903,8 @@ def _bina_islem(islem: str, girdi: dict, ayar: dict | None = None) -> dict:
     yapi = _yapi_zorunlu()
     if islem == "bina_deprem":
         return {"deprem": _sonlu_sayilar(yapi.deprem_onizleme(_bina_girdisi(girdi))), "hata": None}
+    if islem == "bina_spektrum":     # Yönetmelik sihirbazı: TBDY 2018 spektrumu (standart ya da sahaya özel), DTS, BYS, T_pA
+        return dict(_sonlu_sayilar(yapi.bina_spektrum(girdi)), hata=None)
     if islem == "bina_kutuphane":
         return dict(_sonlu_sayilar(yapi.kutuphane()), hata=None)
     if islem == "bina_sablonlar":

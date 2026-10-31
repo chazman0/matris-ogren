@@ -1036,18 +1036,26 @@ def basinc(meta, kisa):
             "oturma_maks_mm": max((d["w_mm"] for d in dug), default=0.0)}
 
 
-def _komb_satirlari(kombinasyonlar, paket):
+def _q_azalt(katsayilar, tur, q_carpani):
+    """TS 498:2021 md. 16 hareketli yük azaltması (temel): deprem dışı birleşimlerde Q katsayısı × β (deprem birleşimlerinde Q
+    azaltılmaz; yapi_veri.EK_KURALLAR["azaltma.deprem"]). q_carpani None ise katsayılar aynen döner."""
+    if q_carpani is None or tur == "deprem" or "Q" not in katsayilar:
+        return katsayilar
+    return dict(katsayilar, Q=katsayilar["Q"] * q_carpani)
+
+
+def _komb_satirlari(kombinasyonlar, paket, q_carpani=None):
     """(dayanım + deprem, servis) kombinasyon listeleri: [(ad, katsayılar (çözüm), tur)]."""
     tas, ser = [], []
     for k in kombinasyonlar:
         if not k.get("uygulandi"):
             continue
         if k["tur"] in ("dayanim", "deprem"):
-            tas.append((k["ad"], k.get("cozum", k["katsayilar"]), k["tur"]))
+            tas.append((k["ad"], _q_azalt(k.get("cozum", k["katsayilar"]), k["tur"], q_carpani), k["tur"]))
         elif k["tur"] == "servis":
-            ser.append((k["ad"], dict(k["katsayilar"]), "servis"))
+            ser.append((k["ad"], _q_azalt(dict(k["katsayilar"]), "servis", q_carpani), "servis"))
     if not any(ad == "G+Q" for ad, _, _ in ser):
-        ser.insert(0, ("G+Q", {"G": 1.0, "Q": 1.0}, "servis"))
+        ser.insert(0, ("G+Q", _q_azalt({"G": 1.0, "Q": 1.0}, "servis", q_carpani), "servis"))
     ser = [s for s in ser if all(d in paket.durum for d in s[1])]
     return tas, ser
 
@@ -1085,9 +1093,10 @@ def _kontrol(ad, talep, kapasite, kaynak, birim="", kombinasyon=None, kosul=Fals
             "saglandi": dc <= 1.0 + 1e-9, "kombinasyon": kombinasyon, **({"kosul": True} if kosul else {}), **({"bilgi": True} if bilgi else {})}
 
 
-def sonuclar(B, ag, paket, kombinasyonlar):
+def sonuclar(B, ag, paket, kombinasyonlar, q_carpani=None):
     """veri.temel (§13): taban basıncı (servis), oturma, TS 500 emniyet ve TBDY 16.8 taşıma gücü kontrolleri, temel kirişi /
-    tabla / radye şeridi donatısı, zımbalama, en küçük kalınlıklar. İkinci değer anlatım için iç ayrıntılar."""
+    tabla / radye şeridi donatısı, zımbalama, en küçük kalınlıklar. İkinci değer anlatım için iç ayrıntılar.
+    ``q_carpani``: TS 498:2021 md. 16 hareketli yük azaltma katsayısı β (deprem dışı birleşimlerde Q × β); None → azaltma yok."""
     info = ag["temel"]
     tem = B.temeller
     tip = tem["tip"]
@@ -1095,7 +1104,7 @@ def sonuclar(B, ag, paket, kombinasyonlar):
     q_em = tem["zemin"]["q_em"]
     q_k = tem["zemin"].get("q_k")
     km = _Kmb(paket, info)
-    tas, ser = _komb_satirlari(kombinasyonlar, paket)
+    tas, ser = _komb_satirlari(kombinasyonlar, paket, q_carpani)
     uyarilar, notlar = list(info.uyarilar), list(info.notlar)
     # --- servis: oturma ve taban basıncı ---
     servis = []
@@ -1132,7 +1141,7 @@ def sonuclar(B, ag, paket, kombinasyonlar):
             if oran > farkli:
                 farkli, farkli_yer = oran, f"{ri['adres']}–{rj['adres']}"
     # --- yük akışı: kolon → temel → zemin (servis G+Q) ---
-    kat_gq = {"G": 1.0, "Q": 1.0}
+    kat_gq = _q_azalt({"G": 1.0, "Q": 1.0}, "servis", q_carpani)
     kolonlar, N_kolon = [], 0.0
     for i, r in enumerate(info.dugumler):
         if r["kolon"] is None:

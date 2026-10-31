@@ -142,7 +142,7 @@ seçenekler** · **Doğrulama** (motorun kuralı; H = hata/eksik, U = uyarı) ·
 |---|---|---|---|
 | Betonarme | `sistem: "betonarme"` | TS 500:2000 (+T1/T2/T3), TS 708:2016, TBDY 2018 Bölüm 7, TS 498:2021 | Adım 2 beton + donatı; Adım 4 Tablo 4.1 A ve B satırları (motor `onuretimli` grubunu betonarmeyle uyumlu sayar), C_t = 0,10 (çerçeve) / 0,07; Adım 6 `ts500`; Adım 7 çatlamış kesit açık |
 | Çelik | `sistem: "celik"` | ÇYTHYE 2018 (YDKT/GKT), TBDY 2018 Bölüm 9, TS 498:2021 | Adım 2 yapı çeliği (+ temel için beton); Adım 4 C satırları, C_t = 0,08; Adım 6 `cythye_ydkt`; κ = 0,5, C_h = 1,0 |
-| Karma (kısıtlı) | `sistem`: kullanıcı **ana taşıyıcı sistemi** seçer | ikisi | Motorda tek `sistem` ve tek `kombinasyon_kumesi` vardır; eleman tahkiki kesitin malzemesine göre yapılır (`_eleman_tasarla`: çelik kesit → ÇYTHYE, beton → TS 500). Çelik elemanlar `ts500` kümesinde YDKT dayanımıyla ama TS 500 katsayılarıyla tahkik edilir → **açık soru 1** |
+| Karma | `sistem`: kullanıcı **ana taşıyıcı sistemi** seçer; `kombinasyon_kumeleri` `{"betonarme": "ts500", "celik": "cythye_ydkt"}`; isteğe bağlı `deprem.tasiyici_x` / `tasiyici_y`, `deprem.tasiyici_bolgeleri` | ikisi | Motor (karar 1): eleman tahkikinde kesit malzemesine göre küme (çelik → ÇYTHYE 5.3 + TBDY 9.2.5, beton → TS 500 6.2.6 + TBDY 4.4.4; aynı yük durumları); doğrultuya göre R, D (TBDY 4.3.4.2); yükseklik boyunca / eleman grubuna göre bölge sistemleri → her doğrultuda en küçük R'li satır bütün binaya (motor kuralı, `EK_KURALLAR`); izin verilen BYS elverişsiz sistem; betonarme + çelik birlikteyse κ = 0,5, C_h = 1,0 (güvenli taraf, doğrulanmadı) |
 
 **Ön geometri (tahmini)** — modele yazılmaz; yalnız önizleme (BYS, T_pA, rüzgâr q):
 
@@ -196,8 +196,10 @@ balkon); mevcut döşemelere uygulama §7.3.
 | tribun-ayakta | 7,5 | 5 | 0,6 |
 | depo | 5,0 | **satır yok**, öğretim varsayımı, `dogrulandi: false` → U | 0,8 |
 
-Balkon > 10 m²: motor q = 5,0 + 0,35·(A − 10) uygular (Çizelge 6 satır 4). Hareketli yük azaltması (Çizelge 7) kütüphanede
-var, **motor uygulamaz** → sihirbazda seçenek olarak gösterilmez (açık soru 6).
+Balkon > 10 m²: motor q = 5,0 + 0,35·(A − 10) uygular (Çizelge 6 satır 4). Hareketli yük azaltması (TS 498:2021 md. 16
+Çizelge 7; karar 6): `yuk_durumlari.Q.azaltma` (varsayılan `false`; takma ad `yukler.hareketli_azaltma`) — kolon ve temellerde
+taşınan tam kat sayısına göre β, deprem dışı birleşimlerde Q × β; kiriş ve döşemede azaltma yok; deprem birleşimlerinde Q tam
+(motor kuralı, doğrulanmadı). Sonuç `veri.hareketli_azaltma` (kolon başına n, grup, β), tasarım kaydında `ozet.beta_Q`.
 
 **Kar (S)** — `yuk_durumlari.S`
 
@@ -246,7 +248,8 @@ varsa DD-3, PGA, PGV, raporun kendi S_DS/S_D1 değerleri) bulunur, kullanıcıya
 göre S_DS/S_D1 varsa sihirbazın hesabıyla karşılaştırılır (fark > %1 → U). Biçim **doğrulanmalı** (açık soru 4).
 
 **Yerel zemin sınıfı** (Tablo 16.1, md. 16.4) — `deprem.zemin_sinifi`, varsayılan şablondan; ZA (V_S30 > 1500 m/s) · ZB
-(760–1500) · ZC (360–760) · ZD (180–360) · ZE (< 180) · **ZF**: segmentte seçilebilir ama deprem açıkken **eksik**
+(760–1500) · ZC (360–760) · ZD (180–360) · ZE (< 180) · **ZF**: segmentte seçilebilir; sahaya özel spektrum
+(`deprem.ozel_spektrum` {noktalar [[T, S_ae]], kaynak, SDS?, SD1?, DD3?}; TBDY md. 2.4, %90 tabanı md. 2.4.1.2) girilmedikçe deprem açıkken **eksik**
 ("sahaya özel zemin davranış analizi gerekir, TBDY 16.5; Tablo 2.1/2.2'de değer yok" — motor hata verir; açık soru 2).
 
 **Bina kullanım sınıfı** (Tablo 3.1) — `deprem.BKS` 1/2/3 → `deprem.I` 1,5 / 1,2 / 1,0 (salt okunur çip; elle değişirse U).
@@ -479,7 +482,7 @@ Rapor üretilirken `kunye` → `rapor.statik_rapor(secenek={"proje": …})`. Bil
 |---|---|---|---|
 | Program açılışı (bir kez) | `bina_kutuphane` | yardımcı | malzemeler, kullanım sınıfları, duvar/kaplama, kar (Çizelge 3, il→bölge), rüzgâr, `deprem` (FS, F1, BKS, taşıyıcı, Ct, n, Tablo 4.2, 4.4), `temel`, `kombinasyon_kumeleri`, `dogrulanmamis` |
 | Her değişiklikte (önizleme) | yerel C++ hesap (§9.6), **aynı tablolar** | arayüz | 0 gecikme; `kutuphane()` bugün **DTS (Tablo 3.2) ve BYS (Tablo 3.3) tablolarını ve T_L'yi vermiyor** → eklemeli motor değişikliği önerisi: `kutuphane()["deprem"]` içine `"DTS": TBDY_DTS, "BYS": TBDY_BYS, "spektrum": TBDY_SPEKTRUM` |
-| İleri / Uygula öncesi (bağlayıcı) | önerilen yeni işlem `bina_spektrum` {SS, S1, SS_DD3, S1_DD3, zemin_sinifi, BKS, HN, Ct, R, D} → {FS, F1, SDS, SD1, TA, TB, TL, DTS, BYS, TpA, Ra, uyarilar, spektrum[]} | yardımcı | `_spektrum`, `_dts`, `_bys` sarmalayıcısı; yerel sonuçla karşılaştırılır (fark → hata günlüğü) |
+| İleri / Uygula öncesi (bağlayıcı) | `bina_spektrum` (uygulandı) {deprem kartı alanları (SS, S1, SS_DD3, S1_DD3, zemin_sinifi, BKS, I, tasiyici / tasiyici_x / tasiyici_y, R, D, Ct, ozel_spektrum), HN, sistem, T_maks, adim} → {FS, F1, SDS, SD1, TA, TB, TL, DTS, BYS, TpA, Ra, SaR, lambda, uyarilar, spektrum[], egriler {T, DD2, SaR, SaR_Y, DD3, standart, ozel}, ozel_spektrum.asgari, karma, kaynaklar} | yardımcı | `yapi.bina_spektrum`: okuma ve hata iletileri `bina_coz` ile aynı; yerel sonuçla karşılaştırılır (fark → hata günlüğü). `kutuphane()["deprem"]` artık `DTS`, `BYS`, `spektrum`, `TL`, `ozel_spektrum`, `karma` içerir |
 | Model varken | `bina_deprem` (`deprem_onizleme`) | yardımcı | V_tE, F_i, m_t; 150–400 ms gecikmeyle |
 | Projeyi oluştur / Uygula | model çekirdeği `uygula("yonetmelikUygula", yama)` | arayüz (QuickJS) | tek işlem → tek geri alma adımı; `B4` beyaz listesine eklenir |
 
@@ -612,6 +615,10 @@ varsayılanı kullananlar** (değeri eski varsayılana eşit olan döşemeler/ki
   alanın altında neden + yönetmelik maddesi + düzeltme önerisi gösterilir.
 - **9 Rüzgâr, 10 Kar:** varsayılan açık.
 - Diğerleri açık; önerilen varsayılanlarla ilerlenir.
+- **Motor eki (1, 2, 6, 13 uygulandı):** model anahtarları `kombinasyon_kumeleri`, `deprem.tasiyici_x` / `tasiyici_y` /
+  `tasiyici_bolgeleri` (takma ad `sistem_x` / `sistem_y` / `sistem_bolgeleri`), `deprem.ozel_spektrum`, `yuk_durumlari.Q.azaltma`;
+  köprü `bina_spektrum`; kütüphanede DTS/BYS tabloları ve T_L. Yönetmelikte açık karşılığı bulunamayan motor kuralları
+  `yapi_veri.EK_KURALLAR`'da `dogrulandi: false` ile durur ve kullanıldıklarında sonuç uyarılarına yazılır (sihirbazda "Uyarı").
 
 1. **Karma yapı:** motor tek `sistem` ve tek kombinasyon kümesi uygular; karma yapıda çelik elemanlar TS 500 katsayılarıyla
    (YDKT dayanımı) tahkik edilir. Karma kartı "kısıtlı" olarak mı kalsın, yoksa motora eleman grubuna göre küme eklensin mi?

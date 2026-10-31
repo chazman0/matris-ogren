@@ -317,6 +317,46 @@ def azaltma_beta(grup, kat_adedi):
     return satir["beta_min"]
 
 
+# Çizelge 7'nin uygulanma kuralları (motor; TS 498:2021 md. 16). Sıra: "yok" (depo/ağır sanayi) > "b" > "a" — taşınan
+# katlarda birden çok grup varsa en kısıtlayıcı (en az azaltan) grup alınır.
+AZALTMA_GRUP_SIRA = {"a": 0, "b": 1, "yok": 2}
+TS498_AZALTMA_UYGULAMA = {
+    "kaynak": "TS 498:2021 md. 16 Çizelge 7 (β = alınacak Q / taşınan katların toplam Q'su; her katta aynı hareketli yük için)",
+    "dogrulandi": True,
+    "elemanlar": "Düşey taşıyıcılar (kolon; perde ve temel duvarı modelde yok) ve temeller; kiriş ve döşemede azaltma yok (md. 16)",
+    "kat_sayisi": "Kolonun taşıdığı tam kat: kolonun üst ucundaki kat ve üstünde aynı kolon hattının sürdüğü, hareketli yükü > 0 olan katlar",
+    "temel": "Temel: binanın hareketli yüklü bütün katları (en alt kolonların taşıdığı katlar)",
+}
+
+
+def azaltma_beta_katlar(grup, kat_yukleri):
+    """Taşınan katların hareketli yükleriyle β (TS 498:2021 md. 16, Çizelge 7). Eşit kat yüklerinde Çizelge 7'deki β(n)
+    aynen döner. Katlarda yük farklıysa (çizelge eşit kat yükü için verilir) güvenli tarafta kalınır: kat payları çizelgeden
+    k_j = j·β_j − (j − 1)·β_(j−1) ile türetilip en ağır kattan başlayarak uygulanır ("en fazla yüke maruz üç kat tam") ve
+    β = max(β(n), Σ k_j·Q_(j)/Σ Q_j) ≥ β_min alınır. Dönüş (β, ayrıntı sözlüğü)."""
+    satir = TS498_AZALTMA.get(grup) or TS498_AZALTMA["yok"]
+    yukler = sorted((float(q) for q in kat_yukleri if float(q) > 1e-9), reverse=True)
+    n = len(yukler)
+    if n == 0:
+        return 1.0, {"n": 0, "grup": grup, "beta_tablo": 1.0, "esit": True}
+    b_tab = azaltma_beta(grup, n)
+    toplam = sum(yukler)
+    esit = max(yukler) - min(yukler) <= 1e-6 * max(1.0, max(yukler))
+    beta = b_tab
+    b_agirlikli = None
+    if not esit and b_tab < 1.0:
+        onceki, ag = 0.0, 0.0
+        for j, q in enumerate(yukler, start=1):
+            bj = azaltma_beta(grup, j)
+            kj = min(1.0, max(0.0, j * bj - onceki))
+            onceki = j * bj
+            ag += kj * q
+        b_agirlikli = ag / toplam
+        beta = max(b_tab, b_agirlikli)
+    beta = max(beta, satir["beta_min"])
+    return beta, {"n": n, "grup": grup, "beta_tablo": b_tab, "beta_agirlikli": b_agirlikli, "esit": esit}
+
+
 # ============================================================================
 # Yük birleşimleri — her satır: ad (şablon), katsayılar {durum: γ}, tür, kaynak, gerekli; yapi.py eldeki durumlara göre
 # açar (uygulandi / neden) ve uygulanan her varyanta katsayılardan ad verir (örn. "G+Q+0.2S+EX++0.3EY++0.3EZ").
@@ -619,6 +659,60 @@ TBDY_DEPREM_KURALLAR = {
     "tek_katli_celik": "Tek katlı çelik moment çerçevede drift sınırları en çok %50 artırılabilir (4.9.1.5)",
 }
 
+# TBDY 2018 md. 2.4 — sahaya özel deprem yer hareketi spektrumu (kullanıcı tablosu T [s] → S_ae [g], DD-2 yatay elastik)
+TBDY_OZEL_SPEKTRUM = {
+    "kaynak": ("TBDY 2018 md. 2.4.1.1 (sahaya özel deprem tehlike analizi ile spektrum tanımlanabilir), md. 2.4.1.2 (sahaya özel "
+               "yatay ve düşey spektral ivmeler 2.3.4 / 2.3.5 standart tasarım spektrumu ordinatlarının %90'ından küçük olamaz); "
+               "ZF: Tablo 2.1/2.2 ve Tablo 16.1 → md. 16.5 sahaya özel zemin davranış analizi zorunlu"),
+    "dogrulandi": True,
+    "asgari_oran": 0.90,
+    "asgari_kaynak": "TBDY 2018 md. 2.4.1.2",
+    "zorunlu": "ZF zemin sınıfında sahaya özel spektrum zorunludur (TBDY 2018 md. 16.5); diğer sınıflarda isteğe bağlıdır",
+    "tasarim": "S_aR(T) = S_ae(T)/R_a(T) (Denk. 4.8), R_a(T) Denk. (4.1) — T_B = S_D1/S_DS (Denk. 2.3) sahaya özel S_DS, S_D1 ile",
+    "en_fazla_nokta": 400,
+}
+# TBDY 2018 — farklı taşıyıcı sistemli (karma) binalar
+TBDY_KARMA = {
+    "kaynak": "TBDY 2018 md. 4.3.4.2 ve Tablo 4.1; md. 4.3.6 (üst ve alt bölümlerde farklı R ve D, koşullu)",
+    "dogrulandi": True,
+    "dogrultu": ("md. 4.3.4.2: birbirine dik iki yatay doğrultuda taşıyıcı sistemlerin süneklik düzeyleri aynı olmalıdır; bu koşulla "
+                 "iki doğrultuda farklı R ve bunlara karşı gelen D kullanılabilir. İzin verilen en üst BYS iki doğrultunun "
+                 "elverişsizidir (Tablo 4.1)."),
+    "yukseklik": ("Bina yüksekliği boyunca farklı sistem: TBDY 2018 md. 4.3.6 üst/alt bölümde farklı R, D kullanımına yalnız "
+                  "koşullarla izin verir (rijit alt bölüm; motor bu koşulları denetlemez). Motor her doğrultuda bütün binaya, o "
+                  "doğrultudaki sistemlerin en küçük R'li Tablo 4.1 satırını (eşitlikte küçük D) uygular."),
+    "kombinasyon": ("Malzemeye göre küme: betonarme elemanlar TS 500 md. 6.2.6 + TBDY 4.4.4 (ts500), çelik elemanlar ÇYTHYE 2018 "
+                    "md. 5.3.1 (YDKT) ya da 5.3.2 (GKT) + TBDY 9.2.5 — aynı yük durumlarından"),
+}
+# Motor kuralları (yönetmelikte açık karşılığı bulunamayan, güvenli tarafta seçilmiş yorumlar): her biri dogrulandi False →
+# dogrulanmamis_kayitlar() listesine girer, kullanıldığında sonuçların uyarılarında yazar.
+EK_KURALLAR = {
+    "ozel_spektrum.ara_deger": {"kural": "Sahaya özel tablo T'de doğrusal ara değerle okunur; ilk nokta T = 0, son nokta T ≥ 1 s",
+                                "kaynak": "motor kuralı (TBDY ara değer yöntemi vermez)", "dogrulandi": False},
+    "ozel_spektrum.tablo_disi": {"kural": "T > T_son: S_ae(T) = S_ae(T_son)·T_son/T (sabit hız kolu, Denk. 2.2 biçimi) ve %90 tabanı",
+                                 "kaynak": "motor kuralı (tabloyu yeterli periyoda uzatın)", "dogrulandi": False},
+    "ozel_spektrum.SDS_SD1": {"kural": ("S_DS, S_D1 verilmezse: S_DS = tasarımda kullanılan spektrumun en büyük ordinatı, S_D1 = "
+                                        "max_{T ≥ 1 s} T·S_ae(T); ZA–ZE'de ikisi de standart değerlerin %90'ından küçük alınmaz"),
+                              "kaynak": "motor kuralı, güvenli taraf (TBDY 2.4 sahaya özel S_DS/S_D1 tanımı vermez)", "dogrulandi": False},
+    "ozel_spektrum.ZF_taban": {"kural": ("ZF'de standart spektrum yoktur; %90 tabanı (md. 2.4.1.2) S_S, S_1 ile ZE standart spektrumuna "
+                                         "göre uygulanır"), "kaynak": "motor kuralı, güvenli taraf", "dogrulandi": False},
+    "ozel_spektrum.DD3": {"kural": "ZF'de DD-3 sahaya özel tablosu yoksa λ = 1 (md. 4.9.1.4 oranı kurulamaz; güvenli taraf)",
+                          "kaynak": "motor kuralı", "dogrulandi": False},
+    "karma.yukseklik": {"kural": ("Yükseklik boyunca farklı sistemde bütün binaya en küçük R'li satır (TBDY 4.3.6 koşulları "
+                                  "denetlenmez)"), "kaynak": "motor kuralı, güvenli taraf", "dogrulandi": False},
+    "karma.kappa_Ch": {"kural": ("Betonarme ve çelik sistem birlikte: κ = min (0,5), C_h = max (1,0) bütün katlarda "
+                                 "(md. 4.9.1.3, Denk. 4.37 karma binayı ayrıca tanımlamaz)"), "kaynak": "motor kuralı, güvenli taraf",
+                         "dogrulandi": False},
+    "karma.Ct": {"kural": "Farklı sistemlerde C_t = sistemlerin varsayılan C_t'lerinin en küçüğü (kısa T_pA)",
+                 "kaynak": "motor kuralı, güvenli taraf (Denk. 4.27)", "dogrulandi": False},
+    "azaltma.deprem": {"kural": ("TS 498 hareketli yük azaltması dayanım ve servis birleşimlerinde uygulanır; deprem birleşimlerinde "
+                                 "(TBDY 4.4.4) Q azaltılmaz"), "kaynak": "motor kuralı (TS 498 deprem birleşimini düzenlemez)",
+                       "dogrulandi": False},
+    "azaltma.farkli_kat": {"kural": ("Katlarda hareketli yük farklıysa β = max(β(n), en ağır kattan başlayan kat paylarıyla β); "
+                                     "Çizelge 7 eşit kat yükü için verilir"), "kaynak": "motor kuralı, güvenli taraf",
+                           "dogrulandi": False},
+}
+
 # ============================================================================
 # TS 498:2021 — kar (md. 11, Çizelge 3, Ek 1) ve rüzgâr (md. 14, Çizelge 4/5, Şekil 1); TS EN 1991-1-3 μ1
 # ============================================================================
@@ -808,7 +902,7 @@ def dogrulanmamis_kayitlar():
     liste = []
     tablolar = (("BETONLAR", BETONLAR), ("DONATILAR", DONATILAR), ("CELIKLER", CELIKLER), ("PROFILLER", PROFILLER),
                 ("TS498_HAREKETLI", TS498_HAREKETLI), ("TS498_BIRIM_AGIRLIK", TS498_BIRIM_AGIRLIK),
-                ("KAPLAMALAR", KAPLAMALAR), ("DUVARLAR", DUVARLAR), ("TBDY_TASIYICI", TBDY_TASIYICI))
+                ("KAPLAMALAR", KAPLAMALAR), ("DUVARLAR", DUVARLAR), ("TBDY_TASIYICI", TBDY_TASIYICI), ("EK_KURALLAR", EK_KURALLAR))
     for ad, tablo in tablolar:
         for anahtar, kayit in tablo.items():
             if not kayit.get("dogrulandi", False):
@@ -818,7 +912,9 @@ def dogrulanmamis_kayitlar():
                       ("TBDY_BYS", TBDY_BYS), ("TBDY_CT", TBDY_CT), ("TBDY_KUTLE_KATILIM_KULLANIM", TBDY_KUTLE_KATILIM_KULLANIM),
                       ("TBDY_UYGULANABILIRLIK", TBDY_UYGULANABILIRLIK), ("TBDY_ETKIN_RIJITLIK", TBDY_ETKIN_RIJITLIK),
                       ("TBDY_DEPREM_KURALLAR", TBDY_DEPREM_KURALLAR), ("TS498_KAR", TS498_KAR), ("EN1991_KAR_SEKIL", EN1991_KAR_SEKIL),
-                      ("TS498_RUZGAR", TS498_RUZGAR), ("TS498_KAR_BOLGE_KAYNAK", TS498_KAR_BOLGE_KAYNAK)):
+                      ("TS498_RUZGAR", TS498_RUZGAR), ("TS498_KAR_BOLGE_KAYNAK", TS498_KAR_BOLGE_KAYNAK),
+                      ("TS498_AZALTMA_UYGULAMA", TS498_AZALTMA_UYGULAMA), ("TBDY_OZEL_SPEKTRUM", TBDY_OZEL_SPEKTRUM),
+                      ("TBDY_KARMA", TBDY_KARMA)):
         if not tablo.get("dogrulandi", False):
             liste.append(ad)
     for kume, kayit in KOMBINASYONLAR.items():
