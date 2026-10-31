@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cekirdek/model_cekirdegi.h"
+#include "cekirdek_js/quickjs_cekirdek.h"
 #include "sinama_yardim.h"
 
 namespace op4::sinama {
@@ -22,14 +23,12 @@ inline std::string Sablon(const std::string& ad) { return Op4Dosyasi("testler/de
 
 // Deterministik saatli QuickJS çekirdeği; günlük satırları isteğe bağlı toplanır.
 inline std::unique_ptr<ModelCekirdegi> CekirdekKur(std::vector<std::string>* gunluk = nullptr, int geriAlAdim = 100,
-                                                    int geriAlMb = 512) {
+                                                    double geriAlMb = 512) {
     CekirdekAyari a;
     a.deterministikSaat = true;
-    a.geriAlAdim = geriAlAdim;
-    a.geriAlMb = geriAlMb;
     if (gunluk) a.gunluk = [gunluk](std::string_view s) { gunluk->emplace_back(s); };
     std::string hata;
-    auto c = ModelCekirdegiOlustur(a, hata);
+    auto c = QuickJsCekirdegiOlustur(a, GeriAlSiniri{geriAlAdim, geriAlMb}, hata);
     if (!c && gunluk) gunluk->push_back("KURULAMADI: " + hata);
     return c;
 }

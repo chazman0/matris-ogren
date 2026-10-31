@@ -113,10 +113,10 @@ Olcum Olc(ModelCekirdegi& c, const std::string& ad, const std::string& metin, do
     REQUIRE(g.ModelDegisti());
     CHECK(g.degisen.size() == a.degisen.size());
     t0 = std::chrono::steady_clock::now();
-    const IslemRaporu y = c.Yinele();
+    const IslemRaporu yi = c.Yinele();
     o.yinele = Ms(t0);
-    REQUIRE(y.ModelDegisti());
-    CHECK(y.degisen.size() == a.degisen.size());
+    REQUIRE(yi.ModelDegisti());
+    CHECK(yi.degisen.size() == a.degisen.size());
     std::printf("OP4OLCUM senaryo=cekirdek model=%s cubuk=%zu panel=%zu yukle_ms=%.1f uygula_ms=%.1f aks_ms=%.1f geri_al_ms=%.1f "
                 "yinele_ms=%.1f butce_ms=%.0f zorunlu=%d\n",
                 ad.c_str(), cubuk, panel, o.yukle, o.baslik, o.aks, o.geriAl, o.yinele, butce, kButceZorunlu ? 1 : 0);

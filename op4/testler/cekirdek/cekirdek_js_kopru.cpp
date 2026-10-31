@@ -154,7 +154,6 @@ TEST_CASE("cekirdek_js B4/B5: işlemler, rapor, geri al / yinele ve ortak akış
 
     IslemRaporu r = ModelIslemiUygula(h, islem::HIZLI_AKS, R"({"x":[6,6],"y":[5],"z":[3.5,3]})");
     REQUIRE_MESSAGE(r.basarili, r.hata);
-    CHECK(r.icerikDegisti);
     CHECK(r.ModelDegisti());
     CHECK(r.eklenen.size() == 5);
     for (const ElemanKimligi& k : r.eklenen) CHECK(k.tur == ElemanTuru::Aks);
@@ -220,12 +219,22 @@ TEST_CASE("cekirdek_js B4: C1 genel modele geçiş — Vazgeç modeli değiştir
     const json m = json::parse(c->Metin());
     CHECK(m["surum"] == 3);
     CHECK(m["kolonlar"].empty());
-    CHECK(m["temeller"]["tip"] == "tekil");
+    CHECK(m["temeller"]["tip"] == "surekli");      // docs C11: genel model motoru mütemadi temeli çözer, temel korunur
     CHECK(c->Sahne()->cubuklar.size() == cubuk);  // genel görünüm kimlikleri dönüşümde korunur
-    for (const ElemanKimligi& k : r.degisen) CHECK(k.tur == ElemanTuru::Temel);
+    // sahne aynı: eleman farkı yok; içerik değiştiği için tek geçersiz kimlik işareti (S11'de içerik bayrağı yok)
+    CHECK(r.eklenen.empty());
+    CHECK(r.silinen.empty());
+    REQUIRE(r.degisen.size() == 1);
+    CHECK(r.degisen[0] == ICERIK_DEGISTI_ISARETI);
+    CHECK_FALSE(r.degisen[0].Gecerli());
+    for (const SahneTemeli& t : c->Sahne()->temeller) CHECK(t.tur == TemelTuru::Surekli);
     bool uyari = false;
-    for (const std::string& u : r.uyarilar) uyari = uyari || u.find("Mütemadi (sürekli) temel tekil temele çevrildi") != std::string::npos;
+    for (const std::string& u : r.uyarilar) uyari = uyari || u.find("genelleştirildi") != std::string::npos;
     CHECK(uyari);
+    // geri al: aks–kat modeline döner (aynı bayt), yine işaretli rapor
+    const IslemRaporu g = GeriAlUygula(h);
+    CHECK(g.ModelDegisti());
+    CHECK(c->Metin() == once);
 }
 
 TEST_CASE("cekirdek_js B4: kanonik metin, yükleme hataları, geri al sınırı") {

@@ -74,7 +74,10 @@ test("profilAdiNormal: kütüphane sınırı, basit kesitler, RHS/SHS/CHS ölç�
   assert.deepEqual(O.profilAdiNormal("CHS 168,3 x 6,3"), { ad: "BORU 168.3x6.3", aile: "BORU", durum: "tamam" });
   assert.deepEqual(O.profilAdiNormal("BORU 168.3x6.3"), { ad: "BORU 168.3x6.3", aile: "BORU", durum: "tamam" });
   assert.deepEqual(O.profilAdiNormal("2L 70x7 s=10"), { ad: "2L 70x7 s=10", aile: "2L", durum: "tamam" });
-  assert.deepEqual(O.profilAdiNormal("L 100x50x6"), { ad: "L 100x50x6", aile: "L", durum: "tamam" });
+  assert.deepEqual(O.profilAdiNormal("L 100x10"), { ad: "L 100x10", aile: "L", durum: "tamam" });
+  assert.deepEqual(O.profilAdiNormal("L 100.100.10"), { ad: "L 100x10", aile: "L", durum: "tamam" });
+  // eşit olmayan kollu korniyer motorda yok (docs/ifc_disari.js basitProfil: "yalnız eşit kollu korniyer desteklenir")
+  assert.deepEqual(O.profilAdiNormal("L 100x50x6"), { ad: null, aile: "L", durum: "kutuphanede_yok" });
   assert.equal(O.profilAdiNormal("RHS").durum, "anlasilmadi");
   assert.equal(O.profilAdiNormal(null).durum, "anlasilmadi");
   assert.equal(O.profilAdiNormal({}).durum, "anlasilmadi");

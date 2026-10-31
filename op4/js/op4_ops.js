@@ -400,12 +400,14 @@
     if (DCz.izg && DCz.izg.katlar.size) { let k0 = Infinity; for (const k of DCz.izg.katlar.keys()) if (k < k0) k0 = k; z0 = DCz.izg.katlar.get(k0); }
     else if (aksSistemiVar(g) && seviyeler.length) z0 = seviyeler[0].z;
     const temelMesnet = String((g.temeller && g.temeller.mesnet) || "ankastre").toLowerCase();
-    const temelTipi = String((g.temeller && g.temeller.tip) || "tekil").trim().toLowerCase();
-    // mesnetler: açık kayıtlar + temel kuralı (C3; aks kesişimi düğümleri, en alt kat seviyesi, kullanılan)
+    const temelTipi = temelTipiOku(g);
+    // mesnetler: açık kayıtlar + temel kuralı (C3; aks kesişimi düğümleri, en alt kat seviyesi, kullanılan). Mütemadi / radye
+    // temelde kolon tabanı temel kirişine / radyeye rijit bağlıdır (ModelOps mesnetli / temelMesnetKaydi; sözleşme C11.7).
     const T = KODLAR.dugum_turu, MT = KODLAR.mesnet_turu;
     const mD = [], mM = [], mT = [], mO = [];
-    const ortukMaske = temelMesnet === "mafsal" ? 0x07 : temelMesnet === "elastik" ? 0x23 : 0x3F;
-    const ortukTur = temelMesnet === "mafsal" ? MT.mafsal : temelMesnet === "elastik" ? MT.yay : MT.ankastre;
+    const yayili = temelTipi !== "tekil";
+    const ortukMaske = yayili ? 0x3F : temelMesnet === "mafsal" ? 0x07 : temelMesnet === "elastik" ? 0x23 : 0x3F;
+    const ortukTur = yayili ? MT.ankastre : temelMesnet === "mafsal" ? MT.mafsal : temelMesnet === "elastik" ? MT.yay : MT.ankastre;
     for (let i = 0; i < nd; i++) {
       const m = mes.get(dno[i]);
       if (m) {
@@ -423,6 +425,16 @@
       nc: nc, cel: cRec, ci: ci, cj: cj, ctur: ctur, np: np, pel: pRec, pbas: pbas, psay: psay, pkose: pkose, ptur: ptur,
       nm: mD.length, md: Uint32Array.from(mD), mmaske: Uint8Array.from(mM), mtur: Uint8Array.from(mT), mortuk: Uint8Array.from(mO),
       seviyeler: seviyeler, katlar: katlar, z0: z0, temelTipi: temelTipi, temelMesnet: temelMesnet };
+  }
+  /**
+   * Temel tipi: "tekil" | "surekli" | "radye". Eş anlamlılar ModelOps YAYILI_TEMEL / temel.tip_oku ile aynıdır (sürekli, mutemadi,
+   * mütemadi → surekli); tanınmayan değer tekildir.
+   */
+  function temelTipiOku(g) {
+    const t = String((g && g.temeller && g.temeller.tip) || "tekil").trim().toLowerCase();
+    if (t === "radye") return "radye";
+    if (t === "surekli" || t === "sürekli" || t === "mutemadi" || t === "mütemadi") return "surekli";
+    return "tekil";
   }
   function mesnetTuru(m) {
     const MT = KODLAR.mesnet_turu;

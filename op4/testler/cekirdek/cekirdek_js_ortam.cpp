@@ -157,3 +157,33 @@ TEST_CASE("cekirdek_js B2: hata yığınında dosya adı ve satır; süre sını
     CHECK_FALSE(yk.o.Kur(hata));
     CHECK(hata.find("okunamadı") != std::string::npos);
 }
+
+TEST_CASE("cekirdek_js B2: ICU'suz motorda öykünmeler — localeCompare (tr, numeric, sensitivity), TextDecoder (utf-8, windows-1254)") {
+    Ortam t;
+    std::string hata;
+    REQUIRE_MESSAGE(t.o.Kur(hata), hata);
+    CHECK(t.Js("typeof Intl") == "undefined");  // QuickJS-ng: öykünmeler kurulu olmalı (node'da onyukleme.test.js ICU'ya karşı sınar)
+    const json s = t.Js(R"((function () {
+      var B = {numeric: true, sensitivity: "base"};
+      var l = ["K10", "k9", "K101", "Çatı", "catı", "ığdır", "İzmir", "Işık", "a", "A", "ç", "d", "2. kat", "10. kat", "01", "1"];
+      return {sira: l.slice().sort(function (a, b) { return a.localeCompare(b, "tr", B); }),
+              esit: ["K9".localeCompare("k9", "tr", B), "01".localeCompare("1", "tr", B), "â".localeCompare("a", "tr", B)],
+              varsayilan: ["a".localeCompare("A", "tr"), "ç".localeCompare("d", "tr"), "ç".localeCompare("d", "en"), "ı".localeCompare("i", "tr")]};
+    })())");
+    CHECK(s["sira"] == json::array({"01", "1", "2. kat", "10. kat", "a", "A", "catı", "ç", "Çatı", "d", "ığdır", "Işık", "İzmir",
+                                    "k9", "K10", "K101"}));
+    CHECK(s["esit"] == json::array({0, 0, 0}));
+    CHECK(s["varsayilan"] == json::array({-1, -1, -1, -1}));
+    const json d = t.Js(R"((function () {
+      var u = new Uint8Array([0xef, 0xbb, 0xbf, 0x41, 0xc3, 0xa7]), w = new Uint8Array([0xd0, 0xdd, 0xde, 0xf0, 0xfd, 0xfe, 0x80]);
+      var f; try { new TextDecoder("utf-8", {fatal: true}).decode(new Uint8Array([0xff])); f = "yok"; } catch (e) { f = e.name; }
+      return [new TextDecoder().decode(u), new TextDecoder("utf-8", {ignoreBOM: true}).decode(u).length, new TextDecoder("windows-1254").decode(w),
+              f, new TextDecoder().decode(new Uint8Array([0x61, 0xc3])), MatrisTablo._ic.csvMetniCoz(w)];
+    })())");
+    CHECK(d[0] == "Aç");
+    CHECK(d[1] == 3);
+    CHECK(d[2] == "ĞİŞğış€");
+    CHECK(d[3] == "TypeError");
+    CHECK(d[4] == "a\xEF\xBF\xBD");
+    CHECK(d[5] == "ĞİŞğış€");  // docs/tablo_editoru.js: UTF-8 değilse windows-1254
+}

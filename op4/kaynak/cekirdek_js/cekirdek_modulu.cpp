@@ -9,6 +9,7 @@
 #include <string>
 
 #include "cekirdek/kabuk.h"
+#include "cekirdek_js/quickjs_cekirdek.h"
 
 namespace op4 {
 
@@ -46,12 +47,13 @@ void CekirdekModuluKur(Hizmetler& h, ModulOrtami& o) {
     ayar.deterministikSaat = o.testKipi;
     ayar.gunluk = o.gunluk;
     ayar.jsDizini = OrtamDegiskeni("OP4_JS_DIZINI");
+    GeriAlSiniri sinir;
     if (h.ayarlar) {
-        ayar.geriAlAdim = h.ayarlar->cekirdek.geriAlAdim;
-        ayar.geriAlMb = h.ayarlar->cekirdek.geriAlMb;
+        sinir.adim = h.ayarlar->cekirdek.geriAlAdim;
+        sinir.mb = h.ayarlar->cekirdek.geriAlMb;
     }
     std::string hata;
-    std::shared_ptr<ModelCekirdegi> c(ModelCekirdegiOlustur(ayar, hata).release());
+    std::shared_ptr<ModelCekirdegi> c(QuickJsCekirdegiOlustur(ayar, sinir, hata).release());
     if (!c) {
         if (o.gunluk) o.gunluk("HATA: model çekirdeği kurulamadı: " + hata);
         return;

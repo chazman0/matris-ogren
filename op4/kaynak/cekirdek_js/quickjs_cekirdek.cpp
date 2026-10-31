@@ -14,6 +14,7 @@
 #include "cekirdek/model_cekirdegi.h"
 #include "cekirdek_js/js_ortami.h"
 #include "cekirdek_js/js_ortami_ic.h"
+#include "cekirdek_js/quickjs_cekirdek.h"
 
 namespace op4 {
 namespace {
@@ -91,12 +92,12 @@ OznitelikTuru OznitelikTuruAdi(const std::string& t) {
 
 class QuickJsCekirdek final : public ModelCekirdegi {
 public:
-    explicit QuickJsCekirdek(const CekirdekAyari& a) : ayar_(a), ortam_(OrtamAyari(a)) {}
+    QuickJsCekirdek(const CekirdekAyari& a, const GeriAlSiniri& s) : ayar_(a), sinir_(s), ortam_(OrtamAyari(a)) {}
 
     bool Kur(std::string& hata) {
         if (!ortam_.Kur(hata)) return false;
         std::string r;
-        const json kur = {{"geriAlAdim", ayar_.geriAlAdim}, {"geriAlMb", ayar_.geriAlMb}};
+        const json kur = {{"geriAlAdim", sinir_.adim}, {"geriAlMb", sinir_.mb}};
         if (!ortam_.CagirMetin("Op4Kopru.kur", {kur.dump()}, r, hata)) return false;
         const json j = Ayristir(r);
         islemler_ = Dizeler(j, "islemler");
@@ -262,13 +263,16 @@ private:
         rp.basarili = Evet(j, "basarili");
         rp.hata = Dize(j, "hata");
         rp.uyarilar = Dizeler(j, "uyarilar");
-        rp.icerikDegisti = Evet(j, "icerik_degisti");
         if (j.contains("gecis_onayi") && j["gecis_onayi"].is_object()) rp.gecisOnayi = GecisOnayi{Dize(j["gecis_onayi"], "metin")};
         std::string hata;
         Anahtarlar(c, r.v(), "eklenen", rp.eklenen, hata);
         Anahtarlar(c, r.v(), "silinen", rp.silinen, hata);
         Anahtarlar(c, r.v(), "degisen", rp.degisen, hata);
         if (!hata.empty()) IcHata(yol, hata);
+        // S11'de içerik bayrağı yok: eleman farkı boş ama model metni değiştiyse (başlık, genel modele geçiş, kesit tablosu …)
+        // ModelDegisti() doğru dönsün diye geçersiz kimlik işareti konur (quickjs_cekirdek.h).
+        if (rp.basarili && Evet(j, "icerik_degisti") && rp.eklenen.empty() && rp.silinen.empty() && rp.degisen.empty())
+            rp.degisen.push_back(ICERIK_DEGISTI_ISARETI);
         Yenile();
         rp.sahneSurumu = sahneSurumu_;
         return rp;
@@ -546,6 +550,7 @@ private:
     }
 
     CekirdekAyari ayar_;
+    GeriAlSiniri sinir_;
     JsOrtami ortam_;
     std::vector<std::string> islemler_;
     std::string sonHata_;
@@ -558,13 +563,17 @@ private:
 
 }  // namespace
 
-std::unique_ptr<ModelCekirdegi> ModelCekirdegiOlustur(const CekirdekAyari& ayar, std::string& hata) {
-    auto c = std::make_unique<QuickJsCekirdek>(ayar);
+std::unique_ptr<ModelCekirdegi> QuickJsCekirdegiOlustur(const CekirdekAyari& ayar, const GeriAlSiniri& sinir, std::string& hata) {
+    auto c = std::make_unique<QuickJsCekirdek>(ayar, sinir);
     if (!c->Kur(hata)) {
         if (hata.empty()) hata = "model çekirdeği ilk sahneyi üretemedi";
         return nullptr;
     }
     return c;
+}
+
+std::unique_ptr<ModelCekirdegi> ModelCekirdegiOlustur(const CekirdekAyari& ayar, std::string& hata) {
+    return QuickJsCekirdegiOlustur(ayar, GeriAlSiniri{}, hata);
 }
 
 }  // namespace op4

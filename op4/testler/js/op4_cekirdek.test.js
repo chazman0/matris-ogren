@@ -96,14 +96,15 @@ test("aksSihirbazi ve baslikDegistir: içerik değişikliği, değişmeyen başl
   assert.equal(c.uygula("aksSihirbazi", {}).basarili, false);
 });
 
-test("C1 genel modele geçiş: onaysız gecis_onayi (model değişmez), onaylı dönüşüm; radye temel uyarısı", () => {
+test("C1 genel modele geçiş: onaysız gecis_onayi (model değişmez), onaylı dönüşüm; radye temel korunur (docs C11)", () => {
   const c = yeni();
   c.yukle(metinOku("betonarme-4kat-radye"), "sablon:betonarme-4kat-radye");
   const once = c.metin(), sahneOnce = c.sahne();
   const r = c.uygula("genellestir", {});
   assert.equal(r.basarili, true);
   assert.ok(r.gecis_onayi && /genel \(surum 3\)/.test(r.gecis_onayi.metin));
-  assert.match(r.gecis_onayi.metin, /radye temel tekil temel mesnetlerine döner/);
+  assert.match(r.gecis_onayi.metin, /^Genel modele dönüştür — /);
+  assert.doesNotMatch(r.gecis_onayi.metin, /tekil/);           // C11: genel model motoru radye temeli çözer
   assert.equal(r.icerik_degisti, false);
   assert.equal(c.metin(), once);
   assert.equal(c.geriAlBilgisi().adim, 0);
@@ -111,15 +112,17 @@ test("C1 genel modele geçiş: onaysız gecis_onayi (model değişmez), onaylı 
   assert.equal(o.basarili, true, o.hata);
   assert.equal(o.gecis_onayi, undefined);
   assert.equal(o.icerik_degisti, true);
-  assert.ok(o.uyarilar.some((u) => /Radye temel tekil temele çevrildi/.test(u)));
+  assert.ok(o.uyarilar.some((u) => /genelleştirildi/.test(u)));
   const m = JSON.parse(c.metin());
   assert.equal(m.surum, 3);
   assert.deepEqual([m.kolonlar.length, m.kirisler.length, m.dosemeler.length], [0, 0, 0]);
-  // genel görünüm kimlikleri dönüşümde korunur: yalnız temeller değişir
-  assert.deepEqual(o.eklenen, []);
-  assert.deepEqual(o.silinen, []);
-  assert.ok(o.degisen.length > 0 && o.degisen.every((k) => k.tur === "temel"));
+  assert.equal(m.temeller.tip, "radye");
+  // genel görünüm kimlikleri ve sahne dönüşümde korunur: eleman farkı yok, yalnız içerik değişti
+  assert.deepEqual([o.eklenen, o.silinen, o.degisen], [[], [], []]);
   assert.equal(c.sahne().cubuklar.no.length, sahneOnce.cubuklar.no.length);
+  assert.deepEqual(Array.from(c.sahne().dugumler.xyz), Array.from(sahneOnce.dugumler.xyz));
+  assert.equal(c.sahne().temeller.length, sahneOnce.temeller.length);
+  assert.ok(c.sahne().temeller.every((t) => t.tur === Op4Ops.KODLAR.temel_turu.radye));
   // genel modelde yeniden çağrı: kapı kapalı, değişiklik yok
   const z = c.uygula("genellestir", {});
   assert.equal(z.gecis_onayi, undefined);
